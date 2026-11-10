@@ -6,7 +6,7 @@ O **NimboXcloud** é um userscript não oficial para o [Xbox Cloud Gaming](https
 
 O objetivo é oferecer escolhas ao jogador sem exigir que ele abandone o toque ou o controle físico. O script funciona sobre o site oficial e **não é um serviço de cloud gaming independente**.
 
-> **Estado atual:** versão **3.6.2**, em desenvolvimento. Recursos implementados no código não significam compatibilidade garantida com todas as versões do xCloud. Os testes reais de streaming em diferentes dispositivos ainda precisam ser documentados.
+> **Estado atual:** versão **3.6.3**, em desenvolvimento. Recursos implementados no código não significam compatibilidade garantida com todas as versões do xCloud. Os testes reais de streaming em diferentes dispositivos ainda precisam ser documentados.
 
 ## O que o projeto oferece
 
