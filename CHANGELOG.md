@@ -1,5 +1,11 @@
 # Histórico de alterações
 
+## [3.6.3] — 2026-11-10
+- Corrigido erro de sintaxe que impedia a execução integral do userscript: declaração `cardEl = mk(...)` estava acidentalmente comentada, deixando um array de estilos solto.
+- Restaurada a criação do cartão do painel NX; sintaxe JavaScript validada estaticamente.
+- Teste real no Edge/Android ainda pendente.
+
+
 ## [Documentação aberta e bilíngue] — 2026-11-10
 - README em português e README_EN em inglês apresentam KReight como estudante autodidata de JavaScript.
 - Projeto experimental, convite a contribuições, permissão para forks e condições da licença MIT esclarecidos.
