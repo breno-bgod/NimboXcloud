@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.21
+// @version      3.6.22
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,12 +59,13 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.21';
+  const VER = '3.6.22';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
   const LS_RES = 'xcu.resolution';   // faixa de qualidade
   const LS_BITRATE = 'xcu.maxBitrateMbps'; // limite opcional de bitrate SDP
+  const LS_VOLUME = 'xcu.volume'; // volume local do elemento de video
 
   // IP de saída → região desejada. Os IPs abaixo são apenas exemplos comuns em projetos públicos;
   // troque pelo endereço de saída que você realmente usa (também dá para escolher no painel,
@@ -1191,6 +1192,21 @@
     row1.appendChild(el.btnRegion);
     cardEl.appendChild(row1);
 
+    // Presets locais: nao alteram o servidor diretamente; aplicam as opcoes ja existentes.
+    const rowPresets = mk('div', 'display:flex;gap:4px;flex-wrap:wrap;margin-top:6px');
+    [['Máximo', 'hq', 'auto'], ['Equilibrado', 'auto', 'b10'], ['Economia', 'r720', 'b5']].forEach(function (p) {
+      rowPresets.appendChild(pillBtn(p[0], function () {
+        setPref(LS_RES, p[1]); setPref(LS_BITRATE, p[2]);
+        S.lastPreset = p[0];
+        pushLog('quality', 'Preset ' + p[0] + ' selecionado; aplicar na próxima partida');
+        update();
+      }));
+    });
+    rowPresets.appendChild(pillBtn('Vol −', function () { adjustVolume(-0.1); }));
+    rowPresets.appendChild(pillBtn('Vol +', function () { adjustVolume(0.1); }));
+    rowPresets.appendChild(pillBtn('Mudo', function () { toggleMute(); }));
+    cardEl.appendChild(rowPresets);
+
     // Lista de opções: é um bloco dentro do cartão, não uma camada fixed — o painel fica dentro
     // do elemento em tela cheia, e uma camada fixed seria cortada em tela cheia.
     // Expandir só aumenta a altura do cartão; a posição da pílula não é afetada.
@@ -1305,6 +1321,8 @@
       el.qos.innerHTML =
         '<div style="font-weight:700;margin:3px 0 5px">Monitoramento ao vivo <span style="font-weight:400;color:#8b949e">(WebRTC)</span></div>' +
         row('Perfil solicitado', resCfg().label + ' (' + resCfg().osName + ')') +
+        row('Preset local', S.lastPreset || 'Personalizado') +
+        row('Volume do vídeo', activeStreamVideo() ? (activeStreamVideo().muted ? 'Mudo' : Math.round(activeStreamVideo().volume * 100) + '%') : 'Indisponível') +
         row('Resolução recebida', q.w && q.h ? q.w + ' × ' + q.h : 'Indisponível') +
         row('Verificação de qualidade', q.w && q.h ? (q.h >= 1440 ? '1440p ou superior recebido' : q.h >= 1080 ? '1080p recebido; HQ não verificável só pela resolução' : q.h + 'p recebido (abaixo de 1080p)') : 'Aguardando quadros') +
         row('FPS recebido', fmt(q.fps > 0 ? q.fps : q.decodedFps, ' FPS')) +
@@ -1685,6 +1703,26 @@
       if (!userTouched) setOpen(false);
     }
     update();
+  }
+
+  function activeStreamVideo() {
+    const videos = Array.from(document.querySelectorAll('video'));
+    return videos.find(function (v) { return v.readyState >= 2 && !v.paused; }) || videos.find(function (v) { return v.srcObject || (v.currentSrc && v.currentSrc.startsWith('blob:')); }) || null;
+  }
+  function adjustVolume(delta) {
+    const video = activeStreamVideo();
+    if (!video) { S.lastErr = 'Volume: vídeo de streaming não encontrado'; schedule(); return; }
+    const next = Math.max(0, Math.min(1, Math.round((video.volume + delta) * 10) / 10));
+    video.volume = next;
+    video.muted = false;
+    setPref(LS_VOLUME, String(next));
+    schedule();
+  }
+  function toggleMute() {
+    const video = activeStreamVideo();
+    if (!video) { S.lastErr = 'Volume: vídeo de streaming não encontrado'; schedule(); return; }
+    video.muted = !video.muted;
+    schedule();
   }
 
   function boot() {
