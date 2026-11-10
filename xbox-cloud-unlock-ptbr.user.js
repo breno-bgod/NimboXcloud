@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.10
+// @version      3.6.11
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.10';
+  const VER = '3.6.11';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -809,6 +809,43 @@
       touchFullscreenPolicy.lastReason = 'F9 lock error: ' + (err && err.name || 'unknown');
     }
   }, true);
+
+  // Ajusta apenas a mensagem HTML de ajuda do xCloud, quando existir.
+  // Se a mensagem for desenhada dentro do video, nao e possivel trocar
+  // seu texto pelo DOM. Nunca altera eventos ou atalhos do xCloud.
+  function updateNativeMouseHint(root) {
+    if (!root || !document.createTreeWalker) return;
+    const re = /(?:pressione|aperte)\\s+.{0,35}?(?:para\\s+)?(liberar|soltar|desbloquear|capturar|ativar|bloquear)\\s+(?:o\\s+)?mouse/i;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node, checked = 0;
+    while ((node = walker.nextNode()) && checked++ < 1200) {
+      const parent = node.parentElement;
+      if (!parent || /^(SCRIPT|STYLE|TEXTAREA|INPUT|NOSCRIPT)$/.test(parent.tagName)) continue;
+      const raw = node.nodeValue || '';
+      if (raw.length > 180 || !re.test(raw) || /\\bF9\\b/i.test(raw)) continue;
+      node.nodeValue = raw.replace(re, function (_, action) {
+        return 'Pressione F9 para ' + (/^(liberar|soltar|desbloquear)$/i.test(action) ? 'liberar' : 'capturar') + ' o mouse';
+      });
+    }
+  }
+  function installNativeMouseHint() {
+    if (!document.documentElement) return;
+    let pending = false;
+    const scan = function () {
+      if (pending) return;
+      pending = true;
+      queueMicrotask(function () {
+        pending = false;
+        updateNativeMouseHint(document.body || document.documentElement);
+      });
+    };
+    new MutationObserver(scan).observe(document.documentElement, {
+      childList: true, subtree: true, characterData: true
+    });
+    scan();
+  }
+  if (document.documentElement) installNativeMouseHint();
+  else document.addEventListener('DOMContentLoaded', installNativeMouseHint, { once: true });
 
   // ---------- 10b. Entradas nativas ----------
   // Nao interceptar requestPointerLock, teclado/mouse/toque ou Gamepad API.
