@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Xbox Cloud Gaming Unlock (PT-BR)
+// @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.5.0
+// @version      3.5.1
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       RoyLiu04
 // @license      MIT
@@ -54,7 +54,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.5.0';
+  const VER = '3.5.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -838,9 +838,11 @@
     wrap.id = '__xcu_panel__';
     const saved = readPos();
     if (saved) {
+      const x = Math.max(4, Math.min(saved.x, Math.max(4, window.innerWidth - 64)));
+      const y = Math.max(4, Math.min(saved.y, Math.max(4, window.innerHeight - 44)));
       wrap.style.transform = 'none';
-      wrap.style.left = saved.x + 'px';
-      wrap.style.top = saved.y + 'px';
+      wrap.style.left = x + 'px';
+      wrap.style.top = y + 'px';
     }
 
     // Pílula
@@ -1251,6 +1253,10 @@
   // ---------- 15. Loop principal ----------
   function tick() {
     try {
+      if (wrap && wrap.isConnected) {
+        const r = wrap.getBoundingClientRect();
+        if (r.right < 28 || r.left > innerWidth - 28 || r.bottom < 24 || r.top > innerHeight - 24) resetPos();
+      }
       const host = mountTarget();
       if (!wrap || !wrap.isConnected) buildUI();
       if (wrap && host && wrap.parentNode !== host) host.appendChild(wrap);
@@ -1265,8 +1271,8 @@
     const modal = streaming ? false : modalHit();
     if (cardEl) cardEl.style.display = (openUI && !modal) ? 'block' : 'none';
     if (pillEl) {
-      pillEl.style.opacity = modal ? '.18' : '1';
-      pillEl.style.pointerEvents = modal ? 'none' : 'auto';
+      pillEl.style.opacity = modal ? '.65' : '1';
+      pillEl.style.pointerEvents = 'auto';
     }
 
     // Na primeira entrada no streaming, recolhe automaticamente para não atrapalhar os controles do jogo
@@ -1289,6 +1295,10 @@
       }
     });
     panelObserver.observe(document.documentElement, { childList: true, subtree: false });
+    // Atalho de recuperacao do painel para navegadores com teclado.
+    document.addEventListener('keydown', function (e) {
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyN') { resetPos(); setOpen(true, true); }
+    }, false);
     // Ao entrar/sair da tela cheia, move o painel imediatamente para o novo host, sem depender do tick de 1,5s
     ['fullscreenchange', 'webkitfullscreenchange'].forEach(function (ev) {
       document.addEventListener(ev, function () {
