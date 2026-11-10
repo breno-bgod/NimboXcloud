@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.30
+// @version      3.6.31
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.30';
+  const VER = '3.6.31';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -711,7 +711,10 @@
         }
         schedule();
       }
-    }, function () { }).then(function () { qosBusy = false; });
+    }).catch(function (err) {
+      S.lastErr = 'QoS: ' + String(err && err.message || err);
+      schedule();
+    }).then(function () { qosBusy = false; });
   }
 
   function PCQos(pc) {
@@ -1900,8 +1903,8 @@
   }
   function applyVideoAdjustments(video) {
     if (!video) return;
-    const color = Number(getPref(LS_VIDEO_COLOR, '0'));
-    const sharp = Number(getPref(LS_SHARPNESS, '0'));
+    const color = Math.max(0, Math.min(2, Number(getPref(LS_VIDEO_COLOR, '0')) || 0));
+    const sharp = Math.max(0, Math.min(2, Number(getPref(LS_SHARPNESS, '0')) || 0));
     const contrast = [1, 1.04, 1.10][color] || 1;
     const saturation = [1, 1.06, 1.10][color] || 1;
     // O ajuste de "nitidez" é apenas contraste CSS; sem convolução de pixels.
@@ -1929,7 +1932,7 @@
   function cycleVideoFilter() {
     const video = activeStreamVideo();
     if (!video) { S.lastErr = 'Filtro: vídeo não encontrado'; schedule(); return; }
-    const next = (Number(getPref(LS_VIDEO_COLOR, '0')) + 1) % 3;
+    const next = ((Number(getPref(LS_VIDEO_COLOR, '0')) || 0) + 1) % 3;
     setPref(LS_VIDEO_COLOR, String(next));
     applyVideoAdjustments(video);
     pushLog('video', 'Cor/contraste CSS ' + next + ' (não aplica nitidez, CAS nem upscaling)');
@@ -1954,6 +1957,7 @@
   function activeStreamVideo() {
     const videos = Array.from(document.querySelectorAll('video'));
     const candidates = videos.filter(function (v) { return v.srcObject || (v.currentSrc && v.currentSrc.startsWith('blob:')); });
+    // Evitar controlar vídeos promocionais ou prévias que não são o streaming WebRTC.
     return candidates.find(function (v) { return v.readyState >= 2 && !v.paused; }) || candidates[0] || null;
   }
   function adjustVolume(delta) {
