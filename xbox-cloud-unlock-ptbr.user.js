@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.22
+// @version      3.6.23
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,13 +59,15 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.22';
+  const VER = '3.6.23';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
   const LS_RES = 'xcu.resolution';   // faixa de qualidade
   const LS_BITRATE = 'xcu.maxBitrateMbps'; // limite opcional de bitrate SDP
   const LS_VOLUME = 'xcu.volume'; // volume local do elemento de video
+  const LS_AUTO_BEST = 'xcu.autoBestMeasured';
+  const LS_NX_DIAG = 'xcu.diagnostics';
 
   // IP de saída → região desejada. Os IPs abaixo são apenas exemplos comuns em projetos públicos;
   // troque pelo endereço de saída que você realmente usa (também dá para escolher no painel,
@@ -177,6 +179,15 @@
 
   function srvCfg() {
     const k = getPref(LS_SRV, 'auto');
+    if (k === 'auto' && getPref(LS_AUTO_BEST, '0') === '1') {
+      const entries = Object.keys(S.latencyByServer).filter(function (name) {
+        return S.latencyByServer[name].samples >= 5 && Object.keys(SERVERS).some(function (id) { return SERVERS[id].name === name; });
+      });
+      if (entries.length) {
+        entries.sort(function (a, b) { return S.latencyByServer[a].avg - S.latencyByServer[b].avg; });
+        return { name: entries[0], label: 'Medido: ' + entries[0] };
+      }
+    }
     if (SERVERS[k]) return SERVERS[k];
     if (/^[A-Z]{3,}$/.test(k)) return { name: k, label: k };
     return SERVERS.auto;
@@ -1205,6 +1216,26 @@
     rowPresets.appendChild(pillBtn('Vol −', function () { adjustVolume(-0.1); }));
     rowPresets.appendChild(pillBtn('Vol +', function () { adjustVolume(0.1); }));
     rowPresets.appendChild(pillBtn('Mudo', function () { toggleMute(); }));
+    rowPresets.appendChild(pillBtn('Auto RTT', function () {
+      const enabled = getPref(LS_AUTO_BEST, '0') === '1';
+      setPref(LS_AUTO_BEST, enabled ? '0' : '1');
+      pushLog('region', 'Auto RTT ' + (enabled ? 'desativado' : 'ativado') + ' — usa apenas data centers já medidos (mínimo 5 amostras)');
+      update();
+    }));
+    rowPresets.appendChild(pillBtn('Diagnóstico', function () {
+      const report = {
+        version: VER, url: location.origin + location.pathname,
+        selectedServer: srvCfg().name || 'auto', requestedQuality: resCfg().label,
+        bitrateLimit: bitrateCfg().mbps || 'auto', lastQos: S.qos,
+        latencyByServer: S.latencyByServer, nxRecoveries: S.nxRecoveries,
+        pointerLockActive: !!document.pointerLockElement,
+        touchPoints: navigator.maxTouchPoints || 0, lastError: S.lastErr
+      };
+      const output = JSON.stringify(report, null, 2);
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(output).catch(function () { console.log('[NX diagnostic]', output); });
+      else console.log('[NX diagnostic]', output);
+      pushLog('diagnostic', 'Relatório técnico enviado à área de transferência (quando permitido)');
+    }));
     cardEl.appendChild(rowPresets);
 
     // Lista de opções: é um bloco dentro do cartão, não uma camada fixed — o painel fica dentro
@@ -1330,6 +1361,8 @@
         row('Limite SDP configurado', bitrateCfg().mbps ? bitrateCfg().mbps + ' Mbps (teto solicitado)' : 'Auto (sem teto local)') +
         row('Codec', q.codec || 'Indisponível') +
         row('RTT WebRTC (não ping do jogo)', fmt(q.rtt, ' ms')) +
+        row('Auto RTT', getPref(LS_AUTO_BEST, '0') === '1' ? 'Ligado (apenas servidores medidos)' : 'Desligado') +
+        row('Recuperações NX', S.nxRecoveries) +
         row('Servidores medidos nesta página', Object.keys(S.latencyByServer).length ? Object.keys(S.latencyByServer).map(function (key) { return key + ': ' + Math.round(S.latencyByServer[key].avg) + ' ms'; }).join(' · ') : 'Aguardando amostras') +
         row('Jitter RTP', fmt(q.jitter, ' ms')) +
         row('Perda de pacotes', fmt(q.instLoss != null ? q.instLoss : q.loss, '%', 1)) +
@@ -1727,6 +1760,15 @@
 
   function boot() {
     startInputDiagnostics();
+    // Reaplicar volume salvo apenas quando um elemento de vídeo de streaming existir.
+    let lastVolumeVideo = null;
+    setInterval(function () {
+      const v = activeStreamVideo();
+      if (!v || v === lastVolumeVideo) return;
+      lastVolumeVideo = v;
+      const stored = Number(getPref(LS_VOLUME, '1'));
+      if (Number.isFinite(stored)) v.volume = Math.max(0, Math.min(1, stored));
+    }, 2500);
     buildUI();
     update();
     tick();
