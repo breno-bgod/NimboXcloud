@@ -22,15 +22,23 @@ O objetivo é oferecer escolhas ao jogador sem exigir que ele abandone o toque o
 
 **Sobre 1080p HQ:** o perfil solicita uma modalidade de negociação que usa a identificação `tizen`, semelhante a abordagens estudadas em outros projetos. Não é uma promessa de 1440p ou mesmo de 1080p efetivos: a resolução final depende do servidor e da sessão WebRTC. A escolha de qualidade não deve depender da resolução física da janela ou do modo DeX. Para preservar o controle virtual, o padrão atual é 1080p/Windows; HQ/Tizen é experimental.
 
-## Desenvolvedor e identidade
+## Sobre o desenvolvedor
 
 **NimboXcloud — Developed by KReight.**
 
-Sou **KReight**, desenvolvedor independente responsável pela evolução, integração e manutenção do NimboXcloud. O projeto é uma ferramenta experimental e não oficial para aprimorar a experiência do Xbox Cloud Gaming no navegador, com foco em Android, Samsung DeX e Windows.
+Sou **KReight**, estudante autodidata de JavaScript e desenvolvedor independente em formação. Aprendo em casa, por meio de cursos, vídeos de diferentes canais do YouTube e materiais gratuitos disponíveis na internet. Estudo códigos e projetos de código aberto para entender como funcionam e aplicar o que aprendi.
 
-**Origem do código:** este userscript deriva de [xbox-cloud-unlock, de RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock), sob licença MIT. A autoria das adaptações e funcionalidades próprias é de KReight; isso não transfere a autoria do código original. Os avisos de copyright e licença correspondentes estão preservados em [LICENSE](./LICENSE).
+O **NimboXcloud é um experimento de estudo**: uma forma de colocar em prática os conhecimentos que adquiri até agora, aprender com erros e desenvolver minhas próprias soluções. Não sou uma empresa nem uma equipe profissional. O projeto está em evolução, e **aceito ajuda, conselhos, sugestões, análises de código, relatórios de bugs e contribuições** de quem quiser colaborar.
 
-O [Better xCloud](https://github.com/redphx/better-xcloud), de redphx, e outros projetos citados abaixo são referências de estudo. Não há afiliação, endosso ou vínculo oficial com seus criadores.
+## Código aberto e liberdade de uso
+
+O NimboXcloud é **open source**, disponibilizado sob a **licença MIT**. Você pode acessar o código, estudar, copiar, modificar, criar forks, distribuir versões próprias e utilizá-lo em outros projetos, inclusive comerciais, conforme as condições da licença.
+
+**Meu pedido à comunidade:** ao usar o NimboXcloud como base ou inspiração, mencione **KReight / NimboXcloud** nos créditos ou agradecimentos e, se possível, inclua um link para este repositório. Esse reconhecimento é um **pedido de cortesia**, não uma obrigação adicional à licença MIT.
+
+**Obrigação da licença:** cópias e partes substanciais do software devem preservar os avisos de copyright e a licença MIT aplicáveis, inclusive os avisos do código original de terceiros. A atribuição do código de origem não significa que seus autores sejam responsáveis pelas modificações de KReight.
+
+Este projeto deriva tecnicamente de [xbox-cloud-unlock, de RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock). Também estuda o [Better xCloud](https://github.com/redphx/better-xcloud) e outras referências citadas abaixo. Não existe afiliação ou endosso oficial desses projetos.
 
 ### Por que estou fazendo isso?
 
@@ -56,9 +64,11 @@ Estou estudando essas soluções para entender o que já funciona, o que deixou 
 
 Quero um userscript que permita **escolher melhor como jogar**, com qualidade de imagem configurável, preferência de servidores, informações claras sobre a conexão e suporte a diferentes dispositivos, sem obrigar quem usa Android ou DeX a jogar como se estivesse em um PC com teclado e mouse.
 
-O projeto ainda está em fase experimental. **Nem toda ideia mencionada é uma funcionalidade pronta**; o objetivo é evoluir por versões, documentar os resultados e permitir testes e contribuições da comunidade quando o repositório estiver público.
+O projeto ainda está em fase experimental. **Nem toda ideia mencionada é uma funcionalidade pronta**; o objetivo é evoluir por versões, documentar resultados e receber contribuições da comunidade.
 
 ---
+
+**Read this document in English:** [README_EN.md](./README_EN.md).
 
 ## Instalação
 
@@ -98,4 +108,4 @@ A menção a um projeto de referência **não implica parceria, endosso ou incor
 
 ## Desenvolvimento
 
-Mudanças são registradas por commits e descritas no [CHANGELOG](./CHANGELOG.md). A publicação pública do repositório é uma decisão do mantenedor; os testes reais de compatibilidade e a revisão contínua de segurança e licenças permanecem necessários.
+Mudanças são registradas por commits e descritas no [CHANGELOG](./CHANGELOG.md). O projeto é aberto a contribuições. Testes reais de compatibilidade e a revisão contínua de segurança e licenças permanecem necessários.
