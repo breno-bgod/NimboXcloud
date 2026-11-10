@@ -2,6 +2,12 @@
 
 Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR). As versões anteriores à publicação no GitHub foram desenvolvidas fora deste repositório; o histórico abaixo não pretende reconstruir todos os commits anteriores.
 
+## [3.5.0] — 2026-11-10
+- Preservado o cabeçalho original `x-ms-device-info`, sem mascarar as capacidades de toque do dispositivo.
+- Perfil padrão alterado de Tizen/HQ para Windows/1080p para reduzir conflitos com o controle virtual nativo; HQ/Tizen continua disponível como experimental.
+- Painel reanexado ao DOM após substituição do corpo da página e monitorado durante inicialização/tela cheia.
+- Sintaxe validada localmente com `node --check`; teste real de sessão, controle virtual e vídeo pendente.
+
 ## [3.4.0] — 2026-11-10
 - Removida a interceptação de `Element.prototype.requestPointerLock` e o rastreamento próprio de eventos de ponteiro.
 - Removido o controle manual “Toque 1º” do painel. A escolha do dispositivo ativo fica com o xCloud, sem prioridade artificial do userscript.
