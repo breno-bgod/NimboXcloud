@@ -1,5 +1,12 @@
 # Histórico de alterações
 
+## [Identidade e atribuição] — 2026-11-10
+- Assinatura `@author` atualizada para **KReight**, mantenedor do NimboXcloud.
+- README atualizado com identidade independente e agradecimentos às referências.
+- Licença MIT original de RoyLiu04 preservada junto à licença do projeto.
+- Nenhuma alteração funcional no userscript; versão permanece 3.6.2.
+
+
 Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR). As versões anteriores à publicação no GitHub foram desenvolvidas fora deste repositório; o histórico abaixo não pretende reconstruir todos os commits anteriores.
 
 ## [3.6.2] — 2026-11-10
