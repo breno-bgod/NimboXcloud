@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.12
+// @version      3.6.13
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.12';
+  const VER = '3.6.13';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -106,7 +106,11 @@
     b8: { mbps: 8, label: '8 Mbps' },
     b10: { mbps: 10, label: '10 Mbps' },
     b12: { mbps: 12, label: '12 Mbps' },
-    b15: { mbps: 15, label: '15 Mbps' }
+    b15: { mbps: 15, label: '15 Mbps' },
+    b20: { mbps: 20, label: '20 Mbps (limite)' },
+    b30: { mbps: 30, label: '30 Mbps (limite)' },
+    b40: { mbps: 40, label: '40 Mbps (limite)' },
+    b50: { mbps: 50, label: '50 Mbps (limite)' }
   };
   function bitrateCfg() {
     return BITRATE_MODES[getPref(LS_BITRATE, 'auto')] || BITRATE_MODES.auto;
