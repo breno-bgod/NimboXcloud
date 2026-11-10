@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.25
+// @version      3.6.26
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.25';
+  const VER = '3.6.26';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -70,6 +70,7 @@
   const LS_NX_DIAG = 'xcu.diagnostics';
   const LS_DEVICE_PROFILE = 'xcu.deviceProfile';
   const LS_NX_SHORTCUT = 'xcu.nxShortcut';
+  const LS_RTT_HISTORY = 'xcu.rttHistory.v1';
 
   // IP de saída → região desejada. Os IPs abaixo são apenas exemplos comuns em projetos públicos;
   // troque pelo endereço de saída que você realmente usa (também dá para escolher no painel,
@@ -162,6 +163,18 @@
     lastErr: ''
   };
   window.__XCU__ = S;
+  // Amostras de sessões anteriores têm validade limitada e não equivalem a ping ativo.
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_RTT_HISTORY) || '{}');
+    const now = Date.now();
+    Object.keys(saved).forEach(function (name) {
+      const item = saved[name];
+      if (/^[A-Z][A-Z0-9]{2,30}$/.test(name) && item && Number.isFinite(item.avg) && item.avg >= 0 && item.avg < 5000 && Number.isInteger(item.samples) && item.samples >= 1 && item.samples <= 100000 && Number.isFinite(item.at) && now - item.at >= 0 && now - item.at < 24 * 3600 * 1000) {
+        S.latencyByServer[name] = { avg: item.avg, samples: item.samples, at: item.at };
+      }
+    });
+  } catch (e) { /* armazenamento indisponível */ }
+  let lastRttSave = 0;
 
   // ---------- Configuração ----------
   function cfg() {
@@ -186,6 +199,8 @@
     const k = getPref(LS_SRV, 'auto');
     if (k === 'auto' && getPref(LS_AUTO_BEST, '0') === '1') {
       const entries = Object.keys(S.latencyByServer).filter(function (name) {
+        const sample = S.latencyByServer[name];
+        if (!sample.at || Date.now() - sample.at > 24 * 3600 * 1000) return false;
         return S.latencyByServer[name].samples >= 5 && Object.keys(SERVERS).some(function (id) { return SERVERS[id].name === name; });
       });
       if (entries.length) {
@@ -680,7 +695,12 @@
           const prev = S.latencyByServer[server] || { avg: q.rtt, samples: 0 };
           prev.avg = prev.samples ? prev.avg * 0.8 + q.rtt * 0.2 : q.rtt;
           prev.samples++;
+          prev.at = Date.now();
           S.latencyByServer[server] = prev;
+          if (Date.now() - lastRttSave > 15000) {
+            lastRttSave = Date.now();
+            try { localStorage.setItem(LS_RTT_HISTORY, JSON.stringify(S.latencyByServer)); } catch (e) { }
+          }
         }
         schedule();
       }
@@ -1235,12 +1255,19 @@
     rowPresets.appendChild(pillBtn('Vol −', function () { adjustVolume(-0.1); }));
     rowPresets.appendChild(pillBtn('Vol +', function () { adjustVolume(0.1); }));
     rowPresets.appendChild(pillBtn('Mudo', function () { toggleMute(); }));
+    rowPresets.appendChild(pillBtn('Limpar RTT', function () {
+      S.latencyByServer = Object.create(null);
+      try { localStorage.removeItem(LS_RTT_HISTORY); } catch (e) { }
+      pushLog('region', 'Histórico RTT local apagado; novas medições necessárias');
+      update();
+    }));
     rowPresets.appendChild(pillBtn('Auto RTT', function () {
       const enabled = getPref(LS_AUTO_BEST, '0') === '1';
       setPref(LS_AUTO_BEST, enabled ? '0' : '1');
       pushLog('region', 'Auto RTT ' + (enabled ? 'desativado' : 'ativado') + ' — usa apenas data centers já medidos (mínimo 5 amostras)');
       update();
     }));
+    rowPresets.appendChild(pillBtn('Aplicar perfil', function () { applyDeviceProfile(); }));
     rowPresets.appendChild(pillBtn('Dispositivo', function () { cycleDeviceProfile(); }));
     rowPresets.appendChild(pillBtn('Atalho NX', function () { cycleNxShortcut(); }));
     rowPresets.appendChild(pillBtn('Nitidez', function () { cycleVideoFilter(); }));
@@ -1408,7 +1435,7 @@
         row('Limite SDP configurado', bitrateCfg().mbps ? bitrateCfg().mbps + ' Mbps (teto solicitado)' : 'Auto (sem teto local)') +
         row('Codec', q.codec || 'Indisponível') +
         row('RTT WebRTC (não ping do jogo)', fmt(q.rtt, ' ms')) +
-        row('Auto RTT', getPref(LS_AUTO_BEST, '0') === '1' ? 'Ligado (apenas servidores medidos)' : 'Desligado') +
+        row('Auto RTT', getPref(LS_AUTO_BEST, '0') === '1' ? 'Ligado (amostras das últimas 24h)' : 'Desligado') +
         row('Recuperações NX', S.nxRecoveries) +
         row('Diagnóstico automático', S.lastDiagnosis) +
         row('Dispositivo detectado', S.deviceDetected + ' · perfil ' + getPref(LS_DEVICE_PROFILE, 'auto')) +
@@ -1793,6 +1820,16 @@
     const mobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
     const desktopPointer = window.matchMedia && window.matchMedia('(any-pointer:fine)').matches;
     return mobile ? (desktopPointer && innerWidth >= 900 ? 'dex' : 'mobile') : 'desktop';
+  }
+  function applyDeviceProfile() {
+    const pref = getPref(LS_DEVICE_PROFILE, 'auto');
+    const mode = pref === 'auto' ? detectedDeviceProfile() : pref;
+    // Configuração explícita, sem modificar User-Agent, pointer lock, gamepads ou touch.
+    const bitrate = mode === 'mobile' ? 'b8' : (mode === 'dex' ? 'b12' : 'auto');
+    setPref(LS_BITRATE, bitrate);
+    setPref(LS_RES, mode === 'mobile' ? 'r720' : 'auto');
+    pushLog('device', 'Perfil ' + mode + ' aplicado (qualidade/limite SDP; próxima sessão)');
+    update();
   }
   function cycleDeviceProfile() {
     const modes = ['auto', 'desktop', 'mobile', 'dex'];
