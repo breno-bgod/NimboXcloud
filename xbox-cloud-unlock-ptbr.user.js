@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.4
+// @version      3.6.5
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.4';
+  const VER = '3.6.5';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -402,6 +402,27 @@
 
   // ---------- 8. Faixa de qualidade: reescrever o corpo de /sessions/cloud/play ----------
   // O perfil HQ usa tizen apenas na negociacao do stream. 1440p real nao e garantido.
+  // Diagnóstico sanitizado da negociação de entrada: somente nomes de campos e booleanos.
+  // Nunca registrar tokens, IDs de sessão ou corpo integral da requisição.
+  let lastInputNegotiation = null;
+  function inspectInputNegotiation(payload) {
+    try {
+      const settings = payload && payload.settings;
+      const input = (settings && settings.inputConfiguration) ||
+        (payload && payload.inputConfiguration);
+      const summary = {
+        settingsKeys: settings && typeof settings === 'object' ? Object.keys(settings).filter(k => /input|touch|mouse|keyboard|osName/i.test(k)) : [],
+        inputConfigurationPresent: !!input && typeof input === 'object',
+        inputConfigurationKeys: input && typeof input === 'object' ? Object.keys(input) : [],
+        enableTouchInput: input && typeof input.enableTouchInput === 'boolean' ? input.enableTouchInput : null,
+        enableMouseInput: input && typeof input.enableMouseInput === 'boolean' ? input.enableMouseInput : null,
+        enableKeyboardInput: input && typeof input.enableKeyboardInput === 'boolean' ? input.enableKeyboardInput : null,
+        maxTouchPoints: input && typeof input.maxTouchPoints === 'number' ? input.maxTouchPoints : null
+      };
+      lastInputNegotiation = summary;
+    } catch (e) {}
+  }
+
   function patchPlayRequest(input, init) {
     const r = resCfg();
     if (!r.osName) return Promise.resolve({ input: input, init: init });
@@ -417,6 +438,7 @@
         if (!j || !j.settings || typeof j.settings !== 'object') {
           return { input: input, init: init };
         }
+        inspectInputNegotiation(j);
         j.settings.osName = r.osName;
         const h = new Headers(req.headers);
         h.delete('content-length');
@@ -1305,6 +1327,7 @@
       v: VER,
       url: location.href,
       inputCapabilities: inputCapabilities(),
+      inputNegotiation: lastInputNegotiation,
       region: cfg(),
       stream: { pin: S.serverPin, actual: S.serverActual, label: srvBtnLabel(), ipv4Only: v4on(), resolution: resBtnLabel(), bitrateLimit: bitrateCfg().label, playPatched: S.playPatched },
       territory: { before: S.territoryBefore, now: S.territoryNow, cookie: getCookie('territory') },
