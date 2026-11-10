@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.6
+// @version      3.6.7
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.6';
+  const VER = '3.6.7';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -530,6 +530,10 @@
         }, function (err) { throw err; });
       }
 
+      if (u && GSSV_RE.test(u.host) && u.pathname.includes('/sessions/cloud/') && u.pathname.endsWith('/configuration')) {
+        p = p.then(function (res) { return patchTouchSessionConfiguration(res); });
+      }
+
       if (u && GSSV_RE.test(u.host) && /\/sdp$/i.test(u.pathname)) {
         p = p.then(function (res) { return rewriteIce(res, u, true); }, function (err) { throw err; });
       }
@@ -717,6 +721,40 @@
       }
       return out;
     }, function () { return null; });
+  }
+
+
+  // Configuracao independente de toque, inspirada no Better xCloud.
+  let touchSessionDiagnostics = { inspected: false, applied: false };
+  function patchTouchSessionConfiguration(response) {
+    if (!response || !response.ok) return Promise.resolve(response);
+    const caps = inputCapabilities();
+    if (!caps.touch || caps.maxTouchPoints < 1) return Promise.resolve(response);
+    return response.clone().text().then(function (body) {
+      let data;
+      try { data = JSON.parse(body); } catch (e) { return response; }
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return response;
+      let overrides;
+      try {
+        overrides = typeof data.clientStreamingConfigOverrides === 'string'
+          ? JSON.parse(data.clientStreamingConfigOverrides || '{}')
+          : (data.clientStreamingConfigOverrides || {});
+      } catch (e) { return response; }
+      if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return response;
+      const original = overrides.inputConfiguration;
+      if (original != null && (typeof original !== 'object' || Array.isArray(original))) return response;
+      const inputs = Object.assign({}, original || {});
+      const previous = typeof inputs.enableTouchInput === 'boolean' ? inputs.enableTouchInput : null;
+      inputs.enableTouchInput = true;
+      inputs.maxTouchPoints = Math.max(Number(inputs.maxTouchPoints) || 0, caps.maxTouchPoints);
+      overrides.inputConfiguration = inputs;
+      data.clientStreamingConfigOverrides = JSON.stringify(overrides);
+      touchSessionDiagnostics = { inspected: true, applied: true, previousTouch: previous, maxTouchPoints: inputs.maxTouchPoints };
+      const headers = new Headers(response.headers);
+      headers.delete('content-length');
+      headers.delete('content-encoding');
+      return new Response(JSON.stringify(data), { status: response.status, statusText: response.statusText, headers: headers });
+    }).catch(function () { return response; });
   }
 
   // ---------- 10b. Entradas nativas ----------
@@ -1394,6 +1432,7 @@
       url: location.href,
       inputCapabilities: inputCapabilities(),
       inputNegotiation: lastInputNegotiation,
+      touchSession: touchSessionDiagnostics,
       interactionDiagnostics: { state: diagState(), events: diagEvents.slice(), retained: DIAG_MAX, note: 'Eventos locais; zonas 4x4; teclas e coordenadas exatas não registradas. Screenshot físico não é detectável diretamente.' },
       region: cfg(),
       stream: { pin: S.serverPin, actual: S.serverActual, label: srvBtnLabel(), ipv4Only: v4on(), resolution: resBtnLabel(), bitrateLimit: bitrateCfg().label, playPatched: S.playPatched },
