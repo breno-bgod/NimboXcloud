@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.13
+// @version      3.6.14
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.13';
+  const VER = '3.6.14';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -675,6 +675,9 @@
         out.freeze = video.freezeCount || 0;
         out.freezeDur = Math.round(video.totalFreezesDuration || 0);
         out.decoded = video.framesDecoded || 0;
+        out.decodeMs = video.totalDecodeTime != null && out.decoded > 0 ? Math.round(video.totalDecodeTime / out.decoded * 10000) / 10 : null;
+        out.keyFrames = video.keyFramesDecoded != null ? video.keyFramesDecoded : null;
+        out.pli = video.pliCount != null ? video.pliCount : null;
         if (video.codecId && rep.get) {
           const cc = rep.get(video.codecId);
           if (cc && cc.mimeType) out.codec = String(cc.mimeType).replace(/^video\//i, '').toUpperCase();
@@ -687,6 +690,7 @@
           const dB = out.bytes - prevSnap.bytes;
           const dT = (out.ts - prevSnap.ts) / 1000;
           if (dT > 0.5 && dB >= 0) out.kbps = Math.round(dB * 8 / dT / 1000);
+          if (dT > 0.5 && out.decoded >= (prevSnap.decoded || 0)) out.decodedFps = Math.round((out.decoded - (prevSnap.decoded || 0)) / dT);
 
           // Perda instantânea: conta só este intervalo de amostragem; o valor acumulado esconderia melhorias
           const dRecv = recv - prevSnap.recv;
@@ -700,7 +704,7 @@
             out.histMin = Math.round(S.histMin * 10) / 10;
           }
         }
-        prevSnap = { bytes: out.bytes, ts: out.ts, recv: recv, lost: lost };
+        prevSnap = { bytes: out.bytes, ts: out.ts, recv: recv, lost: lost, decoded: out.decoded };
       }
 
       if (pair) {
@@ -1291,15 +1295,35 @@
     } else {
       const col = loss < 2 ? '#3fb950' : (loss < 5 ? '#d29922' : '#f85149');
       const dr = (q.decoded || q.dropped) ? (q.dropped / ((q.decoded + q.dropped) || 1) * 100) : null;
+      const fmt = function (v, unit, digits) {
+        return v == null || !Number.isFinite(Number(v)) ? '—' : Number(v).toFixed(digits || 0) + (unit || '');
+      };
+      const esc = function (v) {
+        return String(v == null ? '—' : v).replace(/[&<>"']/g, function (ch) {
+          return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+        });
+      };
+      const row = function (label, value) {
+        return '<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0;border-bottom:1px solid #30363d">' +
+          '<span style="color:#8b949e">' + esc(label) + '</span><span style="color:#e6edf3;text-align:right">' + esc(value) + '</span></div>';
+      };
       el.qos.innerHTML =
-        'Perda <b style="color:' + col + '">' + loss.toFixed(1) + '%</b>' +
-        (q.rtt != null ? ' · <b>' + q.rtt + 'ms</b>' : '') +
-        (q.kbps ? ' · ' + (q.kbps / 1000).toFixed(1) + 'Mbps' : '') +
-        (q.w ? ' · ' + q.h + 'p' : '') +
-        '<br><span style="color:#8b949e">' + (S.serverActual || 'Auto') +
-        (q.family ? ' · ' + q.family : '') +
-        (q.codec ? ' · ' + q.codec : '') +
-        (dr != null ? ' · Descartados ' + dr.toFixed(1) + '%' : '') + '</span>';
+        '<div style="font-weight:700;margin:3px 0 5px">Monitoramento ao vivo <span style="font-weight:400;color:#8b949e">(WebRTC)</span></div>' +
+        row('Resolução recebida', q.w && q.h ? q.w + ' × ' + q.h : 'Indisponível') +
+        row('FPS recebido', fmt(q.fps || q.decodedFps, ' FPS')) +
+        row('Bitrate recebido', q.kbps != null ? fmt(q.kbps / 1000, ' Mbps', 2) : 'Calculando…') +
+        row('Codec', q.codec || 'Indisponível') +
+        row('RTT WebRTC (não ping do jogo)', fmt(q.rtt, ' ms')) +
+        row('Jitter RTP', fmt(q.jitter, ' ms')) +
+        row('Perda de pacotes', fmt(q.instLoss != null ? q.instLoss : q.loss, '%', 1)) +
+        row('Quadros descartados', fmt(dr, '%', 1) + ' (' + fmt(q.dropped) + ')') +
+        row('Congelamentos', fmt(q.freeze) + ' · ' + fmt(q.freezeDur, ' s')) +
+        row('Buffer de jitter', fmt(q.bufMs, ' ms')) +
+        row('Tempo médio de decodificação', fmt(q.decodeMs, ' ms', 1)) +
+        row('Servidor/data center', S.serverActual || 'Automático / não identificado') +
+        row('Transporte', [q.family, q.proto].filter(Boolean).join(' / ') || 'Indisponível') +
+        row('Região da loja (configurada)', c.name) +
+        '<div style="color:#8b949e;font-size:10px;margin-top:5px">Métricas do navegador; RTT não representa latência interna do jogo. Valores ausentes não são estimados.</div>';
 
       const h = hintOne(q, loss);
       if (h) { el.hint.textContent = '⚠ ' + h; el.hint.style.display = 'block'; }
