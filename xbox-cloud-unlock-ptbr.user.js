@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.19
+// @version      3.6.20
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.19';
+  const VER = '3.6.20';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -93,6 +93,7 @@
   // mecanismo de selecao de teclado/mouse, controle ou touchscreen.
   // Auto usa perfil desktop Windows para nao anunciar uma Smart TV ao xCloud.
   // HQ/Tizen permanece opcional: pode interferir na negociacao do controle virtual.
+  // O perfil solicitado NAO comprova resolucao/bitrate entregues; medir via WebRTC.
   // O servidor ainda pode negociar uma resolucao inferior.
   const RES_MODES = {
     auto: { osName: 'windows', label: '1080p' },
@@ -1289,9 +1290,12 @@
       };
       el.qos.innerHTML =
         '<div style="font-weight:700;margin:3px 0 5px">Monitoramento ao vivo <span style="font-weight:400;color:#8b949e">(WebRTC)</span></div>' +
+        row('Perfil solicitado', resCfg().label + ' (' + resCfg().osName + ')') +
         row('Resolução recebida', q.w && q.h ? q.w + ' × ' + q.h : 'Indisponível') +
-        row('FPS recebido', fmt(q.fps || q.decodedFps, ' FPS')) +
+        row('Verificação de qualidade', q.w && q.h ? (q.h >= 1440 ? '1440p ou superior recebido' : q.h >= 1080 ? '1080p recebido; HQ não verificável só pela resolução' : q.h + 'p recebido (abaixo de 1080p)') : 'Aguardando quadros') +
+        row('FPS recebido', fmt(q.fps > 0 ? q.fps : q.decodedFps, ' FPS')) +
         row('Bitrate recebido', q.kbps != null ? fmt(q.kbps / 1000, ' Mbps', 2) : 'Calculando…') +
+        row('Limite SDP configurado', bitrateCfg().mbps ? bitrateCfg().mbps + ' Mbps (teto solicitado)' : 'Auto (sem teto local)') +
         row('Codec', q.codec || 'Indisponível') +
         row('RTT WebRTC (não ping do jogo)', fmt(q.rtt, ' ms')) +
         row('Jitter RTP', fmt(q.jitter, ' ms')) +
