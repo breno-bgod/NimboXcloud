@@ -1,5 +1,12 @@
 # Histórico de alterações
 
+## [3.6.5] — 2026-11-10
+- Diagnóstico da negociação de entrada na criação da sessão: apenas nomes de campos e valores de capacidade de toque/teclado/mouse, quando presentes.
+- Nenhum corpo de requisição, token ou identificador novo é incluído no diagnóstico de entrada.
+- Sem modificação de prioridades, controles virtuais ou perfil de vídeo; sintaxe JavaScript validada.
+- Pendente validação real no Edge/Android.
+
+
 ## [3.6.4] — 2026-11-10
 - Diagnóstico multimodal no relatório NX: touchscreen, tipo de ponteiro, hover e quantidade de gamepads.
 - Somente leitura: sem mudanças em qualidade de vídeo, negociação de entrada ou comportamento do painel.
