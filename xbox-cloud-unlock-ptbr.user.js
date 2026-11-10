@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.14
+// @version      3.6.15
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.14';
+  const VER = '3.6.15';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -777,43 +777,73 @@
     f9Observed: 0,
     requestsBlockedByNimbo: false
   };
-  // F9 alterna somente o Pointer Lock nativo; nao emula teclado/mouse.
-  // Memoriza o alvo que o proprio xCloud bloqueou (por exemplo, ao clicar
-  // com o botao do meio), para reutilizar exatamente o mesmo elemento.
+  // F9 controla a captura. Apos liberar, bloquear novas capturas
+  // automaticas do xCloud ate o proximo F9 (sem emular entradas).
   let nativeLockTarget = null;
+  let f9Released = false;
+  let f9RelockPending = false;
+  const originalRequestPointerLock = Element.prototype.requestPointerLock;
+  if (typeof originalRequestPointerLock === 'function') {
+    Element.prototype.requestPointerLock = function () {
+      if (!f9Released) return originalRequestPointerLock.apply(this, arguments);
+      touchFullscreenPolicy.suppressed++;
+      touchFullscreenPolicy.requestsBlockedByNimbo = true;
+      touchFullscreenPolicy.lastReason = 'F9: automatic relock blocked while menu is active';
+      // Rejeitar explicitamente a tentativa: nunca sinalizar captura ficticia.
+      return Promise.reject(new DOMException('Pointer Lock pausado ate pressionar F9', 'NotAllowedError'));
+    };
+  }
   document.addEventListener('pointerlockchange', function () {
-    if (document.pointerLockElement) nativeLockTarget = document.pointerLockElement;
+    if (document.pointerLockElement) {
+      nativeLockTarget = document.pointerLockElement;
+      f9RelockPending = false;
+    }
   }, true);
   document.addEventListener('keydown', function (e) {
     if (!e.isTrusted || e.code !== 'F9' || e.repeat || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-    touchFullscreenPolicy.f9Observed++;
-    // Nunca interferir em formularios, chats ou menus fora do streaming.
     const active = document.activeElement;
     if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return;
     const playing = !!(document.fullscreenElement || document.webkitFullscreenElement ||
       document.querySelector('video[src^="blob:"][autoplay], video[data-testid*="stream"]'));
     if (!playing) return;
+    touchFullscreenPolicy.f9Observed++;
+    // Evita que outro handler de F9 no xCloud reverta imediatamente a acao.
+    e.preventDefault();
+    e.stopImmediatePropagation();
     if (document.pointerLockElement) {
-      e.preventDefault();
-      // Nao impedir propagacao de outras teclas ou eventos do xCloud.
-      touchFullscreenPolicy.lastReason = 'F9: exit native pointer lock';
+      f9Released = true;
+      f9RelockPending = false;
+      touchFullscreenPolicy.lastReason = 'F9: mouse released until next F9';
       document.exitPointerLock();
       return;
     }
-    // Se o xCloud ja capturou o mouse antes, usar o mesmo alvo.
-    // Caso contrario, deixar o F9 passar para o proprio xCloud.
-    if (!nativeLockTarget || !nativeLockTarget.isConnected || typeof nativeLockTarget.requestPointerLock !== 'function') {
-      touchFullscreenPolicy.lastReason = 'F9: no known native target; delegated to xCloud';
+    if (f9RelockPending) return;
+    if (!nativeLockTarget || !nativeLockTarget.isConnected ||
+        typeof originalRequestPointerLock !== 'function') {
+      // Sem alvo conhecido: permitir que o xCloud capture no proximo gesto.
+      f9Released = false;
+      touchFullscreenPolicy.lastReason = 'F9: native lock target unavailable';
       return;
     }
-    e.preventDefault();
-    touchFullscreenPolicy.lastReason = 'F9: request native pointer lock on previous xCloud target';
+    f9Released = false;
+    f9RelockPending = true;
+    touchFullscreenPolicy.lastReason = 'F9: request native pointer lock';
     try {
-      const result = nativeLockTarget.requestPointerLock();
-      if (result && typeof result.catch === 'function') result.catch(function (err) {
-        touchFullscreenPolicy.lastReason = 'F9 lock rejected: ' + (err && err.name || 'unknown');
-      });
+      const result = originalRequestPointerLock.call(nativeLockTarget);
+      if (result && typeof result.then === 'function') {
+        result.then(function () {
+          f9RelockPending = false;
+        }, function (err) {
+          f9RelockPending = false;
+          f9Released = true;
+          touchFullscreenPolicy.lastReason = 'F9 lock rejected: ' + (err && err.name || 'unknown');
+        });
+      } else {
+        f9RelockPending = false;
+      }
     } catch (err) {
+      f9RelockPending = false;
+      f9Released = true;
       touchFullscreenPolicy.lastReason = 'F9 lock error: ' + (err && err.name || 'unknown');
     }
   }, true);
