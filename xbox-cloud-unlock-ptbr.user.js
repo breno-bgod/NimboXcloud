@@ -858,7 +858,7 @@
       wrap.style.right = '12px';
       wrap.style.top = '12px';
       wrap.style.alignItems = 'flex-end';
-      if (pillEl) pillEl.style.cursor = 'pointer';
+      if (pillEl) { pillEl.style.cursor = 'pointer'; pillEl.style.display = 'inline-flex'; }
       return;
     }
     const anchor = findProfileAnchor();
