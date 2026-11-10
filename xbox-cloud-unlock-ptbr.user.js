@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Xbox Cloud Gaming Unlock (PT-BR)
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.3.1
+// @version      3.4.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       RoyLiu04
 // @license      MIT
@@ -52,15 +52,14 @@
 (function () {
   'use strict';
 
-  if (window.__XCU__ && window.__XCU__.v === '3.3.0') return;
+  if (window.__XCU__) return;
 
-  const VER = '3.3.1';
+  const VER = '3.4.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
   const LS_RES = 'xcu.resolution';   // faixa de qualidade
-  const LS_TOUCH = 'xcu.touchFirst';
-  const LS_BITRATE = 'xcu.maxBitrateMbps'; // toque primeiro (não travar o mouse sem mouse real)
+  const LS_BITRATE = 'xcu.maxBitrateMbps'; // limite opcional de bitrate SDP
 
   // IP de saída → região desejada. Os IPs abaixo são apenas exemplos comuns em projetos públicos;
   // troque pelo endereço de saída que você realmente usa (também dá para escolher no painel,
@@ -85,6 +84,8 @@
   };
 
   // A qualidade e independente de viewport, DeX, tela cheia e perifericos.
+  // Perfis osName dizem respeito apenas a negociacao do streaming; nao sao um
+  // mecanismo de selecao de teclado/mouse, controle ou touchscreen.
   // "auto" legado passa a solicitar sempre a melhor faixa conhecida.
   // O servidor ainda pode negociar uma resolucao inferior.
   const RES_MODES = {
@@ -394,6 +395,7 @@
   }
 
   // ---------- 8. Faixa de qualidade: reescrever o corpo de /sessions/cloud/play ----------
+  // O perfil HQ usa tizen apenas na negociacao do stream. 1440p real nao e garantido.
   function patchPlayRequest(input, init) {
     const r = resCfg();
     if (!r.osName) return Promise.resolve({ input: input, init: init });
@@ -565,7 +567,7 @@
             out.push(line);
           }
           if (video && !inserted) out.push('b=AS:' + Math.round(limit * 1000));
-          const patched = Object.assign({}, description, { sdp: out.join('\r\n') });
+          const patched = { type: description.type, sdp: out.join('\r\n') };
           return original.call(this, patched);
         } catch (e) { S.lastErr = 'Bitrate SDP: ' + String(e); }
         return original.apply(this, arguments);
@@ -695,48 +697,10 @@
     }, function () { return null; });
   }
 
-  // ---------- 10b. Toque primeiro: não travar o ponteiro do mouse sem um mouse de verdade ----------
-  // Em tela cheia o site chama requestPointerLock() e mostra "Pressione ' para liberar o mouse".
-  // Com o ponteiro travado, o toque na tela deixa de funcionar. Aqui o script decide pelo último
-  // tipo de entrada realmente usado (pointerType: touch / pen / mouse, ou teclado):
-  //   · toque ou caneta (ou nenhuma entrada ainda, em aparelho com tela de toque) → bloqueia o travamento
-  //   · mouse ou teclado usado → libera, e o mouse passa a funcionar normalmente
-  // Funciona em qualquer aparelho (desktop, tablet, Steam Deck, mesa digitalizadora, TV).
-  let lastInput = '';
-
-  function touchFirst() { return getPref(LS_TOUCH, '1') !== '0'; }
-
-  function blockPointerLock() {
-    if (!touchFirst()) return false;
-    if (lastInput === 'mouse') return false;
-    if (lastInput === 'touch') return true;
-    return (navigator.maxTouchPoints || 0) > 0;
-  }
-
-  (function hookInput() {
-    try {
-      const onPtr = function (e) {
-        lastInput = (e.pointerType === 'mouse') ? 'mouse' : 'touch'; // touch e pen contam como toque
-      };
-      window.addEventListener('pointerdown', onPtr, true);
-      window.addEventListener('pointermove', onPtr, true);
-      // Teclado não muda o modo de entrada nem desativa o toque.
-    } catch (e) { }
-  })();
-
-  (function hookPointerLock() {
-    try {
-      const orig = Element.prototype.requestPointerLock;
-      if (typeof orig !== 'function') return;
-      Element.prototype.requestPointerLock = function () {
-        if (blockPointerLock()) {
-          S.plBlocked = (S.plBlocked || 0) + 1;
-          return Promise.resolve();
-        }
-        return orig.apply(this, arguments);
-      };
-    } catch (e) { }
-  })();
+  // ---------- 10b. Entradas nativas ----------
+  // Nao interceptar requestPointerLock, eventos de teclado/mouse/toque ou Gamepad API.
+  // O xCloud gerencia dinamicamente o periferico ativo; a negociacao de video
+  // nao deve alterar o comportamento dos controles.
 
   // ---------- 11. XHR ----------
   try {
@@ -925,11 +889,6 @@
     el.btnBitrate = pillBtn('Bitrate', function () { openPicker('bitrate'); });
     el.btnV4 = pillBtn('IPv4', toggleV4);
     el.btnRegion = pillBtn('Região da loja', function () { openPicker('region'); });
-    el.btnTouch = pillBtn('Toque', function () {
-      setPref(LS_TOUCH, touchFirst() ? '0' : '1');
-      update();
-    });
-    el.btnTouch.title = 'Toque primeiro: não trava o ponteiro do mouse enquanto você usa toque/caneta. Ao usar mouse ou teclado, o mouse é liberado.';
     el.btnSrv.title = 'Abra para escolher o data center (vale na próxima partida, sem recarregar)';
     el.btnRes.title = 'Abra para escolher a faixa de qualidade (vale na próxima partida, sem recarregar)';
     el.btnRegion.title = 'Abra para escolher a região da loja (recarrega a página uma vez ao selecionar)';
@@ -939,7 +898,6 @@
     row1.appendChild(el.btnRes);
     row1.appendChild(el.btnBitrate);
     row1.appendChild(el.btnV4);
-    row1.appendChild(el.btnTouch);
     row1.appendChild(el.btnRegion);
     cardEl.appendChild(row1);
 
@@ -1061,7 +1019,6 @@
     el.btnRes.textContent = 'Qualidade ' + resBtnLabel() + ' ▾';
     el.btnBitrate.textContent = 'Bitrate ' + bitrateCfg().label + ' ▾';
     el.btnV4.textContent = 'IPv4 ' + (v4on() ? 'forçado' : 'off');
-    el.btnTouch.textContent = 'Toque 1º ' + (touchFirst() ? 'ligado' : 'off');
     el.btnRegion.textContent = 'Região da loja ' + c.name + ' ▾';
   }
 
