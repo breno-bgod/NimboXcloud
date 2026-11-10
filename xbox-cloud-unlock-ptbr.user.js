@@ -3,7 +3,7 @@
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
 // @version      3.6.2
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
-// @author       RoyLiu04
+// @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
@@ -36,6 +36,11 @@
  *   · O "Copiar relatório" do painel contém apenas versão, configuração de região, estatísticas
  *     do link e mensagens de erro recentes; não inclui conteúdo da página, corpos de resposta
  *     da API nem informações de conta.
+ *
+ * Autoria e licenciamento
+ *   · Desenvolvimento e manutenção do NimboXcloud: KReight.
+ *   · Base derivada de RoyLiu04/xbox-cloud-unlock (MIT); copyright e licença
+ *     originais preservados no arquivo LICENSE deste repositório.
  *
  * Projetos de referência
  *   · redphx/better-xcloud — https://github.com/redphx/better-xcloud
