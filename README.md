@@ -22,11 +22,39 @@ O objetivo é oferecer escolhas ao jogador sem exigir que ele abandone o toque o
 
 **Sobre 1080p HQ:** o perfil solicita uma modalidade de negociação que usa a identificação `tizen`, semelhante a abordagens estudadas em outros projetos. Não é uma promessa de 1440p ou mesmo de 1080p efetivos: a resolução final depende do servidor e da sessão WebRTC. A escolha de qualidade não deve depender da resolução física da janela ou do modo DeX.
 
-## Por que criamos este projeto?
+## Sobre mim e este projeto
 
-O desenvolvimento surgiu da necessidade de controlar melhor a experiência do Xbox Cloud Gaming em dispositivos móveis e ambientes híbridos, especialmente quando uma sessão no Samsung DeX recebe vídeo abaixo de 720p mesmo com uma tela maior. Queremos investigar esse comportamento, oferecer opções de qualidade independentes do tamanho da janela e manter o uso por toque, gamepad e periféricos opcionais.
+Eu me chamo **Bigode**. Este é um projeto pessoal, pequeno e informal que estou desenvolvendo no meu tempo livre. Não sou uma empresa nem uma equipe de desenvolvimento: estou estudando como o Xbox Cloud Gaming funciona no navegador, testando ideias e tentando criar melhorias úteis para quem joga pelo celular, no Samsung DeX ou no computador.
 
-O foco é **estabilidade, transparência das configurações e diagnóstico**, sem apresentar mudanças de negociação como garantias de desempenho.
+Minha principal inspiração é o **[Better xCloud](https://github.com/redphx/better-xcloud)**, criado por **redphx**. Considero este projeto parte do meu trabalho experimental de **fork/adaptação do ecossistema Better xCloud**, mas é importante explicar a origem do código: **a versão de userscript publicada aqui deriva diretamente de [xbox-cloud-unlock, de RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock)** e estuda implementações do Better xCloud. Portanto, este repositório ainda **não é um fork técnico direto do repositório de redphx**, nem representa o projeto oficial dele.
+
+### Por que estou fazendo isso?
+
+Em 2026, a Microsoft começou a testar uma [nova experiência web do Xbox Cloud Gaming](https://news.xbox.com/en-us/2026/01/26/try-the-new-xbox-cloud-gaming-web-experience-now-in-public-preview/). Isso criou uma transição entre duas interfaces:
+
+- **[xbox.com/play](https://www.xbox.com/play)** — experiência anterior, para a qual o Better xCloud foi desenvolvido.
+- **[play.xbox.com](https://play.xbox.com/)** — nova experiência web, que é o alvo deste userscript.
+
+O próprio Better xCloud [informou dificuldades de compatibilidade com `play.xbox.com` em novembro de 2026](https://github.com/redphx/better-xcloud) e está trabalhando na adaptação. Eu quero aproveitar esse período para aprender, testar abordagens próprias e contribuir com alternativas experimentais. **Não estou afirmando que já resolvi todos os problemas de compatibilidade.**
+
+### Projetos que estou estudando
+
+| Projeto | O que procuro aprender |
+| --- | --- |
+| [Better xCloud — redphx](https://github.com/redphx/better-xcloud) | Controles, experiência de streaming, perfis de qualidade, diagnóstico e arquitetura do userscript |
+| [Better xCloud para Android — redphx](https://github.com/redphx/better-xcloud-android) | Experiência móvel, suporte a toque e integração com Android |
+| [Xbox Cloud Unlock — RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock) | Base técnica original deste userscript, ajustes de mercado e região |
+| [Xbox Cloud Gaming Optimizer — darkchaox](https://github.com/darkchaox/xbox-cloud-gaming-optimizer) | Experimentos anteriores com acesso regional e otimização |
+
+Estou estudando essas soluções para entender o que já funciona, o que deixou de funcionar com o novo site e quais ideias podem ser adaptadas de forma responsável, respeitando as licenças e os créditos de cada autor.
+
+### O que quero construir
+
+Quero um userscript que permita **escolher melhor como jogar**, com qualidade de imagem configurável, preferência de servidores, informações claras sobre a conexão e suporte a diferentes dispositivos, sem obrigar quem usa Android ou DeX a jogar como se estivesse em um PC com teclado e mouse.
+
+O projeto ainda está em fase experimental. **Nem toda ideia mencionada é uma funcionalidade pronta**; meu objetivo é evoluir por versões, documentar os resultados e, quando estiver suficientemente estável, abrir o repositório para outras pessoas testarem e contribuírem.
+
+---
 
 ## Instalação
 
