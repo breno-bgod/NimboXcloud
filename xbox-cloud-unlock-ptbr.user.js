@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.29
+// @version      3.6.30
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.29';
+  const VER = '3.6.30';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -73,6 +73,7 @@
   const LS_RTT_HISTORY = 'xcu.rttHistory.v1';
   const LS_VIBRATION = 'xcu.vibrationLevel';
   const LS_SHARPNESS = 'xcu.sharpness';
+  const LS_VIDEO_COLOR = 'xcu.videoColor';
 
   // IP de saída → região desejada. Os IPs abaixo são apenas exemplos comuns em projetos públicos;
   // troque pelo endereço de saída que você realmente usa (também dá para escolher no painel,
@@ -1876,7 +1877,9 @@
     }).catch(function (err) { S.micStatus = 'Erro: ' + String(err && err.name || err); update(); });
   }
   function testVibration() {
-    const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
+    let pads = [];
+    try { pads = typeof navigator.getGamepads === 'function' ? Array.from(navigator.getGamepads() || []).filter(Boolean) : []; }
+    catch (err) { S.vibrationStatus = 'Acesso aos controles bloqueado: ' + String(err && err.name || err); update(); return; }
     const pad = pads.find(function (p) { return (p.vibrationActuator && typeof p.vibrationActuator.playEffect === 'function') || (p.vibrationActuator && typeof p.vibrationActuator.pulse === 'function') || (p.hapticActuators && p.hapticActuators[0] && typeof p.hapticActuators[0].pulse === 'function'); });
     if (!pad) { S.vibrationStatus = 'Sem atuador compatível detectado'; update(); return; }
     const levels = [0, 0.3, 0.6, 1];
@@ -1897,7 +1900,7 @@
   }
   function applyVideoAdjustments(video) {
     if (!video) return;
-    const color = Number(video.dataset.nxFilterIndex || 0);
+    const color = Number(getPref(LS_VIDEO_COLOR, '0'));
     const sharp = Number(getPref(LS_SHARPNESS, '0'));
     const contrast = [1, 1.04, 1.10][color] || 1;
     const saturation = [1, 1.06, 1.10][color] || 1;
@@ -1926,8 +1929,8 @@
   function cycleVideoFilter() {
     const video = activeStreamVideo();
     if (!video) { S.lastErr = 'Filtro: vídeo não encontrado'; schedule(); return; }
-    const next = (Number(video.dataset.nxFilterIndex || 0) + 1) % 3;
-    video.dataset.nxFilterIndex = String(next);
+    const next = (Number(getPref(LS_VIDEO_COLOR, '0')) + 1) % 3;
+    setPref(LS_VIDEO_COLOR, String(next));
     applyVideoAdjustments(video);
     pushLog('video', 'Cor/contraste CSS ' + next + ' (não aplica nitidez, CAS nem upscaling)');
   }
