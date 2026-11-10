@@ -2,6 +2,14 @@
 
 Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR). As versões anteriores à publicação no GitHub foram desenvolvidas fora deste repositório; o histórico abaixo não pretende reconstruir todos os commits anteriores.
 
+## [3.6.0] — 2026-11-10
+- Botão **NX** na biblioteca, posicionado ao lado do perfil quando o cabeçalho é identificado.
+- Botão **NX** no canto superior direito durante o streaming; painel expansível/recolhível.
+- Configurações pré-jogo reutilizam os seletores existentes de qualidade, bitrate, servidor, IPv4 e região.
+- Estatísticas WebRTC preservadas no painel in-game.
+- Fallback: quando o botão de perfil não é encontrado, NX aparece no canto superior direito.
+- **Pendente:** teste em navegador real, incluindo mudanças de rota e detecção de sessão.
+
 ## [3.5.0] — 2026-11-10
 - Preservado o cabeçalho original `x-ms-device-info`, sem mascarar as capacidades de toque do dispositivo.
 - Perfil padrão alterado de Tizen/HQ para Windows/1080p para reduzir conflitos com o controle virtual nativo; HQ/Tizen continua disponível como experimental.
