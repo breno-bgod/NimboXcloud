@@ -7,7 +7,7 @@ Este documento reúne prioridades de trabalho, **não** funcionalidades já entr
 - [ ] Verificar a resolução efetiva recebida em Android, Samsung DeX e Windows, em janela e tela cheia.
 - [ ] Investigar negociações que ainda resultem em aproximadamente 640p.
 - [ ] Confirmar que toque e gamepad continuam operando sem regressões.
-- [ ] Revisar consistência de versão e prevenção de inicialização duplicada no código.
+- [x] Corrigir consistência de versão e prevenção de inicialização duplicada no código (v3.4.0).\n- [ ] Testar alternância dinâmica entre toque, gamepad e teclado/mouse em sessões reais.
 
 ## Prioridade média
 - [ ] Melhorar mensagens de erro e diagnóstico de negociação WebRTC.
