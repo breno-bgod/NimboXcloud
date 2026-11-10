@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.5.1
+// @version      3.6.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       RoyLiu04
 // @license      MIT
@@ -54,7 +54,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.5.1';
+  const VER = '3.6.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -741,6 +741,7 @@
 
   let wrap = null, pillEl = null, cardEl = null, dotEl = null, pillTxt = null, pickEl = null;
   let openUI = false, userTouched = false, autoFolded = false, pending = false;
+  let nxLibraryButton = null, nxLibraryAnchor = null, nxMode = '';
   const el = {};
 
   function readPos() {
@@ -819,6 +820,87 @@
     return b;
   }
 
+  function isInGame() {
+    if (document.fullscreenElement || document.webkitFullscreenElement) return true;
+    if (S.pcs > 0 && S.qosAt && Date.now() - S.qosAt < 15000) return true;
+    // O video do stream nao e o mesmo que os trailers da biblioteca.
+    return !!document.querySelector('video[src^="blob:"][autoplay], video[data-testid*="stream"]');
+  }
+
+  function findProfileAnchor() {
+    const candidates = Array.from(document.querySelectorAll(
+      'header button[aria-label],header a[aria-label],header [data-testid*="profile"],' +
+      '[role="banner"] button[aria-label],[role="banner"] a[aria-label]'
+    ));
+    return candidates.find(function (n) {
+      const label = ((n.getAttribute('aria-label') || '') + ' ' +
+        (n.getAttribute('title') || '') + ' ' + (n.getAttribute('data-testid') || '')).toLowerCase();
+      return /profile|perfil|account|conta|avatar|user|usuário|usuario/.test(label);
+    }) || null;
+  }
+
+  function syncNXPlacement() {
+    if (!wrap || !wrap.isConnected) return;
+    const playing = isInGame();
+    const mode = playing ? 'game' : 'library';
+    if (nxMode !== mode) {
+      nxMode = mode;
+      openUI = false;
+      if (cardEl) cardEl.style.display = 'none';
+      if (pickEl) pickEl.style.display = 'none';
+    }
+    if (playing) {
+      if (nxLibraryButton) nxLibraryButton.style.display = 'none';
+      wrap.style.display = 'flex';
+      wrap.style.position = 'fixed';
+      wrap.style.transform = 'none';
+      wrap.style.left = 'auto';
+      wrap.style.right = '12px';
+      wrap.style.top = '12px';
+      wrap.style.alignItems = 'flex-end';
+      if (pillEl) pillEl.style.cursor = 'pointer';
+      return;
+    }
+    const anchor = findProfileAnchor();
+    if (anchor && anchor.parentElement) {
+      if (!nxLibraryButton) {
+        nxLibraryButton = document.createElement('button');
+        nxLibraryButton.id = 'nimboxcloud-library-button';
+        nxLibraryButton.type = 'button';
+        nxLibraryButton.textContent = 'NX';
+        nxLibraryButton.title = 'NimboXcloud — configurações antes de jogar';
+        nxLibraryButton.style.cssText = 'border:1px solid #556276;background:#121b2a;color:#e9f4ff;' +
+          'font:700 13px/1 sans-serif;border-radius:10px;padding:10px;cursor:pointer;' +
+          'min-width:38px;min-height:38px;z-index:2147483000;flex-shrink:0';
+        nxLibraryButton.addEventListener('click', function (e) {
+          e.preventDefault(); e.stopPropagation(); setOpen(!openUI, true);
+        });
+      }
+      if (nxLibraryButton.parentElement !== anchor.parentElement ||
+          nxLibraryButton.previousElementSibling !== anchor) anchor.after(nxLibraryButton);
+      nxLibraryButton.style.display = '';
+      nxLibraryAnchor = anchor;
+      wrap.style.display = 'flex';
+      wrap.style.position = 'fixed';
+      wrap.style.transform = 'none';
+      wrap.style.left = 'auto';
+      wrap.style.right = '12px';
+      wrap.style.top = '64px';
+      wrap.style.alignItems = 'flex-end';
+      if (pillEl) pillEl.style.display = 'none';
+    } else {
+      if (nxLibraryButton) nxLibraryButton.style.display = 'none';
+      wrap.style.display = 'flex';
+      wrap.style.position = 'fixed';
+      wrap.style.transform = 'none';
+      wrap.style.left = 'auto';
+      wrap.style.right = '12px';
+      wrap.style.top = '12px';
+      wrap.style.alignItems = 'flex-end';
+      if (pillEl) pillEl.style.display = 'inline-flex';
+    }
+  }
+
   function buildUI() {
     if (wrap && wrap.isConnected) return wrap;
     if (wrap && !wrap.isConnected) {
@@ -829,7 +911,7 @@
     if (!host) return null;
 
     wrap = mk('div', [
-      'position:fixed', 'left:50%', 'top:8px', 'transform:translateX(-50%)',
+      'position:fixed', 'right:12px', 'top:12px',
       'z-index:' + ZBASE, 'pointer-events:none',
       'width:260px', 'max-width:calc(100vw - 16px)',
       'display:flex', 'flex-direction:column', 'align-items:center',
@@ -837,15 +919,9 @@
     ].join(';'));
     wrap.id = '__xcu_panel__';
     const saved = readPos();
-    if (saved) {
-      const x = Math.max(4, Math.min(saved.x, Math.max(4, window.innerWidth - 64)));
-      const y = Math.max(4, Math.min(saved.y, Math.max(4, window.innerHeight - 44)));
-      wrap.style.transform = 'none';
-      wrap.style.left = x + 'px';
-      wrap.style.top = y + 'px';
-    }
+    // A posicao do NX e definida por contexto (biblioteca ou partida).
 
-    // Pílula
+    // Pílula NX
     pillEl = mk('div', [
       'pointer-events:auto', 'display:inline-flex', 'align-items:center', 'gap:5px',
       'padding:3px 9px', 'height:24px', 'box-sizing:border-box', 'border-radius:12px',
@@ -853,12 +929,12 @@
       'user-select:none', 'box-shadow:0 2px 10px rgba(0,0,0,.45)', 'white-space:nowrap'
     ].join(';'));
     dotEl = mk('span', 'width:7px;height:7px;border-radius:50%;background:#8b949e;flex:0 0 auto');
-    pillTxt = mk('span', 'color:#c9d1d9', 'xCloud');
+    pillTxt = mk('span', 'color:#c9d1d9;font-weight:700', 'NX');
     pillEl.title = 'Clique para expandir · segure para arrastar · duplo clique volta ao topo central';
     pillEl.appendChild(dotEl);
     pillEl.appendChild(pillTxt);
     wrap.appendChild(pillEl);
-    bindDrag(pillEl, function () { setOpen(!openUI, true); });
+    pillEl.addEventListener('click', function (e) { e.stopPropagation(); setOpen(!openUI, true); });
 
     // Cartão    cardEl = mk('div', [
       'pointer-events:auto', 'display:none', 'margin-top:6px',
@@ -869,7 +945,7 @@
 
     const head = mk('div', 'display:flex;align-items:center;justify-content:space-between;' +
       'margin-bottom:5px;cursor:move;user-select:none');
-    head.appendChild(mk('span', 'font-weight:700;color:#e6edf3', 'xCloud Unlock v' + VER));
+    head.appendChild(mk('span', 'font-weight:700;color:#e6edf3', 'NimboXcloud v' + VER));
     const closeBtn = mk('span', 'cursor:pointer;color:#8b949e;padding:0 3px;font-size:14px;line-height:1', '×');
     closeBtn.title = 'Recolher';
     closeBtn.addEventListener('click', function (e) { e.stopPropagation(); setOpen(false, true); });
@@ -970,7 +1046,7 @@
 
     // A pílula mostra só a perda de pacotes; a cor indica o estado
     dotEl.style.background = loss == null ? '#8b949e' : (loss < 2 ? '#3fb950' : (loss < 5 ? '#d29922' : '#f85149'));
-    pillTxt.textContent = loss == null ? 'xCloud' : loss.toFixed(1) + '%';
+    pillTxt.textContent = 'NX' + (loss == null ? '' : ' · ' + loss.toFixed(1) + '%');
 
     if (!openUI) return;
 
@@ -1260,6 +1336,7 @@
       const host = mountTarget();
       if (!wrap || !wrap.isConnected) buildUI();
       if (wrap && host && wrap.parentNode !== host) host.appendChild(wrap);
+      syncNXPlacement();
     } catch (e) { }
 
     // Ao entrar no streaming, o contêiner da imagem costuma ter role="dialog", e em tela cheia o
@@ -1276,7 +1353,7 @@
     }
 
     // Na primeira entrada no streaming, recolhe automaticamente para não atrapalhar os controles do jogo
-    if (!autoFolded && S.pcs > 0) {
+    if (!autoFolded && isInGame()) {
       autoFolded = true;
       if (!userTouched) setOpen(false);
     }
@@ -1309,6 +1386,8 @@
       }, true);
     });
     setInterval(tick, 1500);
+    window.addEventListener('popstate', tick);
+    window.addEventListener('resize', tick);
     tick();
     setInterval(pumpQos, 2000);
     console.log('[xcu] v' + VER + ' iniciado | data center', srvCfg().label, '| IPv4', v4on(), '| qualidade', resCfg().label);
