@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.7
+// @version      3.6.8
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.7';
+  const VER = '3.6.8';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -757,6 +757,35 @@
     }).catch(function () { return response; });
   }
 
+  // Fullscreen nao implica Pointer Lock. Experimento reversivel para touch.
+  // O navegador pode solicitar lock novamente ao alternar para mouse fisico.
+  const TOUCH_FULLSCREEN_KEY = 'NimboXcloud.touchFullscreenWindowMode';
+  const touchFullscreenPolicy = { enabled: false, suppressed: 0, lastReason: 'not-initialized' };
+  function installTouchFullscreenPolicy() {
+    const caps = inputCapabilities();
+    let enabled = caps.maxTouchPoints > 0;
+    try {
+      const stored = localStorage.getItem(TOUCH_FULLSCREEN_KEY);
+      if (stored === 'off') enabled = false;
+      if (stored === 'on') enabled = true;
+    } catch (e) {}
+    touchFullscreenPolicy.enabled = enabled;
+    touchFullscreenPolicy.lastReason = enabled ? 'touch device' : 'disabled';
+    if (!enabled || !Element.prototype.requestPointerLock) return;
+    const nativeLock = Element.prototype.requestPointerLock;
+    Element.prototype.requestPointerLock = function () {
+      // Preserva o comportamento do modo janela quando o fullscreen
+      // tenta capturar o ponteiro em um dispositivo com touch.
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        touchFullscreenPolicy.suppressed++;
+        touchFullscreenPolicy.lastReason = 'fullscreen pointer lock suppressed';
+        return Promise.resolve();
+      }
+      return nativeLock.apply(this, arguments);
+    };
+  }
+  installTouchFullscreenPolicy();
+
   // ---------- 10b. Entradas nativas ----------
   // Nao interceptar requestPointerLock, eventos de teclado/mouse/toque ou Gamepad API.
   // O xCloud gerencia dinamicamente o periferico ativo; a negociacao de video
@@ -1433,6 +1462,7 @@
       inputCapabilities: inputCapabilities(),
       inputNegotiation: lastInputNegotiation,
       touchSession: touchSessionDiagnostics,
+      touchFullscreenPolicy: touchFullscreenPolicy,
       interactionDiagnostics: { state: diagState(), events: diagEvents.slice(), retained: DIAG_MAX, note: 'Eventos locais; zonas 4x4; teclas e coordenadas exatas não registradas. Screenshot físico não é detectável diretamente.' },
       region: cfg(),
       stream: { pin: S.serverPin, actual: S.serverActual, label: srvBtnLabel(), ipv4Only: v4on(), resolution: resBtnLabel(), bitrateLimit: bitrateCfg().label, playPatched: S.playPatched },
