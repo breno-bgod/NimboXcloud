@@ -8,7 +8,7 @@
 
 NimboXcloud is an unofficial, open-source userscript for [Xbox Cloud Gaming](https://play.xbox.com/). It experiments with local region settings, streaming data-center preferences, video quality negotiation, IPv4 filtering, and connection diagnostics, with particular attention to **Android, Samsung DeX, and Windows**. It runs on the official website and **is not an independent cloud gaming service**.
 
-> **Current status:** version **3.6.2**, experimental. Implemented code does not guarantee compatibility with every xCloud release. End-to-end streaming tests on different devices have not yet been documented.
+> **Current status:** version **3.6.3**, experimental. Implemented code does not guarantee compatibility with every xCloud release. End-to-end streaming tests on different devices have not yet been documented.
 
 ## About the developer
 
