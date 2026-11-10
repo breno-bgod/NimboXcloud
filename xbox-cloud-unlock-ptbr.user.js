@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.1
+// @version      3.6.2
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       RoyLiu04
 // @license      MIT
@@ -54,7 +54,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.1';
+  const VER = '3.6.2';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -755,9 +755,10 @@
   function resetPos() {
     try { localStorage.removeItem(LS_POS); } catch (e) { }
     if (!wrap) return;
-    wrap.style.transform = 'translateX(-50%)';
-    wrap.style.left = '50%';
-    wrap.style.top = '8px';
+    wrap.style.transform = 'none';
+    wrap.style.left = 'auto';
+    wrap.style.right = '12px';
+    wrap.style.top = '12px';
   }
 
   function mk(tag, css, text) {
@@ -912,7 +913,9 @@
       const ar = nxLibraryButton.getBoundingClientRect();
       wrap.style.top = Math.min(innerHeight - 48, Math.max(44, ar.bottom + 8)) + 'px';
       wrap.style.alignItems = 'flex-end';
-      if (pillEl) pillEl.style.display = 'none';
+      // Nunca ocultar o NX flutuante: o botao integrado pode estar recortado
+      // pelo layout dinamico da biblioteca.
+      if (pillEl) pillEl.style.display = 'inline-flex';
     } else {
       if (nxLibraryButton) nxLibraryButton.style.display = 'none';
       wrap.style.display = 'flex';
@@ -1362,7 +1365,7 @@
       if (!wrap || !wrap.isConnected) buildUI();
       if (wrap && host && wrap.parentNode !== host) host.appendChild(wrap);
       syncNXPlacement();
-    } catch (e) { }
+    } catch (e) { S.lastErr = 'NX tick: ' + String(e && e.message || e); }
 
     // Ao entrar no streaming, o contêiner da imagem costuma ter role="dialog", e em tela cheia o
     // painel já recolhe sozinho; a pílula precisa continuar visível e clicável (no Steam Deck é
@@ -1370,10 +1373,12 @@
     // Usa "ainda houve amostra de QoS nos últimos 8 segundos" e não "já houve uma conexão",
     // senão, ao sair do streaming, S.pcs não zera e o painel nunca mais cede lugar a diálogos do site.
     const streaming = !!(S.qosAt && (Date.now() - S.qosAt < 8000));
-    const modal = streaming ? false : modalHit();
-    if (cardEl) cardEl.style.display = (openUI && !modal) ? 'block' : 'none';
+    // Um dialogo do xCloud nao pode esconder a interface do NimboXcloud.
+    // A visibilidade depende somente da acao do usuario.
+    if (cardEl) cardEl.style.display = openUI ? 'block' : 'none';
     if (pillEl) {
-      pillEl.style.opacity = modal ? '.65' : '1';
+      pillEl.style.display = 'inline-flex';
+      pillEl.style.opacity = '1';
       pillEl.style.pointerEvents = 'auto';
     }
 
@@ -1388,6 +1393,7 @@
   function boot() {
     buildUI();
     update();
+    tick();
     // O site pode substituir o body durante a inicializacao do React.
     // Recria/reataca o painel quando a arvore de documentos muda.
     const panelObserver = new MutationObserver(function () {
@@ -1397,6 +1403,8 @@
       }
     });
     panelObserver.observe(document.documentElement, { childList: true, subtree: false });
+    // Recuperacao periodica: React pode recriar a barra sem emitir mudancas no root.
+    // Nao depende da deteccao de perfil para manter o NX acessivel.
     // Atalho de recuperacao do painel para navegadores com teclado.
     document.addEventListener('keydown', function (e) {
       if (e.ctrlKey && e.shiftKey && e.code === 'KeyN') { resetPos(); setOpen(true, true); }
