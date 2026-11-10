@@ -2,6 +2,14 @@
 
 Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR). As versões anteriores à publicação no GitHub foram desenvolvidas fora deste repositório; o histórico abaixo não pretende reconstruir todos os commits anteriores.
 
+## [3.6.2] — 2026-11-10
+- NX flutuante permanece visível como fallback na biblioteca, mesmo quando o botão integrado ao cabeçalho é encontrado.
+- Diálogos e sobreposições do xCloud não desativam a pílula nem recolhem à força o cartão expandido.
+- Posicionamento de recuperação padronizado no canto superior direito.
+- Primeira sincronização do painel ocorre imediatamente na inicialização, sem esperar o intervalo de 1,5 segundo.
+- Erros da sincronização passam a ser registrados em `lastErr` para diagnóstico.
+- Comparado com o arquivo v3.2.0 fornecido pelo autor; teste visual real no novo xCloud permanece pendente.
+
 ## [3.6.0] — 2026-11-10
 - Botão **NX** na biblioteca, posicionado ao lado do perfil quando o cabeçalho é identificado.
 - Botão **NX** no canto superior direito durante o streaming; painel expansível/recolhível.
