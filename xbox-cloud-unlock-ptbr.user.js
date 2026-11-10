@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.18
+// @version      3.6.19
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.18';
+  const VER = '3.6.19';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -95,9 +95,8 @@
   // HQ/Tizen permanece opcional: pode interferir na negociacao do controle virtual.
   // O servidor ainda pode negociar uma resolucao inferior.
   const RES_MODES = {
-    auto: { osName: 'windows', label: '1080p (compatível com toque)' },
-    hq: { osName: 'tizen', label: '1080p HQ (experimental)' },
-    r1080: { osName: 'windows', label: '1080p' },
+    auto: { osName: 'windows', label: '1080p' },
+    hq: { osName: 'tizen', label: '1080p HQ' },
     r720: { osName: 'android', label: '720p' }
   };
   const BITRATE_MODES = {
@@ -179,7 +178,9 @@
     return SERVERS.auto;
   }
   function resCfg() {
-    return RES_MODES[getPref(LS_RES, 'auto')] || RES_MODES.auto;
+    const selected = getPref(LS_RES, 'auto');
+    // Migrar a antiga opcao 1080p duplicada para o perfil unico.
+    return RES_MODES[selected === 'r1080' ? 'auto' : selected] || RES_MODES.auto;
   }
   function v4on() { return getPref(LS_V4, '1') !== '0'; }
 
