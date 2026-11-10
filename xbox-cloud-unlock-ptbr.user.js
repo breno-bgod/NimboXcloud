@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.28
+// @version      3.6.29
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.28';
+  const VER = '3.6.29';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -689,7 +689,7 @@
     if (qosBusy || !pc || typeof pc.getStats !== 'function') return;
     qosBusy = true;
     PCQos(pc).then(function (q) {
-      if (q) {
+      if (q && S.lastPc === pc) {
         S.qos = q; S.qosAt = Date.now();
         S.qosHistory.push({ at: Date.now(), fps: q.fps || q.decodedFps || 0, kbps: q.kbps || 0, rtt: q.rtt, loss: q.instLoss == null ? q.loss : q.instLoss, dropped: q.dropped || 0, dropRate: q.dropRate == null ? null : q.dropRate });
         if (S.qosHistory.length > 90) S.qosHistory.shift();
@@ -1281,7 +1281,7 @@
     rowPresets.appendChild(pillBtn('Atalho NX', function () { cycleNxShortcut(); }));
     rowPresets.appendChild(pillBtn('Microfone', function () { inspectMicrophone(); }));
     rowPresets.appendChild(pillBtn('Vibração', function () { testVibration(); }));
-    rowPresets.appendChild(pillBtn('Nitidez', function () { cycleSharpness(); }));
+    rowPresets.appendChild(pillBtn('Contraste +', function () { cycleSharpness(); }));
     rowPresets.appendChild(pillBtn('Servidores', function () { inspectServerMeasurements(); }));
     rowPresets.appendChild(pillBtn('Remote Play', function () { inspectRemotePlay(); }));
     rowPresets.appendChild(pillBtn('Cor/contraste', function () { cycleVideoFilter(); }));
@@ -1457,7 +1457,7 @@
         row('Diagnóstico automático', S.lastDiagnosis) +
         row('Microfone', S.micStatus) +
         row('Vibração', S.vibrationStatus) +
-        row('Nitidez', getPref(LS_SHARPNESS, '0') + ' (CSS experimental)') +
+        row('Contraste adicional', getPref(LS_SHARPNESS, '0') + ' (CSS experimental)') +
         row('Sondagem servidores', S.serverProbeStatus) +
         row('Remote Play', S.remotePlayStatus) +
         row('Dispositivo detectado', S.deviceDetected + ' · perfil ' + getPref(LS_DEVICE_PROFILE, 'auto')) +
@@ -1877,7 +1877,7 @@
   }
   function testVibration() {
     const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
-    const pad = pads.find(function (p) { return p.vibrationActuator && typeof p.vibrationActuator.playEffect === 'function'; });
+    const pad = pads.find(function (p) { return (p.vibrationActuator && typeof p.vibrationActuator.playEffect === 'function') || (p.vibrationActuator && typeof p.vibrationActuator.pulse === 'function') || (p.hapticActuators && p.hapticActuators[0] && typeof p.hapticActuators[0].pulse === 'function'); });
     if (!pad) { S.vibrationStatus = 'Sem atuador compatível detectado'; update(); return; }
     const levels = [0, 0.3, 0.6, 1];
     const current = Number(getPref(LS_VIBRATION, '0'));
@@ -1886,24 +1886,36 @@
     S.vibrationStatus = 'Teste local ' + Math.round(next * 100) + '% (não altera rumble do xCloud)';
     if (!next) { update(); return; }
     try {
-      Promise.resolve(pad.vibrationActuator.playEffect('dual-rumble', { duration: 180, strongMagnitude: next, weakMagnitude: next }))
+      Promise.resolve(pad.vibrationActuator && typeof pad.vibrationActuator.playEffect === 'function'
+        ? pad.vibrationActuator.playEffect('dual-rumble', { duration: 180, strongMagnitude: next, weakMagnitude: next })
+        : (pad.vibrationActuator && typeof pad.vibrationActuator.pulse === 'function'
+          ? pad.vibrationActuator.pulse(next, 180)
+          : pad.hapticActuators[0].pulse(next, 180)))
         .then(function () { update(); }, function (err) { S.vibrationStatus = 'Teste não suportado: ' + String(err); update(); });
     } catch (err) { S.vibrationStatus = 'Teste não suportado: ' + String(err); }
     update();
   }
+  function applyVideoAdjustments(video) {
+    if (!video) return;
+    const color = Number(video.dataset.nxFilterIndex || 0);
+    const sharp = Number(getPref(LS_SHARPNESS, '0'));
+    const contrast = [1, 1.04, 1.10][color] || 1;
+    const saturation = [1, 1.06, 1.10][color] || 1;
+    // O ajuste de "nitidez" é apenas contraste CSS; sem convolução de pixels.
+    const extraContrast = [1, 1.07, 1.14][sharp] || 1;
+    video.style.filter = 'contrast(' + (contrast * extraContrast).toFixed(3) + ') saturate(' + saturation.toFixed(3) + ')';
+  }
   function cycleSharpness() {
     const video = activeStreamVideo();
-    if (!video) { S.lastErr = 'Nitidez: vídeo não encontrado'; update(); return; }
+    if (!video) { S.lastErr = 'Ajuste visual: vídeo não encontrado'; update(); return; }
     const modes = ['0', '1', '2'];
     const next = modes[(modes.indexOf(getPref(LS_SHARPNESS, '0')) + 1) % modes.length];
     setPref(LS_SHARPNESS, next);
-    // CSS não oferece convolução CAS. Este ajuste de contraste é apenas aproximação visual.
-    video.style.setProperty('--nx-sharpness-level', next);
-    video.style.filter = next === '0' ? 'none' : next === '1' ? 'contrast(1.07)' : 'contrast(1.14)';
-    pushLog('video', 'Ajuste visual experimental ' + next + '; não é CAS nem nitidez real');
+    applyVideoAdjustments(video);
+    pushLog('video', 'Contraste adicional ' + next + '; não é nitidez real ou CAS');
   }
   function inspectServerMeasurements() {
-    const names = Object.keys(S.latencyByServer);
+    const names = Object.keys(S.latencyByServer).filter(function (name) { const item = S.latencyByServer[name]; return item && item.at && Date.now() - item.at < 24 * 3600 * 1000 && item.samples >= 5; });
     S.serverProbeStatus = names.length ? names.length + ' servidor(es) medido(s) em sessões; sondagem prévia não disponível' : 'Nenhum servidor medido; sondagem prévia não disponível';
     update();
   }
@@ -1914,10 +1926,9 @@
   function cycleVideoFilter() {
     const video = activeStreamVideo();
     if (!video) { S.lastErr = 'Filtro: vídeo não encontrado'; schedule(); return; }
-    const filters = ['none', 'contrast(1.04) saturate(1.06)', 'contrast(1.10) saturate(1.10)'];
-    const next = (Number(video.dataset.nxFilterIndex || 0) + 1) % filters.length;
+    const next = (Number(video.dataset.nxFilterIndex || 0) + 1) % 3;
     video.dataset.nxFilterIndex = String(next);
-    video.style.filter = filters[next];
+    applyVideoAdjustments(video);
     pushLog('video', 'Cor/contraste CSS ' + next + ' (não aplica nitidez, CAS nem upscaling)');
   }
   function captureStreamFrame() {
@@ -1962,7 +1973,7 @@
     startInputDiagnostics();
     S.diagnosticsWarnings = [
       'RTT: apenas sessões usadas; sondagem ativa não implementada',
-      'Nitidez: aproximação por contraste CSS; não é CAS',
+      'Contraste adicional: filtro CSS, não é nitidez real nem CAS',
       'Microfone: detecção de entradas, sem controle do áudio do xCloud',
       'Vibração: teste local, sem remapeamento do feedback do streaming',
       'Remote Play: diagnóstico de indisponibilidade; protocolo não integrado'
@@ -1983,6 +1994,7 @@
       lastVolumeVideo = v;
       const stored = Number(getPref(LS_VOLUME, '1'));
       if (Number.isFinite(stored)) v.volume = Math.max(0, Math.min(1, stored));
+      applyVideoAdjustments(v);
     }, 2500);
     buildUI();
     update();
