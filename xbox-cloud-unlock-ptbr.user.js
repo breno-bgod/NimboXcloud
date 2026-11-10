@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Xbox Cloud Gaming Unlock (PT-BR)
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.4.0
+// @version      3.5.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       RoyLiu04
 // @license      MIT
@@ -54,7 +54,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.4.0';
+  const VER = '3.5.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -86,11 +86,12 @@
   // A qualidade e independente de viewport, DeX, tela cheia e perifericos.
   // Perfis osName dizem respeito apenas a negociacao do streaming; nao sao um
   // mecanismo de selecao de teclado/mouse, controle ou touchscreen.
-  // "auto" legado passa a solicitar sempre a melhor faixa conhecida.
+  // Auto usa perfil desktop Windows para nao anunciar uma Smart TV ao xCloud.
+  // HQ/Tizen permanece opcional: pode interferir na negociacao do controle virtual.
   // O servidor ainda pode negociar uma resolucao inferior.
   const RES_MODES = {
-    auto: { osName: 'tizen', label: 'Maxima (1080p HQ)' },
-    hq: { osName: 'tizen', label: '1080p HQ' },
+    auto: { osName: 'windows', label: '1080p (compatível com toque)' },
+    hq: { osName: 'tizen', label: '1080p HQ (experimental)' },
     r1080: { osName: 'windows', label: '1080p' },
     r720: { osName: 'android', label: '720p' }
   };
@@ -414,14 +415,8 @@
         j.settings.osName = r.osName;
         const h = new Headers(req.headers);
         h.delete('content-length');
-        const di = h.get('x-ms-device-info');
-        if (di) {
-          try {
-            const dj = JSON.parse(di);
-            if (dj && dj.dev && dj.dev.os) dj.dev.os.name = r.osName;
-            h.set('x-ms-device-info', JSON.stringify(dj));
-          } catch (e) { }
-        }
+        // Preserve x-ms-device-info original: o dispositivo e suas capacidades
+        // (incluindo toque) nao podem ser mascarados como Tizen/Windows.
         S.resApplied = r.label;
         S.playPatched++;
         addCap({
@@ -825,7 +820,11 @@
   }
 
   function buildUI() {
-    if (wrap) return wrap;
+    if (wrap && wrap.isConnected) return wrap;
+    if (wrap && !wrap.isConnected) {
+      const target = mountTarget();
+      if (target) { target.appendChild(wrap); return wrap; }
+    }
     const host = mountTarget() || document.documentElement;
     if (!host) return null;
 
@@ -1222,7 +1221,7 @@
   }
 
   function mountTarget() {
-    return fullscreenHost() || document.body;
+    return fullscreenHost() || document.body || document.documentElement;
   }
 
   // Verifica se um diálogo do site realmente está sobre o painel: usa apenas "visível + intersecta
@@ -1253,6 +1252,7 @@
   function tick() {
     try {
       const host = mountTarget();
+      if (!wrap || !wrap.isConnected) buildUI();
       if (wrap && host && wrap.parentNode !== host) host.appendChild(wrap);
     } catch (e) { }
 
@@ -1280,6 +1280,15 @@
   function boot() {
     buildUI();
     update();
+    // O site pode substituir o body durante a inicializacao do React.
+    // Recria/reataca o painel quando a arvore de documentos muda.
+    const panelObserver = new MutationObserver(function () {
+      if (wrap && !wrap.isConnected) {
+        const host = mountTarget();
+        if (host) host.appendChild(wrap);
+      }
+    });
+    panelObserver.observe(document.documentElement, { childList: true, subtree: false });
     // Ao entrar/sair da tela cheia, move o painel imediatamente para o novo host, sem depender do tick de 1,5s
     ['fullscreenchange', 'webkitfullscreenchange'].forEach(function (ev) {
       document.addEventListener(ev, function () {
@@ -1290,6 +1299,7 @@
       }, true);
     });
     setInterval(tick, 1500);
+    tick();
     setInterval(pumpQos, 2000);
     console.log('[xcu] v' + VER + ' iniciado | data center', srvCfg().label, '| IPv4', v4on(), '| qualidade', resCfg().label);
   }
