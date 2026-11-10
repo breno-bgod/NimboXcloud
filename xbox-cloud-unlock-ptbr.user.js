@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.16
+// @version      3.6.17
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.16';
+  const VER = '3.6.17';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -848,66 +848,9 @@
     }
   }, true);
 
-  // Indicacao visual: F9 substitui somente o simbolo da roda do mouse.
-  // Nao altera comandos, eventos ou a captura nativa.
-  function updateNativeMouseHint(root) {
-    if (!root || !document.createTreeWalker) return;
-    const actionRE = /(?:para\\s+)?(liberar|soltar|desbloquear|capturar|ativar|bloquear)\\s+(?:o\\s+)?mouse/i;
-    const introRE = /(?:pressione|aperte)/i;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node, checked = 0;
-    while ((node = walker.nextNode()) && checked++ < 1800) {
-      const parent = node.parentElement;
-      if (!parent || /^(SCRIPT|STYLE|TEXTAREA|INPUT|NOSCRIPT)$/.test(parent.tagName)) continue;
-      const value = node.nodeValue || '';
-      if (value.length > 180 || !actionRE.test(value)) continue;
-      // Encontra o menor ancestral que contem a frase inteira, incluindo
-      // o glifo de mouse desenhado como elemento ou pseudo-elemento CSS.
-      let container = parent;
-      for (let depth = 0; depth < 5 && container; depth++, container = container.parentElement) {
-        const fullText = (container.textContent || '').trim();
-        if (fullText.length > 180) break;
-        if (!introRE.test(fullText) || !actionRE.test(fullText)) continue;
-        if (container.closest('[data-nimbo-f9-hint],#nimboxcloud-panel')) break;
-        const match = fullText.match(actionRE);
-        if (!match) break;
-        const action = /^(liberar|soltar|desbloquear)$/i.test(match[1]) ? 'liberar' : 'capturar';
-        // Reconstrucao somente do pequeno aviso: remove de uma vez o glifo
-        // original e qualquer F9 duplicado adicionado pelas versoes anteriores.
-        container.replaceChildren();
-        container.appendChild(document.createTextNode('Pressione '));
-        const keycap = document.createElement('span');
-        keycap.textContent = 'F9';
-        keycap.setAttribute('aria-label', 'Tecla F9');
-        keycap.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;' +
-          'min-width:23px;height:20px;padding:0 4px;margin:0 3px;' +
-          'border:1px solid currentColor;border-radius:4px;' +
-          'font:600 12px/1 sans-serif;vertical-align:middle';
-        container.appendChild(keycap);
-        container.appendChild(document.createTextNode(' para ' + action + ' o mouse'));
-        container.setAttribute('data-nimbo-f9-hint', '1');
-        break;
-      }
-    }
-  }
-  function installNativeMouseHint() {
-    if (!document.documentElement) return;
-    let pending = false;
-    const scan = function () {
-      if (pending) return;
-      pending = true;
-      queueMicrotask(function () {
-        pending = false;
-        updateNativeMouseHint(document.body || document.documentElement);
-      });
-    };
-    new MutationObserver(scan).observe(document.documentElement, {
-      childList: true, subtree: true, characterData: true
-    });
-    scan();
-  }
-  if (document.documentElement) installNativeMouseHint();
-  else document.addEventListener('DOMContentLoaded', installNativeMouseHint, { once: true });
+  // Aviso F9: temporariamente desativado para preservar o DOM do xCloud.
+  // A versao anterior reconstruia elementos da pagina e podia afetar o boot.
+  // O atalho F9 e a protecao contra recaptura continuam independentes.
 
   // ---------- 10b. Entradas nativas ----------
   // Nao interceptar requestPointerLock, teclado/mouse/toque ou Gamepad API.
