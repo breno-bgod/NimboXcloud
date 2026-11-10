@@ -6,13 +6,13 @@ O **Xbox Cloud Gaming Unlock (PT-BR)** é um userscript não oficial para o [Xbo
 
 O objetivo é oferecer escolhas ao jogador sem exigir que ele abandone o toque ou o controle físico. O script funciona sobre o site oficial e **não é um serviço de cloud gaming independente**.
 
-> **Estado atual:** versão **3.4.0**, em desenvolvimento. Recursos implementados no código não significam compatibilidade garantida com todas as versões do xCloud. Os testes reais de streaming em diferentes dispositivos ainda precisam ser documentados.
+> **Estado atual:** versão **3.5.0**, em desenvolvimento. Recursos implementados no código não significam compatibilidade garantida com todas as versões do xCloud. Os testes reais de streaming em diferentes dispositivos ainda precisam ser documentados.
 
 ## O que o projeto oferece
 
 | Recurso | Descrição |
 | --- | --- |
-| Perfis de vídeo | Máxima qualidade/1080p HQ por padrão, 1080p e 720p como escolhas manuais |
+| Perfis de vídeo | 1080p com perfil Windows por padrão; 1080p HQ/Tizen experimental e 720p manuais |
 | Bitrate | Opções automáticas e limites configuráveis de 5, 8, 10, 12 e 15 Mbps |
 | Região | Ajustes de mercado e território em respostas/requisições específicas do site |
 | Data center | Preferência por regiões de streaming disponíveis no script |
@@ -20,7 +20,7 @@ O objetivo é oferecer escolhas ao jogador sem exigir que ele abandone o toque o
 | Monitoramento | Painel com informações de RTT, perda de pacotes, bitrate, resolução e quadros descartados |
 | Entrada | Entradas gerenciadas nativamente pelo xCloud; o userscript não intercepta o bloqueio do ponteiro nem força prioridade entre toque, gamepad e teclado/mouse |
 
-**Sobre 1080p HQ:** o perfil solicita uma modalidade de negociação que usa a identificação `tizen`, semelhante a abordagens estudadas em outros projetos. Não é uma promessa de 1440p ou mesmo de 1080p efetivos: a resolução final depende do servidor e da sessão WebRTC. A escolha de qualidade não deve depender da resolução física da janela ou do modo DeX.
+**Sobre 1080p HQ:** o perfil solicita uma modalidade de negociação que usa a identificação `tizen`, semelhante a abordagens estudadas em outros projetos. Não é uma promessa de 1440p ou mesmo de 1080p efetivos: a resolução final depende do servidor e da sessão WebRTC. A escolha de qualidade não deve depender da resolução física da janela ou do modo DeX. Para preservar o controle virtual, o padrão atual é 1080p/Windows; HQ/Tizen é experimental.
 
 ## Sobre mim e este projeto
 
