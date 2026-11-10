@@ -1,5 +1,12 @@
 # Histórico de alterações
 
+## [3.6.6] — 2026-11-10
+- Diagnóstico de Pointer Lock, foco, visibilidade, fullscreen, redimensionamento, touch, ponteiro, teclado e conexão de gamepad, ativo no catálogo e na partida.
+- Eventos em buffer circular de até 100 entradas, sem registrar teclas digitadas ou coordenadas exatas (toques agrupados em zonas 4x4).
+- Diagnóstico apenas de leitura; não altera o fluxo de entrada, sessão ou vídeo.
+- Sintaxe JavaScript validada; testes reais ainda pendentes.
+
+
 ## [3.6.5] — 2026-11-10
 - Diagnóstico da negociação de entrada na criação da sessão: apenas nomes de campos e valores de capacidade de toque/teclado/mouse, quando presentes.
 - Nenhum corpo de requisição, token ou identificador novo é incluído no diagnóstico de entrada.
