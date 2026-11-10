@@ -1,6 +1,8 @@
 # Como contribuir
 
-O projeto está em desenvolvimento e atualmente é mantido em repositório privado. Este documento orienta futuras contribuições quando o acesso for ampliado.
+O NimboXcloud é um projeto experimental de estudo, de código aberto sob licença MIT, mantido por **KReight**, estudante autodidata de JavaScript. Contribuições de qualquer nível de experiência são bem-vindas: conselhos, dúvidas, correções, testes, sugestões, documentação e pull requests.
+
+Forks e adaptações são permitidos nos termos da licença MIT. É um pedido de cortesia mencionar **KReight / NimboXcloud** como inspiração; os avisos de copyright e licença exigidos pela MIT devem ser preservados.
 
 ## Antes de propor mudanças
 - Abra uma issue descrevendo o problema, navegador, sistema operacional, versão do userscript e passos de reprodução.
