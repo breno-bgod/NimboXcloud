@@ -6,7 +6,7 @@ O **Xbox Cloud Gaming Unlock (PT-BR)** é um userscript não oficial para o [Xbo
 
 O objetivo é oferecer escolhas ao jogador sem exigir que ele abandone o toque ou o controle físico. O script funciona sobre o site oficial e **não é um serviço de cloud gaming independente**.
 
-> **Estado atual:** versão **3.3.1**, em desenvolvimento. Recursos implementados no código não significam compatibilidade garantida com todas as versões do xCloud. Os testes reais de streaming em diferentes dispositivos ainda precisam ser documentados.
+> **Estado atual:** versão **3.4.0**, em desenvolvimento. Recursos implementados no código não significam compatibilidade garantida com todas as versões do xCloud. Os testes reais de streaming em diferentes dispositivos ainda precisam ser documentados.
 
 ## O que o projeto oferece
 
@@ -18,7 +18,7 @@ O objetivo é oferecer escolhas ao jogador sem exigir que ele abandone o toque o
 | Data center | Preferência por regiões de streaming disponíveis no script |
 | Conectividade | Opção de filtrar candidatos ICE IPv6 para priorizar IPv4 |
 | Monitoramento | Painel com informações de RTT, perda de pacotes, bitrate, resolução e quadros descartados |
-| Entrada | Preservação da experiência por toque e gamepad; teclado e mouse não são impostos pelo perfil de vídeo |
+| Entrada | Entradas gerenciadas nativamente pelo xCloud; o userscript não intercepta o bloqueio do ponteiro nem força prioridade entre toque, gamepad e teclado/mouse |
 
 **Sobre 1080p HQ:** o perfil solicita uma modalidade de negociação que usa a identificação `tizen`, semelhante a abordagens estudadas em outros projetos. Não é uma promessa de 1440p ou mesmo de 1080p efetivos: a resolução final depende do servidor e da sessão WebRTC. A escolha de qualidade não deve depender da resolução física da janela ou do modo DeX.
 
