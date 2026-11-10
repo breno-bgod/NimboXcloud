@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.26
+// @version      3.6.27
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.26';
+  const VER = '3.6.27';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -157,6 +157,7 @@
     qosHistory: [],
     lastDiagnosis: 'Aguardando amostras',
     deviceDetected: '',
+    diagnosticsWarnings: [],
     hist: [],
     histMin: null,
     startedAt: Date.now(),
@@ -672,8 +673,7 @@
     const loss = q.instLoss == null ? q.loss : q.instLoss;
     if (Number.isFinite(loss) && loss >= 5) return 'Perda de pacotes elevada: verificar Wi-Fi, rede e servidor';
     if (Number.isFinite(q.rtt) && q.rtt >= 160) return 'RTT WebRTC elevado: comparar data centers';
-    const total = (q.decoded || 0) + (q.dropped || 0);
-    if (total > 0 && (q.dropped || 0) / total > 0.05) return 'Muitos quadros descartados: investigar decodificação local';
+    if (Number.isFinite(q.dropRate) && q.dropRate > 5) return 'Quadros descartados neste intervalo: investigar decodificação local';
     if (Number.isFinite(q.jitter) && q.jitter > 40) return 'Jitter elevado: conexão instável';
     return 'Sem alerta pelos limiares locais (não garante ausência de problemas)';
   }
@@ -685,13 +685,13 @@
     PCQos(pc).then(function (q) {
       if (q) {
         S.qos = q; S.qosAt = Date.now();
-        S.qosHistory.push({ at: Date.now(), fps: q.fps || q.decodedFps || 0, kbps: q.kbps || 0, rtt: q.rtt, loss: q.instLoss == null ? q.loss : q.instLoss, dropped: q.dropped || 0 });
+        S.qosHistory.push({ at: Date.now(), fps: q.fps || q.decodedFps || 0, kbps: q.kbps || 0, rtt: q.rtt, loss: q.instLoss == null ? q.loss : q.instLoss, dropped: q.dropped || 0, dropRate: q.dropRate == null ? null : q.dropRate });
         if (S.qosHistory.length > 90) S.qosHistory.shift();
         S.lastDiagnosis = diagnoseQos(q);
         // Comparacao somente entre data centers efetivamente usados em partidas.
         // Nao confundir RTT WebRTC com ping do jogo nem sondar endpoints arbitrarios.
         const server = S.serverActual;
-        if (server && Number.isFinite(q.rtt) && q.rtt >= 0) {
+        if (server && Object.keys(SERVERS).some(function (id) { return SERVERS[id].name === server; }) && Number.isFinite(q.rtt) && q.rtt >= 0) {
           const prev = S.latencyByServer[server] || { avg: q.rtt, samples: 0 };
           prev.avg = prev.samples ? prev.avg * 0.8 + q.rtt * 0.2 : q.rtt;
           prev.samples++;
@@ -753,11 +753,14 @@
           out.bufMs = Math.round(video.jitterBufferDelay / video.jitterBufferEmittedCount * 1000);
         }
 
-        if (prevSnap && prevSnap.bytes != null) {
+        if (prevSnap && prevSnap.bytes != null && prevSnap.pc === pc && prevSnap.inboundId === video.id) {
           const dB = out.bytes - prevSnap.bytes;
           const dT = (out.ts - prevSnap.ts) / 1000;
           if (dT > 0.5 && dB >= 0) out.kbps = Math.round(dB * 8 / dT / 1000);
           if (dT > 0.5 && out.decoded >= (prevSnap.decoded || 0)) out.decodedFps = Math.round((out.decoded - (prevSnap.decoded || 0)) / dT);
+          const dDropped = out.dropped - (prevSnap.dropped || 0);
+          const dDecoded = out.decoded - (prevSnap.decoded || 0);
+          if (dT > 0.5 && dDropped >= 0 && dDecoded >= 0 && dDropped + dDecoded > 0) out.dropRate = dDropped / (dDropped + dDecoded) * 100;
 
           // Perda instantânea: conta só este intervalo de amostragem; o valor acumulado esconderia melhorias
           const dRecv = recv - prevSnap.recv;
@@ -771,7 +774,7 @@
             out.histMin = Math.round(S.histMin * 10) / 10;
           }
         }
-        prevSnap = { bytes: out.bytes, ts: out.ts, recv: recv, lost: lost, decoded: out.decoded };
+        prevSnap = { bytes: out.bytes, ts: out.ts, recv: recv, lost: lost, decoded: out.decoded, dropped: out.dropped, pc: pc, inboundId: video.id };
       }
 
       if (pair) {
@@ -1270,7 +1273,7 @@
     rowPresets.appendChild(pillBtn('Aplicar perfil', function () { applyDeviceProfile(); }));
     rowPresets.appendChild(pillBtn('Dispositivo', function () { cycleDeviceProfile(); }));
     rowPresets.appendChild(pillBtn('Atalho NX', function () { cycleNxShortcut(); }));
-    rowPresets.appendChild(pillBtn('Nitidez', function () { cycleVideoFilter(); }));
+    rowPresets.appendChild(pillBtn('Cor/contraste', function () { cycleVideoFilter(); }));
     rowPresets.appendChild(pillBtn('Captura', function () { captureStreamFrame(); }));
     rowPresets.appendChild(pillBtn('Histórico', function () {
       const text = JSON.stringify({ version: VER, samples: S.qosHistory, diagnosis: S.lastDiagnosis }, null, 2);
@@ -1284,6 +1287,7 @@
         selectedServer: srvCfg().name || 'auto', requestedQuality: resCfg().label,
         bitrateLimit: bitrateCfg().mbps || 'auto', lastQos: S.qos,
         latencyByServer: S.latencyByServer, nxRecoveries: S.nxRecoveries,
+        diagnosticsWarnings: S.diagnosticsWarnings,
         pointerLockActive: !!document.pointerLockElement,
         touchPoints: navigator.maxTouchPoints || 0, lastError: S.lastErr
       };
@@ -1850,7 +1854,7 @@
     const next = (Number(video.dataset.nxFilterIndex || 0) + 1) % filters.length;
     video.dataset.nxFilterIndex = String(next);
     video.style.filter = filters[next];
-    pushLog('video', 'Filtro CSS ' + next + ' (não é CAS nem upscaling)');
+    pushLog('video', 'Cor/contraste CSS ' + next + ' (não aplica nitidez, CAS nem upscaling)');
   }
   function captureStreamFrame() {
     const video = activeStreamVideo();
@@ -1871,7 +1875,8 @@
   }
   function activeStreamVideo() {
     const videos = Array.from(document.querySelectorAll('video'));
-    return videos.find(function (v) { return v.readyState >= 2 && !v.paused; }) || videos.find(function (v) { return v.srcObject || (v.currentSrc && v.currentSrc.startsWith('blob:')); }) || null;
+    const candidates = videos.filter(function (v) { return v.srcObject || (v.currentSrc && v.currentSrc.startsWith('blob:')); });
+    return candidates.find(function (v) { return v.readyState >= 2 && !v.paused; }) || candidates[0] || null;
   }
   function adjustVolume(delta) {
     const video = activeStreamVideo();
@@ -1891,6 +1896,11 @@
 
   function boot() {
     startInputDiagnostics();
+    S.diagnosticsWarnings = [
+      'RTT: somente sessões já usadas; não é sondagem prévia de servidores',
+      'Filtro de vídeo: CSS cor/contraste, não é nitidez CAS',
+      'Microfone, vibração, inatividade e Remote Play ainda não implementados'
+    ];
     S.deviceDetected = detectedDeviceProfile();
     document.addEventListener('keydown', function (e) {
       if (!e.isTrusted || !e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey || e.repeat) return;
