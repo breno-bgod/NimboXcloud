@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.0
+// @version      3.6.1
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       RoyLiu04
 // @license      MIT
@@ -54,7 +54,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.0';
+  const VER = '3.6.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -828,15 +828,35 @@
   }
 
   function findProfileAnchor() {
-    const candidates = Array.from(document.querySelectorAll(
-      'header button[aria-label],header a[aria-label],header [data-testid*="profile"],' +
-      '[role="banner"] button[aria-label],[role="banner"] a[aria-label]'
-    ));
-    return candidates.find(function (n) {
-      const label = ((n.getAttribute('aria-label') || '') + ' ' +
-        (n.getAttribute('title') || '') + ' ' + (n.getAttribute('data-testid') || '')).toLowerCase();
-      return /profile|perfil|account|conta|avatar|user|usuário|usuario/.test(label);
-    }) || null;
+    // O novo xCloud pode usar header, banner ou uma barra sem semantica HTML.
+    // Priorizar o indicador de controle mostrado ao lado das notificacoes/perfil.
+    const selectors = [
+      'header button','header a','header [role="button"]',
+      '[role="banner"] button','[role="banner"] a','[role="banner"] [role="button"]',
+      '[data-testid*="header"] button','[data-testid*="header"] [role="button"]',
+      '[class*="header"] button','[class*="Header"] button'
+    ].join(',');
+    const nodes = Array.from(new Set(document.querySelectorAll(selectors)))
+      .filter(function (n) {
+        if (n.id === 'nimboxcloud-library-button' || n.closest('#__xcu_panel__')) return false;
+        const r = n.getBoundingClientRect();
+        return r.width > 8 && r.height > 8 && r.top >= 0 && r.top < Math.min(150, innerHeight * .20);
+      });
+    const desc = function (n) {
+      return [n.getAttribute('aria-label'),n.getAttribute('title'),
+        n.getAttribute('data-testid'),n.getAttribute('data-state'),
+        n.textContent && n.textContent.trim().slice(0,80)].filter(Boolean).join(' ').toLowerCase();
+    };
+    const controller = nodes.find(function (n) {
+      return /controller|gamepad|controle|joystick|disconnected|desconectado/.test(desc(n));
+    });
+    if (controller) return { node: controller, position: 'after' };
+    const profile = nodes.find(function (n) {
+      return /profile|perfil|account|conta|avatar|user|usuário|usuario/.test(desc(n));
+    });
+    if (profile) return { node: profile, position: 'before' };
+    // Fallback conservador: nao anexar em um elemento arbitrario da barra.
+    return null;
   }
 
   function syncNXPlacement() {
@@ -861,7 +881,8 @@
       if (pillEl) { pillEl.style.cursor = 'pointer'; pillEl.style.display = 'inline-flex'; }
       return;
     }
-    const anchor = findProfileAnchor();
+    const placement = findProfileAnchor();
+    const anchor = placement && placement.node;
     if (anchor && anchor.parentElement) {
       if (!nxLibraryButton) {
         nxLibraryButton = document.createElement('button');
@@ -870,14 +891,17 @@
         nxLibraryButton.textContent = 'NX';
         nxLibraryButton.title = 'NimboXcloud — configurações antes de jogar';
         nxLibraryButton.style.cssText = 'border:1px solid #556276;background:#121b2a;color:#e9f4ff;' +
-          'font:700 13px/1 sans-serif;border-radius:10px;padding:10px;cursor:pointer;' +
-          'min-width:38px;min-height:38px;z-index:2147483000;flex-shrink:0';
+          'font:700 12px/1 sans-serif;border-radius:8px;padding:6px;cursor:pointer;' +
+          'min-width:30px;min-height:30px;z-index:2147483000;flex-shrink:0';
         nxLibraryButton.addEventListener('click', function (e) {
           e.preventDefault(); e.stopPropagation(); setOpen(!openUI, true);
         });
       }
-      if (nxLibraryButton.parentElement !== anchor.parentElement ||
-          nxLibraryButton.previousElementSibling !== anchor) anchor.after(nxLibraryButton);
+      if (placement.position === 'after') {
+        if (nxLibraryButton.parentElement !== anchor.parentElement || nxLibraryButton.previousElementSibling !== anchor) anchor.after(nxLibraryButton);
+      } else {
+        if (nxLibraryButton.parentElement !== anchor.parentElement || nxLibraryButton.nextElementSibling !== anchor) anchor.before(nxLibraryButton);
+      }
       nxLibraryButton.style.display = '';
       nxLibraryAnchor = anchor;
       wrap.style.display = 'flex';
@@ -885,7 +909,8 @@
       wrap.style.transform = 'none';
       wrap.style.left = 'auto';
       wrap.style.right = '12px';
-      wrap.style.top = '64px';
+      const ar = nxLibraryButton.getBoundingClientRect();
+      wrap.style.top = Math.min(innerHeight - 48, Math.max(44, ar.bottom + 8)) + 'px';
       wrap.style.alignItems = 'flex-end';
       if (pillEl) pillEl.style.display = 'none';
     } else {
