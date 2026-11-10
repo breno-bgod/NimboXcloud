@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.15
+// @version      3.6.16
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.15';
+  const VER = '3.6.16';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -852,8 +852,8 @@
   // Nao altera comandos, eventos ou a captura nativa.
   function updateNativeMouseHint(root) {
     if (!root || !document.createTreeWalker) return;
-    const actionRE = /\b(?:para\s+)?(?:liberar|soltar|desbloquear|capturar|ativar|bloquear)\s+(?:o\s+)?mouse\b/i;
-    const introRE = /\b(?:pressione|aperte)\b/i;
+    const actionRE = /(?:para\\s+)?(liberar|soltar|desbloquear|capturar|ativar|bloquear)\\s+(?:o\\s+)?mouse/i;
+    const introRE = /(?:pressione|aperte)/i;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node, checked = 0;
     while ((node = walker.nextNode()) && checked++ < 1800) {
@@ -861,21 +861,21 @@
       if (!parent || /^(SCRIPT|STYLE|TEXTAREA|INPUT|NOSCRIPT)$/.test(parent.tagName)) continue;
       const value = node.nodeValue || '';
       if (value.length > 180 || !actionRE.test(value)) continue;
-      const container = parent.closest('[role="status"],[role="alert"],[class*="toast"],[class*="Toast"],[class*="notification"],[class*="Notification"]') || parent.parentElement;
-      if (!container || container.closest('#nimboxcloud-panel') || container.getAttribute('data-nimbo-f9-hint') === '1') continue;
-      const fullText = (container.textContent || '').trim();
-      if (fullText.length > 220 || !introRE.test(fullText) || !actionRE.test(fullText)) continue;
-      // Quando o simbolo estiver num elemento separado, troca somente esse
-      // simbolo por um pequeno keycap F9 e preserva a frase original.
-      const intro = Array.from(container.querySelectorAll('*')).find(function (el) {
-        return el.children.length === 0 && introRE.test(el.textContent || '') &&
-          (el.textContent || '').length < 60;
-      });
-      const icons = Array.from(container.querySelectorAll('svg,img,[class*="mouse"],[class*="Mouse"],[class*="middle"],[class*="Middle"]'));
-      const icon = icons.find(function (el) {
-        return !el.closest('button,a') && !el.closest('#nimboxcloud-panel');
-      });
-      if (icon) {
+      // Encontra o menor ancestral que contem a frase inteira, incluindo
+      // o glifo de mouse desenhado como elemento ou pseudo-elemento CSS.
+      let container = parent;
+      for (let depth = 0; depth < 5 && container; depth++, container = container.parentElement) {
+        const fullText = (container.textContent || '').trim();
+        if (fullText.length > 180) break;
+        if (!introRE.test(fullText) || !actionRE.test(fullText)) continue;
+        if (container.closest('[data-nimbo-f9-hint],#nimboxcloud-panel')) break;
+        const match = fullText.match(actionRE);
+        if (!match) break;
+        const action = /^(liberar|soltar|desbloquear)$/i.test(match[1]) ? 'liberar' : 'capturar';
+        // Reconstrucao somente do pequeno aviso: remove de uma vez o glifo
+        // original e qualquer F9 duplicado adicionado pelas versoes anteriores.
+        container.replaceChildren();
+        container.appendChild(document.createTextNode('Pressione '));
         const keycap = document.createElement('span');
         keycap.textContent = 'F9';
         keycap.setAttribute('aria-label', 'Tecla F9');
@@ -883,13 +883,10 @@
           'min-width:23px;height:20px;padding:0 4px;margin:0 3px;' +
           'border:1px solid currentColor;border-radius:4px;' +
           'font:600 12px/1 sans-serif;vertical-align:middle';
-        icon.replaceWith(keycap);
+        container.appendChild(keycap);
+        container.appendChild(document.createTextNode(' para ' + action + ' o mouse'));
         container.setAttribute('data-nimbo-f9-hint', '1');
-      } else if (intro && !/\bF9\b/i.test(fullText)) {
-        // Fallback para aviso com glifo/texto sem icone HTML separado.
-        // Mantem a acao original e troca somente a indicacao da tecla.
-        intro.textContent = (intro.textContent || '').replace(introRE, function (m) { return m + ' F9'; });
-        container.setAttribute('data-nimbo-f9-hint', '1');
+        break;
       }
     }
   }
