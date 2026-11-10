@@ -1,5 +1,11 @@
 # Histórico de alterações
 
+## [Documentação aberta e bilíngue] — 2026-11-10
+- README em português e README_EN em inglês apresentam KReight como estudante autodidata de JavaScript.
+- Projeto experimental, convite a contribuições, permissão para forks e condições da licença MIT esclarecidos.
+- Identidade KReight uniformizada na documentação e no aviso de copyright próprio; avisos originais preservados.
+- Nenhuma alteração de comportamento no userscript.
+
 ## [Identidade e atribuição] — 2026-11-10
 - Assinatura `@author` atualizada para **KReight**, mantenedor do NimboXcloud.
 - README atualizado com identidade independente e agradecimentos às referências.
