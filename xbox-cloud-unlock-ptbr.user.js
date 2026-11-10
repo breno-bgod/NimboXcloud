@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.3
+// @version      3.6.4
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.3';
+  const VER = '3.6.4';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1283,10 +1283,28 @@
     location.reload();
   }
 
+  // Diagnóstico somente leitura; não modifica navigator, eventos nem a sessão.
+  function inputCapabilities() {
+    let touchPoints = 0, coarse = false, anyCoarse = false, hover = false;
+    try { touchPoints = Number(navigator.maxTouchPoints) || 0; } catch (e) {}
+    try { coarse = !!window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
+    try { anyCoarse = !!window.matchMedia('(any-pointer: coarse)').matches; } catch (e) {}
+    try { hover = !!window.matchMedia('(any-hover: hover)').matches; } catch (e) {}
+    let gamepads = 0;
+    try { gamepads = Array.from(navigator.getGamepads ? navigator.getGamepads() : []).filter(Boolean).length; } catch (e) {}
+    return {
+      touch: touchPoints > 0 || ('ontouchstart' in window) || coarse || anyCoarse,
+      maxTouchPoints: touchPoints, pointerCoarse: coarse,
+      anyPointerCoarse: anyCoarse, anyHover: hover, gamepadsConnected: gamepads,
+      note: 'Capacidades locais; não confirmam liberação do controle virtual pelo xCloud'
+    };
+  }
+
   function buildReport() {
     return JSON.stringify({
       v: VER,
       url: location.href,
+      inputCapabilities: inputCapabilities(),
       region: cfg(),
       stream: { pin: S.serverPin, actual: S.serverActual, label: srvBtnLabel(), ipv4Only: v4on(), resolution: resBtnLabel(), bitrateLimit: bitrateCfg().label, playPatched: S.playPatched },
       territory: { before: S.territoryBefore, now: S.territoryNow, cookie: getCookie('territory') },
