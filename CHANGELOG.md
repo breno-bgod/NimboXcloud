@@ -2,6 +2,15 @@
 
 Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR). As versões anteriores à publicação no GitHub foram desenvolvidas fora deste repositório; o histórico abaixo não pretende reconstruir todos os commits anteriores.
 
+## [3.4.0] — 2026-11-10
+- Removida a interceptação de `Element.prototype.requestPointerLock` e o rastreamento próprio de eventos de ponteiro.
+- Removido o controle manual “Toque 1º” do painel. A escolha do dispositivo ativo fica com o xCloud, sem prioridade artificial do userscript.
+- Mantidos os perfis de vídeo independentes das entradas, com máxima qualidade (1080p HQ) como padrão.
+- Corrigida a montagem do objeto `RTCSessionDescriptionInit` no ajuste experimental de bitrate SDP, preservando `type`.
+- Corrigida a guarda contra inicialização duplicada do userscript.
+- **Validação:** sintaxe JavaScript verificada com `node --check`. Testes reais de streaming e alternância de periféricos ainda pendentes.
+- **Nota:** “1080p HQ” não é 1440p comprovado; resolução efetiva depende da negociação com o serviço.
+
 ## [3.3.1] — 2026-11-10
 **Primeira versão publicada neste repositório.**
 - Perfil de qualidade máxima (1080p HQ) selecionado como padrão, inclusive quando a preferência legada é `auto`.
