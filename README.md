@@ -1,12 +1,12 @@
-# Xbox Cloud Gaming Unlock (PT-BR)
+# NimboXcloud
 
 **Mais controle sobre a experiência de jogar pelo navegador.**
 
-O **Xbox Cloud Gaming Unlock (PT-BR)** é um userscript não oficial para o [Xbox Cloud Gaming](https://play.xbox.com/). O projeto reúne ajustes locais de região, seleção de data center, negociação de qualidade de vídeo e diagnóstico de conexão em uma interface acessível, com atenção especial ao uso em **Android, Samsung DeX e Windows**.
+O **NimboXcloud** é um userscript não oficial para o [Xbox Cloud Gaming](https://play.xbox.com/). O projeto reúne ajustes locais de região, seleção de data center, negociação de qualidade de vídeo e diagnóstico de conexão em uma interface acessível, com atenção especial ao uso em **Android, Samsung DeX e Windows**.
 
 O objetivo é oferecer escolhas ao jogador sem exigir que ele abandone o toque ou o controle físico. O script funciona sobre o site oficial e **não é um serviço de cloud gaming independente**.
 
-> **Estado atual:** versão **3.5.0**, em desenvolvimento. Recursos implementados no código não significam compatibilidade garantida com todas as versões do xCloud. Os testes reais de streaming em diferentes dispositivos ainda precisam ser documentados.
+> **Estado atual:** versão **3.6.2**, em desenvolvimento. Recursos implementados no código não significam compatibilidade garantida com todas as versões do xCloud. Os testes reais de streaming em diferentes dispositivos ainda precisam ser documentados.
 
 ## O que o projeto oferece
 
@@ -22,11 +22,15 @@ O objetivo é oferecer escolhas ao jogador sem exigir que ele abandone o toque o
 
 **Sobre 1080p HQ:** o perfil solicita uma modalidade de negociação que usa a identificação `tizen`, semelhante a abordagens estudadas em outros projetos. Não é uma promessa de 1440p ou mesmo de 1080p efetivos: a resolução final depende do servidor e da sessão WebRTC. A escolha de qualidade não deve depender da resolução física da janela ou do modo DeX. Para preservar o controle virtual, o padrão atual é 1080p/Windows; HQ/Tizen é experimental.
 
-## Sobre mim e este projeto
+## Desenvolvedor e identidade
 
-Eu me chamo **Bigode**. Este é um projeto pessoal, pequeno e informal que estou desenvolvendo no meu tempo livre. Não sou uma empresa nem uma equipe de desenvolvimento: estou estudando como o Xbox Cloud Gaming funciona no navegador, testando ideias e tentando criar melhorias úteis para quem joga pelo celular, no Samsung DeX ou no computador.
+**NimboXcloud — Developed by KReight.**
 
-Minha principal inspiração é o **[Better xCloud](https://github.com/redphx/better-xcloud)**, criado por **redphx**. Considero este projeto parte do meu trabalho experimental de **fork/adaptação do ecossistema Better xCloud**, mas é importante explicar a origem do código: **a versão de userscript publicada aqui deriva diretamente de [xbox-cloud-unlock, de RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock)** e estuda implementações do Better xCloud. Portanto, este repositório ainda **não é um fork técnico direto do repositório de redphx**, nem representa o projeto oficial dele.
+Sou **KReight**, desenvolvedor independente responsável pela evolução, integração e manutenção do NimboXcloud. O projeto é uma ferramenta experimental e não oficial para aprimorar a experiência do Xbox Cloud Gaming no navegador, com foco em Android, Samsung DeX e Windows.
+
+**Origem do código:** este userscript deriva de [xbox-cloud-unlock, de RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock), sob licença MIT. A autoria das adaptações e funcionalidades próprias é de KReight; isso não transfere a autoria do código original. Os avisos de copyright e licença correspondentes estão preservados em [LICENSE](./LICENSE).
+
+O [Better xCloud](https://github.com/redphx/better-xcloud), de redphx, e outros projetos citados abaixo são referências de estudo. Não há afiliação, endosso ou vínculo oficial com seus criadores.
 
 ### Por que estou fazendo isso?
 
@@ -52,7 +56,7 @@ Estou estudando essas soluções para entender o que já funciona, o que deixou 
 
 Quero um userscript que permita **escolher melhor como jogar**, com qualidade de imagem configurável, preferência de servidores, informações claras sobre a conexão e suporte a diferentes dispositivos, sem obrigar quem usa Android ou DeX a jogar como se estivesse em um PC com teclado e mouse.
 
-O projeto ainda está em fase experimental. **Nem toda ideia mencionada é uma funcionalidade pronta**; meu objetivo é evoluir por versões, documentar os resultados e, quando estiver suficientemente estável, abrir o repositório para outras pessoas testarem e contribuírem.
+O projeto ainda está em fase experimental. **Nem toda ideia mencionada é uma funcionalidade pronta**; o objetivo é evoluir por versões, documentar os resultados e permitir testes e contribuições da comunidade quando o repositório estiver público.
 
 ---
 
@@ -65,7 +69,7 @@ O projeto ainda está em fase experimental. **Nem toda ideia mencionada é uma f
 
 O script é executado em `document-start`. A compatibilidade depende do navegador e das permissões do gerenciador de userscripts.
 
-**Repositório privado:** é necessário estar autenticado e autorizado no GitHub para baixar o código. Atualização automática via URL pública ainda não está configurada; novas versões devem ser importadas manualmente por enquanto.
+**Atualizações:** a atualização automática pelo Tampermonkey ainda não está configurada. Enquanto o repositório permanecer privado, o download exige autorização do GitHub; após torná-lo público, a instalação poderá ser feita pelo arquivo Raw. Até a configuração do canal de atualização, importe novas versões manualmente.
 
 ## Documentação
 
@@ -74,15 +78,15 @@ O script é executado em `document-start`. A compatibilidade depende do navegado
 - [Roteiro de desenvolvimento](./docs/ROADMAP.md)
 - [Guia de contribuição](./CONTRIBUTING.md)
 
-## Origens e referências
+## Agradecimentos, referências e atribuições
 
 Este projeto não surgiu do zero. O código declara como base e referências técnicas:
 
-- [**RoyLiu04 / xbox-cloud-unlock**](https://github.com/RoyLiu04/xbox-cloud-unlock) — origem do userscript e de mecanismos de desbloqueio/ajuste de região; o cabeçalho atual atribui autoria a RoyLiu04 e declara licença MIT.
+- [**RoyLiu04 / xbox-cloud-unlock**](https://github.com/RoyLiu04/xbox-cloud-unlock) — autor da base original reutilizada neste userscript, licenciada sob MIT; aviso de copyright e licença preservados em [LICENSE](./LICENSE).
 - [**redphx / better-xcloud**](https://github.com/redphx/better-xcloud) — referência de engenharia para seleção de data centers, perfis de qualidade e interceptações relacionadas ao streaming.
 - [**darkchaox / xbox-cloud-gaming-optimizer**](https://github.com/darkchaox/xbox-cloud-gaming-optimizer) — referência histórica para abordagens de região e otimização.
 
-A menção a um projeto de referência **não implica parceria, endosso ou incorporação integral de seu código**. Antes da abertura pública, revisaremos os avisos de copyright e os requisitos das licenças de cada trecho reutilizado.
+A menção a um projeto de referência **não implica parceria, endosso ou incorporação integral de seu código**. Agradecimentos não substituem os avisos de licença e copyright exigidos para material reutilizado.
 
 ## Limitações e aviso legal
 
@@ -94,4 +98,4 @@ A menção a um projeto de referência **não implica parceria, endosso ou incor
 
 ## Desenvolvimento
 
-Mudanças são registradas por commits e descritas no [CHANGELOG](./CHANGELOG.md). A intenção é abrir o repositório ao público após revisão técnica, de segurança, documentação e licenciamento.
+Mudanças são registradas por commits e descritas no [CHANGELOG](./CHANGELOG.md). A publicação pública do repositório é uma decisão do mantenedor; os testes reais de compatibilidade e a revisão contínua de segurança e licenças permanecem necessários.
