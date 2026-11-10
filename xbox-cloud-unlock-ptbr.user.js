@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.20
+// @version      3.6.21
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.20';
+  const VER = '3.6.21';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -146,6 +146,8 @@
     pcs: 0,
     qos: null,
     qosAt: 0,
+    latencyByServer: Object.create(null),
+    nxRecoveries: 0,
     hist: [],
     histMin: null,
     startedAt: Date.now(),
@@ -638,7 +640,19 @@
     if (qosBusy || !pc || typeof pc.getStats !== 'function') return;
     qosBusy = true;
     PCQos(pc).then(function (q) {
-      if (q) { S.qos = q; S.qosAt = Date.now(); schedule(); }
+      if (q) {
+        S.qos = q; S.qosAt = Date.now();
+        // Comparacao somente entre data centers efetivamente usados em partidas.
+        // Nao confundir RTT WebRTC com ping do jogo nem sondar endpoints arbitrarios.
+        const server = S.serverActual;
+        if (server && Number.isFinite(q.rtt) && q.rtt >= 0) {
+          const prev = S.latencyByServer[server] || { avg: q.rtt, samples: 0 };
+          prev.avg = prev.samples ? prev.avg * 0.8 + q.rtt * 0.2 : q.rtt;
+          prev.samples++;
+          S.latencyByServer[server] = prev;
+        }
+        schedule();
+      }
     }, function () { }).then(function () { qosBusy = false; });
   }
 
@@ -1298,6 +1312,7 @@
         row('Limite SDP configurado', bitrateCfg().mbps ? bitrateCfg().mbps + ' Mbps (teto solicitado)' : 'Auto (sem teto local)') +
         row('Codec', q.codec || 'Indisponível') +
         row('RTT WebRTC (não ping do jogo)', fmt(q.rtt, ' ms')) +
+        row('Servidores medidos nesta página', Object.keys(S.latencyByServer).length ? Object.keys(S.latencyByServer).map(function (key) { return key + ': ' + Math.round(S.latencyByServer[key].avg) + ' ms'; }).join(' · ') : 'Aguardando amostras') +
         row('Jitter RTP', fmt(q.jitter, ' ms')) +
         row('Perda de pacotes', fmt(q.instLoss != null ? q.instLoss : q.loss, '%', 1)) +
         row('Quadros descartados', fmt(dr, '%', 1) + ' (' + fmt(q.dropped) + ')') +
@@ -1679,13 +1694,25 @@
     tick();
     // O site pode substituir o body durante a inicializacao do React.
     // Recria/reataca o painel quando a arvore de documentos muda.
+    let recoveryQueued = false;
     const panelObserver = new MutationObserver(function () {
-      if (wrap && !wrap.isConnected) {
-        const host = mountTarget();
-        if (host) host.appendChild(wrap);
-      }
+      if (recoveryQueued) return;
+      // Nao reagir a cada mudanca de React: so recuperar quando o NX perdeu o host.
+      const host = mountTarget();
+      if (wrap && wrap.isConnected && wrap.parentNode === host) return;
+      recoveryQueued = true;
+      queueMicrotask(function () {
+        recoveryQueued = false;
+        try {
+          const target = mountTarget();
+          if (!target) return;
+          if (!wrap || !wrap.isConnected) buildUI();
+          if (wrap && wrap.parentNode !== target) target.appendChild(wrap);
+          if (wrap && wrap.isConnected) { S.nxRecoveries++; syncNXPlacement(); }
+        } catch (err) { S.lastErr = 'NX recovery: ' + String(err); }
+      });
     });
-    panelObserver.observe(document.documentElement, { childList: true, subtree: false });
+    panelObserver.observe(document.documentElement, { childList: true, subtree: true });
     // Recuperacao periodica: React pode recriar a barra sem emitir mudancas no root.
     // Nao depende da deteccao de perfil para manter o NX acessivel.
     // Atalho de recuperacao do painel para navegadores com teclado.
