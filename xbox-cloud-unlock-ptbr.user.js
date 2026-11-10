@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.5
+// @version      3.6.6
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.5';
+  const VER = '3.6.6';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1322,12 +1322,79 @@
     };
   }
 
+  // Diagnóstico multimodal de eventos (somente leitura, buffer circular, sem dados digitados).
+  const DIAG_MAX = 100;
+  const diagEvents = [];
+  const diagStart = Date.now();
+  let diagLastTouch = 0;
+  let diagLastPointer = 0;
+  let diagLastKey = 0;
+  function diagState() {
+    let lock = false, focus = false, visibility = 'unknown';
+    try { lock = !!(document.pointerLockElement || document.webkitPointerLockElement); } catch (e) {}
+    try { focus = document.hasFocus(); } catch (e) {}
+    try { visibility = document.visibilityState; } catch (e) {}
+    return { pointerLocked: lock, focused: focus, visibility: visibility,
+      fullscreen: !!(document.fullscreenElement || document.webkitFullscreenElement),
+      screen: { width: window.innerWidth, height: window.innerHeight } };
+  }
+  function diagLog(type, detail) {
+    try {
+      diagEvents.push({ ms: Date.now() - diagStart, type: type, detail: detail || null, state: diagState() });
+      if (diagEvents.length > DIAG_MAX) diagEvents.shift();
+    } catch (e) {}
+  }
+  function diagZone(x, y) {
+    const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
+    const col = Math.min(3, Math.max(0, Math.floor(x / w * 4)));
+    const row = Math.min(3, Math.max(0, Math.floor(y / h * 4)));
+    return 'r' + row + 'c' + col;
+  }
+  function startInputDiagnostics() {
+    diagLog('diagnostics-start', { capabilities: inputCapabilities() });
+    document.addEventListener('pointerlockchange', function () { diagLog('pointerlockchange'); }, true);
+    document.addEventListener('webkitpointerlockchange', function () { diagLog('webkitpointerlockchange'); }, true);
+    document.addEventListener('pointerlockerror', function () { diagLog('pointerlockerror'); }, true);
+    document.addEventListener('visibilitychange', function () { diagLog('visibilitychange'); }, true);
+    document.addEventListener('fullscreenchange', function () { diagLog('fullscreenchange'); }, true);
+    document.addEventListener('webkitfullscreenchange', function () { diagLog('webkitfullscreenchange'); }, true);
+    window.addEventListener('blur', function () { diagLog('window-blur'); }, true);
+    window.addEventListener('focus', function () { diagLog('window-focus'); }, true);
+    document.addEventListener('focusin', function () { diagLog('focusin', { target: 'element' }); }, true);
+    document.addEventListener('touchstart', function (e) {
+      const now = Date.now();
+      if (now - diagLastTouch < 180) return;
+      diagLastTouch = now;
+      const t = e.changedTouches && e.changedTouches[0];
+      diagLog('touchstart', { zone: t ? diagZone(t.clientX, t.clientY) : null, touches: e.touches ? e.touches.length : null });
+    }, { capture: true, passive: true });
+    document.addEventListener('pointerdown', function (e) {
+      const now = Date.now();
+      if (now - diagLastPointer < 180) return;
+      diagLastPointer = now;
+      diagLog('pointerdown', { pointerType: e.pointerType || 'unknown', zone: diagZone(e.clientX, e.clientY), button: e.button });
+    }, { capture: true, passive: true });
+    document.addEventListener('keydown', function (e) {
+      const now = Date.now();
+      if (now - diagLastKey < 250) return;
+      diagLastKey = now;
+      // Nunca registra tecla, texto, código ou combinações digitadas.
+      diagLog('keydown', { trusted: e.isTrusted, repeat: e.repeat });
+    }, true);
+    window.addEventListener('gamepadconnected', function () { diagLog('gamepadconnected'); }, true);
+    window.addEventListener('gamepaddisconnected', function () { diagLog('gamepaddisconnected'); }, true);
+    window.addEventListener('resize', function () { diagLog('resize'); }, true);
+    window.addEventListener('pageshow', function () { diagLog('pageshow'); }, true);
+    window.addEventListener('pagehide', function () { diagLog('pagehide'); }, true);
+  }
+
   function buildReport() {
     return JSON.stringify({
       v: VER,
       url: location.href,
       inputCapabilities: inputCapabilities(),
       inputNegotiation: lastInputNegotiation,
+      interactionDiagnostics: { state: diagState(), events: diagEvents.slice(), retained: DIAG_MAX, note: 'Eventos locais; zonas 4x4; teclas e coordenadas exatas não registradas. Screenshot físico não é detectável diretamente.' },
       region: cfg(),
       stream: { pin: S.serverPin, actual: S.serverActual, label: srvBtnLabel(), ipv4Only: v4on(), resolution: resBtnLabel(), bitrateLimit: bitrateCfg().label, playPatched: S.playPatched },
       territory: { before: S.territoryBefore, now: S.territoryNow, cookie: getCookie('territory') },
@@ -1438,6 +1505,7 @@
   }
 
   function boot() {
+    startInputDiagnostics();
     buildUI();
     update();
     tick();
