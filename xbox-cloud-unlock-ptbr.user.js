@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.27
+// @version      3.6.28
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.27';
+  const VER = '3.6.28';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -71,6 +71,8 @@
   const LS_DEVICE_PROFILE = 'xcu.deviceProfile';
   const LS_NX_SHORTCUT = 'xcu.nxShortcut';
   const LS_RTT_HISTORY = 'xcu.rttHistory.v1';
+  const LS_VIBRATION = 'xcu.vibrationLevel';
+  const LS_SHARPNESS = 'xcu.sharpness';
 
   // IP de saída → região desejada. Os IPs abaixo são apenas exemplos comuns em projetos públicos;
   // troque pelo endereço de saída que você realmente usa (também dá para escolher no painel,
@@ -158,6 +160,10 @@
     lastDiagnosis: 'Aguardando amostras',
     deviceDetected: '',
     diagnosticsWarnings: [],
+    micStatus: 'Não verificado',
+    vibrationStatus: 'Não verificado',
+    remotePlayStatus: 'Sem integração de protocolo',
+    serverProbeStatus: 'Sem endpoints verificados para sondagem',
     hist: [],
     histMin: null,
     startedAt: Date.now(),
@@ -1273,6 +1279,11 @@
     rowPresets.appendChild(pillBtn('Aplicar perfil', function () { applyDeviceProfile(); }));
     rowPresets.appendChild(pillBtn('Dispositivo', function () { cycleDeviceProfile(); }));
     rowPresets.appendChild(pillBtn('Atalho NX', function () { cycleNxShortcut(); }));
+    rowPresets.appendChild(pillBtn('Microfone', function () { inspectMicrophone(); }));
+    rowPresets.appendChild(pillBtn('Vibração', function () { testVibration(); }));
+    rowPresets.appendChild(pillBtn('Nitidez', function () { cycleSharpness(); }));
+    rowPresets.appendChild(pillBtn('Servidores', function () { inspectServerMeasurements(); }));
+    rowPresets.appendChild(pillBtn('Remote Play', function () { inspectRemotePlay(); }));
     rowPresets.appendChild(pillBtn('Cor/contraste', function () { cycleVideoFilter(); }));
     rowPresets.appendChild(pillBtn('Captura', function () { captureStreamFrame(); }));
     rowPresets.appendChild(pillBtn('Histórico', function () {
@@ -1288,6 +1299,8 @@
         bitrateLimit: bitrateCfg().mbps || 'auto', lastQos: S.qos,
         latencyByServer: S.latencyByServer, nxRecoveries: S.nxRecoveries,
         diagnosticsWarnings: S.diagnosticsWarnings,
+        micStatus: S.micStatus, vibrationStatus: S.vibrationStatus,
+        remotePlayStatus: S.remotePlayStatus, serverProbeStatus: S.serverProbeStatus,
         pointerLockActive: !!document.pointerLockElement,
         touchPoints: navigator.maxTouchPoints || 0, lastError: S.lastErr
       };
@@ -1442,6 +1455,11 @@
         row('Auto RTT', getPref(LS_AUTO_BEST, '0') === '1' ? 'Ligado (amostras das últimas 24h)' : 'Desligado') +
         row('Recuperações NX', S.nxRecoveries) +
         row('Diagnóstico automático', S.lastDiagnosis) +
+        row('Microfone', S.micStatus) +
+        row('Vibração', S.vibrationStatus) +
+        row('Nitidez', getPref(LS_SHARPNESS, '0') + ' (CSS experimental)') +
+        row('Sondagem servidores', S.serverProbeStatus) +
+        row('Remote Play', S.remotePlayStatus) +
         row('Dispositivo detectado', S.deviceDetected + ' · perfil ' + getPref(LS_DEVICE_PROFILE, 'auto')) +
         row('Atalho NX', 'Ctrl+Shift+' + getPref(LS_NX_SHORTCUT, 'KeyH').slice(3)) +
         row('Histórico QoS', S.qosHistory.length + ' amostras (até 3 minutos)') +
@@ -1847,6 +1865,52 @@
     setPref(LS_NX_SHORTCUT, next);
     pushLog('shortcut', 'Atalho NX: Ctrl+Shift+' + next.slice(3));
   }
+  function inspectMicrophone() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      S.micStatus = 'API indisponível neste navegador'; update(); return;
+    }
+    navigator.mediaDevices.enumerateDevices().then(function (devices) {
+      const count = devices.filter(function (d) { return d.kind === 'audioinput'; }).length;
+      S.micStatus = count ? count + ' entrada(s) detectada(s); integração com xCloud não confirmada' : 'Nenhuma entrada detectada ou permissão restrita';
+      update();
+    }).catch(function (err) { S.micStatus = 'Erro: ' + String(err && err.name || err); update(); });
+  }
+  function testVibration() {
+    const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
+    const pad = pads.find(function (p) { return p.vibrationActuator && typeof p.vibrationActuator.playEffect === 'function'; });
+    if (!pad) { S.vibrationStatus = 'Sem atuador compatível detectado'; update(); return; }
+    const levels = [0, 0.3, 0.6, 1];
+    const current = Number(getPref(LS_VIBRATION, '0'));
+    const next = levels[(levels.indexOf(current) + 1) % levels.length];
+    setPref(LS_VIBRATION, String(next));
+    S.vibrationStatus = 'Teste local ' + Math.round(next * 100) + '% (não altera rumble do xCloud)';
+    if (!next) { update(); return; }
+    try {
+      Promise.resolve(pad.vibrationActuator.playEffect('dual-rumble', { duration: 180, strongMagnitude: next, weakMagnitude: next }))
+        .then(function () { update(); }, function (err) { S.vibrationStatus = 'Teste não suportado: ' + String(err); update(); });
+    } catch (err) { S.vibrationStatus = 'Teste não suportado: ' + String(err); }
+    update();
+  }
+  function cycleSharpness() {
+    const video = activeStreamVideo();
+    if (!video) { S.lastErr = 'Nitidez: vídeo não encontrado'; update(); return; }
+    const modes = ['0', '1', '2'];
+    const next = modes[(modes.indexOf(getPref(LS_SHARPNESS, '0')) + 1) % modes.length];
+    setPref(LS_SHARPNESS, next);
+    // CSS não oferece convolução CAS. Este ajuste de contraste é apenas aproximação visual.
+    video.style.setProperty('--nx-sharpness-level', next);
+    video.style.filter = next === '0' ? 'none' : next === '1' ? 'contrast(1.07)' : 'contrast(1.14)';
+    pushLog('video', 'Ajuste visual experimental ' + next + '; não é CAS nem nitidez real');
+  }
+  function inspectServerMeasurements() {
+    const names = Object.keys(S.latencyByServer);
+    S.serverProbeStatus = names.length ? names.length + ' servidor(es) medido(s) em sessões; sondagem prévia não disponível' : 'Nenhum servidor medido; sondagem prévia não disponível';
+    update();
+  }
+  function inspectRemotePlay() {
+    S.remotePlayStatus = 'Não conectado: protocolo/autenticação Xbox Remote Play não integrados';
+    update();
+  }
   function cycleVideoFilter() {
     const video = activeStreamVideo();
     if (!video) { S.lastErr = 'Filtro: vídeo não encontrado'; schedule(); return; }
@@ -1897,9 +1961,11 @@
   function boot() {
     startInputDiagnostics();
     S.diagnosticsWarnings = [
-      'RTT: somente sessões já usadas; não é sondagem prévia de servidores',
-      'Filtro de vídeo: CSS cor/contraste, não é nitidez CAS',
-      'Microfone, vibração, inatividade e Remote Play ainda não implementados'
+      'RTT: apenas sessões usadas; sondagem ativa não implementada',
+      'Nitidez: aproximação por contraste CSS; não é CAS',
+      'Microfone: detecção de entradas, sem controle do áudio do xCloud',
+      'Vibração: teste local, sem remapeamento do feedback do streaming',
+      'Remote Play: diagnóstico de indisponibilidade; protocolo não integrado'
     ];
     S.deviceDetected = detectedDeviceProfile();
     document.addEventListener('keydown', function (e) {
