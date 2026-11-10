@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.24
+// @version      3.6.25
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.24';
+  const VER = '3.6.25';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -68,6 +68,8 @@
   const LS_VOLUME = 'xcu.volume'; // volume local do elemento de video
   const LS_AUTO_BEST = 'xcu.autoBestMeasured';
   const LS_NX_DIAG = 'xcu.diagnostics';
+  const LS_DEVICE_PROFILE = 'xcu.deviceProfile';
+  const LS_NX_SHORTCUT = 'xcu.nxShortcut';
 
   // IP de saída → região desejada. Os IPs abaixo são apenas exemplos comuns em projetos públicos;
   // troque pelo endereço de saída que você realmente usa (também dá para escolher no painel,
@@ -153,6 +155,7 @@
     nxRecoveries: 0,
     qosHistory: [],
     lastDiagnosis: 'Aguardando amostras',
+    deviceDetected: '',
     hist: [],
     histMin: null,
     startedAt: Date.now(),
@@ -1238,6 +1241,8 @@
       pushLog('region', 'Auto RTT ' + (enabled ? 'desativado' : 'ativado') + ' — usa apenas data centers já medidos (mínimo 5 amostras)');
       update();
     }));
+    rowPresets.appendChild(pillBtn('Dispositivo', function () { cycleDeviceProfile(); }));
+    rowPresets.appendChild(pillBtn('Atalho NX', function () { cycleNxShortcut(); }));
     rowPresets.appendChild(pillBtn('Nitidez', function () { cycleVideoFilter(); }));
     rowPresets.appendChild(pillBtn('Captura', function () { captureStreamFrame(); }));
     rowPresets.appendChild(pillBtn('Histórico', function () {
@@ -1261,6 +1266,12 @@
       pushLog('diagnostic', 'Relatório técnico enviado à área de transferência (quando permitido)');
     }));
     cardEl.appendChild(rowPresets);
+    el.graph = mk('div', 'display:none;margin-top:6px;padding:5px;border:1px solid #30363d;border-radius:5px');
+    cardEl.appendChild(el.graph);
+    rowPresets.appendChild(pillBtn('Gráfico QoS', function () {
+      el.graph.style.display = el.graph.style.display === 'none' ? 'block' : 'none';
+      update();
+    }));
 
     // Lista de opções: é um bloco dentro do cartão, não uma camada fixed — o painel fica dentro
     // do elemento em tela cheia, e uma camada fixed seria cortada em tela cheia.
@@ -1333,6 +1344,18 @@
     pillTxt.textContent = 'NX' + (loss == null ? '' : ' · ' + loss.toFixed(1) + '%');
 
     if (!openUI) return;
+    if (el.graph && el.graph.style.display !== 'none') {
+      const points = S.qosHistory.slice(-45);
+      const values = points.map(function (p) { return Number(p.fps) || 0; });
+      const polyline = values.map(function (v, i) { return (i * 240 / Math.max(1, values.length - 1)).toFixed(1) + ',' + (55 - Math.max(0, Math.min(75, v)) * 0.65).toFixed(1); }).join(' ');
+      el.graph.textContent = '';
+      el.graph.appendChild(mk('div', 'color:#8b949e', 'FPS recebidos · últimas ' + points.length + ' amostras'));
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 240 60'); svg.setAttribute('width', '100%'); svg.setAttribute('height', '65');
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      line.setAttribute('points', polyline); line.setAttribute('fill', 'none'); line.setAttribute('stroke', '#58a6ff'); line.setAttribute('stroke-width', '2');
+      svg.appendChild(line); el.graph.appendChild(svg);
+    }
 
     // Linha de status: os valores configurados já aparecem nos botões abaixo, então esta linha
     // só faz sentido quando "real ≠ configurado". Se coincidem, a linha some e o espaço vai
@@ -1388,6 +1411,8 @@
         row('Auto RTT', getPref(LS_AUTO_BEST, '0') === '1' ? 'Ligado (apenas servidores medidos)' : 'Desligado') +
         row('Recuperações NX', S.nxRecoveries) +
         row('Diagnóstico automático', S.lastDiagnosis) +
+        row('Dispositivo detectado', S.deviceDetected + ' · perfil ' + getPref(LS_DEVICE_PROFILE, 'auto')) +
+        row('Atalho NX', 'Ctrl+Shift+' + getPref(LS_NX_SHORTCUT, 'KeyH').slice(3)) +
         row('Histórico QoS', S.qosHistory.length + ' amostras (até 3 minutos)') +
         row('Servidores medidos nesta página', Object.keys(S.latencyByServer).length ? Object.keys(S.latencyByServer).map(function (key) { return key + ': ' + Math.round(S.latencyByServer[key].avg) + ' ms'; }).join(' · ') : 'Aguardando amostras') +
         row('Jitter RTP', fmt(q.jitter, ' ms')) +
@@ -1764,6 +1789,23 @@
     update();
   }
 
+  function detectedDeviceProfile() {
+    const mobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+    const desktopPointer = window.matchMedia && window.matchMedia('(any-pointer:fine)').matches;
+    return mobile ? (desktopPointer && innerWidth >= 900 ? 'dex' : 'mobile') : 'desktop';
+  }
+  function cycleDeviceProfile() {
+    const modes = ['auto', 'desktop', 'mobile', 'dex'];
+    const next = modes[(modes.indexOf(getPref(LS_DEVICE_PROFILE, 'auto')) + 1) % modes.length];
+    setPref(LS_DEVICE_PROFILE, next);
+    pushLog('device', 'Perfil local ' + next + ' (não altera User-Agent nem controles)');
+  }
+  function cycleNxShortcut() {
+    const modes = ['KeyH', 'KeyJ', 'KeyK'];
+    const next = modes[(modes.indexOf(getPref(LS_NX_SHORTCUT, 'KeyH')) + 1) % modes.length];
+    setPref(LS_NX_SHORTCUT, next);
+    pushLog('shortcut', 'Atalho NX: Ctrl+Shift+' + next.slice(3));
+  }
   function cycleVideoFilter() {
     const video = activeStreamVideo();
     if (!video) { S.lastErr = 'Filtro: vídeo não encontrado'; schedule(); return; }
@@ -1812,11 +1854,12 @@
 
   function boot() {
     startInputDiagnostics();
+    S.deviceDetected = detectedDeviceProfile();
     document.addEventListener('keydown', function (e) {
       if (!e.isTrusted || !e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey || e.repeat) return;
       const a = document.activeElement;
       if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
-      if (e.code === 'KeyH') { e.preventDefault(); setOpen(!openUI, true); }
+      if (e.code === getPref(LS_NX_SHORTCUT, 'KeyH')) { e.preventDefault(); setOpen(!openUI, true); }
       if (e.code === 'KeyD') { e.preventDefault(); console.log('[NX diagnostic]', { qos: S.qos, history: S.qosHistory, diagnosis: S.lastDiagnosis }); }
     }, false);
     // Reaplicar volume salvo apenas quando um elemento de vídeo de streaming existir.
