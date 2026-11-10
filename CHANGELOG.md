@@ -1,5 +1,11 @@
 # Histórico de alterações
 
+## [3.6.4] — 2026-11-10
+- Diagnóstico multimodal no relatório NX: touchscreen, tipo de ponteiro, hover e quantidade de gamepads.
+- Somente leitura: sem mudanças em qualidade de vídeo, negociação de entrada ou comportamento do painel.
+- Sintaxe validada; testes reais no Edge/Android e Windows touchscreen ainda pendentes.
+
+
 ## [3.6.3] — 2026-11-10
 - Corrigido erro de sintaxe que impedia a execução integral do userscript: declaração `cardEl = mk(...)` estava acidentalmente comentada, deixando um array de estilos solto.
 - Restaurada a criação do cartão do painel NX; sintaxe JavaScript validada estaticamente.
