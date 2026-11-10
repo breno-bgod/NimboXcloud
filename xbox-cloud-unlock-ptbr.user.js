@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.17
+// @version      3.6.18
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.17';
+  const VER = '3.6.18';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -777,9 +777,11 @@
     f9Observed: 0,
     requestsBlockedByNimbo: false
   };
-  // F9 controla a captura. Apos liberar, bloquear novas capturas
-  // automaticas do xCloud ate o proximo F9 (sem emular entradas).
+  // Depois da primeira captura nativa, toda perda de Pointer Lock
+  // (F9, troca de monitor, perda de foco, ESC) pausa a recaptura automatica.
+  // Somente um F9 fisico permite voltar a capturar.
   let nativeLockTarget = null;
+  let nativeLockSeen = false;
   let f9Released = false;
   let f9RelockPending = false;
   const originalRequestPointerLock = Element.prototype.requestPointerLock;
@@ -788,15 +790,23 @@
       if (!f9Released) return originalRequestPointerLock.apply(this, arguments);
       touchFullscreenPolicy.suppressed++;
       touchFullscreenPolicy.requestsBlockedByNimbo = true;
-      touchFullscreenPolicy.lastReason = 'F9: automatic relock blocked while menu is active';
-      // Rejeitar explicitamente a tentativa: nunca sinalizar captura ficticia.
-      return Promise.reject(new DOMException('Pointer Lock pausado ate pressionar F9', 'NotAllowedError'));
+      touchFullscreenPolicy.lastReason = 'automatic pointer relock suppressed; press F9';
+      return Promise.reject(new DOMException('Captura pausada ate F9', 'NotAllowedError'));
     };
   }
   document.addEventListener('pointerlockchange', function () {
-    if (document.pointerLockElement) {
-      nativeLockTarget = document.pointerLockElement;
+    const current = document.pointerLockElement;
+    if (current) {
+      nativeLockTarget = current;
+      nativeLockSeen = true;
+      f9Released = false;
       f9RelockPending = false;
+      touchFullscreenPolicy.lastReason = 'native pointer lock active';
+    } else if (nativeLockSeen) {
+      // O navegador pode liberar a captura sem evento de F9.
+      f9Released = true;
+      f9RelockPending = false;
+      touchFullscreenPolicy.lastReason = 'pointer released; F9 required to resume';
     }
   }, true);
   document.addEventListener('keydown', function (e) {
@@ -807,7 +817,6 @@
       document.querySelector('video[src^="blob:"][autoplay], video[data-testid*="stream"]'));
     if (!playing) return;
     touchFullscreenPolicy.f9Observed++;
-    // Evita que outro handler de F9 no xCloud reverta imediatamente a acao.
     e.preventDefault();
     e.stopImmediatePropagation();
     if (document.pointerLockElement) {
@@ -820,14 +829,14 @@
     if (f9RelockPending) return;
     if (!nativeLockTarget || !nativeLockTarget.isConnected ||
         typeof originalRequestPointerLock !== 'function') {
-      // Sem alvo conhecido: permitir que o xCloud capture no proximo gesto.
-      f9Released = false;
-      touchFullscreenPolicy.lastReason = 'F9: native lock target unavailable';
+      touchFullscreenPolicy.lastReason = 'F9: native target unavailable; click game to initialize';
+      // Nao autorizar capturas automaticas quando ja houve uma captura.
+      if (!nativeLockSeen) f9Released = false;
       return;
     }
     f9Released = false;
     f9RelockPending = true;
-    touchFullscreenPolicy.lastReason = 'F9: request native pointer lock';
+    touchFullscreenPolicy.lastReason = 'F9: explicit native pointer lock request';
     try {
       const result = originalRequestPointerLock.call(nativeLockTarget);
       if (result && typeof result.then === 'function') {
