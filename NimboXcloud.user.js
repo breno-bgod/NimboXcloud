@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.46
+// @version      3.6.47
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.46';
+  const VER = '3.6.47';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2455,7 +2455,7 @@
   }
   // Respeita o pedido de áudio feito pelo próprio xCloud. Não inicia chat nem cria conexão.
   const nxVoiceTracks = new Set();
-  let nxMicDiagnosticRequest = false;
+  let nxNativeGetUserMedia = null;
   let nxPttHeld = false;
   function applyVoiceMute() {
     const allowed = getPref(LS_MIC_MUTE, '0') !== '1' && (getPref(LS_MIC_PTT, '0') !== '1' || nxPttHeld);
@@ -2471,11 +2471,12 @@
     if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') return;
     const media = navigator.mediaDevices;
     const original = media.getUserMedia.bind(media);
+    nxNativeGetUserMedia = original;
     if (media.getUserMedia.__nxMicRouter) return;
     const routed = function (constraints) {
       const selected = getPref(LS_MIC_DEVICE, '');
       const enabled = getPref(LS_MIC_ENABLED, '0') === '1';
-      if (nxMicDiagnosticRequest || !enabled || !constraints || !constraints.audio) return original(constraints);
+      if (!enabled || !constraints || !constraints.audio) return original(constraints);
       const audio = constraints.audio === true ? {} : Object.assign({}, constraints.audio);
       // A escolha do usuário substitui somente o dispositivo, mantendo demais opções do site.
       if (selected) audio.deviceId = { ideal: selected };
@@ -2557,10 +2558,8 @@
         autoGainControl: getPref(LS_MIC_AGC, '1') === '1'
       };
       if (deviceId) constraints.deviceId = { ideal: deviceId };
-      let stream;
-      nxMicDiagnosticRequest = true;
-      try { stream = await navigator.mediaDevices.getUserMedia({ audio: constraints, video: false }); }
-      finally { nxMicDiagnosticRequest = false; }
+      const capture = nxNativeGetUserMedia || navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      const stream = await capture({ audio: constraints, video: false });
       if (request !== micRequestId || isInGame()) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
       micTestStream = stream;
       await refreshMicDevices();
