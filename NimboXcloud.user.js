@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.30
+// @version      4.12.31
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.30';
+  const VER = '4.12.31';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1648,6 +1648,18 @@
     }
   }
 
+  // Drawer lateral mobile: mantém a maior parte do jogo visível.
+  function nxCompactMobile() { return innerWidth <= 950 && (navigator.maxTouchPoints || 0) > 0; }
+  function nxPositionMobileDrawer() {
+    if (!wrap) return;
+    const w = Math.min(320, Math.max(240, Math.round(innerWidth * .42)));
+    wrap.style.left = '8px'; wrap.style.right = 'auto'; wrap.style.top = '8px';
+    wrap.style.bottom = 'auto'; wrap.style.width = w + 'px';
+    wrap.style.alignItems = 'stretch'; wrap.style.display = 'flex';
+    if (cardEl) { cardEl.style.maxWidth = '100%'; cardEl.style.maxHeight = Math.max(170, innerHeight - 16) + 'px'; }
+    if (pillEl) pillEl.style.display = 'inline-flex';
+    if (nxLibraryButton) nxLibraryButton.style.display = 'none';
+  }
   function syncNXPlacement() {
     if (!wrap || !wrap.isConnected) return;
     const playing = isInGame();
@@ -1659,6 +1671,7 @@
       if (pickEl) pickEl.style.display = 'none';
     }
     if (playing) {
+      if (nxCompactMobile()) { if (micTestStream) stopMicrophoneTest(); nxPositionMobileDrawer(); return; }
       if (micTestStream) stopMicrophoneTest(); // Nunca manter a captura de diagnóstico durante a sessão.
       const gameAnchor = findInGameToolbar();
       if (gameAnchor && gameAnchor.parentElement) {
@@ -3124,7 +3137,7 @@
       root.appendChild(touchQuick);
       const nav = mk('div','display:flex;flex-direction:column;gap:5px;margin:12px 0');
       const navGroups = [
-        { title: 'Jogo e controles', ids: ['stream','controls'] },
+        { title: 'Jogo e controles', ids: ['controls','stream'] },
         { title: 'Áudio e acessórios', ids: ['audio','voice'] },
         { title: 'Conexão e sistema', ids: ['region','remote','advanced'] }
       ];
@@ -3557,8 +3570,8 @@
       }), true);
       g1.add(r1);
       liveDesc(r1, function () { return 'Detectado: ' + S.deviceDetected + '. Não altera o User-Agent nem os controles.'; });
-      g1.add(setRow('Aplicar perfil', 'Ajusta qualidade e limite de bitrate conforme o perfil (próxima sessão).',
-        actBtn('Aplicar', function () { applyDeviceProfile(); renderBody(); toast('Perfil aplicado · próxima partida'); }, 'primary')));
+      g1.add(infoRow('Dispositivo detectado', function () { return detectedDeviceProfile(); },
+        'Seleção automática. Não reduz qualidade ou bitrate.'));
       root.appendChild(g1.root);
 
       const g2 = group('Entradas detectadas');
@@ -4004,7 +4017,7 @@
       lab.add(infoRow('Tela cheia', function () { return document.fullscreenElement || document.webkitFullscreenElement ? 'Ativa' : 'Desativada'; }));
       lab.add(setRow('Tela cheia e horizontal', 'O navegador exige um toque ou clique para entrar em tela cheia; a orientação horizontal é solicitada quando suportada.',
         actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'primary')));
-      lab.add(setRow('Perfil de plataforma', 'Automático preserva a identidade nativa do dispositivo. Android e Desktop solicitam experiências específicas quando o cliente permite; Console permanece experimental. A escolha não garante reconhecimento pelo servidor.',
+      lab.add(setRow('Identidade experimental (avançado)', 'Não é o perfil do aparelho: altera a identidade JS/experiência solicitada ao serviço. Automático preserva o navegador nativo. Pode causar incompatibilidades.',
         chips([{k:'off',label:'Automático'},{k:'android',label:'Android'},{k:'windows',label:'Desktop'},{k:'xbox',label:'Console'}],
           nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
       lab.add(setRow('Fortnite: experiência de console (experimental)',
@@ -4394,7 +4407,7 @@
       }
     }
     if (openUI) {
-      syncNXPlacement(); fitCard(); renderBody(); update();
+      syncNXPlacement(); if (!nxCompactMobile()) fitCard(); renderBody(); update();
       if(!wasOpen){
         // Teclado e controle podem operar o menu sem enviar comandos ao jogo.
         if(!cardEl.hasAttribute('tabindex'))cardEl.setAttribute('tabindex','-1');
@@ -5292,9 +5305,9 @@
     const pref = getPref(LS_DEVICE_PROFILE, 'auto');
     const mode = pref === 'auto' ? detectedDeviceProfile() : pref;
     // Configuração explícita, sem modificar User-Agent, pointer lock, gamepads ou touch.
-    const bitrate = mode === 'mobile' ? 'b8' : (mode === 'dex' ? 'b12' : 'auto');
-    setPref(LS_BITRATE, bitrate);
-    setPref(LS_RES, mode === 'mobile' ? 'r720' : 'auto');
+    // O perfil de dispositivo é informativo; não reduz bitrate nem resolução.
+    // A escolha do dispositivo não modifica a resolução definida pelo jogador.
+    // Preserva 1080p/1080p HQ e não aplica 720p automaticamente.
     pushLog('device', 'Perfil ' + mode + ' aplicado (qualidade/limite SDP; próxima sessão)');
     update();
   }
