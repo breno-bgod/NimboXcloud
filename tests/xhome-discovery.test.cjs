@@ -8,11 +8,11 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,startSession:nxRemoteStartSession};';
 function harness(fetchImpl, storageOverride) {
   const ctx = {
     AbortController, URL, Date, setTimeout, clearTimeout,
-    fetch: fetchImpl, tabId: 'other', renderBody() {},
+    fetch: fetchImpl, tabId: 'other', renderBody() {}, navigator:{language:'pt-BR'},
     localStorage: {
       getItem(k) { return k === 'xboxcom_xbl_user_info' ? JSON.stringify({tokens:{'http://gssv.xboxlive.com/':{token:'TEST_GSSV'}}}) : null; },
       get length() { return 0; }
@@ -232,4 +232,44 @@ test('wrong relyingParty token: do not send token to xHome',async()=>{
   await api.discover();
   assert.equal(n,0);
   assert.match(api.state.error,/GSSV/);
+});
+
+test('session: valid selected console requests xHome play without leaking bearer in state',async()=>{
+  const calls=[];
+  const api=harness(async(url,opts)=>{
+    calls.push({url,opts});
+    if(calls.length===1)return ok(login);
+    return ok({sessionId:'12345678-1234-1234-1234-123456789abc',state:'Provisioning'});
+  });
+  api.state.consoles=[{id:'console-1',name:'Xbox'}];
+  api.state.selectedId='console-1';
+  api.state.regionShortName='wus';
+  await api.startSession();
+  assert.equal(calls.length,2);
+  assert.match(calls[1].url,/^https:\/\/wus\.core\.gssv-play-prodxhome\.xboxlive\.com\/v5\/sessions\/home\/play$/);
+  assert.equal(JSON.parse(calls[1].opts.body).serverId,'console-1');
+  assert.equal(calls[1].opts.redirect,'error');
+  assert.equal(api.state.sessionStatus,'created');
+  assert.ok(!JSON.stringify(api.state).includes('TEST_BEARER'));
+});
+test('session: invalid region blocks all network requests',async()=>{
+  let n=0;
+  const api=harness(async()=>{n++;throw Error('unexpected request');});
+  api.state.consoles=[{id:'console-1'}];
+  api.state.selectedId='console-1';
+  api.state.regionShortName='wus.attacker.test';
+  await api.startSession();
+  assert.equal(n,0);
+  assert.match(api.state.error,/Região/);
+});
+test('session: HTTP rejection never reports created',async()=>{
+  let n=0;
+  const api=harness(async()=>++n===1?ok(login):{ok:false,status:403});
+  api.state.consoles=[{id:'console-1'}];
+  api.state.selectedId='console-1';
+  api.state.regionShortName='wus';
+  await api.startSession();
+  assert.equal(n,2);
+  assert.equal(api.state.sessionStatus,'failed');
+  assert.match(api.state.error,/403/);
 });
