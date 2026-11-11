@@ -8,7 +8,7 @@
 
 NimboXcloud is an unofficial, open-source userscript for [Xbox Cloud Gaming](https://play.xbox.com/). It experiments with local region settings, streaming data-center preferences, video quality negotiation, IPv4 filtering, and connection diagnostics, with particular attention to **Android, Samsung DeX, and Windows**. It runs on the official website and **is not an independent cloud gaming service**.
 
-> **Current status:** version **3.6.37**, experimental. Implemented code does not guarantee compatibility with every xCloud release. End-to-end streaming tests on different devices have not yet been documented.
+> **Audited code version:** **4.12.16**, experimental. Implemented code does not guarantee compatibility with every xCloud release. End-to-end streaming tests on different devices have not yet been documented.
 
 ## About the developer
 
@@ -23,6 +23,31 @@ NimboXcloud is **open-source software under the MIT License**. You may read, stu
 **My request:** if NimboXcloud helps or inspires your work, please acknowledge **KReight / NimboXcloud** in your credits or acknowledgments and, if possible, link to this repository. This is a **courtesy request**, not an additional legal requirement beyond the MIT License.
 
 **License requirement:** copies and substantial portions of the software must retain applicable copyright and MIT license notices, including notices for reused third-party code. Acknowledgment does not transfer authorship of the original code or imply endorsement by its authors. See [LICENSE](./LICENSE).
+
+## Features identified in code (v4.12.16)
+
+**Status:** code presence does not imply successful real-world streaming. Experimental items are labeled; the service controls actual video quality and entitlements.
+
+| Area | Present in code | Limitations |
+| --- | --- | --- |
+| Streaming/network | 720p, 1080p/Windows, experimental HQ/Tizen; automatic or SDP bitrate caps; data-center selection, historical RTT preference, optional IPv4-only ICE candidates | Delivered quality is not guaranteed; HQ/Tizen may affect native touch |
+| Region | Experimental market/territory and cookie adjustments | Does not guarantee access or catalog entitlements |
+| Video | Original/Balanced/Vivid/Custom, contrast, saturation, fit modes, fullscreen, PNG screenshot, background-tab filter savings | “Sharpness” is contrast, **not** CAS/FSR/DLSS/upscaling |
+| Audio | Volume/mute, output selection where supported, 10-band EQ, FPS/racing/cinema/music/dialogue presets, compressor, normalization, limiter, dialogue boost, mono, L/R balance | Separate game/chat volume unavailable for a mixed stream |
+| Inputs/HUD | Gamepad/touch/mouse/keyboard diagnostics, experimental analog curves, draggable layout preview, per-game presets, backup/import/export, experimental native HUD CSS repositioning | Native HUD matching is best-effort; no independent virtual keyboard/mouse confirmed |
+| Gyroscope | Sensor preview, calibration, inversion/smoothing/deadzone, experimental gamepad-axis contribution, LT/always activation | Preview-only settings are distinct from game output; gameplay validation pending |
+| Microphone/haptics | Microphone selection/test, meter, noise/echo/AGC, mute, push-to-talk; local phone/controller vibration tests | Voice requires xCloud support; tests do not control server rumble |
+| Xbox lab | Original/Android/Desktop/Xbox/Smart TV profiles, session/identity diagnostics, experimental Xbox Shell, report export | Xbox/TV profiles preserve native identity; **no real Xbox hardware/authentication emulation or console catalog unlock** |
+| Telemetry/UI | NX panel, FPS/RTT/jitter/loss/bitrate/resolution/codec/dropped frames/server stats, logs, shortcuts, recovery and local settings | Metrics and session outcomes require authenticated testing |
+
+### Not completed or not demonstrated
+
+- Full new-xCloud compatibility and reproducible Android/DeX/Windows streaming tests.
+- Stable in-game gyro and universal native touch-HUD repositioning.
+- Full touch keyboard/mouse overlay, steering-wheel pedals, contextual aim assist: **not confirmed in this userscript**.
+- Real CAS/FSR/DLSS upscaling, frame generation, universal spatial audio: **not implemented**.
+- Working integrated Remote Play: **not confirmed**.
+- Real Xbox device identity, server authorization, or console-only catalog access: **not demonstrated**.
 
 ## Features
 
