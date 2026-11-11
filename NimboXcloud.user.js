@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.13
+// @version      4.12.14
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.13';
+  const VER = '4.12.14';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1332,14 +1332,26 @@
     const next = nodes[(index < 0 ? (direction > 0 ? 0 : nodes.length - 1) : (index + direction + nodes.length) % nodes.length)];
     if (next) { next.focus({preventScroll:true}); next.scrollIntoView({block:'nearest',behavior:'auto'}); nxShellStats.moves++; }
   }
+  // Menu + View por 0,7s: abre o painel sem depender do toque.
+  let nxShellShortcutSince = 0, nxShellShortcutLatched = false;
   function nxShellGamepadPoll() {
-    if (!nxShellEnabled || !openUI || !cardEl || !cardEl.isConnected || document.hidden || !navigator.getGamepads) {
+    if (!nxShellEnabled || !cardEl || !cardEl.isConnected || document.hidden || !navigator.getGamepads) {
       nxShellPrevButtons = []; nxShellPrevAxis = 0; nxShellHeldSince = 0; nxShellNeedsRelease = true; return;
     }
     try {
       const pad = Array.from(navigator.getGamepads()).filter(Boolean)[0];
       if (!pad) { nxShellPrevButtons = []; nxShellPrevAxis = 0; nxShellNeedsRelease = true; return; }
       const pressed = (pad.buttons || []).map(function (b) { return !!(b && b.pressed); });
+      const shortcut = pressed[8] && pressed[9];
+      if (shortcut) {
+        if (!nxShellShortcutSince) nxShellShortcutSince = Date.now();
+        if (!nxShellShortcutLatched && Date.now() - nxShellShortcutSince >= 700) {
+          nxShellShortcutLatched = true;
+          setOpen(!openUI, true);
+          nxShellNeedsRelease = true;
+        }
+      } else { nxShellShortcutSince = 0; nxShellShortcutLatched = false; }
+      if (!openUI) { nxShellPrevButtons = pressed; nxShellPrevAxis = 0; return; }
       const axis = pad.axes && Math.abs(pad.axes[1] || 0) > .65 ? Math.sign(pad.axes[1]) : 0;
       // Avoid a held gamepad button opening the panel and immediately activating a control.
       const anyInput = pressed.some(Boolean) || (pad.axes || []).some(function (v) { return Math.abs(v || 0) > .65; });
@@ -3461,6 +3473,9 @@
           toast(v.label);
           renderBody();
         }, 'primary')));
+      lab.add(setRow('Telemetria sobre o jogo', 'Exibe FPS, RTT, perda, servidor e etapas de carregamento fora do painel. Tempo exibido é decorrido, não estimativa.',
+        chips([{k:'on',label:'Ativar'},{k:'off',label:'Desativar'}], nxTelemetryEnabled?'on':'off', function(k){nxTelemetryToggle(k==='on');renderBody();}),true));
+      lab.add(infoRow('Atalho do controle', function(){return nxShellEnabled?'View + Menu (segurar 0,7 s)':'Disponível no perfil Xbox';}));
       lab.add(infoRow('Entrada preferencial', function () { return nxPlatformProfile.input; }));
       lab.add(infoRow('Oferta xCloud observada', function () { const e = nxOfferingTrace[nxOfferingTrace.length-1]; return e ? e.offering + ' · HTTP ' + e.status : 'Aguardando autenticação'; }));
       lab.add(infoRow('Ofertas observadas', function () { return nxOfferingTrace.length ? Array.from(new Set(nxOfferingTrace.map(function(e){return e.offering;}))).join(', ') : 'Nenhuma'; }));
@@ -3676,6 +3691,47 @@
     return wrap;
   }
 
+  // HUD independente do painel, sem interferir com o fluxo do jogo.
+  const NX_TELEMETRY_KEY = 'nx.telemetry.overlay.v1';
+  let nxTelemetryEnabled = (function(){try{return localStorage.getItem(NX_TELEMETRY_KEY)==='1';}catch(_){return false;}})();
+  let nxTelemetryEl = null, nxLoadingStarted = 0, nxLoadingLastStage = '';
+  function nxTelemetryEnsure() {
+    if (nxTelemetryEl && nxTelemetryEl.isConnected) return nxTelemetryEl;
+    const host = document.body || document.documentElement;
+    if (!host) return null;
+    nxTelemetryEl = document.createElement('div');
+    nxTelemetryEl.id = 'nx-telemetry-overlay';
+    nxTelemetryEl.setAttribute('aria-label','Telemetria NimboXcloud');
+    nxTelemetryEl.style.cssText = 'position:fixed;left:12px;top:12px;z-index:2147483000;pointer-events:none;background:rgba(9,14,23,.83);color:#eaf4ff;border:1px solid rgba(130,177,230,.3);border-radius:10px;padding:9px 12px;font:12px/1.6 system-ui,sans-serif;white-space:pre-line;max-width:min(390px,calc(100vw - 24px));box-shadow:0 4px 22px #0007';
+    host.appendChild(nxTelemetryEl);
+    return nxTelemetryEl;
+  }
+  function nxTelemetryTick() {
+    if (!nxTelemetryEnabled || document.hidden) { if(nxTelemetryEl) nxTelemetryEl.style.display='none'; return; }
+    const elx = nxTelemetryEnsure();
+    if (!elx) return;
+    const h = nxSessionHealth(), trace = nxSessionTrace;
+    const last = trace.length ? trace[trace.length-1] : null;
+    const stage = last ? last.stage : '';
+    if (stage !== nxLoadingLastStage) { nxLoadingLastStage = stage; nxLoadingStarted = Date.now(); }
+    const q = S.qos || {};
+    const stream = h.state === 'streaming';
+    const lines = ['NIMBOXCLOUD  •  ' + (stream ? 'TRANSMISSÃO' : 'CONEXÃO')];
+    lines.push('Estado: ' + (stream ? 'Vídeo recebido' : h.explanation));
+    if (last) lines.push('Etapa: ' + stage + '  •  HTTP ' + last.status);
+    if (!stream && last) lines.push('Nesta etapa: ' + Math.floor((Date.now()-nxLoadingStarted)/1000) + ' s (não é previsão)');
+    lines.push('Servidor: ' + (S.serverActual || 'Não identificado'));
+    lines.push('FPS: ' + fmtN(q.decodedFps || q.fps,'') + '  •  RTT: ' + fmtN(q.rtt,' ms'));
+    lines.push('Perda: ' + fmtN(curLoss(),'%') + '  •  Bitrate: ' + fmtN(q.bitrate || q.bitrateMbps,' Mbps'));
+    elx.textContent = lines.join('\n');
+    elx.style.display = openUI ? 'none' : 'block';
+  }
+  setInterval(nxTelemetryTick, 1000);
+  function nxTelemetryToggle(enabled) {
+    nxTelemetryEnabled = !!enabled;
+    try { localStorage.setItem(NX_TELEMETRY_KEY,enabled?'1':'0'); } catch (_) {}
+    nxTelemetryTick();
+  }
   function setOpen(v, byUser) {
     openUI = !!v;
     if (byUser) userTouched = true;
