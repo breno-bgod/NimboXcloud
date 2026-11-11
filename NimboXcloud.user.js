@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.40
+// @version      3.6.41
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.40';
+  const VER = '3.6.41';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1188,6 +1188,38 @@
     return null;
   }
 
+  function toolbarExpanded(anchor) {
+    if (!anchor || !anchor.isConnected) return false;
+    let n = anchor;
+    for (let i = 0; n && i < 5; i++, n = n.parentElement) {
+      const st = getComputedStyle(n);
+      if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) < 0.15) return false;
+      if (n !== anchor && st.pointerEvents === 'none') return false;
+    }
+    const r = anchor.getBoundingClientRect();
+    return r.width >= 20 && r.height >= 20 && r.top >= 0 && r.left >= 0 && r.right <= innerWidth;
+  }
+  function positionNXCard(anchor) {
+    if (!wrap || !anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const width = Math.min(348, Math.max(240, innerWidth - 16));
+    const left = Math.max(8, Math.min(innerWidth - width - 8, r.left));
+    const below = r.bottom + 10;
+    const above = r.top - 10;
+    const spaceBelow = innerHeight - below - 8;
+    const useBelow = spaceBelow >= 280 || spaceBelow >= above - 8;
+    wrap.style.width = width + 'px';
+    wrap.style.left = left + 'px';
+    wrap.style.right = 'auto';
+    wrap.style.top = (useBelow ? Math.max(8, below) : 8) + 'px';
+    wrap.style.bottom = 'auto';
+    wrap.style.alignItems = 'stretch';
+    if (cardEl) {
+      cardEl.style.marginTop = '0';
+      cardEl.style.maxHeight = Math.max(160, Math.min(640, useBelow ? spaceBelow : above - 16)) + 'px';
+    }
+  }
+
   function syncNXPlacement() {
     if (!wrap || !wrap.isConnected) return;
     const playing = isInGame();
@@ -1204,31 +1236,24 @@
         if (!nxLibraryButton) nxLibraryButton = buildLibraryButton();
         if (nxLibraryButton.parentElement !== gameAnchor.parentElement ||
             nxLibraryButton.previousElementSibling !== gameAnchor) gameAnchor.after(nxLibraryButton);
-        nxLibraryButton.style.display = 'inline-flex';
+        const expanded = toolbarExpanded(gameAnchor);
+        nxLibraryButton.style.display = expanded ? 'inline-flex' : 'none';
         nxLibraryButton.title = 'Abrir NimboXcloud durante a partida';
-        wrap.style.display = 'flex';
-        wrap.style.position = 'fixed';
-        wrap.style.transform = 'none';
-        wrap.style.left = 'auto';
-        wrap.style.right = '12px';
-        wrap.style.top = Math.min(innerHeight - 48,
-          Math.max(44, nxLibraryButton.getBoundingClientRect().bottom + 8)) + 'px';
-        wrap.style.alignItems = 'flex-end';
-        const br = nxLibraryButton.getBoundingClientRect();
-        const visible = br.width >= 18 && br.height >= 18 && br.top >= 0 &&
-          br.bottom <= innerHeight && br.left >= 0 && br.right <= innerWidth;
-        if (pillEl) pillEl.style.display = visible ? 'none' : 'inline-flex';
+        // O botão NX deve recolher junto com a barra nativa. Painel aberto permanece acessível.
+        wrap.style.display = openUI ? 'flex' : 'none';
+        if (pillEl) pillEl.style.display = 'none';
+        if (openUI) positionNXCard(nxLibraryButton);
       } else {
-        // O xCloud muda seu DOM com frequência; mantém acesso se a barra não for encontrada.
+        // Enquanto a barra nativa está recolhida, não deixar um ícone independente na tela.
         if (nxLibraryButton) nxLibraryButton.style.display = 'none';
-        wrap.style.display = 'flex';
-        wrap.style.position = 'fixed';
-        wrap.style.transform = 'none';
-        wrap.style.left = 'auto';
-        wrap.style.right = '12px';
-        wrap.style.top = '12px';
-        wrap.style.alignItems = 'flex-end';
-        if (pillEl) pillEl.style.display = 'inline-flex';
+        if (pillEl) pillEl.style.display = 'none';
+        wrap.style.display = openUI ? 'flex' : 'none';
+        if (openUI) {
+          wrap.style.left = '8px'; wrap.style.right = 'auto'; wrap.style.top = '58px';
+          wrap.style.width = Math.min(348, innerWidth - 16) + 'px';
+          wrap.style.alignItems = 'stretch';
+          if (cardEl) cardEl.style.maxHeight = Math.max(160, innerHeight - 70) + 'px';
+        }
       }
       return;
     }
@@ -2056,7 +2081,7 @@
     if (byUser) userTouched = true;
     if (!cardEl) return;
     cardEl.style.display = openUI ? 'flex' : 'none';
-    if (openUI) { fitCard(); renderBody(); update(); }
+    if (openUI) { syncNXPlacement(); if (!isInGame()) fitCard(); renderBody(); update(); }
   }
 
   function schedule() {
