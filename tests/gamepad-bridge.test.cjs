@@ -25,9 +25,9 @@ function boot(settings, nativePads, configure) {
     getPref: (key, fallback) => Object.hasOwn(store, key) ? store[key] : fallback,
     setPref: (key, value) => { store[key] = value; }
   };
-  const source = bridgeSource + '\n globalThis.__testBridge = nxInputBridge; globalThis.__restore = nxRestoreNativeGamepads; globalThis.__status = nxInputBridgeStatus;';
+  const source = bridgeSource + '\n globalThis.__testBridge = nxInputBridge; globalThis.__restore = nxRestoreNativeGamepads; globalThis.__status = nxInputBridgeStatus; globalThis.__install = nxInstallInputBridge;';
   vm.runInNewContext(source, ctx, { timeout: 1000 });
-  return { navigator, store, bridge: ctx.__testBridge, restore: ctx.__restore, status: ctx.__status, nativeGet };
+  return { navigator, store, bridge: ctx.__testBridge, restore: ctx.__restore, status: ctx.__status, install: ctx.__install, nativeGet };
 }
 test('native Gamepad API is untouched when experimental modules are disabled', () => {
   const a = boot({}, []);
@@ -98,5 +98,12 @@ test('repeated bridge installation never replaces an existing owner', () => {
   const original = a.navigator.getGamepads;
   assert.equal(a.bridge.installed, true);
   // A segunda chamada deve preservar o wrapper da própria ponte.
+  a.install();
+  assert.equal(a.navigator.getGamepads, original);
   assert.equal(original, a.bridge.wrapper);
+  const foreign = () => [];
+  a.navigator.getGamepads = foreign;
+  a.install();
+  assert.equal(a.navigator.getGamepads, foreign);
+  assert.equal(a.bridge.foreignOverride, true);
 });
