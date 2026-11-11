@@ -240,3 +240,9 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Limpeza de peer em cancelamento/falha. Adicionado teste mockado de oferta e resposta SDP, total 23 cenários escritos. Parse do userscript via `new Function` PASS; execução dos testes Node e conexão Xbox real não confirmadas.
 - Fonte técnica: https://github.com/Geocld/XStreaming/blob/main/docs/3.Stream.md, seções 3.4–3.7. Implementação própria, sem copiar código AGPL.
 - PENDENTE para jogabilidade: ICE candidates (POST/GET `/ice`), monitoramento de estado da conexão, renderização vídeo/áudio, canais de entrada, keepalive e encerramento de sessão; testes autenticados em Chrome/Edge e CI.
+
+## 2026-11-11 — xHome: primeira troca ICE (experimental)
+- Commits `ead9dfa6d4a8e088ba507343abb0f0d3cc38711b`, `a40f38a74740ed7db9152187c7c6e8cfabff110a` e `896d905785c12991021a352085d654378e130757`.
+- Após SDP answer, RTCPeerConnection coleta candidatos ICE locais com listener instalado ANTES de createOffer, consulta GET `/v5/sessions/home/{sessionId}/ice`, aceita array ou objeto `candidates` e aplica candidatos remotos válidos via `addIceCandidate`. Candidatos locais acumulados são enviados via POST `/ice`; estado do peer reporta `connected`/`failed`/`closed` sem declarar mídia pronta.
+- Adicionado teste mockado de candidato ICE remoto; teste SDP anterior atualizado para a chamada GET adicional. Total 24 cenários escritos. Sintaxe do userscript via `new Function` PASS. Node/CI e sessão real não verificados.
+- ATENÇÃO: formato JSON exato de ICE do serviço xHome e cadência de trickle ICE não foram validados com captura real; GET único e fila local inicial não cobrem candidatos posteriores. Não há player de vídeo/áudio nem input jogável. Necessário corrigir protocolo e implementar loop de ICE, renderização, controles e teardown antes de considerar Remote Play funcional.
