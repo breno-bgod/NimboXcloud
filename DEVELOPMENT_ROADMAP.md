@@ -246,3 +246,10 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Após SDP answer, RTCPeerConnection coleta candidatos ICE locais com listener instalado ANTES de createOffer, consulta GET `/v5/sessions/home/{sessionId}/ice`, aceita array ou objeto `candidates` e aplica candidatos remotos válidos via `addIceCandidate`. Candidatos locais acumulados são enviados via POST `/ice`; estado do peer reporta `connected`/`failed`/`closed` sem declarar mídia pronta.
 - Adicionado teste mockado de candidato ICE remoto; teste SDP anterior atualizado para a chamada GET adicional. Total 24 cenários escritos. Sintaxe do userscript via `new Function` PASS. Node/CI e sessão real não verificados.
 - ATENÇÃO: formato JSON exato de ICE do serviço xHome e cadência de trickle ICE não foram validados com captura real; GET único e fila local inicial não cobrem candidatos posteriores. Não há player de vídeo/áudio nem input jogável. Necessário corrigir protocolo e implementar loop de ICE, renderização, controles e teardown antes de considerar Remote Play funcional.
+
+## 2026-11-11 — xHome: reprodução WebRTC local e encerramento
+- Commits `7d17b0ca0f89925398444e8a0fc1d107860889b5` e `374637af85d87d544fcbef8609cb72447a3bde56`.
+- RTCPeerConnection recebe listener `ontrack` quando `MediaStream` disponível; agrega tracks sem duplicar IDs, associa stream a `<video>` persistente no painel NX com autoplay, playsInline e controles. Play pode ser bloqueado por política do navegador e é tratado sem erro fatal.
+- `nxRemoteStop()` fecha peer, interrompe tracks, desassocia player e limpa estado local mesmo após `busy=false`; botão de encerramento local. Não envia DELETE ao servidor Xbox (sessão remota pode persistir).
+- Teste novo de encerramento pós-conexão: total 25 cenários escritos. Parse integral do userscript via `new Function` PASS. Execução Node/CI e sessão real Xbox não confirmadas.
+- Pendências críticas: troca ICE contínua e formato do protocolo real, controles input via datachannel, fechamento da sessão no servidor, timeout/autoplay e testes em Chrome/Edge. Não declarar Remote Play jogável.
