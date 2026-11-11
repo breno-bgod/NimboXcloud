@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.33
+// @version      3.6.34
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.33';
+  const VER = '3.6.34';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1140,7 +1140,7 @@
         nxLibraryButton.setAttribute('aria-label', 'Abrir painel NimboXcloud');
         nxLibraryButton.innerHTML = '';
         const libraryIcon = document.createElement('img');
-        libraryIcon.src = brandIcon.src;
+        libraryIcon.src = (pillEl && pillEl.querySelector('img') && pillEl.querySelector('img').src) || '';
         libraryIcon.alt = '';
         libraryIcon.draggable = false;
         libraryIcon.style.cssText = 'display:block;width:19px;height:19px;object-fit:contain';
