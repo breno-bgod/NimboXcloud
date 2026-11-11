@@ -2963,6 +2963,12 @@
       if(typeof RTCPeerConnection==='function'){
         const peer=new RTCPeerConnection();
         nxRemotePlay.peer=peer;
+        const localIceCandidates=[];
+        peer.onicecandidate=function(event){
+          if(!event || !event.candidate || requestId!==nxRemotePlay.requestId || controller.signal.aborted)return;
+          const c=event.candidate;
+          localIceCandidates.push({candidate:c.candidate,sdpMid:c.sdpMid,sdpMLineIndex:c.sdpMLineIndex});
+        };
         peer.addTransceiver('audio',{direction:'recvonly'});
         peer.addTransceiver('video',{direction:'recvonly'});
         peer.createDataChannel('input',{ordered:false,maxRetransmits:0});
@@ -3005,7 +3011,6 @@
         nxRemotePlay.sessionStatus='sdp-ready';
         nxRemotePlay.status='SDP negociado. Preparando candidatos ICE…';
         // ICE candidates may arrive before or after the SDP answer.
-        const candidates=[];
         const iceSend=async function(candidate){
           check();
           const res=await fetch(sessionUrl+'/ice',{
@@ -3015,12 +3020,6 @@
           });check();
           if(!res.ok)throw new Error('Envio ICE recusado (HTTP '+res.status+').');
         };
-        peer.onicecandidate=function(event){
-          if(!event || !event.candidate || requestId!==nxRemotePlay.requestId || controller.signal.aborted)return;
-          const c=event.candidate;
-          candidates.push({candidate:c.candidate,sdpMid:c.sdpMid,sdpMLineIndex:c.sdpMLineIndex});
-        };
-        // Local candidates gathered before this handler are represented in localDescription SDP.
         // Remote candidates are accepted only as valid candidate objects.
         const iceRes=await fetch(sessionUrl+'/ice',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});check();
         if(!iceRes.ok)throw new Error('Consulta ICE recusada (HTTP '+iceRes.status+').');
@@ -3034,7 +3033,7 @@
             await peer.addIceCandidate(candidate);check();
           }
         }
-        for(const candidate of candidates){await iceSend(candidate);}
+        for(const candidate of localIceCandidates){await iceSend(candidate);}
         nxRemotePlay.sessionStatus='ice-pending';
         nxRemotePlay.status='Candidatos ICE processados; aguardando conexão WebRTC.';
         peer.onconnectionstatechange=function(){
