@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.7.1
+// @version      3.7.2
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.7.1';
+  const VER = '3.7.2';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -121,6 +121,56 @@
       nxConsoleLabState.applied = navigator.userAgent === ua;
     } catch (err) { nxConsoleLabState.error = String(err && err.message || err); }
   }
+  const nxConsoleLabEvents = [];
+  function nxConsoleLabEvent(type, detail) {
+    const entry = { time: new Date().toISOString(), type: type, detail: String(detail || '').slice(0, 180) };
+    if (nxConsoleLabEvents.length && nxConsoleLabEvents[nxConsoleLabEvents.length - 1].type === type &&
+        nxConsoleLabEvents[nxConsoleLabEvents.length - 1].detail === entry.detail) return;
+    nxConsoleLabEvents.push(entry);
+    if (nxConsoleLabEvents.length > 35) nxConsoleLabEvents.shift();
+  }
+  const nxConsoleLabWarnings = [
+    'não há suporte para streaming nesse dispositivo',
+    'nao ha suporte para streaming nesse dispositivo',
+    'streaming is not supported on this device',
+    'device is not supported for streaming'
+  ];
+  function nxConsoleLabWarning() {
+    const candidates = document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="alert"], dialog');
+    for (const node of candidates) {
+      const text = (node.textContent || '').toLowerCase().replace(/\\s+/g, ' ').slice(0, 1000);
+      if (nxConsoleLabWarnings.some(function (w) { return text.includes(w); })) return true;
+    }
+    return false;
+  }
+  function nxConsoleLabCapabilities() {
+    let codecs = null;
+    try { codecs = typeof RTCRtpReceiver !== 'undefined' && RTCRtpReceiver.getCapabilities ?
+      RTCRtpReceiver.getCapabilities('video').codecs.map(function (c) { return c.mimeType; }).filter(function (v,i,a) { return a.indexOf(v) === i; }) : null; } catch (_) {}
+    let mse = null;
+    try { mse = typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"'); } catch (_) {}
+    return {
+      secureContext: window.isSecureContext, webRTC: typeof RTCPeerConnection === 'function',
+      mediaSourceH264: mse, webCodecs: typeof VideoDecoder !== 'undefined',
+      videoCodecs: codecs, touchPoints: navigator.maxTouchPoints || 0,
+      pointerFine: !!(window.matchMedia && matchMedia('(any-pointer:fine)').matches),
+      fullscreenSupported: !!document.fullscreenEnabled,
+      userAgentDataPlatform: navigator.userAgentData ? navigator.userAgentData.platform : null
+    };
+  }
+  function nxConsoleLabFullScreen() {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) Promise.resolve(exit.call(document)).catch(function (e) { nxConsoleLabEvent('fullscreen-error', e.message); });
+      return;
+    }
+    // A página inteira mantém controles e diálogos visíveis; não força orientação nem imita Xbox OS.
+    const target = document.documentElement;
+    const request = target.requestFullscreen || target.webkitRequestFullscreen;
+    if (!request) { nxConsoleLabEvent('fullscreen-unavailable', 'Fullscreen API indisponível'); toast('Tela cheia indisponível neste navegador'); return; }
+    try { Promise.resolve(request.call(target)).then(function () { nxConsoleLabEvent('fullscreen', 'ativado'); }).catch(function (e) { nxConsoleLabEvent('fullscreen-error', e.message); toast('Navegador bloqueou tela cheia'); }); }
+    catch (e) { nxConsoleLabEvent('fullscreen-error', e.message); toast('Navegador bloqueou tela cheia'); }
+  }
   function nxConsoleLabReport() {
     const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
     const note = (function () { try { return localStorage.getItem(LS_CONSOLE_NOTES) || ''; } catch (_) { return ''; } })();
@@ -129,6 +179,10 @@
       applied: nxConsoleLabState.applied, error: nxConsoleLabState.error,
       nativeUserAgent: nxConsoleLabState.nativeUA, pageUserAgent: navigator.userAgent,
       note: note.slice(0, 500), startedAt: nxConsoleLabState.startedAt,
+      unsupportedDeviceDialogDetected: nxConsoleLabWarning(),
+      capabilities: nxConsoleLabCapabilities(),
+      events: nxConsoleLabEvents.slice(),
+      fullscreenActive: !!(document.fullscreenElement || document.webkitFullscreenElement),
       capturedAt: new Date().toISOString(), page: location.origin + location.pathname,
       touchPoints: navigator.maxTouchPoints || 0, controllerCount: navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean).length : null,
       videoPresent: !!video, videoReadyState: video ? video.readyState : null,
@@ -2086,6 +2140,11 @@
       lab.add(infoRow('Perfil desta sessão', function () { return nxConsoleLabState.profile + (nxConsoleLabState.applied ? ' · aplicado' : ' · original'); }));
       lab.add(infoRow('Identidade contém Xbox;', function () { return navigator.userAgent.includes('Xbox;') ? 'Sim' : 'Não'; }));
       lab.add(infoRow('Erro de identidade', function () { return nxConsoleLabState.error || 'Nenhum'; }));
+      lab.add(infoRow('Aviso de incompatibilidade', function () { return nxConsoleLabWarning() ? 'Detectado' : 'Não detectado'; }));
+      lab.add(infoRow('WebRTC / H.264 MSE', function () { const c = nxConsoleLabCapabilities(); return (c.webRTC ? 'Sim' : 'Não') + ' / ' + (c.mediaSourceH264 === null ? 'Indefinido' : c.mediaSourceH264 ? 'Sim' : 'Não'); }));
+      lab.add(infoRow('Tela cheia', function () { return document.fullscreenElement || document.webkitFullscreenElement ? 'Ativa' : 'Desativada'; }));
+      lab.add(setRow('Modo console em tela cheia', 'Expande a página inteira mantendo o painel NX acessível. Não altera a autorização ou o sistema operacional.',
+        actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'primary')));
       lab.add(setRow('Identidade de teste', 'Padrão é desligado. Teste cada perfil na mesma conta e no mesmo jogo.',
         chips([{k:'off',label:'Original'},{k:'xbox',label:'Xbox JS'},{k:'windows',label:'Windows JS'}],
           nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
@@ -2932,6 +2991,21 @@
       'Remote Play: diagnóstico de indisponibilidade; protocolo não integrado'
     ];
     S.deviceDetected = detectedDeviceProfile();
+    // Observa apenas eventos relevantes; não coleta corpos de API, cookies ou tokens.
+    let labLastPath = location.pathname;
+    let labLastWarning = false;
+    setInterval(function () {
+      if (location.pathname !== labLastPath) {
+        labLastPath = location.pathname;
+        nxConsoleLabEvent('navigation', labLastPath);
+      }
+      const warning = nxConsoleLabWarning();
+      if (warning !== labLastWarning) {
+        labLastWarning = warning;
+        nxConsoleLabEvent(warning ? 'unsupported-device-warning' : 'warning-dismissed',
+          warning ? 'Diálogo de incompatibilidade exibido' : 'Diálogo ausente');
+      }
+    }, 1200);
     document.addEventListener('keydown', function (e) {
       if (!e.isTrusted || !e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey || e.repeat) return;
       const a = document.activeElement;
