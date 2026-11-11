@@ -33,3 +33,8 @@ Prioridade de código: confiabilidade da sessão, integridade das requisições,
 - `2ee55f1a`: regressões estáticas para fallback, idempotência e classificação de cancelamentos.
 - **NET-006 não realiza reconexão automática:** o xCloud controla a negociação e reiniciar ICE arbitrariamente poderia quebrar a sessão. Diagnóstico passivo é deliberado.
 - **Status de implementação:** NET-001..005 têm implementações e correções; NET-006 possui monitoramento e classificação, mas recuperação automática não implementada por falta de contrato seguro com o cliente atual. Auditoria real de endpoints, servidor e navegador permanece pendente. Não declarar P03 homologado.
+
+## Revisão de cancelamento e SDP — 2026-11-11
+- `af64755b` v4.11.27: NET-001 evita reconstruir requisições de play já canceladas; NET-003 ignora seções de vídeo SDP rejeitadas (porta zero) e preserva o estilo de quebras de linha do SDP.
+- `dd9768ee`: regressões estáticas atualizadas para NET-001/003.
+- **Limites de homologação:** apenas validação sintática do userscript realizada nesta execução; testes Node e Chrome/Edge/Android não executados. NET-006 permanece diagnóstico passivo; não forçar ICE restart ou repetir POST de sessão sem contrato seguro.
