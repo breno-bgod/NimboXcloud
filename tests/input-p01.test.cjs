@@ -63,3 +63,12 @@ test('INPUT-006 polling errors clear stale gamepad snapshots before retry', () =
   assert.match(code, /catch \(err\) \{\s*nxGamepadMonitor\.errors\+\+;\s*nxGamepadMonitor\.connected = 0;/);
   assert.match(code, /nxGamepadMonitor\.snapshots = \[\];\s*nxGamepadMonitor\.lastSignature = undefined;/);
 });
+
+test('INPUT-006 snapshot processing errors clear stale gamepad state', () => {
+  const start = src.indexOf('  function nxSampleGamepads() {');
+  const end = src.indexOf('  let nxInputDiagnosticsStarted = ', start);
+  assert.ok(start > 0 && end > start);
+  const sample = src.slice(start, end);
+  assert.match(sample, /nxGamepadMonitor\.errors\+\+;\s*nxGamepadMonitor\.connected = 0;\s*nxGamepadMonitor\.active = 0;\s*nxGamepadMonitor\.snapshots = \[\];/);
+  assert.equal((sample.match(/nxGamepadMonitor\.snapshots = \[\];/g) || []).length, 2);
+});
