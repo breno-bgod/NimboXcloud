@@ -2808,7 +2808,7 @@
   nxHudAutoLoadGame();
   // Descoberta xHome: utiliza somente credenciais locais da sessão Xbox autenticada.
   // Não substitui a negociação WebRTC/ICE nem cria uma sessão Remote Play.
-  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[]};
+  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p'};
   function nxRemoteGssvToken() {
     try { const v=JSON.parse(localStorage.getItem('xboxcom_xbl_user_info')||'null');
       const t=v && v.tokens && v.tokens['http://gssv.xboxlive.com/']; if(t && t.token) return t.token; } catch (_) {}
@@ -2848,8 +2848,9 @@
           if(json.results.length){found=json.results;nxRemotePlay.region=String(region.name||region.shortName||region.baseUri);break;}
         } catch (e) {nxRemotePlay.attempts.push('Região indisponível: '+String(e && e.name||'erro'));}
       }
-      nxRemotePlay.consoles=found.map(function(c){return {name:String(c.name||c.serverName||'Xbox'),state:String(c.powerState||c.state||'Desconhecido')};});
-      nxRemotePlay.status=found.length?found.length+' console(s) encontrado(s)':'Nenhum console vinculado encontrado';
+      nxRemotePlay.consoles=found.filter(function(c){return c && typeof c.serverId==='string' && c.serverId.length>0;}).map(function(c){return {id:c.serverId,name:String(c.deviceName||c.name||c.serverName||'Xbox'),type:String(c.consoleType||'Xbox'),state:String(c.powerState||c.state||'Unknown')};});
+      nxRemotePlay.status=nxRemotePlay.consoles.length?nxRemotePlay.consoles.length+' console(s) encontrado(s)':'Nenhum console vinculado encontrado';
+      if(!nxRemotePlay.consoles.some(function(c){return c.id===nxRemotePlay.selectedId;})) nxRemotePlay.selectedId='';
       nxRemotePlay.checkedAt=Date.now();
     } catch(e) { nxRemotePlay.error=String(e && e.message||e);nxRemotePlay.status='Falha na consulta'; }
     finally {nxRemotePlay.busy=false;if(tabId==='remote')renderBody();}
@@ -2864,8 +2865,17 @@
       if(nxRemotePlay.region) root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:5px','Região xHome: '+nxRemotePlay.region));
       if(nxRemotePlay.checkedAt) root.appendChild(mk('div','font-size:10px;color:'+C.dim+';margin-bottom:8px','Última consulta: '+new Date(nxRemotePlay.checkedAt).toLocaleTimeString()));
       if(nxRemotePlay.attempts.length) {const details=mk('details','font-size:11px;color:'+C.dim+';margin-bottom:10px');details.appendChild(mk('summary','cursor:pointer','Diagnóstico da descoberta'));nxRemotePlay.attempts.forEach(function(a){details.appendChild(mk('div','padding:3px 0',a));});root.appendChild(details);}
+      if(nxRemotePlay.consoles.length){
+        const quality=mk('select','padding:8px;border-radius:8px;background:'+C.panel+';color:'+C.text+';border:1px solid '+C.line+';margin-bottom:9px');
+        ['720p','1080p','1080p-hq'].forEach(function(q){const o=document.createElement('option');o.value=q;o.textContent=q==='1080p-hq'?'1080p (HQ)':q;quality.appendChild(o);});
+        quality.value=nxRemotePlay.resolution;quality.addEventListener('change',function(){nxRemotePlay.resolution=quality.value;});
+        root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:5px','Qualidade desejada (para futura sessão)'));root.appendChild(quality);
+      }
       nxRemotePlay.consoles.forEach(function(c){const box=mk('div','padding:10px;margin-bottom:7px;border-radius:9px;border:1px solid '+C.line);
-        box.appendChild(mk('div','font-weight:700',c.name));box.appendChild(mk('div','font-size:11px;color:'+C.dim,'Estado: '+c.state));root.appendChild(box);});
+        box.appendChild(mk('div','font-weight:700',c.name));box.appendChild(mk('div','font-size:11px;color:'+C.dim,'Modelo: '+c.type+' · Estado: '+c.state));
+        const select=mk('button','cursor:pointer;padding:8px 12px;margin-top:7px;border-radius:8px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.selectedId===c.id?'Selecionado':'Selecionar console');
+        select.addEventListener('click',function(e){e.stopPropagation();nxRemotePlay.selectedId=c.id;renderBody();});box.appendChild(select);root.appendChild(box);});
+      if(nxRemotePlay.selectedId) root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-top:10px','Console selecionado. A inicialização de sessão e a transmissão ainda dependem da integração com o cliente de streaming Xbox; nenhuma conexão foi iniciada.'));
     },
     overview: function (root) {
       const intro = mk('div','font-size:19px;font-weight:750;letter-spacing:-.025em;margin:0 0 3px','Central de controle');
