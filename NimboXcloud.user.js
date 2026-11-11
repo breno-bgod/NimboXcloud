@@ -2846,7 +2846,7 @@
       if(!token) throw new Error('Credencial Xbox GSSV não encontrada. Entre na sua conta Xbox e recarregue.');
       const auth=await fetch('https://xhome.gssv-play-prod.xboxlive.com/v2/login/user',{
         method:'POST',headers:{'Content-Type':'application/json; charset=utf-8'},
-        body:JSON.stringify({offeringId:'xhome',token:token}),signal:controller.signal});
+        body:JSON.stringify({offeringId:'xhome',token:token}),signal:controller.signal,redirect:'error'});
       if(!auth.ok) throw new Error('Login xHome recusado (HTTP '+auth.status+').');
       const login=await auth.json();
       if(!login.gsToken || !login.offeringSettings || !Array.isArray(login.offeringSettings.regions))
