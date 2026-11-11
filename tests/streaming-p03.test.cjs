@@ -11,7 +11,7 @@ test('NET-003: SDP bitrate edits only offer/answer descriptions', () => {
   assert.ok(start > 0 && end > start);
   const hook = src.slice(start, end);
   assert.match(hook, /\^\(\?:offer\|answer\)\$/);
-  assert.match(hook, /patchedSdp === description\.sdp/);
+  assert.match(hook, /normalizedSdp === description\.sdp/);
   assert.match(hook, /original\.apply\(this, arguments\)/);
 });
 
@@ -69,4 +69,22 @@ test('NET-002: unavailable data center retains server fallback and clears pin', 
 test('NET-001/006: cancellation is distinguished from network failure', () => {
   assert.match(src, /err && err\.name === 'AbortError' \? 'cancelled' : 'network-failure'/);
   assert.match(src, /injectable\(u\.pathname\) && u\.protocol === 'https:'/);
+});
+
+test('NET-003: bitrate SDP preserves newline style and ignores rejected video sections', () => {
+  const start = src.indexOf('  (function hookBitrate() {');
+  const end = src.indexOf('  (function hookRtc()', start);
+  assert.ok(start > 0 && end > start);
+  const hook = src.slice(start, end);
+  assert.match(hook, /Rejected \(port 0\) video sections/);
+  assert.match(hook, /normalizedSdp/);
+  assert.match(hook, /patchedSdp\.replace/);
+});
+
+test('NET-001: aborted play requests are not parsed and rebuilt', () => {
+  const start = src.indexOf('  function patchPlayRequest(');
+  const end = src.indexOf('  // ---------- 9.', start);
+  const body = src.slice(start, end);
+  assert.match(body, /init\.signal\.aborted/);
+  assert.match(body, /input\.signal\.aborted/);
 });
