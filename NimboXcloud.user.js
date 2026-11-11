@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.32
+// @version      4.12.33
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.32';
+  const VER = '4.12.33';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1660,8 +1660,20 @@
     if (pillEl) pillEl.style.display = 'inline-flex';
     if (nxLibraryButton) nxLibraryButton.style.display = 'none';
   }
+  function nxDockPanel() {
+    if (!wrap || !cardEl) return;
+    const width = Math.min(580, Math.max(300, Math.round(innerWidth * (innerWidth < 1000 ? .74 : .43))));
+    wrap.style.left='auto';wrap.style.right='0';wrap.style.top='0';wrap.style.bottom='0';
+    wrap.style.width=width+'px';wrap.style.maxWidth='100vw';wrap.style.height='100dvh';
+    wrap.style.alignItems='stretch';wrap.style.display='flex';
+    cardEl.style.maxWidth='100%';cardEl.style.maxHeight='100dvh';cardEl.style.height='100dvh';
+    cardEl.style.marginTop='0';cardEl.style.borderRadius='0';
+    if(pillEl)pillEl.style.display='none';
+    if(nxLibraryButton)nxLibraryButton.style.display='none';
+  }
   function syncNXPlacement() {
     if (!wrap || !wrap.isConnected) return;
+    if (openUI) { nxDockPanel(); return; }
     const playing = isInGame();
     const mode = playing ? 'game' : 'library';
     if (nxMode !== mode) {
@@ -4091,6 +4103,10 @@
     const current = TABS.find(function (t) { return t.id === tabId; }) || TABS[0];
     el.navTitle.textContent = current.label;
     if (el.navBack) el.navBack.style.visibility = tabId === 'overview' ? 'hidden' : 'visible';
+    if(el.nxRailButtons)el.nxRailButtons.forEach(function(item){const active=item.id===tabId;
+      item.button.style.color=active?C.text:C.dim;
+      item.button.style.background=active?'rgba(255,255,255,.13)':'transparent';
+      item.button.style.boxShadow=active?'inset 3px 0 '+C.accent:'none';});
   }
 
   function renderBody(resetScroll) {
@@ -4098,6 +4114,8 @@
     const keep = el.body.scrollTop;
     liveFns = [];
     el.body.textContent = '';
+    const title=TABS.find(function(t){return t.id===tabId;});
+    el.body.appendChild(mk('div','font-size:16px;font-weight:750;margin:0 0 14px',title?title.label:'Início'));
     try { TAB_BUILDERS[tabId](el.body); }
     catch (err) {
       S.lastErr = 'Painel: ' + String(err && err.message || err);
@@ -4190,6 +4208,7 @@
     closeBtn.title = 'Fechar';
     closeBtn.addEventListener('click', function (e) { e.stopPropagation(); setOpen(false, true); });
     head.appendChild(closeBtn);
+    head.style.display='none';
     cardEl.appendChild(head);
 
     // Corpo (rolável)
@@ -4213,7 +4232,22 @@
     const home = mk('button','all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;width:34px;height:34px;color:'+C.dim);
     home.title = 'Central de controle'; home.setAttribute('aria-label','Central de controle'); home.appendChild(ico('M3 10l9-7 9 7 M5 9v12h14V9 M9 21v-8h6v8',18));
     home.addEventListener('click',function (e) { e.stopPropagation(); setTab('overview'); }); navBar.appendChild(home);
+    navBar.style.display='none';
     cardEl.insertBefore(navBar,el.body);
+    const rail=mk('div','flex:0 0 54px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;background:#101419;border-right:1px solid '+C.line+';overflow-y:auto');
+    el.nxRailButtons=[];
+    [['overview','Início'],['stream','Vídeo'],['audio','Áudio'],['controls','Controles'],['voice','Voz'],['region','Rede'],['personalize','Personalizar'],['advanced','Sistema']].forEach(function(item){
+      const btn=mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;border-radius:8px;color:'+C.dim);
+      btn.title=item[1];btn.setAttribute('aria-label',item[1]);btn.appendChild(ico(ICONS[item[0]]||ICONS.overview,22));
+      btn.addEventListener('click',function(e){e.stopPropagation();setTab(item[0]);});rail.appendChild(btn);
+      el.nxRailButtons.push({id:item[0],button:btn});
+    });
+    const closeRail=mk('button','all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;margin-top:auto;color:'+C.dim);
+    closeRail.title='Fechar';closeRail.setAttribute('aria-label','Fechar painel');closeRail.appendChild(ico(ICONS.close,22));
+    closeRail.addEventListener('click',function(e){e.stopPropagation();setOpen(false,true);});rail.appendChild(closeRail);
+    const content=mk('div','display:flex;flex-direction:column;flex:1;min-width:0;min-height:0');
+    content.appendChild(navBar);content.appendChild(el.body);
+    cardEl.appendChild(rail);cardEl.appendChild(content);cardEl.style.flexDirection='row';
 
     wrap.appendChild(cardEl);
     host.appendChild(wrap);
@@ -4401,7 +4435,7 @@
       }
     }
     if (openUI) {
-      syncNXPlacement(); if (!nxCompactMobile()) fitCard(); renderBody(); update();
+      syncNXPlacement(); renderBody(); update();
       if(!wasOpen){
         // Teclado e controle podem operar o menu sem enviar comandos ao jogo.
         if(!cardEl.hasAttribute('tabindex'))cardEl.setAttribute('tabindex','-1');
