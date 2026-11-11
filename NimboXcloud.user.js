@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.0.2
+// @version      4.0.3
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.0.2';
+  const VER = '4.0.3';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2235,6 +2235,12 @@
             toast(ok ? 'Sensor ativado; mova o aparelho e calibre' : 'Sensor indisponível ou permissão negada');
           });
         }, 'primary')));
+      gyroGroup.add(setRow('Reiniciar calibração', 'Apaga o centro atual, sem alterar configurações salvas.',
+        actBtn('Reiniciar', function () {
+          nxResetGyroCalibration();
+          renderBody();
+          toast('Calibração reiniciada');
+        })));
       gyroGroup.add(setRow('Definir posição central', 'Mantenha o aparelho na posição de jogo antes de calibrar.',
         actBtn('Calibrar', function () {
           const ok = nxCalibrateGyroPreview();
@@ -2969,6 +2975,12 @@
     window.removeEventListener('deviceorientation', nxGyroOnOrientation);
     nxRegisterVirtualInput('nx-gyro-preview', 'gyro', false);
   }
+  function nxResetGyroCalibration() {
+    nxGyroPreview.originBeta = null;
+    nxGyroPreview.originGamma = null;
+    nxGyroPreview.filteredX = null;
+    nxGyroPreview.filteredY = null;
+  }
   function nxCalibrateGyroPreview() {
     if (!Number.isFinite(nxGyroPreview.beta) || !Number.isFinite(nxGyroPreview.gamma)) return false;
     nxGyroPreview.originBeta = nxGyroPreview.beta;
@@ -2985,6 +2997,7 @@
       tiltX: g.filteredX === null ? null : Math.round(g.filteredX * 10) / 10,
       tiltY: g.filteredY === null ? null : Math.round(g.filteredY * 10) / 10,
       smoothing: nxGyroSmoothFactor(),
+      autoPauseOnHidden: true,
       error: g.error, gameplayInput: false };
   }
   const nxInputSources = {
@@ -3068,6 +3081,7 @@
     check('registro virtual não injeta comandos', nxVirtualInputState().injectionEnabled === false);
     check('giroscópio não injeta comandos', nxGyroPreviewState().gameplayInput === false);
     check('suavização do sensor válida', nxGyroSmoothFactor() > 0 && nxGyroSmoothFactor() <= 1);
+    check('pausa automática do sensor configurada', nxGyroPreviewState().autoPauseOnHidden === true);
     return { passed: tests.filter(function (t) { return t.pass; }).length,
       total: tests.length, tests: tests, note: 'Autoteste matemático e estrutural; não substitui teste de streaming.' };
   }
@@ -3134,7 +3148,10 @@
     document.addEventListener('pointerlockchange', function () { diagLog('pointerlockchange'); }, true);
     document.addEventListener('webkitpointerlockchange', function () { diagLog('webkitpointerlockchange'); }, true);
     document.addEventListener('pointerlockerror', function () { diagLog('pointerlockerror'); }, true);
-    document.addEventListener('visibilitychange', function () { diagLog('visibilitychange'); }, true);
+    document.addEventListener('visibilitychange', function () {
+      diagLog('visibilitychange');
+      if (document.visibilityState === 'hidden') nxStopGyroPreview();
+    }, true);
     document.addEventListener('fullscreenchange', function () { diagLog('fullscreenchange'); }, true);
     document.addEventListener('webkitfullscreenchange', function () { diagLog('webkitfullscreenchange'); }, true);
     window.addEventListener('blur', function () { diagLog('window-blur'); }, true);
