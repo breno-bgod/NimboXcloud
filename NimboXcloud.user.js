@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.24
+// @version      4.11.25
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.24';
+  const VER = '4.11.25';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -598,6 +598,8 @@
           return true;
         });
         if (!dropped) return false;
+        // Never strip every usable candidate: this would make the session impossible.
+        if (!keep.some(function (ln) { return /^a=candidate:/i.test(ln); })) return false;
         inner.sdp = keep.join('\r\n');
       } else {
         if (!Array.isArray(inner)) return false;
@@ -608,6 +610,9 @@
           return true;
         });
         if (!dropped) return false;
+        // End-of-candidates is not a viable transport candidate.
+        if (!keep.some(function (item) { return item && typeof item.candidate === 'string' &&
+          /^candidate:/i.test(item.candidate.trim()); })) return false;
         inner = keep;
       }
 
@@ -678,7 +683,8 @@
             headers: h,
             body: JSON.stringify(j),
             mode: req.mode, credentials: req.credentials, cache: req.cache,
-            redirect: req.redirect, referrer: req.referrer, integrity: req.integrity
+            redirect: req.redirect, referrer: req.referrer, integrity: req.integrity,
+            signal: req.signal, referrerPolicy: req.referrerPolicy, keepalive: req.keepalive
           }
         };
       }).catch(function () { return { input: input, init: init }; });
