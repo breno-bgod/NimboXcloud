@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.17
+// @version      4.12.18
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -1198,96 +1198,14 @@
     f9Observed: 0,
     requestsBlockedByNimbo: false
   };
-  // Depois da primeira captura nativa, toda perda de Pointer Lock
-  // (F9, troca de monitor, perda de foco, ESC) pausa a recaptura automatica.
-  // Somente um F9 fisico permite voltar a capturar.
-  let nativeLockTarget = null;
-  let nativeLockSeen = false;
-  let f9Released = false;
-  let f9RelockPending = false;
-  const originalRequestPointerLock = Element.prototype.requestPointerLock;
-  // Opt-out reversivel do bloqueio legado de recaptura. Padrao preservado.
-  // Defina localStorage['nx.pointerLockLegacyF9'] = '0' e recarregue para desativar.
-  const nxPointerLockLegacyF9 = (function () {
-    try { return localStorage.getItem('nx.pointerLockLegacyF9') !== '0'; }
-    catch (_) { return true; }
-  })();
-  if (nxPointerLockLegacyF9 && typeof originalRequestPointerLock === 'function') {
-    Element.prototype.requestPointerLock = function () {
-      if (!f9Released) return originalRequestPointerLock.apply(this, arguments);
-      touchFullscreenPolicy.suppressed++;
-      touchFullscreenPolicy.requestsBlockedByNimbo = true;
-      touchFullscreenPolicy.lastReason = 'automatic pointer relock suppressed; press F9';
-      return Promise.reject(new DOMException('Captura pausada ate F9', 'NotAllowedError'));
-    };
-  }
-  document.addEventListener('pointerlockchange', function () {
-    if (!nxPointerLockLegacyF9) {
-      touchFullscreenPolicy.lastReason = document.pointerLockElement ? 'native pointer lock active' : 'native pointer lock released';
-      return;
-    }
-    const current = document.pointerLockElement;
-    if (current) {
-      nativeLockTarget = current;
-      nativeLockSeen = true;
-      f9Released = false;
-      f9RelockPending = false;
-      touchFullscreenPolicy.lastReason = 'native pointer lock active';
-    } else if (nativeLockSeen) {
-      // O navegador pode liberar a captura sem evento de F9.
-      f9Released = true;
-      f9RelockPending = false;
-      touchFullscreenPolicy.lastReason = 'pointer released; F9 required to resume';
-    }
-  }, true);
-  document.addEventListener('keydown', function (e) {
-    if (!nxPointerLockLegacyF9) return;
-    if (!e.isTrusted || e.code !== 'F9' || e.repeat || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-    const active = document.activeElement;
-    if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return;
-    const playing = !!(document.fullscreenElement || document.webkitFullscreenElement ||
-      document.querySelector('video[src^="blob:"][autoplay], video[data-testid*="stream"]'));
-    if (!playing) return;
-    touchFullscreenPolicy.f9Observed++;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    if (document.pointerLockElement) {
-      f9Released = true;
-      f9RelockPending = false;
-      touchFullscreenPolicy.lastReason = 'F9: mouse released until next F9';
-      document.exitPointerLock();
-      return;
-    }
-    if (f9RelockPending) return;
-    if (!nativeLockTarget || !nativeLockTarget.isConnected ||
-        typeof originalRequestPointerLock !== 'function') {
-      touchFullscreenPolicy.lastReason = 'F9: native target unavailable; click game to initialize';
-      // Nao autorizar capturas automaticas quando ja houve uma captura.
-      if (!nativeLockSeen) f9Released = false;
-      return;
-    }
-    f9Released = false;
-    f9RelockPending = true;
-    touchFullscreenPolicy.lastReason = 'F9: explicit native pointer lock request';
-    try {
-      const result = originalRequestPointerLock.call(nativeLockTarget);
-      if (result && typeof result.then === 'function') {
-        result.then(function () {
-          f9RelockPending = false;
-        }, function (err) {
-          f9RelockPending = false;
-          f9Released = true;
-          touchFullscreenPolicy.lastReason = 'F9 lock rejected: ' + (err && err.name || 'unknown');
-        });
-      } else {
-        f9RelockPending = false;
-      }
-    } catch (err) {
-      f9RelockPending = false;
-      f9Released = true;
-      touchFullscreenPolicy.lastReason = 'F9 lock error: ' + (err && err.name || 'unknown');
-    }
-  }, true);
+  // O navegador e o xCloud gerenciam o Pointer Lock nativamente.
+  // Nao substituir requestPointerLock nem interceptar F9: isso provocava
+  // dialogos de recaptura repetidos e impedia restaurar o mouse.
+  touchFullscreenPolicy.mode='native-unmodified';
+  touchFullscreenPolicy.lastReason='NX does not override pointer lock or F9';
+  document.addEventListener('pointerlockchange',function(){
+    touchFullscreenPolicy.lastReason=document.pointerLockElement?'native pointer lock active':'native pointer lock released';
+  },true);
 
   // Aviso F9: temporariamente desativado para preservar o DOM do xCloud.
   // A versao anterior reconstruia elementos da pagina e podia afetar o boot.
@@ -1727,8 +1645,8 @@
         nxLibraryButton.title = 'Abrir NimboXcloud durante a partida';
         // O botão NX deve recolher junto com a barra nativa. Painel aberto permanece acessível.
         // Barra nativa recolhida não implica fechar o painel aberto pelo atalho.
-        wrap.style.display = openUI ? 'flex' : 'none';
-        if (pillEl) pillEl.style.display = 'none';
+        wrap.style.display = 'flex';
+        if (pillEl) pillEl.style.display = expanded ? 'none' : 'inline-flex';
         if (openUI) {
           if (expanded) positionNXCard(nxLibraryButton);
           else { wrap.style.left='8px'; wrap.style.right='auto'; wrap.style.top='58px'; wrap.style.width=Math.min(380,innerWidth-16)+'px'; }
@@ -1737,7 +1655,8 @@
         // Enquanto a barra nativa está recolhida, não deixar um ícone independente na tela.
         if (nxLibraryButton) nxLibraryButton.style.display = 'none';
         if (pillEl) pillEl.style.display = 'none';
-        wrap.style.display = openUI ? 'flex' : 'none';
+        wrap.style.display = 'flex';
+        if (pillEl) pillEl.style.display = 'inline-flex';
         if (openUI) {
           wrap.style.left = '8px'; wrap.style.right = 'auto'; wrap.style.top = '58px';
           wrap.style.width = Math.min(380, innerWidth - 16) + 'px';
@@ -4285,14 +4204,32 @@
     const monitor=actBtn(nxTelemetryEnabled?'Ocultar monitor de desempenho':'Ativar monitor de desempenho',function(){nxTelemetryToggle(!nxTelemetryEnabled);renderBody();},'ghost');
     monitor.style.width='100%';monitor.style.marginTop='4px';root.appendChild(monitor);
   };
-    function setOpen(v, byUser) {
+    // Painel como inventario: solta o ponteiro uma unica vez ao abrir.
+  // Ao fechar, nao recaptura sem gesto do usuario; F9 continua nativo.
+  document.addEventListener('keydown',function(e){
+    if(!openUI)return;
+    const isShortcut=e.ctrlKey&&e.shiftKey&&(e.code===getPref(LS_NX_SHORTCUT,'KeyH')||e.code==='KeyN');
+    if(isShortcut)return;
+    if(e.code==='Escape'){e.preventDefault();e.stopImmediatePropagation();setOpen(false,true);return;}
+    if(wrap && e.target && wrap.contains(e.target))return;
+    e.preventDefault();e.stopImmediatePropagation();
+  },true);
+  document.addEventListener('keyup',function(e){
+    if(!openUI || (wrap&&e.target&&wrap.contains(e.target)))return;
+    e.preventDefault();e.stopImmediatePropagation();
+  },true);
+  function setOpen(v, byUser) {
     openUI = !!v;
     if (byUser) userTouched = true;
+    if (!cardEl) buildUI();
     if (!cardEl) return;
     cardEl.style.display = openUI ? 'flex' : 'none';
     if (nxShellEnabled && wrap) { wrap.classList.toggle('nx-shell-open', openUI); if (openUI) nxShellNeedsRelease = true; }
-    if (openUI) { syncNXPlacement(); if (!isInGame()) fitCard(); renderBody(); update(); }
-    if (wrap) wrap.style.display = openUI || !isInGame() ? 'flex' : 'none';
+    if(openUI && document.pointerLockElement){
+      try{document.exitPointerLock();}catch(_){}
+    }
+    if (openUI) { syncNXPlacement(); fitCard(); renderBody(); update(); }
+    if (wrap) wrap.style.display = 'flex';
   }
 
   function schedule() {
@@ -5622,7 +5559,7 @@
       if (!e.isTrusted || !e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey || e.repeat) return;
       const a = document.activeElement;
       if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
-      if (e.code === getPref(LS_NX_SHORTCUT, 'KeyH')) { e.preventDefault(); setOpen(!openUI, true); }
+      if (e.code === getPref(LS_NX_SHORTCUT, 'KeyH')) { e.preventDefault(); e.stopImmediatePropagation(); setOpen(!openUI, true); }
       if (e.code === 'KeyD') { e.preventDefault(); console.log('[NX diagnostic]', { qos: S.qos, history: S.qosHistory, diagnosis: S.lastDiagnosis }); }
     }, false);
     // Reaplicar volume salvo apenas quando um elemento de vídeo de streaming existir.
@@ -5683,7 +5620,7 @@
     // Nao depende da deteccao de perfil para manter o NX acessivel.
     // Atalho de recuperacao do painel para navegadores com teclado.
     document.addEventListener('keydown', function (e) {
-      if (e.ctrlKey && e.shiftKey && e.code === 'KeyN') { resetPos(); setOpen(true, true); }
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyN') { e.preventDefault(); resetPos(); setOpen(true, true); }
     }, false);
     // Ao entrar/sair da tela cheia, move o painel imediatamente para o novo host, sem depender do tick de 1,5s
     ['fullscreenchange', 'webkitfullscreenchange'].forEach(function (ev) {
