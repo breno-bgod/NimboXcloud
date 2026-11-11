@@ -2877,7 +2877,7 @@
   }
   // xHome session bootstrap: explicit user action, no persistent tokens or SDP logging.
   async function nxRemoteStartSession() {
-    if(nxRemotePlay.busy || !nxRemotePlay.selectedId) return;
+    if(nxRemotePlay.busy || nxRemotePlay.sessionId || nxRemotePlay.peer || !nxRemotePlay.selectedId) return;
     const serverId=nxRemotePlay.selectedId;
     if(!nxRemotePlay.consoles.some(function(c){return c.id===serverId;})) return;
     const region=nxRemotePlay.regionShortName;
@@ -3086,7 +3086,9 @@
       if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
     if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
       if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){} }
+      if(nxRemotePlay.mediaStream){try{nxRemotePlay.mediaStream.getTracks().forEach(function(t){t.stop();});}catch(_){}}
       nxRemotePlay.mediaStream=null;
+      nxRemotePlay.sessionId='';
       nxRemotePlay.sessionStatus='failed';
       nxRemotePlay.error=controller.signal.aborted?'Tempo limite da sessão (20 s).':String(e && e.message||e);
       nxRemotePlay.status='Falha ao criar sessão';
@@ -3098,7 +3100,7 @@
   const TAB_BUILDERS = {
     remote: function(root) {
       root.appendChild(mk('div','font-size:19px;font-weight:750;margin-bottom:6px','Remote Play · Xbox em casa'));
-      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:14px','Consulta seus consoles vinculados usando a autenticação Xbox atual. A transmissão Remote Play ainda não está implementada.'));
+      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:14px','Descoberta e negociação WebRTC experimentais. Reprodução e comandos dependem de validação real com Xbox.'));
       const btn=mk('button','cursor:pointer;padding:10px 14px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.busy?'Consultando…':'Buscar meus consoles');
       btn.disabled=nxRemotePlay.busy;btn.addEventListener('click',function(e){e.stopPropagation();nxRemoteDiscover();});root.appendChild(btn);
       if(nxRemotePlay.busy){const cancel=mk('button','cursor:pointer;padding:10px 14px;margin-left:8px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,'Cancelar');cancel.addEventListener('click',function(e){e.stopPropagation();nxRemoteCancel();});root.appendChild(cancel);}
@@ -3124,16 +3126,18 @@
         }
         nxRemotePlay.videoElement.srcObject=nxRemotePlay.mediaStream;
         root.appendChild(nxRemotePlay.videoElement);
-        const stop=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,'Encerrar reprodução local');
+      }
+      if(nxRemotePlay.sessionId || nxRemotePlay.peer || nxRemotePlay.mediaStream){
+        const stop=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,'Encerrar sessão local');
         stop.addEventListener('click',function(e){e.stopPropagation();nxRemoteStop();});root.appendChild(stop);
       }
       if(nxRemotePlay.selectedId) {
         const start=mk('button','cursor:pointer;padding:10px 14px;margin-top:10px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,'Iniciar sessão xHome (experimental)');
-        start.disabled=nxRemotePlay.busy;
+        start.disabled=nxRemotePlay.busy || !!nxRemotePlay.sessionId || !!nxRemotePlay.peer;
         start.addEventListener('click',function(e){e.stopPropagation();nxRemoteStartSession();});
         root.appendChild(start);
-        root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-top:8px','A criação da sessão não inicia vídeo nem controles. WebRTC está pendente.'));
-        if(nxRemotePlay.sessionStatus==='provisioned')root.appendChild(mk('div','font-size:11px;color:'+C.dim,'Xbox provisionado; aguardando integração WebRTC.'));
+        root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-top:8px','Negociação WebRTC experimental; transmissão e controles ainda não validados em Xbox real.'));
+        if(nxRemotePlay.sessionStatus==='provisioned')root.appendChild(mk('div','font-size:11px;color:'+C.dim,'Xbox provisionado; aguardando negociação WebRTC.'));
       }
     },
     overview: function (root) {
