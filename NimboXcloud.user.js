@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.25
+// @version      4.11.26
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.25';
+  const VER = '4.11.26';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -544,6 +544,8 @@
         return String(r && r.name).toUpperCase() === want.name;
       })[0];
       if (!hit) {
+        // The server's original ordering remains authoritative on fallback.
+        S.serverPin = '';
         S.serverActual = 'região indisponível';
         addCap({
           at: nowStr(), host: u.host, path: u.pathname, status: res.status,
@@ -556,6 +558,11 @@
       const rest = os.regions.filter(function (r) { return r !== hit; });
       // Lógica do cliente: o que tem isDefault vai para o início com unshift, depois pega regions[0].
       // Assim fixa a região sem perder as alternativas de reserva.
+      if (os.regions[0] === hit && hit.isDefault === true &&
+          rest.every(function (r) { return r.isDefault !== true; })) {
+        S.serverPin = want.name;
+        return false;
+      }
       hit.isDefault = true;
       rest.forEach(function (r) { r.isDefault = false; });
       os.regions = [hit].concat(rest);
@@ -709,7 +716,7 @@
           if (GSSV_RE.test(u.host)) {
             S.gssv++;
             const c = cfg();
-            if (c.ip && injectable(u.pathname)) {
+            if (c.ip && injectable(u.pathname) && u.protocol === 'https:') {
               if (input instanceof Request) {
                 const h = new Headers(input.headers);
                 if (!h.has('X-Forwarded-For')) {
@@ -755,7 +762,8 @@
           return res;
         }, function (err) {
           nxSessionRecord({ time: new Date().toISOString(), stage: stage, method: method,
-            status: 0, ms: Date.now() - started, error: 'network-failure' });
+            status: 0, ms: Date.now() - started,
+            error: err && err.name === 'AbortError' ? 'cancelled' : 'network-failure' });
           throw err;
         });
       }
