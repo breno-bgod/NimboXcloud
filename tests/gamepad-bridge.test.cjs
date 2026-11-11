@@ -77,3 +77,18 @@ test('disabled bridge does not replace existing native Gamepad function', () => 
   assert.equal(a.navigator.getGamepads, foreign);
   assert.equal(a.bridge.installed, false);
 });
+
+test('non-configurable native Gamepad API is never replaced', () => {
+  const a = boot({ 'nx.input.applyAxes.v1': '1' }, [], nav => {
+    Object.defineProperty(nav, 'getGamepads', {
+      value: nav.getGamepads, configurable: false, writable: false
+    });
+  });
+  assert.equal(a.bridge.installed, false);
+  assert.match(a.bridge.error, /não configurável/);
+});
+test('non-standard controllers are passed through without rewriting their identity', () => {
+  const pad = { id: 'custom', index: 0, connected: true, mapping: '', axes: [0.4, -0.4], buttons: [] };
+  const a = boot({ 'nx.input.applyAxes.v1': '1' }, [pad]);
+  assert.equal(a.navigator.getGamepads()[0], pad);
+});
