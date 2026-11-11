@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-022 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
+**Edição:** PM-023 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
 
 ## Regras permanentes
 
@@ -328,3 +328,12 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - **P02 ainda precisa de código:** HUD-002 identificação robusta dos controles jogáveis; HUD-003 integração segura; HUD-004 movimentação real; HUD-005 escala e safe areas reais; HUD-006 perfis aplicados ao HUD real. HUD-007 e aceite real AUD-02 ficam para validação final.
 - **P01 ainda precisa de código:** INPUT-001/003/004/005, além de defeitos encontrados em INPUT-002/006. Não encerrar P01 por testes isolados.
 - **Demais pacotes:** P00 auditoria parcial; P03 NET-001..006/AUD-03; P04 MEDIA-001..006/AUD-04; P05 DIAG-001..010/AUD-05; P06 ACC-001..006/AUD-06; P07 REL-001..006/AUD-07.
+
+
+## P02 — integração nativa experimental (2026-11-11)
+- `38b2cc66` v4.11.20: integração nativa por rótulos estritos, opt-in e reversível.
+- `b11132ea` v4.11.21: recusa rótulos duplicados.
+- `b2ca27fb`: regressões estáticas de segurança.
+- `3cfb9a82`: auditoria atualizada.
+- **P02 ainda não encerrado:** HUD-001/002/003/004/005/006 PARCIAIS, HUD-007 NÃO TESTADO, AUD-02 ABERTA. Falta compatibilidade comprovada com HUD real, reaplicação em remontagem e associação de perfis com HUD nativo.
+- **P01:** implementação parcial e validação real pendentes. **P00, P03–P07:** inalterados.
