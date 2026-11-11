@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.7.6
+// @version      3.7.7
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.7.6';
+  const VER = '3.7.7';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -122,6 +122,22 @@
       Object.defineProperty(navigator, 'userAgent', { configurable: true, get: function () { return ua; } });
       nxConsoleLabState.applied = navigator.userAgent === ua;
     } catch (err) { nxConsoleLabState.error = String(err && err.message || err); }
+  }
+  // Diagnóstico passivo inspirado no XFly: não lê tokens, payloads ou identificadores.
+  const nxSessionTrace = [];
+  function nxSessionRecord(item) {
+    nxSessionTrace.push(item);
+    if (nxSessionTrace.length > 35) nxSessionTrace.shift();
+  }
+  const nxClientHintsMode = (function () {
+    try { return localStorage.getItem('nx.consoleLab.hideClientHints.v1') === '1'; } catch (_) { return false; }
+  })();
+  let nxClientHintsApplied = false;
+  if (nxClientHintsMode && nxConsoleLabProfile !== 'off') {
+    try {
+      Object.defineProperty(navigator, 'userAgentData', { configurable: true, get: function () { return undefined; } });
+      nxClientHintsApplied = typeof navigator.userAgentData === 'undefined';
+    } catch (err) { nxConsoleLabState.error += ' ClientHints: ' + String(err && err.message || err); }
   }
   const nxConsoleLabEvents = [];
   function nxConsoleLabEvent(type, detail) {
@@ -194,6 +210,8 @@
       note: note.slice(0, 500), startedAt: nxConsoleLabState.startedAt,
       unsupportedDeviceDialogDetected: nxConsoleLabWarning(),
       unsupportedDeviceWarningsObserved: nxConsoleLabEvents.filter(function (e) { return e.type === 'unsupported-device-warning'; }).length,
+      clientHintsExperiment: { enabled: nxClientHintsMode, applied: nxClientHintsApplied, note: 'Somente navigator.userAgentData JS; nao altera cabecalhos HTTP' },
+      sessionTrace: nxSessionTrace.slice(),
       capabilities: nxConsoleLabCapabilities(),
       events: nxConsoleLabEvents.slice(),
       fullscreenActive: !!(document.fullscreenElement || document.webkitFullscreenElement),
@@ -702,6 +720,23 @@
         : nativeFetch.call(this, input, init);
 
       let p = go;
+      // Monitoramento somente de status e etapa da sessão; nunca armazena headers ou corpo.
+      if (u && /xboxservices\.com$/i.test(u.hostname) &&
+          /\/sessions\/cloud\/(?:play|[^/]+\/(?:state|connect|configuration|sdp|ice|keepalive))\/?$/i.test(u.pathname)) {
+        const stage = /\/sessions\/cloud\/play\/?$/i.test(u.pathname) ? 'play' :
+          (u.pathname.match(/\/(state|connect|configuration|sdp|ice|keepalive)\/?$/i) || [,'other'])[1].toLowerCase();
+        const started = Date.now();
+        const method = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+        p = p.then(function (res) {
+          nxSessionRecord({ time: new Date().toISOString(), stage: stage, method: method,
+            status: res.status, ms: Date.now() - started, ok: res.ok });
+          return res;
+        }, function (err) {
+          nxSessionRecord({ time: new Date().toISOString(), stage: stage, method: method,
+            status: 0, ms: Date.now() - started, error: 'network-failure' });
+          throw err;
+        });
+      }
 
       const isExp = !!(u && GEARS_RE.test(u.host) && EXP_PATH_RE.test(u.pathname));
       const isExp2 = !!(u && EXP_PATH_RE.test(u.pathname) && /xboxservices\.com$/i.test(u.host));
@@ -2214,6 +2249,13 @@
       lab.add(setRow('Identidade de teste', 'Padrão é desligado. Teste cada perfil na mesma conta e no mesmo jogo.',
         chips([{k:'off',label:'Original'},{k:'xbox',label:'Xbox JS'},{k:'xboxone',label:'Xbox One'},{k:'windows',label:'Windows JS'},{k:'smarttv',label:'Smart TV'}],
           nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
+      lab.add(setRow('Client Hints (experimental)',
+        'Ocultar navigator.userAgentData apenas no JavaScript, conforme Xperience XCloud. Não altera headers e pode prejudicar compatibilidade.',
+        chips([{k:'off',label:'Normal'},{k:'on',label:'Ocultar JS'}],
+          nxClientHintsMode ? 'on' : 'off', function (k) {
+            try { localStorage.setItem('nx.consoleLab.hideClientHints.v1', k === 'on' ? '1' : '0'); } catch (_) {}
+            location.reload();
+          }), true));
       lab.add(setRow('Registrar observação', 'Anote o jogo, se apareceu no catálogo, se iniciou e eventuais mensagens de erro.',
         actBtn('Anotar', function () {
           let old = ''; try { old = localStorage.getItem(LS_CONSOLE_NOTES) || ''; } catch (_) {}
