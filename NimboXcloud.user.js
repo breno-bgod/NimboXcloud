@@ -2826,7 +2826,7 @@
     nxRemotePlay.requestId++;
     if(nxRemotePlay.abortController) nxRemotePlay.abortController.abort();
     nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
-    nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';
+    nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';nxRemotePlay.checkedAt=0;nxRemotePlay.attempts=[];
     nxRemotePlay.status='Consulta cancelada';nxRemotePlay.error='';
     if(tabId==='remote') renderBody();
   }
@@ -2864,7 +2864,7 @@
           if(json.results.length){found=json.results;nxRemotePlay.region=String(region.name||region.shortName||region.baseUri);break;}
         } catch (e) {if(controller.signal.aborted) throw e;nxRemotePlay.attempts.push('Região indisponível: '+String(e && e.name||'erro'));}
       }
-      if(requestId!==nxRemotePlay.requestId) return;
+      if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
       nxRemotePlay.consoles=found.filter(function(c){return c && typeof c.serverId==='string' && c.serverId.length>0;}).map(function(c){return {id:c.serverId,name:String(c.deviceName||c.name||c.serverName||'Xbox'),type:String(c.consoleType||'Xbox'),state:String(c.powerState||c.state||'Unknown')};});
       nxRemotePlay.status=nxRemotePlay.consoles.length?nxRemotePlay.consoles.length+' console(s) encontrado(s)':'Nenhum console vinculado encontrado';
       if(!nxRemotePlay.consoles.some(function(c){return c.id===nxRemotePlay.selectedId;})) nxRemotePlay.selectedId='';
