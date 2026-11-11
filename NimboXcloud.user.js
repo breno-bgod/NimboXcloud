@@ -2856,7 +2856,7 @@
       for(const region of regions) {
         // Do not send the xHome bearer token to an untrusted origin from a malformed region response.
         let regionOrigin;
-        try { const u=new URL(region.baseUri);if(u.protocol!=='https:' || u.username || u.password || !/(^|\\.)xboxlive\\.com$/i.test(u.hostname)) {nxRemotePlay.attempts.push('Região ignorada: origem não autorizada');continue;}regionOrigin=u.origin; }
+        try { const u=new URL(region.baseUri);if(u.protocol!=='https:' || u.username || u.password || !/(^|\.)xboxlive\.com$/i.test(u.hostname)) {nxRemotePlay.attempts.push('Região ignorada: origem não autorizada');continue;}regionOrigin=u.origin; }
         catch (_) {nxRemotePlay.attempts.push('Região ignorada: endereço inválido');continue;}
         try { const res=await fetch(regionOrigin+'/v6/servers/home?mr=50',{
           headers:{Authorization:'Bearer '+login.gsToken},signal:controller.signal});
