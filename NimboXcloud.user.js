@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.0.1
+// @version      4.0.2
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.0.1';
+  const VER = '4.0.2';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2217,6 +2217,12 @@
         const y = nxGyroPreviewState().tiltY;
         return y === null ? 'Calibre após ativar' : y + '°';
       }));
+      gyroGroup.add(setRow('Suavização da leitura', 'Afeta apenas a prévia local. Não modifica a mira.',
+        chips([{ k: '0.1', label: 'Suave' }, { k: '0.25', label: 'Equilibrada' }, { k: '0.7', label: 'Rápida' }],
+          getPref(NX_GYRO_SMOOTH_KEY, '0.25'), function (k) {
+            setPref(NX_GYRO_SMOOTH_KEY, k);
+            renderBody();
+          }), true));
       gyroGroup.add(setRow('Leitura de sensores', 'Solicita permissão apenas após toque no botão.',
         actBtn(nxGyroPreview.enabled ? 'Desativar' : 'Ativar', function () {
           if (nxGyroPreview.enabled) {
@@ -2910,8 +2916,14 @@
       note: 'Registro interno de atividade virtual; nenhuma entrada é enviada ao xCloud.' };
   }
   // Giroscópio em modo de observação: exige ativação explícita e nunca move o jogo.
+  const NX_GYRO_SMOOTH_KEY = 'nx.gyro.previewSmoothing.v1';
+  function nxGyroSmoothFactor() {
+    const raw = Number(getPref(NX_GYRO_SMOOTH_KEY, '0.25'));
+    return Number.isFinite(raw) ? Math.max(0.05, Math.min(1, raw)) : 0.25;
+  }
   const nxGyroPreview = { enabled: false, permission: 'não solicitada', samples: 0, lastAt: 0,
-    alpha: null, beta: null, gamma: null, originBeta: null, originGamma: null, error: '' };
+    alpha: null, beta: null, gamma: null, originBeta: null, originGamma: null,
+    filteredX: null, filteredY: null, error: '' };
   function nxGyroOnOrientation(e) {
     if (!nxGyroPreview.enabled) return;
     if (!Number.isFinite(e.beta) || !Number.isFinite(e.gamma)) return;
@@ -2920,6 +2932,13 @@
     nxGyroPreview.alpha = Number.isFinite(e.alpha) ? e.alpha : null;
     nxGyroPreview.beta = e.beta;
     nxGyroPreview.gamma = e.gamma;
+    if (nxGyroPreview.originBeta !== null && nxGyroPreview.originGamma !== null) {
+      const x = Math.max(-90, Math.min(90, e.gamma - nxGyroPreview.originGamma));
+      const y = Math.max(-180, Math.min(180, e.beta - nxGyroPreview.originBeta));
+      const factor = nxGyroSmoothFactor();
+      nxGyroPreview.filteredX = nxGyroPreview.filteredX === null ? x : nxGyroPreview.filteredX + factor * (x - nxGyroPreview.filteredX);
+      nxGyroPreview.filteredY = nxGyroPreview.filteredY === null ? y : nxGyroPreview.filteredY + factor * (y - nxGyroPreview.filteredY);
+    }
     nxRegisterVirtualInput('nx-gyro-preview', 'gyro', true);
   }
   async function nxStartGyroPreview() {
@@ -2954,6 +2973,8 @@
     if (!Number.isFinite(nxGyroPreview.beta) || !Number.isFinite(nxGyroPreview.gamma)) return false;
     nxGyroPreview.originBeta = nxGyroPreview.beta;
     nxGyroPreview.originGamma = nxGyroPreview.gamma;
+    nxGyroPreview.filteredX = 0;
+    nxGyroPreview.filteredY = 0;
     return true;
   }
   function nxGyroPreviewState() {
@@ -2961,8 +2982,9 @@
     return { enabled: g.enabled, permission: g.permission, samples: g.samples,
       receiving: g.enabled && Date.now() - g.lastAt < 2000,
       calibrated: g.originBeta !== null && g.originGamma !== null,
-      tiltX: g.gamma === null || g.originGamma === null ? null : Math.round((g.gamma - g.originGamma) * 10) / 10,
-      tiltY: g.beta === null || g.originBeta === null ? null : Math.round((g.beta - g.originBeta) * 10) / 10,
+      tiltX: g.filteredX === null ? null : Math.round(g.filteredX * 10) / 10,
+      tiltY: g.filteredY === null ? null : Math.round(g.filteredY * 10) / 10,
+      smoothing: nxGyroSmoothFactor(),
       error: g.error, gameplayInput: false };
   }
   const nxInputSources = {
@@ -3045,6 +3067,7 @@
     check('registro virtual rejeita tipo inválido', !nxRegisterVirtualInput('test', 'unknown', true));
     check('registro virtual não injeta comandos', nxVirtualInputState().injectionEnabled === false);
     check('giroscópio não injeta comandos', nxGyroPreviewState().gameplayInput === false);
+    check('suavização do sensor válida', nxGyroSmoothFactor() > 0 && nxGyroSmoothFactor() <= 1);
     return { passed: tests.filter(function (t) { return t.pass; }).length,
       total: tests.length, tests: tests, note: 'Autoteste matemático e estrutural; não substitui teste de streaming.' };
   }
