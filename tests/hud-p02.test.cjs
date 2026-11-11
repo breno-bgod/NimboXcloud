@@ -93,3 +93,15 @@ test('HUD-005 preview scale is bounded and persisted independently from position
   data['nx.hud.editor.previewScale.v1'] = 'not-a-number';
   assert.equal(ctx.readScale(), 100);
 });
+
+test('HUD-003 native positioning is opt-in, reversible and rejects duplicate labels', () => {
+  const start = src.indexOf("  const NX_HUD_NATIVE_KEY = ");
+  const end = src.indexOf("  const NX_HUD_PREVIEW_SCALE_KEY = ", start);
+  assert.ok(start > 0 && end > start);
+  const native = src.slice(start, end);
+  assert.match(native, /getPref\(NX_HUD_NATIVE_KEY, '0'\) === '1'/);
+  assert.match(native, /const duplicates = new Set\(\);/);
+  assert.match(native, /if \(duplicates\.has\(id\)\) return;/);
+  assert.match(native, /nxHudNativeOriginal\.clear\(\);/);
+  assert.doesNotMatch(native, /dispatchEvent\(/);
+});
