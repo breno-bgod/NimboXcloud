@@ -2808,7 +2808,7 @@
   nxHudAutoLoadGame();
   // Descoberta xHome: utiliza somente credenciais locais da sessão Xbox autenticada.
   // Não substitui a negociação WebRTC/ICE nem cria uma sessão Remote Play.
-  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:'', peer:null, mediaStream:null, videoElement:null};
+  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:'', peer:null, mediaStream:null, videoElement:null, iceTimer:null};
   function nxRemoteGssvToken() {
     try { const v=JSON.parse(localStorage.getItem('xboxcom_xbl_user_info')||'null');
       const t=v && v.tokens && v.tokens['http://gssv.xboxlive.com/'];
@@ -2826,6 +2826,7 @@
     nxRemotePlay.requestId++;
     if(nxRemotePlay.abortController)nxRemotePlay.abortController.abort();
     nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
+    if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
     if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
     if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){}}
     if(nxRemotePlay.mediaStream){try{nxRemotePlay.mediaStream.getTracks().forEach(function(t){t.stop();});}catch(_){}nxRemotePlay.mediaStream=null;}
@@ -2838,6 +2839,7 @@
     if(nxRemotePlay.abortController) nxRemotePlay.abortController.abort();
     nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
     nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';nxRemotePlay.regionShortName='';nxRemotePlay.checkedAt=0;nxRemotePlay.attempts=[];
+    if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
     if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
     if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){}}
     if(nxRemotePlay.mediaStream){try{nxRemotePlay.mediaStream.getTracks().forEach(function(t){t.stop();});}catch(_){}nxRemotePlay.mediaStream=null;}
@@ -2990,10 +2992,17 @@
           };
         }
         const localIceCandidates=[];
+        let iceSend=null;
+        let iceSendChain=Promise.resolve();
         peer.onicecandidate=function(event){
           if(!event || !event.candidate || requestId!==nxRemotePlay.requestId || controller.signal.aborted)return;
           const c=event.candidate;
-          localIceCandidates.push({candidate:c.candidate,sdpMid:c.sdpMid,sdpMLineIndex:c.sdpMLineIndex});
+          const candidate={candidate:c.candidate,sdpMid:c.sdpMid,sdpMLineIndex:c.sdpMLineIndex};
+          if(iceSend){
+            iceSendChain=iceSendChain.then(function(){return iceSend(candidate);}).catch(function(){
+              if(requestId===nxRemotePlay.requestId){nxRemotePlay.status='Falha no envio de candidato ICE';if(tabId==='remote')renderBody();}
+            });
+          }else localIceCandidates.push(candidate);
         };
         peer.addTransceiver('audio',{direction:'recvonly'});
         peer.addTransceiver('video',{direction:'recvonly'});
@@ -3037,7 +3046,7 @@
         nxRemotePlay.sessionStatus='sdp-ready';
         nxRemotePlay.status='SDP negociado. Preparando candidatos ICE…';
         // ICE candidates may arrive before or after the SDP answer.
-        const iceSend=async function(candidate){
+        iceSend=async function(candidate){
           check();
           const res=await fetch(sessionUrl+'/ice',{
             method:'POST',redirect:'error',signal:controller.signal,
@@ -3060,13 +3069,40 @@
           }
         }
         for(const candidate of localIceCandidates){await iceSend(candidate);}
+        localIceCandidates.length=0;
+        const remoteSeen=new Set(remoteList.map(function(c){return JSON.stringify(c);}));
+        let icePollCount=0;
+        const pollIce=async function(){
+          if(requestId!==nxRemotePlay.requestId || !nxRemotePlay.peer || peer.connectionState==='closed' || peer.connectionState==='failed' || peer.connectionState==='connected' || icePollCount++>=30)return;
+          try{
+            const res=await fetch(sessionUrl+'/ice',{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+login.gsToken}});
+            if(requestId!==nxRemotePlay.requestId)return;
+            if(!res.ok)throw new Error('HTTP '+res.status);
+            const payload=await res.json();
+            if(requestId!==nxRemotePlay.requestId)return;
+            const entries=Array.isArray(payload)?payload:Array.isArray(payload&&payload.candidates)?payload.candidates:[];
+            for(const entry of entries){
+              const key=JSON.stringify(entry);
+              if(remoteSeen.has(key))continue;
+              remoteSeen.add(key);
+              let c=entry;
+              if(typeof c==='string'){try{c=JSON.parse(c);}catch(_){continue;}}
+              if(c && typeof c.candidate==='string' && c.candidate.length<8192)await peer.addIceCandidate(c);
+            }
+          }catch(e){
+            if(requestId===nxRemotePlay.requestId){nxRemotePlay.status='ICE: '+String(e&&e.message||e);if(tabId==='remote')renderBody();}
+          }
+          if(requestId===nxRemotePlay.requestId && peer.connectionState!=='connected')nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
+        };
+        nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
         nxRemotePlay.sessionStatus='ice-pending';
         nxRemotePlay.status='Candidatos ICE processados; aguardando conexão WebRTC.';
         peer.onconnectionstatechange=function(){
           if(requestId!==nxRemotePlay.requestId)return;
           if(peer.connectionState==='connected'){
             nxRemotePlay.sessionStatus='connected';
-            nxRemotePlay.status='WebRTC conectado. Renderização de mídia e controles pendentes.';
+            nxRemotePlay.status='WebRTC conectado; aguardando trilhas de mídia e integração de controles.';
+            if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
           }else if(peer.connectionState==='failed'||peer.connectionState==='closed'){
             nxRemotePlay.sessionStatus='disconnected';
             nxRemotePlay.status='Conexão WebRTC '+peer.connectionState+'.';
@@ -3078,7 +3114,8 @@
       }
     }catch(e){
       if(requestId!==nxRemotePlay.requestId)return;
-      if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
+      if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
+    if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
       if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){} }
       nxRemotePlay.mediaStream=null;
       nxRemotePlay.sessionStatus='failed';
