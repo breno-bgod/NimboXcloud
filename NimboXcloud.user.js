@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.22
+// @version      4.11.23
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.22';
+  const VER = '4.11.23';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -877,7 +877,12 @@
 
   function pumpQos() {
     const pc = S.lastPc;
-    if (qosBusy || !pc || typeof pc.getStats !== 'function') return;
+    if (!pc || pc.connectionState === 'closed' || pc.signalingState === 'closed') {
+      if (S.qos) { S.qos = null; S.lastDiagnosis = 'Sessão WebRTC encerrada'; schedule(); }
+      prevSnap = null;
+      return;
+    }
+    if (qosBusy || typeof pc.getStats !== 'function') return;
     qosBusy = true;
     PCQos(pc).then(function (q) {
       if (q && S.lastPc === pc) {
@@ -915,13 +920,15 @@
       let video = null, pair = null, pairId = null;
 
       rep.forEach(function (r) {
-        if (r.type === 'inbound-rtp' && (r.kind === 'video' || r.mediaType === 'video')) video = r;
+        if (r.type === 'inbound-rtp' && (r.kind === 'video' || r.mediaType === 'video') &&
+            !r.isRemote && (!video || (r.bytesReceived || 0) > (video.bytesReceived || 0))) video = r;
         if (r.type === 'transport' && r.selectedCandidatePairId) pairId = r.selectedCandidatePairId;
-        if (r.type === 'candidate-pair' && (r.nominated || r.selected) && r.state === 'succeeded') pair = r;
+        if (r.type === 'candidate-pair' && (r.nominated || r.selected) && r.state === 'succeeded' &&
+            (!pair || (r.bytesReceived || 0) > (pair.bytesReceived || 0))) pair = r;
       });
       if (pairId && rep.get) {
         const p2 = rep.get(pairId);
-        if (p2) pair = p2;
+        if (p2 && p2.type === 'candidate-pair' && p2.state === 'succeeded') pair = p2;
       }
       if (!video && !pair) return null;
 
