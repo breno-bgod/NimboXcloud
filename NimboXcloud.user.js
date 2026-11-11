@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.4.0
+// @version      4.4.1
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.4.0';
+  const VER = '4.4.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2244,7 +2244,7 @@
           location.reload();
         }, 'Ativar giroscópio experimental no jogo')));
       gyroGroup.add(setRow('Controle que recebe o giroscópio',
-        'Evita movimentar todos os controles conectados. Índice 0 é o padrão; Automático permite todos (uso avançado).',
+        'Evita movimentar todos os controles conectados. Índice 0 é o padrão.',
         chips([{ k: '0', label: 'Controle 1' }, { k: '1', label: 'Controle 2' },
           { k: '2', label: 'Controle 3' }, { k: '3', label: 'Controle 4' }],
           String(nxGyroTargetIndex()), function (k) {
@@ -2891,7 +2891,6 @@
   const NX_GYRO_TARGET_KEY = 'nx.gyro.gamepadIndex.v1';
   function nxGyroTargetIndex() {
     const raw = getPref(NX_GYRO_TARGET_KEY, '0');
-    if (raw === 'auto') return -1;
     const n = Number(raw);
     return Number.isInteger(n) && n >= 0 && n <= 3 ? n : 0;
   }
@@ -2908,7 +2907,7 @@
   }
   function nxMergeGyroAxes(axes, buttons, padIndex) {
     const target = nxGyroTargetIndex();
-    if (padIndex !== undefined && target !== -1 && padIndex !== target) return axes;
+    if (padIndex !== undefined && padIndex !== target) return axes;
     const gyro = nxGyroGameAxes(buttons);
     if (!gyro || axes.length < 4) return axes;
     const merged = axes.slice();
@@ -3183,6 +3182,7 @@
     keyboard: { count: 0, lastAt: 0 }, gamepad: { count: 0, lastAt: 0 },
     simultaneous: 0, lastConflictAt: 0
   };
+  const nxInputEventLastAt = Object.create(null);
   function nxRecordInputSource(name) {
     const source = nxInputSources[name];
     if (!source) return;
@@ -3190,7 +3190,10 @@
     if (now - source.lastAt < 100) return;
     source.count++;
     source.lastAt = now;
-    nxInputEvent('source', name);
+    if (now - (nxInputEventLastAt[name] || 0) >= 1500) {
+      nxInputEvent('source', name);
+      nxInputEventLastAt[name] = now;
+    }
     if (name !== 'gamepad') {
       const other = name === 'touch' ? 'mouse' : 'touch';
       if (now - nxInputSources[other].lastAt < 300 && now - nxInputSources.lastConflictAt > 500) {
@@ -3276,8 +3279,9 @@
     check('modo de ativação válido', ['lt', 'always'].includes(nxGyroActivationMode()));
     check('intensidade de fusão limitada', nxGyroBlend() >= 0.1 && nxGyroBlend() <= 1);
     check('idade máxima do sensor limitada', NX_GYRO_MAX_AGE_MS <= 250);
-    check('controle alvo válido', nxGyroTargetIndex() >= -1 && nxGyroTargetIndex() <= 3);
-    check('controle secundário preservado', nxGyroTargetIndex() === -1 ||
+    check('controle alvo válido', nxGyroTargetIndex() >= 0 && nxGyroTargetIndex() <= 3);
+    check('linha do tempo com limite de eventos', NX_INPUT_EVENTS_MAX === 30);
+    check('controle secundário preservado',
       nxMergeGyroAxes([0, 0, 0.2, 0.1], [], nxGyroTargetIndex() === 0 ? 1 : 0).join(',') === '0,0,0.2,0.1');
     check('zona morta válida', nxGyroDeadzone() >= 0 && nxGyroDeadzone() <= 0.2);
     check('sensibilidade válida', nxGyroSensitivity() >= 0.25 && nxGyroSensitivity() <= 3);
@@ -3292,6 +3296,7 @@
     nxInputSources.simultaneous = 0;
     nxInputSources.lastConflictAt = 0;
     nxInputEvents.length = 0;
+    Object.keys(nxInputEventLastAt).forEach(function (k) { delete nxInputEventLastAt[k]; });
     Object.keys(nxVirtualInputs).forEach(function (id) { delete nxVirtualInputs[id]; });
     nxGamepadMonitor.errors = 0;
     nxGamepadMonitor.lastChange = null;
