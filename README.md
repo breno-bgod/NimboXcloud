@@ -79,7 +79,7 @@ O projeto ainda está em fase experimental. **Nem toda ideia mencionada é uma f
 
 O script é executado em `document-start`. A compatibilidade depende do navegador e das permissões do gerenciador de userscripts.
 
-**Atualizações:** o script ainda não declara `@updateURL` nem `@downloadURL`; atualize manualmente até a configuração e validação desse mecanismo. Enquanto o repositório permanecer privado, o download exige autorização do GitHub; após torná-lo público, a instalação poderá ser feita pelo arquivo Raw. Até a configuração do canal de atualização, importe novas versões manualmente.
+**Atualizações:** o script declara `@updateURL` e `@downloadURL` apontando para a branch `main`. **Como o repositório está privado, a atualização automática não funciona normalmente pelo Tampermonkey**: o endereço Raw requer acesso autorizado. Até tornar o arquivo acessível publicamente, atualize manualmente. Não altere a visibilidade do repositório sem revisar o código e os dados publicados. Enquanto o repositório permanecer privado, o download exige autorização do GitHub; após torná-lo público, a instalação poderá ser feita pelo arquivo Raw. Até a configuração do canal de atualização, importe novas versões manualmente.
 
 ## Documentação
 
