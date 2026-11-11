@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.21
+// @version      4.11.22
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.21';
+  const VER = '4.11.22';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2015,7 +2015,9 @@
   }
   function nxHudRouteMonitor() {
     // SPA: observa a URL sem substituir history.pushState, replaceState ou hooks de terceiros.
-    if (document.visibilityState !== 'hidden') nxHudAutoLoadGame();
+    if (document.visibilityState === 'hidden') return;
+    nxHudAutoLoadGame();
+    nxHudNativeSync();
   }
   window.addEventListener('popstate', nxHudRouteMonitor, { passive: true });
   window.addEventListener('hashchange', nxHudRouteMonitor, { passive: true });
@@ -2253,11 +2255,37 @@
     });
     return { applied: applied, reason: applied ? 'mapped' : 'no-safe-match' };
   }
+  // Reutiliza o monitor de rota existente (1,5 s): sem MutationObserver global.
+  // Reaplica apenas quando o perfil, a escala ou os elementos nativos mudam.
+  let nxHudNativeSignature = '';
+  let nxHudNativeNodes = Object.create(null);
+  function nxHudNativeSync() {
+    if (!nxHudNativeEnabled() || !isInGame()) {
+      if (nxHudNativeOriginal.size) nxHudNativeRestore();
+      nxHudNativeSignature = '';
+      nxHudNativeNodes = Object.create(null);
+      return;
+    }
+    const candidates = nxHudNativeCandidates();
+    const layout = nxHudReadLayout();
+    const signature = JSON.stringify([layout, nxHudPreviewScale(), nxHudCurrentGameId()]);
+    const ids = Object.keys(layout);
+    const changed = signature !== nxHudNativeSignature || ids.some(function (id) {
+      return (nxHudNativeNodes[id] || null) !== (candidates[id] || null);
+    });
+    if (!changed) return;
+    nxHudNativeSignature = signature;
+    nxHudNativeNodes = candidates;
+    nxHudNativeApply();
+  }
   function nxHudNativeSetEnabled(enabled) {
     try {
       setPref(NX_HUD_NATIVE_KEY, enabled ? '1' : '0');
-      if (!enabled) nxHudNativeRestore();
-      else nxHudNativeApply();
+      nxHudNativeSignature = '';
+      if (!enabled) {
+        nxHudNativeRestore();
+        nxHudNativeNodes = Object.create(null);
+      } else nxHudNativeSync();
       return nxHudNativeEnabled() === !!enabled;
     } catch (_) { nxHudNativeRestore(); return false; }
   }
