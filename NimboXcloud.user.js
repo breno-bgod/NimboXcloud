@@ -4244,8 +4244,16 @@
     const t = e.target;
     if (t && wrap && wrap.contains(t)) return;
     if (t && nxLibraryButton && nxLibraryButton.contains(t)) return;
-    setOpen(false);
+    // Fechar sem encaminhar o clique ao jogo.
+    e.preventDefault();e.stopImmediatePropagation();
+    setOpen(false,true);
   }, true);
+  ['pointerup','mousedown','mouseup','click','wheel','touchstart','touchmove','touchend'].forEach(function(type){
+    document.addEventListener(type,function(e){
+      if(!openUI || (wrap&&e.target&&wrap.contains(e.target)))return;
+      e.preventDefault();e.stopImmediatePropagation();
+    },{capture:true,passive:false});
+  });
 
   function update() {
     if (!buildUI()) return;
