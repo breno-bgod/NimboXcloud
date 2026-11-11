@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.36
+// @version      4.12.37
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.36';
+  const VER = '4.12.37';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1666,6 +1666,8 @@
     wrap.style.width=Math.min(innerWidth,width)+'px';wrap.style.maxWidth='100vw';wrap.style.height='100dvh';
     wrap.style.alignItems='stretch';wrap.style.display='flex';
     cardEl.style.maxWidth='100%';cardEl.style.maxHeight='100dvh';cardEl.style.height='100dvh';
+    // Overlay: o painel flutua sobre o jogo e nunca redimensiona o vídeo.
+    wrap.style.pointerEvents='none';cardEl.style.pointerEvents='auto';
     cardEl.style.marginTop='0';cardEl.style.borderRadius='0';
     if(pillEl)pillEl.style.display='none';
     if(nxLibraryButton)nxLibraryButton.style.display='none';
@@ -4485,6 +4487,54 @@
     if (wrap) wrap.style.display = 'flex';
   }
 
+  // Navegação de controle no painel NX. Somente leitura da Gamepad API.
+  // Botões padrão: L3=10, R3=11, A/Cross=0, B/Circle=1, D-pad=12..15.
+  const nxPadUiState = { combo:false, lastAction:'', lastAt:0 };
+  function nxGamepadUiTick() {
+    if (document.visibilityState === 'hidden' || typeof navigator.getGamepads !== 'function') return;
+    let pads;
+    try { pads = Array.from(navigator.getGamepads() || []).filter(Boolean); } catch (_) { return; }
+    if (!pads.length) { nxPadUiState.combo=false;return; }
+    const pressed = function(p,i){return !!(p.buttons && p.buttons[i] && p.buttons[i].pressed);};
+    const combo = pads.some(function(p){return pressed(p,10)&&pressed(p,11);});
+    if (combo && !nxPadUiState.combo) {
+      setOpen(!openUI,true);
+      nxPadUiState.lastAt=Date.now();
+    }
+    nxPadUiState.combo=combo;
+    if (!openUI || combo || !cardEl) return;
+    const p=pads[0];
+    const axisY=p.axes && p.axes.length>1 ? p.axes[1] : 0;
+    const axisX=p.axes && p.axes.length>0 ? p.axes[0] : 0;
+    let action='';
+    if (pressed(p,1)) action='back';
+    else if (pressed(p,0)) action='confirm';
+    else if (pressed(p,12)||axisY<-.65) action='up';
+    else if (pressed(p,13)||axisY>.65) action='down';
+    else if (pressed(p,14)||axisX<-.65) action='left';
+    else if (pressed(p,15)||axisX>.65) action='right';
+    const now=Date.now();
+    if (!action) { nxPadUiState.lastAction='';return; }
+    const repeated=action===nxPadUiState.lastAction;
+    if (repeated && now-nxPadUiState.lastAt<220) return;
+    if (!repeated && now-nxPadUiState.lastAt<120) return;
+    nxPadUiState.lastAction=action;nxPadUiState.lastAt=now;
+    if (action==='back') { if(tabId!=='overview')setTab('overview');else setOpen(false,true);return; }
+    const selector='button:not(:disabled),[role="button"],input:not(:disabled),select:not(:disabled),[tabindex="0"]';
+    const targets=Array.from(cardEl.querySelectorAll(selector)).filter(function(el){
+      const r=el.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden';
+    });
+    if (!targets.length) return;
+    const focused=targets.indexOf(document.activeElement);
+    if (action==='confirm') {
+      if (focused>=0) { const el=targets[focused];if(el.tagName==='SELECT')el.focus();else el.click(); }
+      else targets[0].focus({preventScroll:true});
+      return;
+    }
+    const step=(action==='up'||action==='left')?-1:1;
+    const next=targets[(focused+step+targets.length)%targets.length];
+    next.focus({preventScroll:true});next.scrollIntoView({block:'nearest',inline:'nearest'});
+  }
   function schedule() {
     if (pending) return;
     pending = true;
@@ -4524,7 +4574,7 @@
     }
 
     if (!openUI) return;
-    fitCard();
+    nxDockPanel();
     runLive();
   }
 
@@ -6063,6 +6113,7 @@ void main(){
   function boot() {
     startInputDiagnostics();
     nxSampleGamepads();
+    setInterval(nxGamepadUiTick, 75);
     setInterval(function () {
       nxInputBridgeStatus();
       if (document.visibilityState === 'visible') nxSampleGamepads();
