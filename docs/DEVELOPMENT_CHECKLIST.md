@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-002 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime não modificado
+**Edição:** PM-003 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime não modificado
 
 ## Regras permanentes
 
@@ -29,8 +29,8 @@
 |---|---|---|---|---|
 | CORE-001 | Inventariar módulos, hooks, eventos, timers e armazenamento do script atual | NimboXcloud | mapa de dependências com donos e conflitos | EM_ANDAMENTO |
 | CORE-002 | Identificar quais mudanças noturnas alteraram comportamento real versus somente diagnóstico | commits GitHub | matriz por commit com impacto e rollback | EM_ANDAMENTO |
-| CORE-003 | Registrar baseline de reprodução de erros de mouse, Pointer Lock e touchscreen | relatos + navegador | cenários reproduzíveis documentados | PENDENTE |
-| CORE-004 | Criar suite de lint, parse e smoke tests sem conta | Xperience/build | comandos reproduzíveis com saída e falha CI | PENDENTE |
+| CORE-003 | Registrar baseline de reprodução de erros de mouse, Pointer Lock e touchscreen | relatos + navegador | cenários reproduzíveis documentados | IMPLEMENTADO |
+| CORE-004 | Criar suite de lint, parse e smoke tests sem conta | Xperience/build | comandos reproduzíveis com saída e falha CI | IMPLEMENTADO (lint pendente) |
 | CORE-005 | Criar configuração de feature flags e rollback de módulos experimentais | NimboXcloud | desligar recursos sem reinstalar script | PENDENTE |
 | CORE-006 | Verificar licença, atribuição e proveniência de cada módulo adaptado | MIT/AGPL | inventário de proveniência revisado | PENDENTE |
 
@@ -143,3 +143,11 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - Histórico recente: v4.10.3–v4.10.8 concentram correções de persistência de HUD; v4.10.9–v4.11.2 são diagnóstico de HUD. Não há evidência de integração do editor com os controles reais.
 - Referências: XFly (Electron), Xperience XCloud (userscript) e XStreaming (React Native, AGPL-3.0). Não copiar código AGPL sem revisão de compatibilidade.
 - **P00 ainda não concluído.** CORE-003 a CORE-006 e AUD-00 aguardam implementação/verificação; testes reais no navegador não executados.
+
+
+## P00 — pacote 1 de implementação (2026-11-11)
+- `tests/baseline.test.cjs`: cinco testes de parse, metadados, versão e detecção do risco conhecido de Pointer Lock.
+- `.github/workflows/baseline.yml`: execução automática de smoke tests em push/PR.
+- `docs/P00_BASELINE.md`: cenários de reprodução e riscos CORE-001.F01/F02/F03.
+- **Verificação ainda pendente:** execução efetiva do workflow no GitHub e testes reais no navegador; nenhum deles é presumido aprovado.
+- CORE-004 permanece parcialmente atendido até adicionar lint e verificar CI; `IMPLEMENTADO` indica artefatos criados, não validação.
