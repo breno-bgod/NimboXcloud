@@ -3094,7 +3094,7 @@
           }
           if(requestId===nxRemotePlay.requestId && peer.connectionState!=='connected')nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
         };
-        nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
+        if(peer.connectionState==='new'||peer.connectionState==='connecting')nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
         nxRemotePlay.sessionStatus='ice-pending';
         nxRemotePlay.status='Candidatos ICE processados; aguardando conexão WebRTC.';
         peer.onconnectionstatechange=function(){
