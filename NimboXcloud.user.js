@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.23
+// @version      4.12.24
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -74,6 +74,11 @@
   const LS_DEVICE_PROFILE = 'xcu.deviceProfile';
   const LS_CONSOLE_LAB = 'xcu.consoleLab.profile.v1';
   const LS_CONSOLE_NOTES = 'xcu.consoleLab.notes.v1';
+  const LS_FORTNITE_CONSOLE = 'nx.fortnite.consoleExperience.v1';
+  const nxFortniteConsoleEnabled = (function () { try { return localStorage.getItem(LS_FORTNITE_CONSOLE) === '1'; } catch (_) { return false; } })();
+  const nxFortniteConsoleState = { enabled: nxFortniteConsoleEnabled, matched: false, inspected: 0, patched: 0, previousTouch: null, note: 'Experimental: sinalização de toque na configuração da sessão; não emula hardware Xbox.' };
+  function nxIsFortniteRoute() { return /(?:^|\/)(?:fortnite)(?:\/|$)/i.test(location.pathname); }
+
   const LS_NX_SHORTCUT = 'xcu.nxShortcut';
   const LS_RTT_HISTORY = 'xcu.rttHistory.v1';
   const LS_VIBRATION = 'xcu.vibrationLevel';
@@ -341,6 +346,7 @@
        compatibility: { enabled: nxCompatibilityMode, identityMode: nxConsoleLabState.identityMode, nativeUserAgentPreserved: navigator.userAgent === nxConsoleNativeUA, sessionOsRewriteDisabled: nxCompatibilityMode, clientHintsOverrideDisabled: nxCompatibilityMode },
        clientHintsExperiment: { enabled: nxClientHintsMode, applied: nxClientHintsApplied, note: 'Somente navigator.userAgentData JS; nao altera cabecalhos HTTP' },
       protocolEvidence: nxProtocolEvidence(), consoleProfileValidation: nxConsoleProfileValidation(),
+      fortniteConsoleExperience: Object.assign({}, nxFortniteConsoleState),
       offeringTrace: nxOfferingTrace.slice(), offeringTraceNotice: 'Somente host, metodo, status e duracao; sem credenciais.',
        sessionTrace: nxSessionTrace.slice(),
       sessionHealth: nxSessionHealth(), compatibilityVerdict: nxCompatibilityVerdict(),
@@ -1166,7 +1172,9 @@
   function patchTouchSessionConfiguration(response) {
     if (!response || !response.ok) return Promise.resolve(response);
     const caps = inputCapabilities();
-    if (!caps.touch || caps.maxTouchPoints < 1) return Promise.resolve(response);
+    const forceFortnite = nxFortniteConsoleEnabled && nxIsFortniteRoute();
+    if (!forceFortnite && (!caps.touch || caps.maxTouchPoints < 1)) return Promise.resolve(response);
+    if (forceFortnite) { nxFortniteConsoleState.matched = true; nxFortniteConsoleState.inspected++; }
     return response.clone().text().then(function (body) {
       let data;
       try { data = JSON.parse(body); } catch (e) { return response; }
@@ -1182,8 +1190,9 @@
       if (original != null && (typeof original !== 'object' || Array.isArray(original))) return response;
       const inputs = Object.assign({}, original || {});
       const previous = typeof inputs.enableTouchInput === 'boolean' ? inputs.enableTouchInput : null;
-      inputs.enableTouchInput = true;
-      inputs.maxTouchPoints = Math.max(Number(inputs.maxTouchPoints) || 0, caps.maxTouchPoints);
+      inputs.enableTouchInput = !forceFortnite;
+      if (!forceFortnite) inputs.maxTouchPoints = Math.max(Number(inputs.maxTouchPoints) || 0, caps.maxTouchPoints);
+      if (forceFortnite) { nxFortniteConsoleState.patched++; nxFortniteConsoleState.previousTouch = previous; }
       overrides.inputConfiguration = inputs;
       data.clientStreamingConfigOverrides = JSON.stringify(overrides);
       touchSessionDiagnostics = { inspected: true, applied: true, previousTouch: previous, maxTouchPoints: inputs.maxTouchPoints };
@@ -3956,6 +3965,14 @@
       lab.add(setRow('Perfil de plataforma', 'Xbox One e Series X|S sao perfis independentes. Preservam identidade e controles nativos; nao comprovam autorizacao Xbox.',
         chips([{k:'off',label:'Original'},{k:'android',label:'Android'},{k:'windows',label:'Desktop'},{k:'xbox',label:'Xbox legado'},{k:'xboxone',label:'Xbox One'},{k:'xboxseries',label:'Series X|S'},{k:'smarttv',label:'Smart TV'}],
           nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
+      lab.add(setRow('Fortnite: experiência de console (experimental)',
+        'Inspirado no Better xCloud: desativa a sinalização de toque na configuração da sessão do Fortnite. Não muda User-Agent, não emula Xbox e pode não alterar a experiência no cliente novo. Requer reiniciar a sessão.',
+        chips([{k:'off',label:'Desligado'},{k:'on',label:'Ativar'}],
+          nxFortniteConsoleEnabled ? 'on' : 'off', function (k) {
+            try { localStorage.setItem(LS_FORTNITE_CONSOLE, k === 'on' ? '1' : '0'); } catch (_) {}
+            location.reload();
+          }), true));
+      lab.add(infoRow('Fortnite: aplicação', function () { return nxFortniteConsoleState.patched ? 'Configuração de toque modificada' : (nxFortniteConsoleEnabled ? 'Aguardando configuração da sessão' : 'Desligado'); }));
       lab.add(setRow('Client Hints (avançado)',
         'Ocultar navigator.userAgentData apenas no JavaScript, conforme Xperience XCloud. Não altera headers e pode prejudicar compatibilidade.',
         chips([{k:'off',label:'Normal'},{k:'on',label:'Ocultar JS'}],
