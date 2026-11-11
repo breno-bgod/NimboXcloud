@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.8.4
+// @version      3.8.5
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.8.4';
+  const VER = '3.8.5';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2167,6 +2167,25 @@
       }, 'Toques podem gerar eventos de mouse sintéticos; não indica necessariamente um problema.'));
       root.appendChild(g2.root);
 
+      const coordination = group('Coordenação de entradas — diagnóstico',
+        'Prioridade visual das fontes. Não bloqueia toque, mouse, teclado ou controle.');
+      coordination.add(setRow('Preferência de fonte', 'Automático usa a última atividade recente com prioridade de controle físico.',
+        chips(Object.keys(nxCoordModes).map(function (k) {
+          return { k: k, label: nxCoordModes[k] };
+        }), nxCoordMode(), function (k) {
+          setPref(NX_INPUT_COORD_KEY, k);
+          renderBody();
+        }), true));
+      coordination.add(infoRow('Fonte sugerida', function () {
+        const state = nxCoordState();
+        return nxCoordModes[state.suggested] || 'Nenhuma';
+      }));
+      coordination.add(infoRow('Fontes simultâneas', function () {
+        return nxCoordState().mixed ? nxCoordState().activeSources.join(' + ') : 'Não detectadas';
+      }, 'Janela de observação de 2 segundos; uso simultâneo pode ser intencional.'));
+      coordination.add(infoRow('Interferência no jogo', function () { return 'Nenhuma (somente diagnóstico)'; }));
+      root.appendChild(coordination.root);
+
       const inputPreview = group('Perfis de analógico',
         'Simulação por padrão. Aplicação experimental opcional com recarregamento e retorno imediato ao modo nativo.');
       inputPreview.add(setRow('Aplicar curvas ao jogo (experimental)',
@@ -2774,6 +2793,31 @@
       }
     }
   }
+  const NX_INPUT_COORD_KEY = 'nx.input.coordination.v1';
+  const nxCoordModes = {
+    auto: 'Automático', gamepad: 'Controle físico', touch: 'Toque',
+    mouse: 'Mouse', keyboard: 'Teclado'
+  };
+  function nxCoordMode() {
+    const mode = getPref(NX_INPUT_COORD_KEY, 'auto');
+    return Object.prototype.hasOwnProperty.call(nxCoordModes, mode) ? mode : 'auto';
+  }
+  function nxCoordState() {
+    const now = Date.now(), recent = {};
+    ['touch', 'mouse', 'keyboard', 'gamepad'].forEach(function (k) {
+      recent[k] = nxInputSources[k].lastAt > 0 && now - nxInputSources[k].lastAt < 2000;
+    });
+    const configured = nxCoordMode();
+    const priority = ['gamepad', 'touch', 'mouse', 'keyboard'];
+    const active = configured !== 'auto' ? configured : (priority.find(function (k) { return recent[k]; }) || 'none');
+    const simultaneous = priority.filter(function (k) { return recent[k]; });
+    return {
+      configured: configured, suggested: active,
+      activeSources: simultaneous, mixed: simultaneous.length > 1,
+      outputModified: false,
+      note: 'Arbitragem apenas diagnóstica. Não bloqueia eventos, não emula controles e não interfere no HUD nativo.'
+    };
+  }
   function nxInputSourcesReport() {
     return {
       touch: nxInputSources.touch.count, mouse: nxInputSources.mouse.count,
@@ -2877,6 +2921,7 @@
       url: location.href,
       inputCapabilities: inputCapabilities(),
       inputSources: nxInputSourcesReport(),
+      inputCoordination: nxCoordState(),
       gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback } },
       inputNegotiation: lastInputNegotiation,
       touchSession: touchSessionDiagnostics,
