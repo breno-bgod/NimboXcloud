@@ -3240,7 +3240,7 @@
       const cg = group('Configuração atual');
       cg.add(infoRow('Data center', function () { return srvBtnLabel(); }));
       cg.add(infoRow('Qualidade', function () { return resCfg().label; }));
-      cg.add(infoRow('Bitrate recebido', function () { return S.qos && Number.isFinite(S.qos.bitrate) ? S.qos.bitrate.toFixed(1) + ' Mbps' : 'Aguardando transmissão'; }));
+      cg.add(infoRow('Bitrate recebido', function () { return S.qos && Number.isFinite(S.qos.kbps) ? (S.qos.kbps / 1000).toFixed(1) + ' Mbps' : 'Aguardando transmissão'; }));
       cg.add(infoRow('Rede', function () { return v4on() ? 'IPv4 forçado' : 'IPv4 + IPv6'; }));
       cg.add(infoRow('Região da loja', function () { return cfg().name; }));
       root.appendChild(cg.root);
@@ -3312,7 +3312,7 @@
 
       const g2 = group('Qualidade de vídeo');
       g2.add(infoRow('Qualidade solicitada', function () { return '1080p (máxima disponível)'; }, 'A resolução efetiva depende da negociação com o servidor.'));
-      g2.add(infoRow('Bitrate recebido', function () { return S.qos && Number.isFinite(S.qos.bitrate) ? S.qos.bitrate.toFixed(1) + ' Mbps' : 'Aguardando transmissão'; }, 'Valor medido, não um limite.'));
+      g2.add(infoRow('Bitrate recebido', function () { return S.qos && Number.isFinite(S.qos.kbps) ? (S.qos.kbps / 1000).toFixed(1) + ' Mbps' : 'Aguardando transmissão'; }, 'Valor medido, não um limite.'));
       root.appendChild(g2.root);
 
       const g3 = group('Rede');
