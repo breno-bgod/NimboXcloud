@@ -1,0 +1,29 @@
+name: NimboXcloud regression tests
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'NimboXcloud.user.js'
+      - 'tests/**'
+      - '.github/workflows/xhome-tests.yml'
+  pull_request:
+    paths:
+      - 'NimboXcloud.user.js'
+      - 'tests/**'
+      - '.github/workflows/xhome-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  xhome-discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate userscript syntax
+        run: node --check NimboXcloud.user.js
+      - name: Run xHome discovery regression tests
+        run: node --test tests/xhome-discovery.test.cjs
