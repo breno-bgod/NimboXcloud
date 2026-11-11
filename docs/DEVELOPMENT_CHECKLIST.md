@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-007 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.3 com opt-out reversível de Pointer Lock
+**Edição:** PM-008 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.3 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -189,3 +189,10 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - Sintaxe do userscript e do teste verificada estaticamente. **Não foi executado teste real no xCloud**, nem confirmado GitHub Actions.
 - **Risco conhecido:** outros caminhos do script ainda podem alterar o ciclo de captura; esta flag não comprova correção do mouse. CORE-005 permanece parcial e AUD-00 aberta.
 - Rollback operacional sem reinstalar: `localStorage.setItem('nx.pointerLockLegacyF9', '0'); location.reload()` no contexto da página, somente para teste consciente. Para restaurar: `localStorage.removeItem('nx.pointerLockLegacyF9'); location.reload()`.
+
+
+## P00 — testes de comportamento isolado da flag (2026-11-11)
+- Commit `9a7374aa`: `tests/pointer-lock-flag.test.cjs` testa cinco cenários em contexto VM isolado, sem credenciais, rede ou xCloud.
+- Sintaxe do teste verificada na criação. **Execução Node e GitHub Actions não confirmadas**; testes reais do navegador seguem pendentes.
+- CORE-005 segue EM_ANDAMENTO: flag do Pointer Lock implementada, mas outras funcionalidades experimentais ainda não possuem rollback uniforme.
+- **Próximas ações:** confirmar CI, mapear e corrigir demais flags, revisar conflitos de entrada, completar AUD-00 antes de P01.
