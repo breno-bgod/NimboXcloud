@@ -3713,6 +3713,7 @@
       'box-shadow:0 20px 56px rgba(0,0,0,.65)',
       '-webkit-backdrop-filter:blur(14px)', 'backdrop-filter:blur(14px)'
     ].join(';'));
+    cardEl.style.maxWidth='min(360px,calc(100vw - 16px))';
     cardEl.setAttribute('role', 'dialog');
     cardEl.setAttribute('aria-label', 'Painel NimboXcloud');
     cardEl.addEventListener('pointerdown', stopEv);
@@ -3775,34 +3776,56 @@
   let nxTelemetryEl = null, nxLoadingStarted = 0, nxLoadingLastStage = '';
   function nxTelemetryEnsure() {
     if (nxTelemetryEl && nxTelemetryEl.isConnected) return nxTelemetryEl;
-    const host = document.body || document.documentElement;
+    const host = mountTarget();
     if (!host) return null;
     nxTelemetryEl = document.createElement('div');
     nxTelemetryEl.id = 'nx-telemetry-overlay';
     nxTelemetryEl.setAttribute('aria-label','Telemetria NimboXcloud');
     nxTelemetryEl.style.cssText = 'position:fixed;left:12px;top:12px;z-index:2147483000;pointer-events:none;background:rgba(9,14,23,.83);color:#eaf4ff;border:1px solid rgba(130,177,230,.3);border-radius:10px;padding:9px 12px;font:12px/1.6 system-ui,sans-serif;white-space:pre-line;max-width:min(390px,calc(100vw - 24px));box-shadow:0 4px 22px #0007';
     host.appendChild(nxTelemetryEl);
+    nxTelemetryEl.setAttribute('title','Arraste para mover o NX Stream Monitor');
+    nxTelemetryEl.addEventListener('pointerdown',nxMonitorDrag);
     return nxTelemetryEl;
   }
-  function nxTelemetryTick() {
-    if (!nxTelemetryEnabled || document.hidden) { if(nxTelemetryEl) nxTelemetryEl.style.display='none'; return; }
-    const elx = nxTelemetryEnsure();
-    if (!elx) return;
-    const h = nxSessionHealth(), trace = nxSessionTrace;
-    const last = trace.length ? trace[trace.length-1] : null;
-    const stage = last ? last.stage : '';
-    if (stage !== nxLoadingLastStage) { nxLoadingLastStage = stage; nxLoadingStarted = Date.now(); }
-    const q = S.qos || {};
-    const stream = h.state === 'streaming';
-    const lines = ['NIMBOXCLOUD  •  ' + (stream ? 'TRANSMISSÃO' : 'CONEXÃO')];
-    lines.push('Estado: ' + (stream ? 'Vídeo recebido' : h.explanation));
-    if (last) lines.push('Etapa: ' + stage + '  •  HTTP ' + last.status);
-    if (!stream && last) lines.push('Nesta etapa: ' + Math.floor((Date.now()-nxLoadingStarted)/1000) + ' s (não é previsão)');
-    lines.push('Servidor: ' + (S.serverActual || 'Não identificado'));
-    lines.push('FPS: ' + fmtN(q.decodedFps || q.fps,'') + '  •  RTT: ' + fmtN(q.rtt,' ms'));
-    lines.push('Perda: ' + fmtN(curLoss(),'%') + '  •  Bitrate: ' + fmtN(q.bitrate || q.bitrateMbps,' Mbps'));
-    elx.textContent = lines.join('\n');
-    elx.style.display = openUI ? 'none' : 'block';
+  // NX Stream Monitor: métricas WebRTC existentes, sem sondagens paralelas.
+  const NX_MONITOR_SETTINGS='nx.monitor.settings.v1';
+  const nxMonitorDefaults={layout:'auto',opacity:45,color:'white',scale:100,position:'top-left',x:null,y:null,fields:['server','fps','rtt','bitrate','loss']};
+  function nxMonitorLoad(){try{const p=JSON.parse(localStorage.getItem(NX_MONITOR_SETTINGS)||'{}');return Object.assign({},nxMonitorDefaults,p,{fields:Array.isArray(p.fields)?p.fields:nxMonitorDefaults.fields});}catch(_){return Object.assign({},nxMonitorDefaults);}}
+  let nxMonitor=nxMonitorLoad();
+  function nxMonitorSave(){try{localStorage.setItem(NX_MONITOR_SETTINGS,JSON.stringify(nxMonitor));}catch(_){}nxTelemetryTick();}
+  function nxMonitorPlace(){
+    if(!nxTelemetryEl)return;
+    const n=nxTelemetryEl,p=nxMonitor;
+    const x=Number.isFinite(p.x)?p.x:(p.position.endsWith('right')?innerWidth-n.offsetWidth-12:12);
+    const y=Number.isFinite(p.y)?p.y:(p.position.startsWith('bottom')?innerHeight-n.offsetHeight-12:12);
+    n.style.left=Math.max(0,Math.min(innerWidth-n.offsetWidth,x))+'px';
+    n.style.top=Math.max(0,Math.min(innerHeight-n.offsetHeight,y))+'px';
+    n.style.right='auto';n.style.bottom='auto';
+  }
+  function nxMonitorDrag(e){
+    if(e.button!=null&&e.button!==0)return;
+    const n=nxTelemetryEl,r=n.getBoundingClientRect(),dx=e.clientX-r.left,dy=e.clientY-r.top;
+    try{n.setPointerCapture(e.pointerId);}catch(_){}
+    const move=function(v){if(v.pointerId!==e.pointerId)return;nxMonitor.x=v.clientX-dx;nxMonitor.y=v.clientY-dy;nxMonitorPlace();};
+    const stop=function(v){if(v.pointerId!==e.pointerId)return;n.removeEventListener('pointermove',move);n.removeEventListener('pointerup',stop);n.removeEventListener('pointercancel',stop);nxMonitorSave();};
+    n.addEventListener('pointermove',move);n.addEventListener('pointerup',stop);n.addEventListener('pointercancel',stop);e.stopPropagation();
+  }
+  function nxTelemetryTick(){
+    if(!nxTelemetryEnabled||document.hidden||!streaming()){if(nxTelemetryEl)nxTelemetryEl.style.display='none';return;}
+    const n=nxTelemetryEnsure();if(!n)return;
+    const host=mountTarget();if(host&&n.parentNode!==host)host.appendChild(n);
+    const q=S.qos||{},p=nxMonitor;
+    const flags={JAPANEAST:'🇯🇵',KOREACENTRAL:'🇰🇷',EASTUS:'🇺🇸',WESTEUROPE:'🇪🇺',BRAZILSOUTH:'🇧🇷'};
+    const srv=String(S.serverActual||'').toUpperCase();
+    const vals={server:(flags[srv]||'◈')+' '+(srv||'Servidor não identificado'),fps:'FPS '+fmtN(q.decodedFps||q.fps),rtt:'RTT '+fmtN(q.rtt,' ms'),bitrate:'BR '+(Number.isFinite(q.kbps)?fmtN(q.kbps/1000,' Mbps',1):'—'),loss:'Perda '+fmtN(curLoss(),'% ',1),resolution:'Res '+(q.h?q.h+'p':'—'),jitter:'Jitter '+fmtN(q.jitter,' ms')};
+    const keys=p.layout==='compact'?['server','fps','rtt']:p.fields;
+    const layout=p.layout==='auto'?(innerWidth<700?'vertical':'horizontal'):p.layout;
+    n.textContent=keys.filter(function(k){return Object.prototype.hasOwnProperty.call(vals,k);}).map(function(k){return vals[k];}).join(layout==='vertical'?'\\n':'  ·  ');
+    n.style.cssText='position:fixed;z-index:2147483000;display:block;pointer-events:auto;touch-action:none;user-select:none;cursor:move;box-sizing:border-box;border-radius:7px;padding:5px 8px;max-width:calc(100vw - 24px);white-space:pre-line;font-family:ui-monospace,Consolas,monospace;font-weight:600;line-height:1.5';
+    n.style.fontSize=(11*Math.max(60,Math.min(140,Number(p.scale)||100))/100)+'px';
+    n.style.background='rgba(0,0,0,'+(Math.max(0,Math.min(100,Number(p.opacity)||0))/100)+')';
+    n.style.color=({white:'#fff',black:'#000',blue:'#65b8ff',green:'#80e5a4'})[p.color]||'#fff';
+    nxMonitorPlace();
   }
   setInterval(nxTelemetryTick, 1000);
   function nxTelemetryToggle(enabled) {
@@ -3810,7 +3833,36 @@
     try { localStorage.setItem(NX_TELEMETRY_KEY,enabled?'1':'0'); } catch (_) {}
     nxTelemetryTick();
   }
-  function setOpen(v, byUser) {
+  // Configurações no início: o monitor funciona mesmo com o painel recolhido.
+  const nxOverviewOriginal=TAB_BUILDERS.overview;
+  TAB_BUILDERS.overview=function(root){
+    const section=mk('div','border:1px solid '+C.line+';border-radius:12px;padding:12px;margin-bottom:12px');
+    section.appendChild(mk('div','font-weight:700;font-size:14px;margin-bottom:5px','NX Stream Monitor'));
+    section.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:10px','Informações mínimas durante a partida; arraste o monitor para reposicionar.'));
+    section.appendChild(actBtn(nxTelemetryEnabled?'Ocultar monitor':'Ativar monitor',function(){nxTelemetryToggle(!nxTelemetryEnabled);renderBody();},'ghost'));
+    function option(label,key,choices){
+      const row=mk('label','display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:9px;font-size:12px');
+      row.appendChild(mk('span','',label));
+      const sel=mk('select','background:#18212b;color:white;border:1px solid '+C.line+';border-radius:7px;padding:6px;max-width:60%');
+      choices.forEach(function(o){const opt=document.createElement('option');opt.value=o[0];opt.textContent=o[1];sel.appendChild(opt);});
+      sel.value=String(nxMonitor[key]);sel.addEventListener('change',function(){nxMonitor[key]=['opacity','scale'].includes(key)?Number(sel.value):sel.value;if(key==='position'){nxMonitor.x=null;nxMonitor.y=null;}nxMonitorSave();});
+      row.appendChild(sel);section.appendChild(row);
+    }
+    option('Layout','layout',[['auto','Automático'],['horizontal','Horizontal'],['vertical','Vertical'],['compact','Compacto']]);
+    option('Posição','position',[['top-left','Superior esquerdo'],['top-right','Superior direito'],['bottom-left','Inferior esquerdo'],['bottom-right','Inferior direito']]);
+    option('Fundo','opacity',[['0','Transparente'],['25','25%'],['45','45%'],['65','65%'],['85','85%'],['100','Preto']]);
+    option('Texto','color',[['white','Branco'],['black','Preto'],['blue','Azul'],['green','Verde']]);
+    option('Escala','scale',[['60','60%'],['80','80%'],['100','100%'],['120','120%'],['140','140%']]);
+    const fields=mk('div','display:flex;flex-wrap:wrap;gap:8px;margin-top:10px');
+    [['server','Servidor'],['fps','FPS'],['rtt','RTT'],['bitrate','Bitrate'],['loss','Perda'],['resolution','Resolução'],['jitter','Jitter']].forEach(function(item){
+      const label=mk('label','display:inline-flex;align-items:center;gap:4px;font-size:11px');
+      const check=document.createElement('input');check.type='checkbox';check.checked=nxMonitor.fields.includes(item[0]);
+      check.addEventListener('change',function(){nxMonitor.fields=check.checked?Array.from(new Set(nxMonitor.fields.concat(item[0]))):nxMonitor.fields.filter(function(k){return k!==item[0];});nxMonitorSave();});
+      label.appendChild(check);label.appendChild(mk('span','',item[1]));fields.appendChild(label);
+    });
+    section.appendChild(fields);root.appendChild(section);nxOverviewOriginal(root);
+  };
+    function setOpen(v, byUser) {
     openUI = !!v;
     if (byUser) userTouched = true;
     if (!cardEl) return;
