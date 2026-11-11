@@ -1346,7 +1346,7 @@
 
   // Xbox Shell experimental: apresentação independente da identidade de rede.
   const LS_NX_SHELL = 'nx.xboxShell.enabled.v1';
-  const nxShellEnabled = nxConsoleLabProfile === 'xbox' && (function () { try { return localStorage.getItem(LS_NX_SHELL) !== '0'; } catch (_) { return true; } })();
+  const nxShellEnabled = ['xbox','xboxone','xboxseries'].includes(nxConsoleLabProfile) && (function () { try { return localStorage.getItem(LS_NX_SHELL) !== '0'; } catch (_) { return true; } })();
   let nxShellLastInput = 0, nxShellPrevButtons = [], nxShellPrevAxis = 0, nxShellHeldSince = 0, nxShellNeedsRelease = true;
   const nxShellStats = { moves: 0, actions: 0, errors: 0, lastError: '' };
   function nxShellError(e) { nxShellStats.errors++; nxShellStats.lastError = String(e && e.message || e); }
@@ -1386,8 +1386,11 @@
   }
   // Menu + View por 0,7s: abre o painel sem depender do toque.
   let nxShellShortcutSince = 0, nxShellShortcutLatched = false;
+  let nxSticksShortcutSince = 0, nxSticksShortcutLatched = false;
+  const NX_STICKS_SHORTCUT_KEY = 'nx.access.sticksShortcut.v1';
+  function nxSticksShortcutEnabled() { try { return localStorage.getItem(NX_STICKS_SHORTCUT_KEY) !== '0'; } catch (_) { return true; } }
   function nxShellGamepadPoll() {
-    if (!nxShellEnabled || !cardEl || !cardEl.isConnected || document.hidden || !navigator.getGamepads) {
+    if (!cardEl || !cardEl.isConnected || document.hidden || !navigator.getGamepads) {
       nxShellPrevButtons = []; nxShellPrevAxis = 0; nxShellHeldSince = 0; nxShellNeedsRelease = true; return;
     }
     try {
@@ -1395,6 +1398,15 @@
       if (!pad) { nxShellPrevButtons = []; nxShellPrevAxis = 0; nxShellNeedsRelease = true; return; }
       const pressed = (pad.buttons || []).map(function (b) { return !!(b && b.pressed); });
       const shortcut = pressed[8] && pressed[9];
+      const sticksShortcut = nxSticksShortcutEnabled() && pressed[10] && pressed[11];
+      if (sticksShortcut) {
+        if (!nxSticksShortcutSince) nxSticksShortcutSince = Date.now();
+        if (!nxSticksShortcutLatched && Date.now() - nxSticksShortcutSince >= 850) {
+          nxSticksShortcutLatched = true;
+          setOpen(!openUI, true);
+          nxShellNeedsRelease = true;
+        }
+      } else { nxSticksShortcutSince = 0; nxSticksShortcutLatched = false; }
       if (shortcut) {
         if (!nxShellShortcutSince) nxShellShortcutSince = Date.now();
         if (!nxShellShortcutLatched && Date.now() - nxShellShortcutSince >= 700) {
@@ -1403,7 +1415,7 @@
           nxShellNeedsRelease = true;
         }
       } else { nxShellShortcutSince = 0; nxShellShortcutLatched = false; }
-      if (!openUI) { nxShellPrevButtons = pressed; nxShellPrevAxis = 0; return; }
+      if (!openUI || !nxShellEnabled) { nxShellPrevButtons = pressed; nxShellPrevAxis = 0; return; }
       const axis = pad.axes && Math.abs(pad.axes[1] || 0) > .65 ? Math.sign(pad.axes[1]) : 0;
       // Avoid a held gamepad button opening the panel and immediately activating a control.
       const anyInput = pressed.some(Boolean) || (pad.axes || []).some(function (v) { return Math.abs(v || 0) > .65; });
@@ -1452,10 +1464,9 @@
     } catch (err) { nxShellError(err); }
   }
 
-  if (nxShellEnabled) {
-    nxShellInstall();
-    setInterval(nxShellGamepadPoll, 90);
-  }
+  if (nxShellEnabled) nxShellInstall();
+  // Atalhos disponíveis em todos os perfis, inclusive quando o Xbox Shell não está ativo.
+  setInterval(nxShellGamepadPoll, 90);
 
   function readPos() {
     try {
@@ -1700,8 +1711,8 @@
     const mode = playing ? 'game' : 'library';
     if (nxMode !== mode) {
       nxMode = mode;
-      openUI = false;
-      if (cardEl) cardEl.style.display = 'none';
+      // A navegação do xCloud não deve cancelar uma abertura solicitada pelo jogador.
+      if (!userTouched) { openUI = false; if (cardEl) cardEl.style.display = 'none'; }
       if (pickEl) pickEl.style.display = 'none';
     }
     if (playing) {
@@ -1715,10 +1726,13 @@
         nxLibraryButton.style.display = expanded ? 'inline-flex' : 'none';
         nxLibraryButton.title = 'Abrir NimboXcloud durante a partida';
         // O botão NX deve recolher junto com a barra nativa. Painel aberto permanece acessível.
-        if (!expanded && openUI) { openUI = false; if (cardEl) cardEl.style.display = 'none'; }
+        // Barra nativa recolhida não implica fechar o painel aberto pelo atalho.
         wrap.style.display = openUI ? 'flex' : 'none';
         if (pillEl) pillEl.style.display = 'none';
-        if (openUI) positionNXCard(nxLibraryButton);
+        if (openUI) {
+          if (expanded) positionNXCard(nxLibraryButton);
+          else { wrap.style.left='8px'; wrap.style.right='auto'; wrap.style.top='58px'; wrap.style.width=Math.min(380,innerWidth-16)+'px'; }
+        }
       } else {
         // Enquanto a barra nativa está recolhida, não deixar um ícone independente na tela.
         if (nxLibraryButton) nxLibraryButton.style.display = 'none';
@@ -3803,6 +3817,7 @@
     cardEl.style.display = openUI ? 'flex' : 'none';
     if (nxShellEnabled && wrap) { wrap.classList.toggle('nx-shell-open', openUI); if (openUI) nxShellNeedsRelease = true; }
     if (openUI) { syncNXPlacement(); if (!isInGame()) fitCard(); renderBody(); update(); }
+    if (wrap) wrap.style.display = openUI || !isInGame() ? 'flex' : 'none';
   }
 
   function schedule() {
@@ -4648,6 +4663,7 @@
       const host = mountTarget();
       if (!wrap || !wrap.isConnected) buildUI();
       if (wrap && host && wrap.parentNode !== host) host.appendChild(wrap);
+      // O botão integrado permanece na barra original; o painel segue o host fullscreen.
       syncNXPlacement();
     } catch (e) { S.lastErr = 'NX tick: ' + String(e && e.message || e); }
 
