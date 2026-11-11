@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.22
+// @version      4.12.23
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.22';
+  const VER = '4.12.23';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3329,24 +3329,35 @@
         muteBtn.textContent = v && v.muted ? 'Reativar som' : 'Silenciar';
         muteBtn.style.opacity = v ? '1' : '.45';
       });
-      const audioOutputs = document.createElement('select');
-      audioOutputs.setAttribute('aria-label', 'Dispositivo de saída');
-      audioOutputs.style.cssText = 'width:100%;background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:7px';
-      const refreshOutputs = async function () {
+      const audioOutputs=document.createElement('select');
+      audioOutputs.setAttribute('aria-label','Dispositivo de saida');
+      audioOutputs.style.cssText='width:100%;background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:7px';
+      const outputStatus=mk('span','font-size:11px','');
+      const refreshOutputs=async function(){
         audioOutputs.replaceChildren();
-        const def = document.createElement('option'); def.value = ''; def.textContent = 'Saída padrão do sistema'; audioOutputs.appendChild(def);
-        if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-          try { (await navigator.mediaDevices.enumerateDevices()).filter(function (d) { return d.kind === 'audiooutput' && d.deviceId; }).forEach(function (d, i) {
-            const opt = document.createElement('option'); opt.value = d.deviceId; opt.textContent = d.label || ('Saída ' + (i + 1)); audioOutputs.appendChild(opt);
-          }); } catch (e) { /* A lista pode exigir permissão. */ }
+        const def=document.createElement('option');def.value='';def.textContent='Padrao do sistema (inclui Bluetooth)';audioOutputs.appendChild(def);
+        const status=nxAudioOutputSupport();
+        audioOutputs.disabled=!status.canRoute;
+        outputStatus.textContent=status.canRoute
+          ? 'Selecao manual disponivel. O fone Bluetooth pode aparecer apenas como saida padrao.'
+          : 'Saida controlada pelo sistema operacional. No Android, selecione o fone Bluetooth nas configuracoes do celular.';
+        if(status.canRoute && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices){
+          try{
+            const devices=await navigator.mediaDevices.enumerateDevices();
+            devices.filter(function(d){return d.kind==='audiooutput'&&d.deviceId;}).forEach(function(d,i){
+              const opt=document.createElement('option');opt.value=d.deviceId;opt.textContent=d.label||('Saida '+(i+1));audioOutputs.appendChild(opt);
+            });
+          }catch(e){S.lastErr='Listar saidas: '+String(e&&e.name||e);}
         }
-        audioOutputs.value = Array.from(audioOutputs.options).some(function (o) { return o.value === getPref(LS_AUDIO_OUTPUT, ''); }) ? getPref(LS_AUDIO_OUTPUT, '') : '';
+        const stored=getPref(LS_AUDIO_OUTPUT,'');
+        audioOutputs.value=Array.from(audioOutputs.options).some(function(o){return o.value===stored;})?stored:'';
       };
-      audioOutputs.addEventListener('change', function () { setPref(LS_AUDIO_OUTPUT, audioOutputs.value); applyAudioOutput(); });
-      g1.add(setRow('Saída de áudio', 'Troca de fones/alto-falantes quando o navegador oferece setSinkId.', audioOutputs, true));
-      g1.add(setRow('Dispositivos', 'Atualiza a lista de saídas disponíveis.', actBtn('Atualizar saídas', refreshOutputs, 'ghost')));
+      audioOutputs.addEventListener('change',function(){setPref(LS_AUDIO_OUTPUT,audioOutputs.value);applyAudioOutput();});
+      g1.add(setRow('Saida de audio','No Android, fones Bluetooth normalmente usam a saida padrao do sistema.',audioOutputs,true));
+      g1.add(setRow('Roteamento', 'Status de selecao de dispositivo.',outputStatus,true));
+      g1.add(setRow('Dispositivos','Atualiza saidas disponibilizadas pelo navegador.',actBtn('Atualizar saidas',refreshOutputs,'ghost')));
       refreshOutputs();
-      const presets = {
+            const presets = {
         original: [0,0,0,0,0,0,0,0,0,0], fps: [-3,-2,-1,0,1,2,3,3,1,0],
         corrida: [3,2,1,0,0,0,1,1,1,0], cinema: [3,2,1,0,0,1,2,2,1,1],
         musica: [2,1,0,0,0,0,0,1,1,2], dialogos: [-3,-2,-1,0,2,3,3,2,0,-1]
@@ -3399,6 +3410,9 @@
       g1.add(setRow('Áudio original','Desativa os efeitos e mantém a reprodução sem equalização.',actBtn('Restaurar áudio original',function () { setPref(LS_AUDIO_FX,'0'); setPref(LS_AUDIO_PRESET,'original'); applyAudioProcessing(); renderBody(); },'ghost')));
       const diagnosis = setRow('Diagnóstico','Estado da reprodução e do processamento.',mk('span','font-size:11px','Áudio local'));
       g1.add(diagnosis); liveDesc(diagnosis,function () { const m = activeStreamAudio(); return !m ? 'Fluxo não detectado' : (m.paused ? 'Pausado' : 'Reproduzindo') + ' · ' + (m.muted ? 'Mudo' : Math.round(m.volume*100)+'%') + ' · ' + (nxAudioGraph && nxAudioGraph.media === m ? 'Web Audio: '+nxAudioGraph.ctx.state+(getPref(LS_AUDIO_FX,'0')==='1'?' · EQ ligado':' · bypass') : 'Web Audio desconectado'); });
+      const signalRow=setRow('Sinal do equalizador','Mede o audio recebido pelo Web Audio, sem depender do nome do fone Bluetooth.',mk('span','font-size:11px','Monitoramento local'));
+      g1.add(signalRow);
+      liveDesc(signalRow,function(){return nxAudioSignalStatus();});
       g1.add(setRow('Áudio espacial','Depende do jogo, sistema e dispositivo; sem controle universal.',mk('span','font-size:11px','Sistema / jogo')));
       g1.add(setRow('Chat x jogo','Controle independente exige fluxos separados do xCloud.',mk('span','font-size:11px','Não disponível em fluxo misto')));
       root.appendChild(g1.root);
@@ -5764,17 +5778,26 @@ void main(){
       if (Array.isArray(a) && a.length === 10) return a.map(function (n) { return Math.max(-12,Math.min(12,Number(n)||0)); });
     } catch (e) {} return [0,0,0,0,0,0,0,0,0,0];
   }
-  function applyAudioOutput() {
-    const media = activeStreamAudio(); if (!media) return;
-    const sink = getPref(LS_AUDIO_OUTPUT,'');
-    const graph = nxAudioGraph && nxAudioGraph.media === media ? nxAudioGraph : null;
-    if (graph) {
-      if (typeof graph.ctx.setSinkId === 'function') Promise.resolve(graph.ctx.setSinkId(sink)).catch(function (e) { S.lastErr = 'Saída Web Audio: '+String(e && e.name || e); });
-      else if (sink) S.lastErr = 'Seleção de saída não suportada com processamento ativo';
+  function nxAudioOutputSupport(){
+    const media=activeStreamAudio();
+    const graph=nxAudioGraph && nxAudioGraph.media===media ? nxAudioGraph : null;
+    return {media:media,graph:graph,
+      canRoute:!!(graph && typeof graph.ctx.setSinkId==='function' ||
+        !graph && media && typeof media.setSinkId==='function'),
+      bluetoothNative:/Android/i.test(navigator.userAgent)};
+  }
+  function applyAudioOutput(){
+    const status=nxAudioOutputSupport(),sink=getPref(LS_AUDIO_OUTPUT,'');
+    if(!status.media)return;
+    const target=status.graph?status.graph.ctx:status.media;
+    if(typeof target.setSinkId!=='function'){
+      if(sink)S.lastErr='Saida manual indisponivel: selecione o Bluetooth no sistema Android';
       return;
     }
-    if (typeof media.setSinkId === 'function') Promise.resolve(media.setSinkId(sink)).catch(function (e) { S.lastErr = 'Saída: '+String(e && e.name || e); });
-    else if (sink) S.lastErr = 'Seleção de saída indisponível neste navegador';
+    // ID vazio representa a saida padrao do sistema, inclusive fones Bluetooth.
+    Promise.resolve(target.setSinkId(sink)).catch(function(e){
+      S.lastErr='Saida de audio: '+String(e&&e.name||e);
+    });
   }
   function applyAudioProcessing() {
     const media = activeStreamAudio(); if (!media) return;
@@ -5803,7 +5826,9 @@ void main(){
         const pan = ctx.createStereoPanner(), compressor = ctx.createDynamicsCompressor(), limiter = ctx.createDynamicsCompressor();
         limiter.threshold.value = -4; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.003;
         const bypass = ctx.createGain(), compressed = ctx.createGain(), limited = ctx.createGain(), compToLimit = ctx.createGain(), directToLimit = ctx.createGain();
-        let prev = source; filters.forEach(function (node) { prev.connect(node); prev = node; }); prev.connect(dialogue);
+        const analyser=ctx.createAnalyser();analyser.fftSize=1024;
+        source.connect(analyser);
+        let prev = analyser; filters.forEach(function (node) { prev.connect(node); prev = node; }); prev.connect(dialogue);
         dialogue.connect(stereoGain); stereoGain.connect(pan);
         dialogue.connect(monoSplitter); monoSplitter.connect(monoMix,0); monoSplitter.connect(monoMix,1);
         monoMix.connect(monoMerger,0,0); monoMix.connect(monoMerger,0,1); monoMerger.connect(monoGain); monoGain.connect(pan);
@@ -5812,7 +5837,7 @@ void main(){
         pan.connect(directToLimit); directToLimit.connect(limiter);
         compressor.connect(compToLimit); compToLimit.connect(limiter);
         limiter.connect(limited); limited.connect(ctx.destination);
-        nxAudioGraph = {media:media,ctx:ctx,filters:filters,dialogue:dialogue,pan:pan,compressor:compressor,limiter:limiter,
+        nxAudioGraph = {media:media,ctx:ctx,source:source,analyser:analyser,filters:filters,dialogue:dialogue,pan:pan,compressor:compressor,limiter:limiter,
           stereoGain:stereoGain,monoGain:monoGain,bypass:bypass,compressed:compressed,limited:limited,
           compToLimit:compToLimit,directToLimit:directToLimit};
         nxAudioGraphs.set(media,nxAudioGraph);
@@ -5836,6 +5861,20 @@ void main(){
         if(g.ctx.state!=='running')S.lastErr='Audio suspenso: toque em Ativar audio no painel NX';
       }).catch(function(e){S.lastErr='Audio suspenso: '+String(e&&e.message||e);});
     } catch (e) { S.lastErr = 'Web Audio: '+String(e && e.name || e); }
+  }
+  function nxAudioSignalStatus(){
+    const media=activeStreamAudio(),g=nxAudioGraph;
+    if(!media)return 'Fluxo de audio nao detectado';
+    if(!g || g.media!==media)return 'EQ nao conectado ao fluxo';
+    if(g.ctx.state!=='running')return 'AudioContext '+g.ctx.state+' — processamento inativo';
+    if(!g.analyser)return 'Sem medicao de sinal';
+    const samples=new Uint8Array(g.analyser.fftSize);
+    g.analyser.getByteTimeDomainData(samples);
+    let energy=0;
+    for(let i=0;i<samples.length;i++){const v=(samples[i]-128)/128;energy+=v*v;}
+    const rms=Math.sqrt(energy/samples.length);
+    return 'Web Audio running · sinal '+(rms>0.002?'detectado':'nao detectado/silencio')+
+      ' · '+(getPref(LS_AUDIO_FX,'0')==='1'?'EQ ativo':'bypass');
   }
   function activeStreamAudio() {
     const media=Array.from(document.querySelectorAll('video,audio'));
