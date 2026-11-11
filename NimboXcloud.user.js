@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.9.4
+// @version      3.9.5
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.9.4';
+  const VER = '3.9.5';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2184,6 +2184,10 @@
         return nxCoordState().mixed ? nxCoordState().activeSources.join(' + ') : 'Não detectadas';
       }, 'Janela de observação de 2 segundos; uso simultâneo pode ser intencional.'));
       coordination.add(infoRow('Interferência no jogo', function () { return 'Nenhuma (somente diagnóstico)'; }));
+      coordination.add(infoRow('Autoteste de entradas', function () {
+        const result = nxInputSelfCheck();
+        return result.passed + '/' + result.total + ' verificações';
+      }, 'Testes matemáticos e estruturais locais; não valida uma partida real.'));
       coordination.add(infoRow('Eventos recentes', function () { return String(nxInputEvents.length); },
         'Histórico limitado aos 30 eventos mais recentes, sem registrar teclas ou coordenadas.'));
       coordination.add(setRow('Limpar diagnóstico de entradas', 'Zera contadores e histórico desta sessão.',
@@ -2902,6 +2906,24 @@
       note: 'Observação passiva; toque pode gerar eventos de mouse sintéticos. Sobreposição não comprova conflito.'
     };
   }
+  function nxInputSelfCheck() {
+    const tests = [];
+    function check(name, pass) { tests.push({ name: name, pass: !!pass }); }
+    const neutral = nxInputProfiles.default;
+    check('eixo neutro', nxPreviewAxis(0, neutral) === 0);
+    check('zona morta', nxPreviewAxis(0.05, neutral) === 0);
+    check('limite positivo', nxPreviewAxis(1, neutral) === 1);
+    check('limite negativo', nxPreviewAxis(-1, neutral) === -1);
+    check('valor inválido', nxPreviewAxis(NaN, neutral) === 0);
+    check('curva direita finita', Number.isFinite(nxTransformStickAxis(0.6, 2)));
+    check('perfil esquerdo existente', !!nxInputProfiles[nxInputProfileName()]);
+    check('perfil direito existente', !!nxInputProfiles[nxRightStickProfileName()]);
+    const state = nxCoordState();
+    check('coordenação não invasiva', state.outputModified === false);
+    check('histórico limitado', nxInputEvents.length <= NX_INPUT_EVENTS_MAX);
+    return { passed: tests.filter(function (t) { return t.pass; }).length,
+      total: tests.length, tests: tests, note: 'Autoteste matemático e estrutural; não substitui teste de streaming.' };
+  }
   function nxResetInputDiagnostics() {
     ['touch', 'mouse', 'keyboard', 'gamepad'].forEach(function (k) {
       nxInputSources[k].count = 0;
@@ -3016,6 +3038,7 @@
       inputSources: nxInputSourcesReport(),
       inputEventHistory: nxInputEvents.slice(),
       inputBridgeHealth: nxInputBridgeStatus(),
+      inputSelfCheck: nxInputSelfCheck(),
       inputCoordination: nxCoordState(),
       gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), rightStickProfile: nxRightStickProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback, foreignOverride: nxInputBridge.foreignOverride, restored: nxInputBridge.restored } },
       inputNegotiation: lastInputNegotiation,
