@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.11
+// @version      4.12.12
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.11';
+  const VER = '4.12.12';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -234,6 +234,21 @@
     try { Promise.resolve(request.call(target)).then(function () { nxConsoleLabEvent('fullscreen', 'ativado'); if (nxCompatibilityMode && screen.orientation && screen.orientation.lock) Promise.resolve(screen.orientation.lock('landscape')).catch(function (e) { nxConsoleLabEvent('orientation-lock-unavailable', String(e && e.message || e)); }); }).catch(function (e) { nxConsoleLabEvent('fullscreen-error', e.message); toast('Navegador bloqueou tela cheia'); }); }
     catch (e) { nxConsoleLabEvent('fullscreen-error', e.message); toast('Navegador bloqueou tela cheia'); }
   }
+  // Diagnóstico passivo: sem acesso a tokens, corpo ou headers.
+  const nxOfferingTrace = [];
+  function nxObserveOffering(u, method, promise) {
+    if (!u || !/^[a-z0-9-]+\.gssv-play-prod[z]?\.xboxlive\.com$/i.test(u.hostname) || !/^\/v2\/login\/user\/?$/i.test(u.pathname)) return promise;
+    const offering = u.hostname.split('.')[0].toLowerCase(), started = Date.now();
+    return promise.then(function (res) {
+      nxOfferingTrace.push({at:new Date().toISOString(),offering:offering,method:method,status:res.status,elapsedMs:Date.now()-started});
+      if (nxOfferingTrace.length > 24) nxOfferingTrace.shift();
+      return res;
+    }, function (err) {
+      nxOfferingTrace.push({at:new Date().toISOString(),offering:offering,method:method,status:0,reason:err && err.name === 'AbortError' ? 'cancelled' : 'network-error'});
+      if (nxOfferingTrace.length > 24) nxOfferingTrace.shift();
+      throw err;
+    });
+  }
   function nxConsoleLabReport() {
     const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
     const note = (function () { try { return localStorage.getItem(LS_CONSOLE_NOTES) || ''; } catch (_) { return ''; } })();
@@ -247,7 +262,8 @@
       platformExperience: nxPlatformProfile, profileSession: Object.assign({}, nxProfileSessionState),
        compatibility: { enabled: nxCompatibilityMode, identityMode: nxConsoleLabState.identityMode, nativeUserAgentPreserved: navigator.userAgent === nxConsoleNativeUA, sessionOsRewriteDisabled: nxCompatibilityMode, clientHintsOverrideDisabled: nxCompatibilityMode },
        clientHintsExperiment: { enabled: nxClientHintsMode, applied: nxClientHintsApplied, note: 'Somente navigator.userAgentData JS; nao altera cabecalhos HTTP' },
-      sessionTrace: nxSessionTrace.slice(),
+      offeringTrace: nxOfferingTrace.slice(), offeringTraceNotice: 'Somente host, metodo, status e duracao; sem credenciais.',
+       sessionTrace: nxSessionTrace.slice(),
       sessionHealth: nxSessionHealth(),
       capabilities: nxConsoleLabCapabilities(),
       events: nxConsoleLabEvents.slice(),
@@ -783,7 +799,8 @@
         ? patchPlayRequest(input, init).then(function (x) { return nativeFetch.call(this, x.input, x.init); }.bind(this))
         : nativeFetch.call(this, input, init);
 
-      let p = go;
+      const offeringMethod = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+      let p = nxObserveOffering(u, offeringMethod, go);
       // Monitoramento somente de status e etapa da sessão; nunca armazena headers ou corpo.
       if (u && /xboxservices\.com$/i.test(u.hostname) &&
           /\/sessions\/cloud\/(?:play|[^/]+\/(?:state|connect|configuration|sdp|ice|keepalive))\/?$/i.test(u.pathname)) {
@@ -3416,6 +3433,8 @@
 
       const lab = group('Plataforma e modo console', 'Perfis Xbox e TV preservam a identidade nativa para iniciar jogos. Tela cheia e orientação horizontal dependem de permissão do navegador e de uma ação do usuário.');
       lab.add(infoRow('Entrada preferencial', function () { return nxPlatformProfile.input; }));
+      lab.add(infoRow('Oferta xCloud observada', function () { const e = nxOfferingTrace[nxOfferingTrace.length-1]; return e ? e.offering + ' · HTTP ' + e.status : 'Aguardando autenticação'; }));
+      lab.add(infoRow('Ofertas observadas', function () { return nxOfferingTrace.length ? Array.from(new Set(nxOfferingTrace.map(function(e){return e.offering;}))).join(', ') : 'Nenhuma'; }));
        lab.add(infoRow('Xbox Shell', function () { return nxShellEnabled ? 'Ativo · ' + nxShellStats.moves + ' movimentos · ' + nxShellStats.errors + ' erros' : 'Desativado'; }));
        if (nxConsoleLabProfile === 'xbox') lab.add(setRow('Interface Xbox Shell', 'Desative para recuperar imediatamente a interface original do painel. A alteração não modifica o streaming.', chips([{k:'on',label:'Ativar'},{k:'off',label:'Desativar'}],nxShellEnabled ? 'on' : 'off',function(k){try{localStorage.setItem(LS_NX_SHELL,k === 'on' ? '1' : '0');}catch(_){} location.reload();}),true));
        if (nxShellEnabled) lab.add(infoRow('Último erro Xbox Shell', function () { return nxShellStats.lastError || 'Nenhum'; }));
