@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.42
+// @version      3.6.43
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.42';
+  const VER = '3.6.43';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -76,6 +76,12 @@
   const LS_RTT_HISTORY = 'xcu.rttHistory.v1';
   const LS_VIBRATION = 'xcu.vibrationLevel';
   const LS_MIC_ENABLED = 'xcu.microphoneDesired';
+  const LS_MIC_DEVICE = 'xcu.micDevice';
+  const LS_MIC_GAIN = 'xcu.micGain';
+  const LS_MIC_BASS = 'xcu.micBass';
+  const LS_MIC_TREBLE = 'xcu.micTreble';
+  const LS_MIC_NOISE = 'xcu.micNoise';
+  const LS_MIC_ECHO = 'xcu.micEcho';
   const LS_SHARPNESS = 'xcu.sharpness';
   const LS_VIDEO_COLOR = 'xcu.videoColor';
 
@@ -1812,6 +1818,42 @@
       micButtons.appendChild(micToggle);
       micButtons.appendChild(actBtn('Testar microfone', function () { inspectMicrophone(); }, 'ghost'));
       micButtons.appendChild(actBtn('Parar teste', function () { stopMicrophoneTest(); }, 'ghost'));
+      micButtons.appendChild(actBtn('Atualizar dispositivos', function () { refreshMicDevices(); }, 'ghost'));
+      const micDevice = document.createElement('select');
+      micDevice.setAttribute('aria-label', 'Dispositivo de entrada de voz');
+      micDevice.style.cssText = 'width:100%;max-width:100%;background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:7px';
+      const defaultMic = document.createElement('option'); defaultMic.value = ''; defaultMic.textContent = 'Microfone padrão do sistema'; micDevice.appendChild(defaultMic);
+      micDevice.value = getPref(LS_MIC_DEVICE, '');
+      micDevice.addEventListener('change', function () { setPref(LS_MIC_DEVICE, micDevice.value); if (micTestStream) inspectMicrophone(); });
+      micDeviceControl = micDevice;
+      micButtons.appendChild(micDevice);
+      const micMonitor = document.createElement('label');
+      micMonitor.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:12px';
+      const monitorCheck = document.createElement('input'); monitorCheck.type = 'checkbox';
+      monitorCheck.checked = false;
+      monitorCheck.addEventListener('change', function () { setMicMonitor(monitorCheck.checked); });
+      micMonitor.appendChild(monitorCheck); micMonitor.appendChild(document.createTextNode('Ouvir minha voz (use fones de ouvido)'));
+      micButtons.appendChild(micMonitor);
+      [['Ganho', LS_MIC_GAIN, 0, 200, 100, '%'], ['Graves', LS_MIC_BASS, -12, 12, 0, ' dB'],
+        ['Agudos', LS_MIC_TREBLE, -12, 12, 0, ' dB']].forEach(function (cfg) {
+        const label = document.createElement('label'); label.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;font-size:12px';
+        const title = document.createElement('span'); title.textContent = cfg[0]; title.style.minWidth = '48px';
+        const range = document.createElement('input'); range.type = 'range'; range.min = cfg[2]; range.max = cfg[3]; range.step = '1';
+        range.value = getPref(cfg[1], String(cfg[4])); range.style.flex = '1';
+        const val = document.createElement('span'); val.textContent = range.value + cfg[5]; val.style.minWidth = '50px';
+        range.addEventListener('input', function () { val.textContent = range.value + cfg[5]; setPref(cfg[1], range.value); applyMicEffects(); });
+        label.appendChild(title); label.appendChild(range); label.appendChild(val); micButtons.appendChild(label);
+      });
+      [['Redução de ruído', LS_MIC_NOISE], ['Cancelamento de eco', LS_MIC_ECHO]].forEach(function (cfg) {
+        const label = document.createElement('label'); label.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:12px';
+        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = getPref(cfg[1], '1') === '1';
+        check.addEventListener('change', function () { setPref(cfg[1], check.checked ? '1' : '0'); if (micTestStream) inspectMicrophone(); });
+        label.appendChild(check); label.appendChild(document.createTextNode(cfg[0])); micButtons.appendChild(label);
+      });
+      const micMeter = document.createElement('progress'); micMeter.max = 100; micMeter.value = 0;
+      micMeter.style.cssText = 'width:100%;height:12px'; micMeter.setAttribute('aria-label', 'Nível de entrada do microfone');
+      micLevelControl = micMeter; micButtons.appendChild(micMeter);
+      refreshMicDevices();
       const mic = setRow('Microfone', 'Preferência NX salva. Teste a voz antes de jogar; a integração com o chat de voz nativo ainda não está confirmada.', micButtons);
       g3.add(mic);
       liveDesc(mic, function () { return S.micStatus; });
@@ -2385,29 +2427,76 @@
     pushLog('shortcut', 'Atalho NX: Ctrl+Shift+' + next.slice(3));
   }
   let micTestStream = null, micTestContext = null, micTestTimer = null;
+  let micDeviceControl = null, micLevelControl = null, micGainNode = null, micBassNode = null;
+  let micTrebleNode = null, micMonitorNode = null, micMonitorEnabled = false, micRequestId = 0;
+  function applyMicEffects() {
+    if (micGainNode) micGainNode.gain.value = Math.max(0, Math.min(2, Number(getPref(LS_MIC_GAIN, '100')) / 100));
+    if (micBassNode) micBassNode.gain.value = Math.max(-12, Math.min(12, Number(getPref(LS_MIC_BASS, '0'))));
+    if (micTrebleNode) micTrebleNode.gain.value = Math.max(-12, Math.min(12, Number(getPref(LS_MIC_TREBLE, '0'))));
+  }
+  function setMicMonitor(enabled) {
+    micMonitorEnabled = !!enabled;
+    if (micMonitorNode) micMonitorNode.gain.value = micMonitorEnabled ? 1 : 0;
+    if (micMonitorEnabled && micTestContext) Promise.resolve(micTestContext.resume()).catch(function () {});
+  }
+  async function refreshMicDevices() {
+    if (!micDeviceControl || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const devices = (await navigator.mediaDevices.enumerateDevices()).filter(function (d) { return d.kind === 'audioinput'; });
+      const selected = getPref(LS_MIC_DEVICE, '');
+      micDeviceControl.replaceChildren();
+      const base = document.createElement('option'); base.value = ''; base.textContent = 'Microfone padrão do sistema'; micDeviceControl.appendChild(base);
+      devices.forEach(function (d, i) {
+        if (!d.deviceId) return;
+        const opt = document.createElement('option'); opt.value = d.deviceId;
+        opt.textContent = d.label || ('Entrada de áudio ' + (i + 1)); micDeviceControl.appendChild(opt);
+      });
+      micDeviceControl.value = Array.from(micDeviceControl.options).some(function (o) { return o.value === selected; }) ? selected : '';
+    } catch (err) { S.micStatus = 'Não foi possível listar dispositivos: ' + String(err && err.name || err); update(); }
+  }
   function stopMicrophoneTest() {
+    micRequestId++;
     if (micTestTimer) { clearInterval(micTestTimer); micTestTimer = null; }
     if (micTestStream) { micTestStream.getTracks().forEach(function (t) { t.stop(); }); micTestStream = null; }
     if (micTestContext) { Promise.resolve(micTestContext.close()).catch(function () {}); micTestContext = null; }
-    S.micStatus = 'Teste encerrado. O microfone não está sendo capturado pelo NX.';
+    micGainNode = micBassNode = micTrebleNode = micMonitorNode = null;
+    micMonitorEnabled = false;
+    if (micLevelControl) micLevelControl.value = 0;
+    S.micStatus = 'Teste encerrado. Nenhum áudio de teste é enviado ao jogo.';
     update();
   }
   async function inspectMicrophone() {
-    if (getPref(LS_MIC_ENABLED, '0') !== '1') { S.micStatus = 'Ative a preferência de microfone antes do teste.'; update(); return; }
+    if (getPref(LS_MIC_ENABLED, '0') !== '1') { S.micStatus = 'Ative o microfone antes do teste.'; update(); return; }
     stopMicrophoneTest();
+    const request = micRequestId;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      S.micStatus = 'Captura indisponível: confira HTTPS e permissões do navegador'; update(); return;
+      S.micStatus = 'Captura indisponível: confira HTTPS e permissões'; update(); return;
     }
     S.micStatus = 'Solicitando permissão do microfone…'; update();
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
+      const deviceId = getPref(LS_MIC_DEVICE, '');
+      const constraints = {
+        echoCancellation: getPref(LS_MIC_ECHO, '1') === '1',
+        noiseSuppression: getPref(LS_MIC_NOISE, '1') === '1'
+      };
+      if (deviceId) constraints.deviceId = { ideal: deviceId };
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints, video: false });
+      if (request !== micRequestId || isInGame()) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
       micTestStream = stream;
+      await refreshMicDevices();
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) { S.micStatus = 'Microfone autorizado, mas medição de áudio indisponível'; update(); return; }
+      if (!AudioCtx) { S.micStatus = 'Microfone autorizado; processamento de áudio indisponível'; update(); return; }
       const ctx = new AudioCtx(); micTestContext = ctx;
       const source = ctx.createMediaStreamSource(stream);
+      micBassNode = ctx.createBiquadFilter(); micBassNode.type = 'lowshelf'; micBassNode.frequency.value = 180;
+      micTrebleNode = ctx.createBiquadFilter(); micTrebleNode.type = 'highshelf'; micTrebleNode.frequency.value = 3000;
+      micGainNode = ctx.createGain();
       const analyser = ctx.createAnalyser(); analyser.fftSize = 1024;
-      source.connect(analyser); // Nunca conectar ao destino: evita eco/realimentação.
+      micMonitorNode = ctx.createGain(); micMonitorNode.gain.value = 0;
+      source.connect(micBassNode); micBassNode.connect(micTrebleNode);
+      micTrebleNode.connect(micGainNode); micGainNode.connect(analyser);
+      analyser.connect(micMonitorNode); micMonitorNode.connect(ctx.destination);
+      applyMicEffects(); setMicMonitor(false); // Monitor desligado por padrão para evitar realimentação.
       const samples = new Uint8Array(analyser.fftSize);
       const refresh = function () {
         if (micTestStream !== stream) return;
@@ -2415,7 +2504,8 @@
         let power = 0;
         for (let i = 0; i < samples.length; i++) { const v = (samples[i] - 128) / 128; power += v * v; }
         const level = Math.min(100, Math.round(Math.sqrt(power / samples.length) * 250));
-        S.micStatus = 'Captura local ativa · nível ' + level + '% · voz no jogo depende do xCloud';
+        if (micLevelControl) micLevelControl.value = level;
+        S.micStatus = 'Teste local ativo · nível ' + level + '% · processamento apenas na prévia';
         update();
       };
       refresh(); micTestTimer = setInterval(refresh, 350);
@@ -2423,8 +2513,9 @@
         track.addEventListener('ended', function () { if (micTestStream === stream) stopMicrophoneTest(); });
       });
     } catch (err) {
+      if (request !== micRequestId) return;
       stopMicrophoneTest();
-      S.micStatus = 'Não foi possível acessar o microfone: ' + String(err && err.name || err);
+      S.micStatus = 'Falha ao acessar microfone: ' + String(err && (err.name || err.message) || err);
       update();
     }
   }
