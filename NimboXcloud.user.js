@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.7.1
+// @version      4.8.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.7.1';
+  const VER = '4.8.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1880,6 +1880,14 @@
     if (!Object.prototype.hasOwnProperty.call(profiles, name)) return false;
     delete profiles[name];
     setPref(NX_HUD_PROFILES_KEY, JSON.stringify(profiles));
+    // Remover associações órfãs ao excluir o perfil.
+    try {
+      const raw = JSON.parse(getPref('nx.hud.editor.gameBindings.v1', '{}'));
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        Object.keys(raw).forEach(function (id) { if (raw[id] === name) delete raw[id]; });
+        setPref('nx.hud.editor.gameBindings.v1', JSON.stringify(raw));
+      }
+    } catch (_) {}
     return true;
   }
   const NX_HUD_GAME_BINDINGS_KEY = 'nx.hud.editor.gameBindings.v1';
@@ -1896,7 +1904,13 @@
       const candidates = parts.slice(index + 1);
       if (candidates[0] === 'games') candidates.shift();
       if (!candidates.length) return '';
-      return nxHudGameId(candidates[candidates.length - 1]);
+      const candidate = candidates[candidates.length - 1];
+      if (['home', 'search', 'library', 'settings', 'social', 'friends', 'profile', 'games',
+        'all', 'recent', 'categories', 'collections', 'cloud', 'browse'].includes(candidate.toLowerCase())) return '';
+      // Apenas caminhos que indicam uma página de jogo, nunca páginas genéricas do catálogo.
+      if (candidates.length === 1 && !/^[0-9a-f]{8,}$/i.test(candidate) &&
+          !/^9[a-z0-9]{10,}$/i.test(candidate)) return '';
+      return nxHudGameId(candidate);
     } catch (_) { return ''; }
   }
   function nxHudGameBindings() {
@@ -1928,12 +1942,26 @@
     setPref(NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(bindings));
     return true;
   }
+  let nxHudLastRoute = null;
+  let nxHudLastAppliedProfile = '';
   function nxHudAutoLoadGame() {
     const id = nxHudCurrentGameId();
+    if (id === nxHudLastRoute) return false;
+    nxHudLastRoute = id;
+    nxHudLastAppliedProfile = '';
     if (!id) return false;
     const name = nxHudGameBindings()[id];
-    return name ? nxHudProfileLoad(name) : false;
+    if (!name || !nxHudProfileLoad(name)) return false;
+    nxHudLastAppliedProfile = name;
+    return true;
   }
+  function nxHudRouteMonitor() {
+    // SPA: observa a URL sem substituir history.pushState, replaceState ou hooks de terceiros.
+    if (document.visibilityState !== 'hidden') nxHudAutoLoadGame();
+  }
+  window.addEventListener('popstate', nxHudRouteMonitor, { passive: true });
+  window.addEventListener('hashchange', nxHudRouteMonitor, { passive: true });
+  window.setInterval(nxHudRouteMonitor, 1500);
   function nxHudReadLayout() {
     try { return nxHudValidateLayout(JSON.parse(getPref(NX_HUD_LAYOUT_KEY, '{}'))); }
     catch (_) { return nxHudValidateLayout(null); }
@@ -3526,6 +3554,7 @@
     check('idade máxima do sensor limitada', NX_GYRO_MAX_AGE_MS <= 250);
     check('controle alvo válido', nxGyroTargetIndex() >= 0 && nxGyroTargetIndex() <= 3);
     check('linha do tempo com limite de eventos', NX_INPUT_EVENTS_MAX === 30);
+    check('rota de jogo não assume página genérica', nxHudGameId('../bad') === '');
     check('identificador de jogo rejeita caminho', nxHudGameId('../bad') === '');
     check('identificador de jogo normalizado', nxHudGameId('GAME_123') === 'game_123');
     check('nome de perfil de HUD válido', nxHudProfileName('Corrida 1') === 'Corrida 1');
@@ -3666,7 +3695,8 @@
       virtualInputs: nxVirtualInputState(),
       gyroPreview: nxGyroPreviewState(),
       hudEditor: { layout: nxHudReadLayout(), savedProfileNames: Object.keys(nxHudProfilesRead()),
-        currentGameId: nxHudCurrentGameId(), gameBindings: nxHudGameBindings(), gameplayApplied: false },
+        currentGameId: nxHudCurrentGameId(), lastRoute: nxHudLastRoute,
+        lastAppliedProfile: nxHudLastAppliedProfile, gameBindings: nxHudGameBindings(), gameplayApplied: false },
       gyroGame: { enabled: nxGyroGameEnabled(), activation: nxGyroActivationMode(),
         blend: nxGyroBlend(), targetGamepadIndex: nxGyroTargetIndex(),
         maxSensorAgeMs: NX_GYRO_MAX_AGE_MS,
