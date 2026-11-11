@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.7.9
+// @version      3.8.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.7.9';
+  const VER = '3.8.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2151,6 +2151,13 @@
       g2.add(infoRow('Controles conectados', function () { return inputCapabilities().gamepadsConnected; }));
       g2.add(infoRow('Mouse capturado', function () { return document.pointerLockElement ? 'Sim' : 'Não'; },
         'Com teclado físico, F9 libera ou recaptura o mouse durante a partida.'));
+      g2.add(infoRow('Controles com atividade', function () {
+        return nxGamepadMonitor.active + ' / ' + nxGamepadMonitor.connected;
+      }, 'Leitura de botões e eixos sem alterar entradas enviadas ao jogo.'));
+      g2.add(infoRow('Última alteração de conexão', function () {
+        return nxGamepadMonitor.lastChange ? new Date(nxGamepadMonitor.lastChange).toLocaleTimeString() : '—';
+      }));
+      g2.add(infoRow('Falhas de leitura', function () { return String(nxGamepadMonitor.errors); }));
       root.appendChild(g2.root);
 
       const g3 = group('Acessórios');
@@ -2621,6 +2628,34 @@
     const row = Math.min(3, Math.max(0, Math.floor(y / h * 4)));
     return 'r' + row + 'c' + col;
   }
+  // Camada única de observação de controles: somente leitura, sem interceptar getGamepads.
+  const nxGamepadMonitor = { connected: 0, active: 0, snapshots: [], lastChange: null, errors: 0 };
+  function nxSampleGamepads() {
+    let pads;
+    try { pads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : []; }
+    catch (_) { nxGamepadMonitor.errors++; return; }
+    const next = [];
+    for (let i = 0; i < pads.length; i++) {
+      const pad = pads[i];
+      if (!pad || !pad.connected) continue;
+      const buttons = Array.from(pad.buttons || []);
+      const axes = Array.from(pad.axes || []);
+      next.push({
+        index: pad.index, mapping: pad.mapping || 'unknown',
+        buttons: buttons.length, axes: axes.length,
+        pressed: buttons.reduce(function (n, b) { return n + (b && b.pressed ? 1 : 0); }, 0),
+        movingAxes: axes.filter(function (v) { return Number.isFinite(v) && Math.abs(v) > 0.18; }).length
+      });
+    }
+    const signature = next.map(function (p) { return p.index + ':' + p.mapping + ':' + p.buttons + ':' + p.axes; }).join('|');
+    if (signature !== nxGamepadMonitor.lastSignature) {
+      nxGamepadMonitor.lastChange = new Date().toISOString();
+      nxGamepadMonitor.lastSignature = signature;
+    }
+    nxGamepadMonitor.connected = next.length;
+    nxGamepadMonitor.active = next.filter(function (p) { return p.pressed || p.movingAxes; }).length;
+    nxGamepadMonitor.snapshots = next;
+  }
   function startInputDiagnostics() {
     diagLog('diagnostics-start', { capabilities: inputCapabilities() });
     document.addEventListener('pointerlockchange', function () { diagLog('pointerlockchange'); }, true);
@@ -2675,6 +2710,7 @@
       v: VER,
       url: location.href,
       inputCapabilities: inputCapabilities(),
+      gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors },
       inputNegotiation: lastInputNegotiation,
       touchSession: touchSessionDiagnostics,
       touchFullscreenPolicy: touchFullscreenPolicy,
@@ -3151,6 +3187,10 @@
 
   function boot() {
     startInputDiagnostics();
+    nxSampleGamepads();
+    setInterval(function () {
+      if (document.visibilityState === 'visible') nxSampleGamepads();
+    }, 750);
     S.diagnosticsWarnings = [
       'RTT: apenas sessões usadas; sondagem ativa não implementada',
       'Contraste adicional: filtro CSS, não é nitidez real nem CAS',
