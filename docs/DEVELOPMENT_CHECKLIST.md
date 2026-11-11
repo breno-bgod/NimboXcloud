@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-009 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.3 com opt-out reversível de Pointer Lock
+**Edição:** PM-010 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.4 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -206,3 +206,11 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `tests/pointer-lock-policy.test.cjs`, commit `8532c009`: simula o ciclo lock → unlock → relock com DOM mock; cobre modo legado, opt-out e evento F9 não consumido.
 - A sintaxe do novo teste foi verificada na criação. Execução real em Node/CI **não confirmada**. Mock não substitui navegador nem xCloud.
 - P00 e AUD-00 **não encerrados**: faltam lint/CI confirmado, inventário completo de hooks, flags gerais, proveniência por arquivo e validação em sessão real.
+
+
+## P00.6 / AUD-00.6 — correção de diagnóstico e mapa de ciclo de vida (2026-11-11)
+- Commit `06e0760d`: v4.11.4 corrige o motivo exibido no diagnóstico de Pointer Lock quando o modo F9 legado está desativado. Nenhuma alteração de comportamento padrão.
+- Commit `957dbc53`: teste de regressão em DOM mock para o diagnóstico de liberação nativa; sintaxe verificada, execução Node/CI ainda não confirmada.
+- Commit `83e945b6`: `docs/P00_HOOK_LIFECYCLE.md` mapeia 3 interceptores diretos, 80 inscrições de eventos, 7 intervalos, 3 timeouts e 22 escritas em localStorage. Análise lexical, não prova de funcionamento.
+- **P00 pendente:** CORE-001 (teardown e dependências), CORE-002 (diff por função), CORE-004 (execução CI/lint), CORE-005 (flags gerais), CORE-006 (licença por arquivo); AUD-00 exige validação e correção.
+- **P01–P07 pendentes:** INPUT-001..007, HUD-001..007, NET-001..006, MEDIA-001..006, DIAG-001..010, ACC-001..006, REL-001..006, e AUD-01..07. Nenhum destes foi marcado concluído.
