@@ -6,7 +6,33 @@ O **NimboXcloud** é um userscript não oficial para o [Xbox Cloud Gaming](https
 
 O objetivo é oferecer escolhas ao jogador sem exigir que ele abandone o toque ou o controle físico. O script funciona sobre o site oficial e **não é um serviço de cloud gaming independente**.
 
-> **Estado atual:** versão **3.6.37**, em desenvolvimento. Recursos implementados no código não significam compatibilidade garantida com todas as versões do xCloud. Os testes reais de streaming em diferentes dispositivos ainda precisam ser documentados.
+> **Estado do código auditado:** versão **4.12.16**, em desenvolvimento. Recursos implementados no código não significam compatibilidade garantida com todas as versões do xCloud. Os testes reais de streaming em diferentes dispositivos ainda precisam ser documentados.
+
+## Funcionalidades identificadas no código (v4.12.16)
+
+**Estado:** implementado no userscript não equivale a funcionamento validado em uma sessão real. Recursos experimentais estão indicados. O serviço determina a qualidade efetiva e as permissões de acesso.
+
+| Área | Recursos presentes | Limites / validação |
+| --- | --- | --- |
+| Streaming e rede | Perfis 720p, 1080p/Windows e 1080p HQ/Tizen; bitrate automático ou limites via SDP; seleção de data center, preferência por menor RTT histórico, filtro ICE IPv6 para preferir IPv4 | Resolução e bitrate não são garantidos; HQ/Tizen pode afetar o toque; testes ponta a ponta pendentes |
+| Mercado | Ajustes experimentais de mercado/território e cookie de região | Não garantem autorização, catálogo ou acesso ao serviço; podem contrariar termos |
+| Vídeo local | Perfis Original/Equilibrado/Vívido/Manual, contraste, saturação, enquadramento, fullscreen, captura PNG e economia de filtros em aba oculta | O controle de “nitidez” é contraste, **não** CAS, FSR, DLSS ou upscaling real |
+| Áudio | Volume, mudo, escolha de saída quando suportada, equalizador de 10 bandas, perfis FPS/corrida/cinema/música/diálogos, compressor, normalização, limitador, realce de diálogos, mono e balanço L/R | Efeitos locais dependem da API do navegador; chat e jogo não têm volumes separados quando chegam misturados |
+| Entrada e HUD | Detecção/diagnóstico de gamepad, toque, mouse e teclado; curvas experimentais de analógicos; editor de layout, escala, perfis por jogo, importação/exportação/backup | Integração com botões nativos é experimental, por CSS e correspondência segura; não cria HUD independente nem força prioridade de entrada |
+| Giroscópio | Leitura, calibração, prévia com inversão/suavização/zona morta; envio experimental ao gamepad com intensidade, controle-alvo e ativação por LT ou contínua | Algumas opções alteram apenas a prévia; saída jogável e estabilidade ainda precisam de teste real |
+| Microfone e vibração | Seleção/teste de microfone, medidor, redução de ruído, cancelamento de eco, ganho automático, mudo e push-to-talk; testes de vibração de controle/celular | Chat depende do xCloud; testes hápticos não alteram automaticamente o rumble enviado pelo serviço |
+| Laboratório Xbox | Perfis Original/Android/Desktop/Xbox/Smart TV, diagnóstico de identidade e capacidades, observação de ofertas/sessões, Xbox Shell experimental, atalhos e exportação de evidências | Perfil Xbox/TV preserva a identidade nativa; **não** simula hardware ou autenticação real de console e não libera catálogo exclusivo |
+| Diagnóstico | Overlay com FPS, RTT, jitter, perda, bitrate, resolução, codec, quadros descartados, servidor, histórico e erros; relatórios estruturados | Métricas dependem dos dados expostos pelo WebRTC; relatórios não comprovam sozinhos reprodução ou autorização |
+| Interface | Painel NX expansível, atalhos configuráveis, recuperação de UI, preferências locais e limpeza de cache | Compatibilidade visual e funcional deve ser testada no novo site |
+
+### Não concluído ou não comprovado
+
+- Compatibilidade integral e testes autenticados reproduzíveis em Android, Samsung DeX e Windows.
+- Giroscópio estável em jogo e integração do HUD nativo em diferentes títulos.
+- Teclado/mouse virtual completo por toque, volante com pedais e assistência de mira contextual **não confirmados neste userscript**.
+- Upscaling CAS/FSR/DLSS, geração de quadros e controle universal de áudio espacial **não implementados**.
+- Remote Play integrado **não confirmado como funcional**.
+- Identidade/autorização de Xbox real e liberação de jogos exclusivos de console **não demonstradas**.
 
 ## O que o projeto oferece
 
