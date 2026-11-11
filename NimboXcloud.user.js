@@ -2808,7 +2808,7 @@
   nxHudAutoLoadGame();
   // Descoberta xHome: utiliza somente credenciais locais da sessão Xbox autenticada.
   // Não substitui a negociação WebRTC/ICE nem cria uma sessão Remote Play.
-  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:''};
+  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:'', peer:null};
   function nxRemoteGssvToken() {
     try { const v=JSON.parse(localStorage.getItem('xboxcom_xbl_user_info')||'null');
       const t=v && v.tokens && v.tokens['http://gssv.xboxlive.com/'];
@@ -2828,6 +2828,7 @@
     if(nxRemotePlay.abortController) nxRemotePlay.abortController.abort();
     nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
     nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';nxRemotePlay.regionShortName='';nxRemotePlay.checkedAt=0;nxRemotePlay.attempts=[];
+    if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
     nxRemotePlay.status=nxRemotePlay.sessionStatus==='authenticating'||nxRemotePlay.sessionStatus==='requesting'?'Operação cancelada':'Consulta cancelada';nxRemotePlay.error='';nxRemotePlay.sessionStatus='cancelled';nxRemotePlay.sessionId='';
     if(tabId==='remote') renderBody();
   }
@@ -2958,9 +2959,57 @@
       check();
       if(!ready)throw new Error('Xbox não ficou pronto após 12 consultas de estado.');
       nxRemotePlay.sessionStatus='provisioned';
-      nxRemotePlay.status='Xbox pronto para negociação WebRTC (ainda não conectada).';
+      nxRemotePlay.status='Xbox provisionado. Preparando negociação WebRTC…';
+      if(typeof RTCPeerConnection==='function'){
+        const peer=new RTCPeerConnection();
+        nxRemotePlay.peer=peer;
+        peer.addTransceiver('audio',{direction:'recvonly'});
+        peer.addTransceiver('video',{direction:'recvonly'});
+        peer.createDataChannel('input',{ordered:false,maxRetransmits:0});
+        const offer=await peer.createOffer();check();
+        await peer.setLocalDescription(offer);check();
+        const exchange=await fetch(sessionUrl+'/sdp',{
+          method:'POST',redirect:'error',signal:controller.signal,
+          headers:{'Accept':'application/json','Content-Type':'application/json',Authorization:'Bearer '+login.gsToken},
+          body:JSON.stringify({messageType:'offer',sdp:peer.localDescription.sdp,configuration:{
+            chatConfiguration:{bytesPerSample:2,expectedClipDurationMs:20,format:{codec:'opus',container:'webm'},numChannels:1,sampleFrequencyHz:24000},
+            chat:{minVersion:1,maxVersion:1},control:{minVersion:1,maxVersion:3},input:{minVersion:1,maxVersion:8},message:{minVersion:1,maxVersion:1}
+          }})
+        });check();
+        if(!exchange.ok)throw new Error('Envio SDP xHome recusado (HTTP '+exchange.status+').');
+        nxRemotePlay.sessionStatus='negotiating';
+        nxRemotePlay.status='Aguardando resposta SDP do Xbox…';
+        if(tabId==='remote')renderBody();
+        let answer=null;
+        for(let attempt=0;attempt<8;attempt++){
+          check();
+          const res=await fetch(sessionUrl+'/sdp',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});check();
+          if(!res.ok)throw new Error('Consulta SDP recusada (HTTP '+res.status+').');
+          const payload=await res.json();check();
+          if(payload && typeof payload.exchangeResponse==='string' && payload.exchangeResponse){
+            let parsed;
+            try{parsed=JSON.parse(payload.exchangeResponse);}catch(_){throw new Error('Resposta SDP inválida.');}
+            if(parsed && parsed.sdpType==='answer' && typeof parsed.sdp==='string' && parsed.sdp){answer=parsed.sdp;break;}
+            if(parsed && parsed.status==='failed')throw new Error('Negociação SDP recusada pelo Xbox.');
+          }
+          await new Promise(function(resolve,reject){
+            const timer=setTimeout(function(){controller.signal.removeEventListener('abort',onAbort);resolve();},500);
+            function onAbort(){clearTimeout(timer);reject(new Error('Operação cancelada'));}
+            controller.signal.addEventListener('abort',onAbort,{once:true});
+            if(controller.signal.aborted)onAbort();
+          });
+        }
+        check();
+        if(!answer)throw new Error('Resposta SDP não recebida.');
+        await peer.setRemoteDescription({type:'answer',sdp:answer});check();
+        nxRemotePlay.sessionStatus='sdp-ready';
+        nxRemotePlay.status='SDP negociado; conexão ICE e mídia ainda pendentes.';
+      }else{
+        nxRemotePlay.status='Xbox provisionado; WebRTC indisponível neste navegador.';
+      }
     }catch(e){
       if(requestId!==nxRemotePlay.requestId)return;
+      if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
       nxRemotePlay.sessionStatus='failed';
       nxRemotePlay.error=controller.signal.aborted?'Tempo limite da sessão (20 s).':String(e && e.message||e);
       nxRemotePlay.status='Falha ao criar sessão';
