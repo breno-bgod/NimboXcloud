@@ -198,3 +198,10 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - `tests/xhome-discovery.test.cjs`: adicionados três casos (região vazia bem-sucedida, todas falhando com HTTP 503, regiões malformadas), totalizando doze cenários escritos.
 - Validação: sintaxe integral do userscript via `new Function` PASS; testes Node ainda sem execução confirmada. Ambiente container tem Node v22.16.0, mas `raw.githubusercontent.com` não resolve via DNS; GitHub connector permite ler arquivos, porém não materializa diretamente no container. Sem teste Xbox/Chrome/Edge.
 - Próxima tarefa concreta: confirmar execução CI dos 12 testes; corrigir falhas reais e então integrar handshake de sessão xHome com controle rigoroso de origem e estado, sem alterar caminho Cloud Gaming existente.
+
+## 2026-11-11 — xHome: ordenação resiliente a regiões nulas
+- HEAD inicial `8ffd2e433e0e99eb501d9cd4c7a4791ddf645ad2`; commits `3c417de582cc7287ac6a099c3cf422e5b136d1b2` e `8149040190fee4fa0a8b72843d512084e9ece6a6`; HEAD final será este registro.
+- Corrigida a ordenação de regiões xHome para tolerar entradas `null`/não-objeto sem exceção durante acesso a `isDefault`. A filtragem posterior continua ignorando regiões sem `baseUri` válida.
+- Adicionado teste para resposta com região nula e região padrão válida; total de treze cenários escritos em `tests/xhome-discovery.test.cjs`.
+- Validação realizada: parse integral do userscript via `new Function` PASS. Não houve execução comprovada dos treze testes em Node ou GitHub Actions, nem testes em Xbox/navegador.
+- Próxima tarefa concreta: obter logs do GitHub Actions para o workflow `xhome-tests.yml`, corrigir falhas reais e, após testes verdes, integrar criação de sessão xHome de forma isolada do Cloud Gaming.
