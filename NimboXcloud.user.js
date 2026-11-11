@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.7
+// @version      4.11.8
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.7';
+  const VER = '4.11.8';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3685,6 +3685,19 @@
     simultaneous: 0, lastConflictAt: 0
   };
   const nxInputEventLastAt = Object.create(null);
+  // Observação de movimento relativo: não injeta mouse nem guarda coordenadas.
+  const nxRelativeMouse = { samples: 0, lastAt: 0, distance: 0, maxStep: 0, invalid: 0 };
+  function nxObserveRelativeMouse(e) {
+    if (!e.isTrusted || e.pointerType !== 'mouse') return;
+    const dx = Number(e.movementX), dy = Number(e.movementY);
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) { nxRelativeMouse.invalid++; return; }
+    const step = Math.hypot(dx, dy);
+    if (step === 0) return;
+    nxRelativeMouse.samples++;
+    nxRelativeMouse.lastAt = Date.now();
+    nxRelativeMouse.distance = Math.min(1000000, nxRelativeMouse.distance + Math.min(step, 10000));
+    nxRelativeMouse.maxStep = Math.max(nxRelativeMouse.maxStep, Math.min(step, 10000));
+  }
   function nxRecordInputSource(name) {
     const source = nxInputSources[name];
     if (!source) return;
@@ -3818,6 +3831,11 @@
     nxInputSources.simultaneous = 0;
     nxInputSources.lastConflictAt = 0;
     nxInputEvents.length = 0;
+    nxRelativeMouse.samples = 0;
+    nxRelativeMouse.lastAt = 0;
+    nxRelativeMouse.distance = 0;
+    nxRelativeMouse.maxStep = 0;
+    nxRelativeMouse.invalid = 0;
     Object.keys(nxInputEventLastAt).forEach(function (k) { delete nxInputEventLastAt[k]; });
     Object.keys(nxVirtualInputs).forEach(function (id) { delete nxVirtualInputs[id]; });
     nxGamepadMonitor.errors = 0;
@@ -3871,6 +3889,7 @@
     document.addEventListener('pointerdown', function (e) {
       if (e.pointerType === 'mouse' && e.isTrusted) nxRecordInputSource('mouse');
     }, true);
+    document.addEventListener('pointermove', nxObserveRelativeMouse, { capture: true, passive: true });
     document.addEventListener('keydown', function (e) {
       if (e.isTrusted && !e.repeat) nxRecordInputSource('keyboard');
     }, true);
@@ -3931,6 +3950,10 @@
       url: location.href,
       inputCapabilities: inputCapabilities(),
       inputSources: nxInputSourcesReport(),
+      relativeMouse: { samples: nxRelativeMouse.samples, lastAt: nxRelativeMouse.lastAt,
+        distance: Math.round(nxRelativeMouse.distance), maxStep: Math.round(nxRelativeMouse.maxStep),
+        invalid: nxRelativeMouse.invalid, pointerLocked: !!document.pointerLockElement,
+        note: 'Movimento relativo passivo; não mede precisão no jogo nem altera sensibilidade.' },
       inputEventHistory: nxInputEvents.slice(),
       inputBridgeHealth: nxInputBridgeStatus(),
       inputSelfCheck: nxInputSelfCheck(),
