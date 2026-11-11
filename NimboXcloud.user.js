@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.41
+// @version      4.12.42
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.41';
+  const VER = '4.12.42';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -4579,14 +4579,14 @@
     g.add(padText);
     g.add(setRow('Atalho do controle','Pressione Gravar, depois a combinação desejada e solte todos os botões. A configuração é salva automaticamente.',
       actBtn('Gravar controle',function(){
-        nxCapturePad={held:new Set(),max:0,started:Date.now(),label:padText};
+        nxCapturePad={best:[],started:Date.now(),label:padText};
         padText.textContent='Pressione de 1 a 4 botões e solte para salvar…';
       },'primary')));
     g.add(setRow('Limpar atalho do controle','Sem combinação automática.',actBtn('Limpar',function(){nxCapturePad=null;localStorage.removeItem(NX_PAD_BIND_KEY);renderBody();},'ghost')));
     const keyText=mk('div','font-size:12px;margin-bottom:8px;color:'+C.text,nxBindingLabel(nxKeyBinding()));
     g.add(keyText);
     g.add(setRow('Atalho do teclado','Clique em Gravar, mantenha as teclas pressionadas e solte para salvar. Máximo de quatro teclas.',
-      actBtn('Gravar teclado',function(){nxCaptureKeys={held:new Set(),max:0,label:keyText};keyText.textContent='Pressione a combinação e solte para salvar…';},'primary')));
+      actBtn('Gravar teclado',function(){nxCaptureKeys={best:[],label:keyText};keyText.textContent='Pressione a combinação e solte para salvar…';},'primary')));
     g.add(setRow('Limpar atalho do teclado','Sem combinação automática.',actBtn('Limpar',function(){nxCaptureKeys=null;localStorage.removeItem(NX_KEY_BIND_KEY);renderBody();},'ghost')));
     g.add(note('Atalhos ficam salvos no armazenamento local do navegador. Sem atalho configurado, abra o NX pelo botão na tela. A navegação por controle ainda pode enviar comandos ao jogo.'));
     g.add(note('Outras preferências do NX, incluindo vídeo, áudio, região e controles, já são salvas localmente quando alteradas. Não é necessário salvar cada opção novamente.'));
@@ -4605,11 +4605,15 @@
     if(nxCapturePad){
       const p=pads[0];const active=[];
       for(let i=0;i<Math.min(16,p.buttons.length);i++)if(pressed(p,i))active.push(i);
-      if(active.length){active.forEach(function(i){nxCapturePad.held.add(i);});nxCapturePad.max=Math.max(nxCapturePad.max,active.length);
-        nxCapturePad.label.textContent=nxBindingLabel(active,nxPadNames)+' — solte para salvar';
-      }else if(nxCapturePad.held.size){
-        const b=Array.from(nxCapturePad.held).slice(0,4).sort(function(a,b){return a-b;});
-        setPref(NX_PAD_BIND_KEY,JSON.stringify(b));nxCapturePad=null;nxPadUiState.combo=false;renderBody();
+      if(active.length){
+        if(active.length>4){nxCapturePad.label.textContent='Máximo de 4 botões simultâneos. Solte e tente novamente.';nxCapturePad.best=[];}
+        else if(active.length>=nxCapturePad.best.length){
+          nxCapturePad.best=active.slice();
+          nxCapturePad.label.textContent=nxBindingLabel(active,nxPadNames)+' — solte para salvar';
+        }
+      }else if(nxCapturePad.best.length){
+        setPref(NX_PAD_BIND_KEY,JSON.stringify(nxCapturePad.best.slice().sort(function(a,b){return a-b;})));
+        nxCapturePad=null;nxPadUiState.combo=false;renderBody();
       }
       return;
     }
@@ -6261,12 +6265,17 @@ void main(){
     }, 1200);
     document.addEventListener('keydown',function(e){
       if(!e.isTrusted||e.repeat)return;
+      const target=e.target;
+      if(!nxCaptureKeys&&target&&(target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))return;
       nxKeysHeld.add(e.code);
       if(nxCaptureKeys){
         e.preventDefault();e.stopImmediatePropagation();
-        nxCaptureKeys.held.add(e.code);
-        nxCaptureKeys.max=Math.max(nxCaptureKeys.max,nxKeysHeld.size);
-        nxCaptureKeys.label.textContent=nxBindingLabel(Array.from(nxCaptureKeys.held).slice(0,4))+' — solte para salvar';
+        const active=Array.from(nxKeysHeld);
+        if(active.length>4){nxCaptureKeys.label.textContent='Máximo de 4 teclas simultâneas. Solte e tente novamente.';nxCaptureKeys.best=[];}
+        else if(active.length>=nxCaptureKeys.best.length){
+          nxCaptureKeys.best=active;
+          nxCaptureKeys.label.textContent=nxBindingLabel(active)+' — solte para salvar';
+        }
         return;
       }
       const bind=nxKeyBinding();const matched=!!bind&&bind.every(function(code){return nxKeysHeld.has(code);});
@@ -6276,9 +6285,9 @@ void main(){
       nxKeysHeld.delete(e.code);
       if(nxCaptureKeys){
         e.preventDefault();e.stopImmediatePropagation();
-        if(nxKeysHeld.size===0&&nxCaptureKeys.held.size){
-          const b=Array.from(nxCaptureKeys.held).slice(0,4);
-          setPref(NX_KEY_BIND_KEY,JSON.stringify(b));nxCaptureKeys=null;renderBody();
+        if(nxKeysHeld.size===0&&nxCaptureKeys.best.length){
+          setPref(NX_KEY_BIND_KEY,JSON.stringify(nxCaptureKeys.best));
+          nxCaptureKeys=null;renderBody();
         }
       }
       const bind=nxKeyBinding();if(!bind||!bind.every(function(code){return nxKeysHeld.has(code);}))nxKeyboardComboActive=false;
