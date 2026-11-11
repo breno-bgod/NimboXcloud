@@ -3002,7 +3002,7 @@
         const pollIce=async function(){
           if(requestId!==nxRemotePlay.requestId || !nxRemotePlay.peer || peer.connectionState==='closed' || peer.connectionState==='failed' || peer.connectionState==='connected' || icePollCount++>=30)return;
           try{
-            const res=await fetch(sessionUrl+'/ice',{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+login.gsToken}});
+            const res=await fetch(sessionUrl+'/ice',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});
             if(requestId!==nxRemotePlay.requestId)return;
             if(!res.ok)throw new Error('HTTP '+res.status);
             const payload=await res.json();
@@ -3019,7 +3019,7 @@
           }catch(e){
             if(requestId===nxRemotePlay.requestId){nxRemotePlay.status='ICE: '+String(e&&e.message||e);if(tabId==='remote')renderBody();}
           }
-          if(requestId===nxRemotePlay.requestId && peer.connectionState!=='connected')nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
+          if(requestId===nxRemotePlay.requestId && !controller.signal.aborted && (peer.connectionState==='new'||peer.connectionState==='connecting'))nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
         };
         if(peer.connectionState==='new'||peer.connectionState==='connecting')nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
         nxRemotePlay.sessionStatus='ice-pending';
