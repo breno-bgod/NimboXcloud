@@ -253,3 +253,8 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - `nxRemoteStop()` fecha peer, interrompe tracks, desassocia player e limpa estado local mesmo após `busy=false`; botão de encerramento local. Não envia DELETE ao servidor Xbox (sessão remota pode persistir).
 - Teste novo de encerramento pós-conexão: total 25 cenários escritos. Parse integral do userscript via `new Function` PASS. Execução Node/CI e sessão real Xbox não confirmadas.
 - Pendências críticas: troca ICE contínua e formato do protocolo real, controles input via datachannel, fechamento da sessão no servidor, timeout/autoplay e testes em Chrome/Edge. Não declarar Remote Play jogável.
+
+## 2026-11-11 — xHome: ICE contínuo experimental
+- Commits `bf523eaf7554b89a75ead793f2d78a5d2802d590` e `bac66f92372be2b8dbf3c9174d9800b85d799fff`.
+- Candidatos ICE locais posteriores são enviados por fila serial; polling remoto com deduplicação, limite de 30 ciclos, 1 segundo entre ciclos, e limpeza do timer ao encerrar ou conectar. O polling é agendado somente quando `peer.connectionState` é `new` ou `connecting`.
+- Atenção: formato de payload xHome `/ice` ainda não confirmado com sessão real. Falta executar suíte Node e testar conexão real, transmissão de vídeo/áudio e controles. Nenhum Remote Play jogável foi confirmado.
