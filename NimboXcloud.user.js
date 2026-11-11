@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.10
+// @version      4.12.11
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.10';
+  const VER = '4.12.11';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1259,7 +1259,7 @@
   // Xbox Shell experimental: apresentação independente da identidade de rede.
   const LS_NX_SHELL = 'nx.xboxShell.enabled.v1';
   const nxShellEnabled = nxConsoleLabProfile === 'xbox' && (function () { try { return localStorage.getItem(LS_NX_SHELL) !== '0'; } catch (_) { return true; } })();
-  let nxShellLastInput = 0, nxShellPrevButtons = [], nxShellPrevAxis = 0, nxShellHeldSince = 0;
+  let nxShellLastInput = 0, nxShellPrevButtons = [], nxShellPrevAxis = 0, nxShellHeldSince = 0, nxShellNeedsRelease = true;
   const nxShellStats = { moves: 0, actions: 0, errors: 0, lastError: '' };
   function nxShellError(e) { nxShellStats.errors++; nxShellStats.lastError = String(e && e.message || e); }
   function nxShellInstall() {
@@ -1273,7 +1273,15 @@
       '#__xcu_panel__.nx-console-shell button{min-height:34px}',
       '@media (orientation:landscape) and (min-width:700px){#__xcu_panel__.nx-console-shell.nx-shell-open [aria-label="Painel NimboXcloud"]{max-height:calc(100dvh - 20px)!important}}'
     ].join('');
-    (document.head || document.documentElement).appendChild(css);
+    // @run-at document-start: documentElement/head may not exist yet.
+    const host = document.head || document.documentElement;
+    if (host) host.appendChild(css);
+    else document.addEventListener('DOMContentLoaded', function () {
+      if (!document.getElementById('nx-console-shell-css')) {
+        const readyHost = document.head || document.documentElement;
+        if (readyHost) readyHost.appendChild(css);
+      }
+    }, { once: true });
   }
   function nxShellFocusable() {
     if (!cardEl || !openUI) return [];
@@ -1290,13 +1298,20 @@
   }
   function nxShellGamepadPoll() {
     if (!nxShellEnabled || !openUI || !cardEl || !cardEl.isConnected || document.hidden || !navigator.getGamepads) {
-      nxShellPrevButtons = []; nxShellPrevAxis = 0; nxShellHeldSince = 0; return;
+      nxShellPrevButtons = []; nxShellPrevAxis = 0; nxShellHeldSince = 0; nxShellNeedsRelease = true; return;
     }
     try {
       const pad = Array.from(navigator.getGamepads()).filter(Boolean)[0];
-      if (!pad) { nxShellPrevButtons = []; nxShellPrevAxis = 0; return; }
+      if (!pad) { nxShellPrevButtons = []; nxShellPrevAxis = 0; nxShellNeedsRelease = true; return; }
       const pressed = (pad.buttons || []).map(function (b) { return !!(b && b.pressed); });
       const axis = pad.axes && Math.abs(pad.axes[1] || 0) > .65 ? Math.sign(pad.axes[1]) : 0;
+      // Avoid a held gamepad button opening the panel and immediately activating a control.
+      const anyInput = pressed.some(Boolean) || (pad.axes || []).some(function (v) { return Math.abs(v || 0) > .65; });
+      if (nxShellNeedsRelease) {
+        nxShellPrevButtons = pressed; nxShellPrevAxis = 0;
+        if (!anyInput) nxShellNeedsRelease = false;
+        return;
+      }
       const edge = function (i) { return pressed[i] && !nxShellPrevButtons[i]; };
       const now = Date.now();
       const direction = pressed[12] ? -1 : pressed[13] ? 1 : axis;
@@ -3618,7 +3633,7 @@
     if (byUser) userTouched = true;
     if (!cardEl) return;
     cardEl.style.display = openUI ? 'flex' : 'none';
-    if (nxShellEnabled && wrap) wrap.classList.toggle('nx-shell-open', openUI);
+    if (nxShellEnabled && wrap) { wrap.classList.toggle('nx-shell-open', openUI); if (openUI) nxShellNeedsRelease = true; }
     if (openUI) { syncNXPlacement(); if (!isInGame()) fitCard(); renderBody(); update(); }
   }
 
