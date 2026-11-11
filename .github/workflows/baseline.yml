@@ -4,12 +4,20 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tests/baseline.test.cjs
+      - name: Syntax check
+        run: node --check NimboXcloud.user.js
+      - name: Baseline tests
+        run: node --test tests/baseline.test.cjs
+      - name: Static risk report
+        run: node tools/static-risk-report.cjs
