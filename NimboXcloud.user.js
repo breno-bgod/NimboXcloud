@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.13
+// @version      4.11.14
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.13';
+  const VER = '4.11.14';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2202,7 +2202,13 @@
         if (!e.isPrimary) return;
         dragStart = layout[id].slice();
         pointerStart = [e.clientX, e.clientY];
-        node.setPointerCapture(e.pointerId);
+        try { node.setPointerCapture(e.pointerId); }
+        catch (_) {
+          // A captura pode falhar quando o navegador cancela o gesto.
+          dragStart = null;
+          pointerStart = null;
+          return;
+        }
         node.style.cursor = 'grabbing';
       });
       node.addEventListener('pointermove', function (e) {
@@ -2238,8 +2244,20 @@
       }
       node.addEventListener('pointerup', finish);
       node.addEventListener('pointercancel', finish);
+      node.addEventListener('lostpointercapture', function () {
+        // Perda inesperada de captura não deve persistir um arrasto incompleto.
+        if (!dragStart) return;
+        layout[id] = dragStart.slice();
+        node.style.left = dragStart[0] + '%';
+        node.style.top = dragStart[1] + '%';
+        node.style.cursor = 'grab';
+        dragStart = null;
+        pointerStart = null;
+      });
       stage.appendChild(node);
     });
+    outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
+      'EDITOR DE PRÉVIA — as posições abaixo ainda não movem os botões reais do Xbox Cloud Gaming.'));
     outer.appendChild(stage);
     outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
       'Acessibilidade: selecione um botão e use as setas para mover 1%; Shift + setas move 5%. Arrastos cancelados são revertidos.'));
