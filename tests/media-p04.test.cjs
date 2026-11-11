@@ -21,3 +21,13 @@ test('MEDIA-002: visual bypass restores the host filter', () => {
   assert.match(block, /video\.style\.getPropertyValue\('filter'\)/);
   assert.match(block, /video\.style\.filter !== state\.applied/);
 });
+
+test('MEDIA-003: visual profiles are user-selectable and legacy preferences survive', () => {
+  assert.match(src, /const LS_VIDEO_PROFILE = 'xcu\.videoProfile\.v1'/);
+  for (const name of ['original', 'balanced', 'vivid', 'custom']) {
+    assert.ok(src.includes("k: '" + name + "'"), 'missing profile: ' + name);
+  }
+  assert.match(src, /getPref\(LS_VIDEO_PROFILE, 'custom'\)/);
+  assert.match(src, /setPref\(LS_VIDEO_PROFILE, 'custom'\); setPref\(LS_SHARPNESS/);
+  assert.match(src, /setPref\(LS_VIDEO_PROFILE, 'custom'\); setPref\(LS_VIDEO_COLOR/);
+});
