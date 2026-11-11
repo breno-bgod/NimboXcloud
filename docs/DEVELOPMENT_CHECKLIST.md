@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-029 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
+**Edição:** PM-030 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
 
 ## Regras permanentes
 
@@ -383,3 +383,9 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `af64755b` v4.11.27: NET-001 não reconstrói requisições de play já canceladas; NET-003 não injeta bitrate em seção de vídeo rejeitada e preserva quebras de linha SDP.
 - `dd9768ee`: regressões estáticas atualizadas; auditoria P03 ampliada.
 - **P03:** correções de código aplicadas em NET-001..005; NET-006 mantém diagnóstico passivo sem reconexão automática não verificada. AUD-03 aberta; suíte Node e testes reais não executados nesta etapa.
+
+
+## P04 — Início de vídeo e áudio (2026-11-11)
+- `016b38bb`: v4.12.0, MEDIA-001 restaura ajustes no vídeo anterior quando o xCloud substitui o elemento; MEDIA-002 preserva o filtro inline do host e permite bypass.
+- `24171983`: testes estáticos MEDIA-001/002; auditoria em `docs/P04_MEDIA_AUDIT.md`.
+- **MEDIA-001/002 parciais; MEDIA-003..006 pendentes; AUD-04 aberta.** Sem testes reais ou suíte Node completa nesta execução.
