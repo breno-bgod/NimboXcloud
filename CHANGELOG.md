@@ -1,5 +1,13 @@
 # Histórico de alterações
 
+## [Documentação de funcionalidades — auditoria v4.12.16] — 2026-11-11
+- Inventário de recursos implementados, experimentais e não comprovados publicado nos READMEs em português e inglês.
+- Registrados recursos de streaming, rede, imagem, áudio, HUD, entradas, giroscópio, microfone, vibração, laboratório Xbox, telemetria e interface.
+- Esclarecidos limites: ausência de upscaling real, geração de quadros, autenticação de console e acesso comprovado ao catálogo exclusivo.
+- Distinção explícita entre código presente e testes reais de streaming; nenhum comportamento do userscript alterado nesta atualização documental.
+- O histórico de versões 3.6.38–4.12.16 não foi reconstruído artificialmente; consultar commits e o código para mudanças específicas.
+
+
 ## [3.6.37] — 2026-11-10
 - Versão atual identificada no cabeçalho e no código do userscript `NimboXcloud.user.js`.
 - Documentação alinhada ao nome do arquivo principal, links de instalação e perfil padrão 1080p/Windows.
