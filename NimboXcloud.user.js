@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.27
+// @version      4.12.28
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.27';
+  const VER = '4.12.28';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -5646,6 +5646,14 @@ uniform sampler2D u_tex;uniform float u_shadows;uniform float u_highlights;
 uniform vec3 u_adjust;in vec2 v_uv;out vec4 outColor;
 void main(){
  vec3 c=texture(u_tex,v_uv).rgb;
+ vec3 up=texture(u_tex,v_uv+vec2(0.0,1.0/float(textureSize(u_tex,0).y))).rgb;
+ vec3 down=texture(u_tex,v_uv-vec2(0.0,1.0/float(textureSize(u_tex,0).y))).rgb;
+ vec3 left=texture(u_tex,v_uv-vec2(1.0/float(textureSize(u_tex,0).x),0.0)).rgb;
+ vec3 right=texture(u_tex,v_uv+vec2(1.0/float(textureSize(u_tex,0).x),0.0)).rgb;
+ vec3 minimum=min(min(up,down),min(left,right));
+ vec3 maximum=max(max(up,down),max(left,right));
+ float detail=clamp(dot(maximum-minimum,vec3(0.3333)),0.0,1.0);
+ c=clamp(c+(4.0*c-up-down-left-right)*(0.12*(1.0-detail)),0.0,1.0);
  float l=dot(c,vec3(0.2126,0.7152,0.0722));
  float shadows=(1.0-smoothstep(0.08,0.55,l))*u_shadows*0.22;
  float highlights=smoothstep(0.45,0.95,l)*u_highlights*0.20;
