@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.7.7
+// @version      3.7.8
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.7.7';
+  const VER = '3.7.8';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -125,6 +125,21 @@
   }
   // Diagnóstico passivo inspirado no XFly: não lê tokens, payloads ou identificadores.
   const nxSessionTrace = [];
+  function nxSessionHealth() {
+    const attempts = nxSessionTrace.filter(function (x) { return x.stage === 'play'; });
+    const last = attempts.length ? attempts[attempts.length - 1] : null;
+    const lastAny = nxSessionTrace.length ? nxSessionTrace[nxSessionTrace.length - 1] : null;
+    const q = typeof S !== 'undefined' ? S.qos : null;
+    if (q && (q.decodedFps > 0 || q.fps > 0)) return { state: 'streaming', explanation: 'Quadros de vídeo observados no WebRTC' };
+    if (!last) return { state: 'not-observed', explanation: 'Nenhuma tentativa de criação de sessão capturada; verificar se o jogo foi iniciado' };
+    if (last.status === 0) return { state: 'network-error', explanation: 'Falha de rede ao criar a sessão' };
+    if (last.status === 401 || last.status === 403) return { state: 'access-rejected', explanation: 'Servidor rejeitou a requisição; causa não determinada' };
+    if (last.status === 429) return { state: 'rate-limited', explanation: 'Servidor limitou as requisições; evitar tentativas repetidas' };
+    if (last.status >= 500) return { state: 'server-error', explanation: 'Erro HTTP no servidor durante criação de sessão' };
+    if (last.status >= 400) return { state: 'request-rejected', explanation: 'Criação de sessão rejeitada com HTTP ' + last.status };
+    if (last.status >= 200 && last.status < 300) return { state: 'session-accepted', explanation: 'Criação de sessão aceita; última etapa: ' + (lastAny ? lastAny.stage : 'play') + '. Não comprova reprodução de vídeo' };
+    return { state: 'pending', explanation: 'Tentativa sem resultado conclusivo' };
+  }
   function nxSessionRecord(item) {
     nxSessionTrace.push(item);
     if (nxSessionTrace.length > 35) nxSessionTrace.shift();
@@ -155,7 +170,7 @@
   ];
   function nxConsoleLabWarning() {
     // Detecta avisos visíveis mesmo quando a interface não usa ARIA dialog.
-    const nodes = document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="alert"], dialog, h1, h2, h3, p, span, div');
+    const nodes = document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="alert"], dialog, h1, h2, h3, p');
     for (const node of nodes) {
       if (node.childElementCount > 4 || node.closest('[id^="nx-"]')) continue;
       const rect = node.getBoundingClientRect();
@@ -212,6 +227,7 @@
       unsupportedDeviceWarningsObserved: nxConsoleLabEvents.filter(function (e) { return e.type === 'unsupported-device-warning'; }).length,
       clientHintsExperiment: { enabled: nxClientHintsMode, applied: nxClientHintsApplied, note: 'Somente navigator.userAgentData JS; nao altera cabecalhos HTTP' },
       sessionTrace: nxSessionTrace.slice(),
+      sessionHealth: nxSessionHealth(),
       capabilities: nxConsoleLabCapabilities(),
       events: nxConsoleLabEvents.slice(),
       fullscreenActive: !!(document.fullscreenElement || document.webkitFullscreenElement),
@@ -1760,6 +1776,7 @@
     const full = {
       schema: 'nimboxcloud-unified-v1', version: VER, capturedAt: new Date().toISOString(),
       consoleLab: nxConsoleLabReport(), gameAndInput: general,
+      sessionHealth: nxSessionHealth(),
       system: { server: srvCfg().name || 'auto', quality: resCfg().label,
         bitrate: bitrateCfg().mbps || 'auto', qos: S.qos, latencyByServer: S.latencyByServer,
         recoveries: S.nxRecoveries, warnings: S.diagnosticsWarnings,
