@@ -1,5 +1,17 @@
 # Histórico de alterações
 
+## [Reformulação visual NX — etapas 1 e 2] — 2026-11-11
+- Painel NX com tela inicial reorganizada em quatro categorias recolhíveis: Transmissão, Controles, Personalização e Avançado.
+- Mantidas páginas existentes de streaming, região, áudio, voz, controles, sistema e indicadores detalhados.
+- NX Stream Monitor opcional e independente do painel: FPS, RTT WebRTC, bitrate, perda, resolução, jitter e indicação de servidor.
+- Monitor com orientação horizontal/vertical/compacta/automática, escala, cores de texto, transparência do fundo e posição por canto ou arrasto.
+- Bandeiras para datacenters reconhecidos, sem inferir localização real apenas pela região selecionada.
+- Reaproveitamento da coleta de estatísticas WebRTC e armazenamento local das preferências.
+- Commits de implementação: `dcbab9667526ba8e9e7f7f4f64b9daad8a30e300` e `fe329eb454210c0180d1cb619ec4fea7450d5bd5`.
+- **Validação:** presença das alterações confirmada no repositório. Testes reais de renderização, fullscreen, controle, Android/DeX e transmissão autenticada continuam pendentes.
+- **Não implementado:** sondagem periódica comparativa de servidores alternativos; o histórico de RTT existente provém de datacenters utilizados anteriormente.
+
+
 ## [Documentação de funcionalidades — auditoria v4.12.16] — 2026-11-11
 - Inventário de recursos implementados, experimentais e não comprovados publicado nos READMEs em português e inglês.
 - Registrados recursos de streaming, rede, imagem, áudio, HUD, entradas, giroscópio, microfone, vibração, laboratório Xbox, telemetria e interface.
