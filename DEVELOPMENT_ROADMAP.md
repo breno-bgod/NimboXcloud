@@ -226,3 +226,10 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - `NimboXcloud.user.js`: botão explícito de iniciar sessão para console selecionado; novo login GSSV, host regional limitado ao formato `https://<shortName>.core.gssv-play-prodxhome.xboxlive.com`, POST play, validação de sessionId, cancelamento e timeout de 20 s. Tokens apenas em escopo local assíncrono, não no estado serializável. Nenhuma conexão WebRTC é criada nesta etapa.
 - `tests/xhome-discovery.test.cjs`: adicionados 3 cenários de criação, origem inválida e HTTP 403; total 21 cenários escritos. Sintaxe integral do userscript validada via `new Function`; testes Node/CI e conexão real Xbox não confirmados.
 - PENDENTE para funcionamento real: confirmar CORS/autenticação em Chrome/Edge; polling `/state` até `Provisioned`; configuração, negociação SDP/ICE, RTCPeerConnection, render de vídeo/áudio, data channels de input, keepalive e encerramento DELETE. Não afirmar funcionalidade completa antes de testes reais.
+
+## 2026-11-11 — xHome: polling de estado de sessão
+- Commits `5bef716341334808e0f484d0bd5acd5ee7ac2a84` e `721c2b5aef99ff124c47816d193a2d59282fe167`.
+- Após POST `/v5/sessions/home/play`, o userscript consulta `GET /v5/sessions/home/{sessionId}/state` no mesmo host regional xHome autenticado, até `Provisioned` (até 12 consultas com 1s entre respostas `Provisioning`), com AbortController e timeout global de 20s. Estados inesperados e erros HTTP falham sem afirmar reprodução.
+- Atualizado teste de criação para três chamadas (login, play, state), mais um teste de estado terminal `Failed`; 22 cenários escritos no total. Parse integral JavaScript via `new Function` PASS; testes Node/CI não confirmados.
+- Fonte técnica: https://github.com/Geocld/XStreaming/blob/main/docs/3.Stream.md, seção 3.2. Implementação própria, sem copiar código de terceiros.
+- PENDENTE: integração WebRTC real (SDP/ICE, RTCPeerConnection, render de vídeo/áudio, canais de controle/input, keepalive, encerramento DELETE), testes autenticados e validação CI. Nenhuma conexão jogável demonstrada.
