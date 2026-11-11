@@ -212,3 +212,10 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - `tests/xhome-discovery.test.cjs`: dois testes com promises controladas para cancelamento durante leitura JSON do login e da lista regional; total de quinze cenários definidos.
 - Verificação: parse integral JavaScript com `new Function` PASS. Execução Node/GitHub Actions dos testes não confirmada. Sem teste real de conta Xbox, browser ou WebRTC.
 - Próxima prioridade: obter resultados verificáveis do CI, corrigir falhas e avançar para criação de sessão xHome após validação de protocolo e autorização, sem alterar caminho de Cloud Gaming.
+
+## 2026-11-11 — xHome: validação de credenciais GSSV e resposta de login
+- HEAD inicial `b80877007cde2e985dd7147e8699bb76e379f671`; commits `959c5092607625d05a7bf2d975bb5c1bdf74d4c6` e `c3f7086059129016f45a8bb791c518c11fbef670`; HEAD final será este registro.
+- `NimboXcloud.user.js`: token GSSV do cache `xboxcom_xbl_user_info` rejeitado quando `expiration` existente já passou; tokens `Auth.User.*` exigem `relyingParty` exatamente `http(s)://gssv.xboxlive.com/` e continuam exigindo expiração futura. Resposta JSON nula no login xHome agora é tratada como incompleta.
+- `tests/xhome-discovery.test.cjs`: harness aceita `localStorage` mock injetável e foram criados três testes (login nulo, token cache expirado, relyingParty de domínio malicioso). Total de dezoito cenários escritos.
+- Validação: parse integral do userscript via `new Function` PASS. Tentativa de `git ls-remote` em container falhou por DNS (`Could not resolve host: github.com`). Não há confirmação de testes Node ou GitHub Actions verdes; não há teste real Xbox/Chrome/Edge.
+- Próxima tarefa concreta: verificar status CI e executar os 18 cenários em Node com arquivos locais; corrigir eventuais falhas antes de avançar para handshake xHome.
