@@ -27,3 +27,9 @@ Prioridade de código: confiabilidade da sessão, integridade das requisições,
 - `503e787a`: regressões estáticas para os dois casos.
 - **Limites:** não garante conexão quando todos os candidatos são inválidos por outros motivos; a seleção efetiva continua com o navegador e o servidor. Não há evidência de ganhos de FPS/bitrate/latência sem testes reais.
 - **Próxima revisão de código:** tratamento de cancelamento e falhas de rede sem alterar comportamento do fetch; confiabilidade de seleção de data center e sessão.
+
+## Lote de região e falhas de sessão — 2026-11-11
+- `98f3a5a3` v4.11.26: NET-002 limpa pin inválido quando data center solicitado não existe e evita reescrita redundante quando a região já é a padrão; NET-001 restringe injeção a HTTPS; NET-006 diferencia cancelamento explícito de falha de rede.
+- `2ee55f1a`: regressões estáticas para fallback, idempotência e classificação de cancelamentos.
+- **NET-006 não realiza reconexão automática:** o xCloud controla a negociação e reiniciar ICE arbitrariamente poderia quebrar a sessão. Diagnóstico passivo é deliberado.
+- **Status de implementação:** NET-001..005 têm implementações e correções; NET-006 possui monitoramento e classificação, mas recuperação automática não implementada por falta de contrato seguro com o cliente atual. Auditoria real de endpoints, servidor e navegador permanece pendente. Não declarar P03 homologado.
