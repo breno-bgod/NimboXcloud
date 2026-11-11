@@ -2808,7 +2808,7 @@
   nxHudAutoLoadGame();
   // Descoberta xHome: utiliza somente credenciais locais da sessão Xbox autenticada.
   // Não substitui a negociação WebRTC/ICE nem cria uma sessão Remote Play.
-  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:''};
+  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[]};
   function nxRemoteGssvToken() {
     try { const v=JSON.parse(localStorage.getItem('xboxcom_xbl_user_info')||'null');
       const t=v && v.tokens && v.tokens['http://gssv.xboxlive.com/']; if(t && t.token) return t.token; } catch (_) {}
@@ -2823,7 +2823,7 @@
   }
   async function nxRemoteDiscover() {
     if(nxRemotePlay.busy) return;
-    nxRemotePlay.busy=true;nxRemotePlay.error='';nxRemotePlay.status='Consultando consoles vinculados…';
+    nxRemotePlay.busy=true;nxRemotePlay.error='';nxRemotePlay.attempts=[];nxRemotePlay.region='';nxRemotePlay.status='Consultando consoles vinculados…';
     if(tabId==='remote') renderBody();
     try {
       const token=nxRemoteGssvToken();
@@ -2841,13 +2841,16 @@
         if(!region.baseUri || !/^https:\/\//i.test(region.baseUri)) continue;
         try { const res=await fetch(region.baseUri.replace(/\/$/,'')+'/v6/servers/home?mr=50',{
           headers:{Authorization:'Bearer '+login.gsToken}});
-          if(!res.ok) continue;
+          if(!res.ok) {nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': HTTP '+res.status);continue;}
           const json=await res.json();
-          if(Array.isArray(json.results) && json.results.length){found=json.results;break;}
-        } catch (_) {}
+          if(!Array.isArray(json.results)) {nxRemotePlay.attempts.push('Resposta sem lista de consoles');continue;}
+          nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': '+json.results.length+' console(s)');
+          if(json.results.length){found=json.results;nxRemotePlay.region=String(region.name||region.shortName||region.baseUri);break;}
+        } catch (e) {nxRemotePlay.attempts.push('Região indisponível: '+String(e && e.name||'erro'));}
       }
       nxRemotePlay.consoles=found.map(function(c){return {name:String(c.name||c.serverName||'Xbox'),state:String(c.powerState||c.state||'Desconhecido')};});
       nxRemotePlay.status=found.length?found.length+' console(s) encontrado(s)':'Nenhum console vinculado encontrado';
+      nxRemotePlay.checkedAt=Date.now();
     } catch(e) { nxRemotePlay.error=String(e && e.message||e);nxRemotePlay.status='Falha na consulta'; }
     finally {nxRemotePlay.busy=false;if(tabId==='remote')renderBody();}
   }
@@ -2858,6 +2861,9 @@
       const btn=mk('button','cursor:pointer;padding:10px 14px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.busy?'Consultando…':'Buscar meus consoles');
       btn.disabled=nxRemotePlay.busy;btn.addEventListener('click',function(e){e.stopPropagation();nxRemoteDiscover();});root.appendChild(btn);
       root.appendChild(mk('div','font-size:12px;margin:12px 0;color:'+(nxRemotePlay.error?C.bad:C.dim),nxRemotePlay.error||nxRemotePlay.status));
+      if(nxRemotePlay.region) root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:5px','Região xHome: '+nxRemotePlay.region));
+      if(nxRemotePlay.checkedAt) root.appendChild(mk('div','font-size:10px;color:'+C.dim+';margin-bottom:8px','Última consulta: '+new Date(nxRemotePlay.checkedAt).toLocaleTimeString()));
+      if(nxRemotePlay.attempts.length) {const details=mk('details','font-size:11px;color:'+C.dim+';margin-bottom:10px');details.appendChild(mk('summary','cursor:pointer','Diagnóstico da descoberta'));nxRemotePlay.attempts.forEach(function(a){details.appendChild(mk('div','padding:3px 0',a));});root.appendChild(details);}
       nxRemotePlay.consoles.forEach(function(c){const box=mk('div','padding:10px;margin-bottom:7px;border-radius:9px;border:1px solid '+C.line);
         box.appendChild(mk('div','font-weight:700',c.name));box.appendChild(mk('div','font-size:11px;color:'+C.dim,'Estado: '+c.state));root.appendChild(box);});
     },
