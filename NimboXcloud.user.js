@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.43
+// @version      3.6.44
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.43';
+  const VER = '3.6.44';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1827,34 +1827,11 @@
       micDevice.addEventListener('change', function () { setPref(LS_MIC_DEVICE, micDevice.value); if (micTestStream) inspectMicrophone(); });
       micDeviceControl = micDevice;
       micButtons.appendChild(micDevice);
-      const micMonitor = document.createElement('label');
-      micMonitor.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:12px';
-      const monitorCheck = document.createElement('input'); monitorCheck.type = 'checkbox';
-      monitorCheck.checked = false;
-      monitorCheck.addEventListener('change', function () { setMicMonitor(monitorCheck.checked); });
-      micMonitor.appendChild(monitorCheck); micMonitor.appendChild(document.createTextNode('Ouvir minha voz (use fones de ouvido)'));
-      micButtons.appendChild(micMonitor);
-      [['Ganho', LS_MIC_GAIN, 0, 200, 100, '%'], ['Graves', LS_MIC_BASS, -12, 12, 0, ' dB'],
-        ['Agudos', LS_MIC_TREBLE, -12, 12, 0, ' dB']].forEach(function (cfg) {
-        const label = document.createElement('label'); label.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;font-size:12px';
-        const title = document.createElement('span'); title.textContent = cfg[0]; title.style.minWidth = '48px';
-        const range = document.createElement('input'); range.type = 'range'; range.min = cfg[2]; range.max = cfg[3]; range.step = '1';
-        range.value = getPref(cfg[1], String(cfg[4])); range.style.flex = '1';
-        const val = document.createElement('span'); val.textContent = range.value + cfg[5]; val.style.minWidth = '50px';
-        range.addEventListener('input', function () { val.textContent = range.value + cfg[5]; setPref(cfg[1], range.value); applyMicEffects(); });
-        label.appendChild(title); label.appendChild(range); label.appendChild(val); micButtons.appendChild(label);
-      });
-      [['Redução de ruído', LS_MIC_NOISE], ['Cancelamento de eco', LS_MIC_ECHO]].forEach(function (cfg) {
-        const label = document.createElement('label'); label.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:12px';
-        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = getPref(cfg[1], '1') === '1';
-        check.addEventListener('change', function () { setPref(cfg[1], check.checked ? '1' : '0'); if (micTestStream) inspectMicrophone(); });
-        label.appendChild(check); label.appendChild(document.createTextNode(cfg[0])); micButtons.appendChild(label);
-      });
       const micMeter = document.createElement('progress'); micMeter.max = 100; micMeter.value = 0;
       micMeter.style.cssText = 'width:100%;height:12px'; micMeter.setAttribute('aria-label', 'Nível de entrada do microfone');
       micLevelControl = micMeter; micButtons.appendChild(micMeter);
       refreshMicDevices();
-      const mic = setRow('Microfone', 'Preferência NX salva. Teste a voz antes de jogar; a integração com o chat de voz nativo ainda não está confirmada.', micButtons);
+      const mic = setRow('Microfone', 'Escolha o microfone para as próximas solicitações de captura do xCloud. O jogo precisa oferecer chat de voz.', micButtons);
       g3.add(mic);
       liveDesc(mic, function () { return S.micStatus; });
       const vibControls = mk('div', 'display:flex;gap:6px;flex-wrap:wrap;align-items:center');
@@ -2426,6 +2403,38 @@
     setPref(LS_NX_SHORTCUT, next);
     pushLog('shortcut', 'Atalho NX: Ctrl+Shift+' + next.slice(3));
   }
+  // Respeita o pedido de áudio feito pelo próprio xCloud. Não inicia chat nem cria conexão.
+  function installMicDeviceRouting() {
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') return;
+    const media = navigator.mediaDevices;
+    const original = media.getUserMedia.bind(media);
+    if (media.getUserMedia.__nxMicRouter) return;
+    const routed = function (constraints) {
+      const selected = getPref(LS_MIC_DEVICE, '');
+      const enabled = getPref(LS_MIC_ENABLED, '0') === '1';
+      if (!enabled || !selected || !constraints || !constraints.audio) return original(constraints);
+      const audio = constraints.audio === true ? {} : Object.assign({}, constraints.audio);
+      // A escolha do usuário substitui somente o dispositivo, mantendo demais opções do site.
+      audio.deviceId = { ideal: selected };
+      const requested = Object.assign({}, constraints, { audio: audio });
+      return original(requested).then(function (stream) {
+        const track = stream.getAudioTracks()[0];
+        const settings = track && typeof track.getSettings === 'function' ? track.getSettings() : {};
+        if (settings.deviceId && settings.deviceId !== selected) {
+          S.micStatus = 'O navegador escolheu outro microfone; dispositivo solicitado indisponível.';
+        } else {
+          S.micStatus = 'Captura solicitada pelo xCloud com o microfone selecionado. Envio de voz ao jogo não verificado.';
+        }
+        return stream;
+      });
+    };
+    try {
+      Object.defineProperty(routed, '__nxMicRouter', { value: true });
+      media.getUserMedia = routed;
+    } catch (err) { S.micStatus = 'Roteamento indisponível: ' + String(err && err.name || err); }
+  }
+  installMicDeviceRouting();
+
   let micTestStream = null, micTestContext = null, micTestTimer = null;
   let micDeviceControl = null, micLevelControl = null, micGainNode = null, micBassNode = null;
   let micTrebleNode = null, micMonitorNode = null, micMonitorEnabled = false, micRequestId = 0;
