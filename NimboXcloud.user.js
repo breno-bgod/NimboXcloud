@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.31
+// @version      4.12.32
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.31';
+  const VER = '4.12.32';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -425,7 +425,8 @@
     b50: { mbps: 50, label: '50 Mbps (limite)' }
   };
   function bitrateCfg() {
-    return BITRATE_MODES[getPref(LS_BITRATE, 'auto')] || BITRATE_MODES.auto;
+    // Sem teto artificial de bitrate: WebRTC e servidor negociam a taxa real.
+    return BITRATE_MODES.auto;
   }
 
   const GSSV_RE = /(^|\.)gssv-play-[a-z0-9-]*\.xboxlive\.com$/i;
@@ -524,9 +525,8 @@
     return SERVERS.auto;
   }
   function resCfg() {
-    const selected = getPref(LS_RES, 'auto');
-    // Migrar a antiga opcao 1080p duplicada para o perfil unico.
-    return RES_MODES[selected === 'r1080' ? 'auto' : selected] || RES_MODES.auto;
+    // Qualidade máxima solicitada, sem redução por dispositivo ou perfil legado.
+    return RES_MODES.auto;
   }
   function v4on() { return getPref(LS_V4, '1') !== '0'; }
 
@@ -3212,7 +3212,7 @@
         al.style.display = msgs.length ? 'block' : 'none';
       });
 
-      const pg = group('Perfis rápidos', 'Aplicam qualidade e limite de bitrate de uma vez. Valem na próxima partida.');
+      const pg = group('Perfis rápidos', 'Qualidade máxima automática; sem limite manual de bitrate.');
       const row = mk('div', 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 0');
       PRESETS.forEach(function (p) {
         const on = getPref(LS_RES, 'auto') === p.res && getPref(LS_BITRATE, 'auto') === p.br;
@@ -3234,12 +3234,13 @@
         row.appendChild(b);
       });
       pg.card.appendChild(row);
-      root.appendChild(pg.root);
+      // Presets antigos mantidos apenas como código legado; não exibir escolhas que reduzam a qualidade.
+      // root.appendChild(pg.root);
 
       const cg = group('Configuração atual');
       cg.add(infoRow('Data center', function () { return srvBtnLabel(); }));
       cg.add(infoRow('Qualidade', function () { return resCfg().label; }));
-      cg.add(infoRow('Limite de bitrate', function () { return bitrateCfg().label; }));
+      cg.add(infoRow('Bitrate recebido', function () { return S.qos && Number.isFinite(S.qos.bitrate) ? S.qos.bitrate.toFixed(1) + ' Mbps' : 'Aguardando transmissão'; }));
       cg.add(infoRow('Rede', function () { return v4on() ? 'IPv4 forçado' : 'IPv4 + IPv6'; }));
       cg.add(infoRow('Região da loja', function () { return cfg().name; }));
       root.appendChild(cg.root);
@@ -3310,15 +3311,8 @@
       root.appendChild(g1.root);
 
       const g2 = group('Qualidade de vídeo');
-      g2.add(setRow('Perfil de qualidade', 'O perfil HQ usa a negociação Tizen e pode interferir no controle virtual (toque). A resolução entregue aparece em Geral.',
-        chips(Object.keys(RES_MODES).map(function (k) { return { k: k, label: RES_MODES[k].label }; }),
-          getPref(LS_RES, 'auto') === 'r1080' ? 'auto' : getPref(LS_RES, 'auto'), function (k) {
-            setPref(LS_RES, k); renderBody();
-          }), true));
-      g2.add(setRow('Limite de bitrate', 'Teto solicitado via SDP (experimental). Não aumenta o bitrate entregue pelo servidor.',
-        chips(Object.keys(BITRATE_MODES).map(function (k) {
-          return { k: k, label: BITRATE_MODES[k].label.replace(' (limite)', '') };
-        }), getPref(LS_BITRATE, 'auto'), function (k) { setPref(LS_BITRATE, k); renderBody(); }), true));
+      g2.add(infoRow('Qualidade solicitada', function () { return '1080p (máxima disponível)'; }, 'A resolução efetiva depende da negociação com o servidor.'));
+      g2.add(infoRow('Bitrate recebido', function () { return S.qos && Number.isFinite(S.qos.bitrate) ? S.qos.bitrate.toFixed(1) + ' Mbps' : 'Aguardando transmissão'; }, 'Valor medido, não um limite.'));
       root.appendChild(g2.root);
 
       const g3 = group('Rede');
