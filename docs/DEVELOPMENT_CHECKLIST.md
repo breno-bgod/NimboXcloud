@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-005 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime não modificado
+**Edição:** PM-006 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime não modificado
 
 ## Regras permanentes
 
@@ -174,3 +174,10 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - Verificação estática independente encontrou substituições de `Element.prototype.requestPointerLock` (linha 1059), `XMLHttpRequest.prototype.send` (1141) e `window.fetch` (693) no baseline v4.11.2. As referências de linha podem mudar.
 - Corrigido falso positivo de igualdade `===` e linhas de comentário no detector.
 - **Estado:** implementado e revisado estaticamente; execução efetiva do Node/GitHub Actions e testes em sessão xCloud ainda não confirmados. AUD-00 permanece aberta.
+
+
+## AUD-00 — correção de cobertura CI (2026-11-11)
+- Detectado que `.github/workflows/baseline.yml` rodava somente `tests/baseline.test.cjs`, deixando `tests/static-risk.test.cjs` sem execução no CI.
+- Corrigido para `node --test tests/*.test.cjs` (commit `0ce903468c817b8fddb5b2884fd05141a59f43f7`).
+- **Validação limitada:** revisão do conteúdo do workflow. Execução real do GitHub Actions ainda não confirmada; CORE-004 e AUD-00 permanecem em andamento.
+- Não houve alteração no userscript v4.11.2. Tentativa de clone externo no ambiente de teste falhou por ausência de resolução DNS; não equivale a falha do repositório.
