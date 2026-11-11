@@ -36,3 +36,10 @@
 - `b2ca27fb`: testes estáticos de opt-in, rollback e duplicatas.
 - **Limitação importante:** o HUD atual do xCloud pode não expor os rótulos esperados, usar canvas, iframes inacessíveis ou DOM dinâmico. Nesse caso, a integração não atua. A correspondência por rótulos não prova que o elemento controla o gameplay. A integração não acompanha remontagens do DOM automaticamente e pode exigir reaplicação. Transformações CSS podem alterar layout/gestos em controles complexos.
 - **Estado correto:** HUD-003/004 PARCIAIS (mecanismo experimental implementado, compatibilidade não demonstrada); HUD-005 PARCIAL (escala aplicada no modo experimental, safe areas reais não validadas); HUD-006 PARCIAL (perfis ainda não reaplicam nativo automaticamente); HUD-007 NÃO TESTADO; AUD-02 ABERTA.
+
+
+## Sincronização automática — 2026-11-11
+- `2ef9c7a8` (v4.11.22): `nxHudRouteMonitor` invoca `nxHudAutoLoadGame()` e `nxHudNativeSync()` no ciclo existente de 1500 ms; verifica mudanças em layout, escala, jogo e identidade dos nós nativos; restaura estilos ao desativar ou sair da partida.
+- `5efbe97b`: regressão estática de integração do monitor.
+- **Requisitos de uso:** ativar carregamento automático do perfil por jogo e integração nativa experimental separadamente. O sistema não assume que elementos rotulados são necessariamente controles funcionais.
+- **Pendência de validação real:** confirmar rótulos atuais, movimentação jogável, hit testing, desempenho e remount em Android/desktop. Sem essa evidência, P02 é 'código de sincronização implementado, integração real não comprovada', não aceite final.
