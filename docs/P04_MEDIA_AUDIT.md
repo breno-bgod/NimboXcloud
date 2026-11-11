@@ -17,3 +17,9 @@
 - Preservar WebRTC, áudio e vídeo nativos; efeitos locais opt-in.
 - Não anunciar melhorias reais de resolução, bitrate ou FPS sem medição.
 - Reabrir P03 caso um problema de negociação de streaming seja observado.
+
+## Segunda etapa — MEDIA-003 (2026-11-11)
+- `db301c36` v4.12.1: perfis Original, Equilibrado, Vívido e Manual no painel; sem CAS ou upscaling.
+- `a8c1e98e` v4.12.2: perfil inicial Manual para preservar ajustes legados já salvos.
+- `d9d9490e` v4.12.3: reavalia aplicação de Equilibrado/Vívido quando o host reseta o estilo do elemento.
+- MEDIA-003: implementação inicial concluída; teste de interação real pendente. MEDIA-001/002 permanecem parciais até homologação. MEDIA-004..006 exigem revisão de código.
