@@ -2808,7 +2808,7 @@
   nxHudAutoLoadGame();
   // Descoberta xHome: utiliza somente credenciais locais da sessão Xbox autenticada.
   // Não substitui a negociação WebRTC/ICE nem cria uma sessão Remote Play.
-  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0};
+  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:''};
   function nxRemoteGssvToken() {
     try { const v=JSON.parse(localStorage.getItem('xboxcom_xbl_user_info')||'null');
       const t=v && v.tokens && v.tokens['http://gssv.xboxlive.com/'];
@@ -2827,7 +2827,7 @@
     nxRemotePlay.requestId++;
     if(nxRemotePlay.abortController) nxRemotePlay.abortController.abort();
     nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
-    nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';nxRemotePlay.checkedAt=0;nxRemotePlay.attempts=[];
+    nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';nxRemotePlay.regionShortName='';nxRemotePlay.checkedAt=0;nxRemotePlay.attempts=[];
     nxRemotePlay.status='Consulta cancelada';nxRemotePlay.error='';
     if(tabId==='remote') renderBody();
   }
@@ -2837,7 +2837,7 @@
     const controller=new AbortController();
     nxRemotePlay.abortController=controller;
     const timeout=setTimeout(function(){controller.abort();},15000);
-    nxRemotePlay.busy=true;nxRemotePlay.error='';nxRemotePlay.attempts=[];nxRemotePlay.region='';
+    nxRemotePlay.busy=true;nxRemotePlay.error='';nxRemotePlay.attempts=[];nxRemotePlay.region='';nxRemotePlay.regionShortName='';
     // Invalidate stale consoles before any authentication/network request.
     nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.checkedAt=0;
     nxRemotePlay.status='Consultando consoles vinculados…';
@@ -2874,7 +2874,7 @@
           if(!json || !Array.isArray(json.results)) {nxRemotePlay.attempts.push('Resposta sem lista de consoles');continue;}
           successfulRegions++;
           nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': '+json.results.length+' console(s)');
-          if(json.results.length){found=json.results;nxRemotePlay.region=String(region.name||region.shortName||region.baseUri);break;}
+          if(json.results.length){found=json.results;nxRemotePlay.region=String(region.name||region.shortName||region.baseUri);nxRemotePlay.regionShortName=String(region.shortName||'').toLowerCase();break;}
         } catch (e) {if(requestId!==nxRemotePlay.requestId || controller.signal.aborted || (e && /^Acesso xHome negado/.test(String(e.message)))) throw e;nxRemotePlay.attempts.push('Região indisponível: '+String(e && e.name||'erro'));}
       }
       if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
@@ -2890,6 +2890,62 @@
       nxRemotePlay.error=controller.signal.aborted?'Tempo limite de 15 segundos excedido.':String(e && e.message||e);nxRemotePlay.status='Falha na consulta';
     }
     finally {clearTimeout(timeout);if(requestId===nxRemotePlay.requestId){nxRemotePlay.busy=false;nxRemotePlay.abortController=null;if(tabId==='remote')renderBody();}}
+  }
+  // xHome session bootstrap: explicit user action, no persistent tokens or SDP logging.
+  async function nxRemoteStartSession() {
+    if(nxRemotePlay.busy || !nxRemotePlay.selectedId) return;
+    const serverId=nxRemotePlay.selectedId;
+    if(!nxRemotePlay.consoles.some(function(c){return c.id===serverId;})) return;
+    const region=nxRemotePlay.regionShortName;
+    if(!/^[a-z0-9]{2,12}$/.test(region)) {
+      nxRemotePlay.error='Região xHome sem identificador confiável. Atualize a lista de consoles.';
+      if(tabId==='remote')renderBody();
+      return;
+    }
+    const controller=new AbortController(), requestId=++nxRemotePlay.requestId;
+    nxRemotePlay.busy=true;nxRemotePlay.abortController=controller;
+    nxRemotePlay.error='';nxRemotePlay.sessionStatus='authenticating';nxRemotePlay.sessionId='';
+    nxRemotePlay.status='Autenticando sessão xHome…';
+    const timeout=setTimeout(function(){controller.abort();},20000);
+    const check=function(){if(requestId!==nxRemotePlay.requestId || controller.signal.aborted)throw new Error('Operação cancelada');};
+    try {
+      const token=nxRemoteGssvToken();
+      if(!token)throw new Error('Credencial GSSV ausente ou expirada.');
+      const auth=await fetch('https://xhome.gssv-play-prod.xboxlive.com/v2/login/user',{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({offeringId:'xhome',token:token}),signal:controller.signal,redirect:'error'
+      });
+      check();
+      if(!auth.ok)throw new Error('Login xHome HTTP '+auth.status);
+      const login=await auth.json();check();
+      if(!login || typeof login.gsToken!=='string' || !login.gsToken)throw new Error('Credencial de sessão xHome inválida.');
+      const base='https://'+region+'.core.gssv-play-prodxhome.xboxlive.com';
+      const deviceInfo=JSON.stringify({
+        appInfo:{env:{clientAppId:'Microsoft.GamingApp',clientAppType:'native',clientAppVersion:'2203.1001.4.0',clientSdkVersion:'8.5.2',httpEnvironment:'prod',sdkInstallId:''}},
+        dev:{hw:{make:'Microsoft',model:'Surface Pro',sdktype:'native'},os:{name:'Windows 11',ver:'22631.2715',platform:'desktop'},displayInfo:{dimensions:{widthInPixels:1920,heightInPixels:1080},pixelDensity:{dpiX:1,dpiY:1}}}
+      });
+      nxRemotePlay.sessionStatus='requesting';nxRemotePlay.status='Solicitando sessão ao console…';
+      if(tabId==='remote')renderBody();
+      const play=await fetch(base+'/v5/sessions/home/play',{
+        method:'POST',redirect:'error',signal:controller.signal,
+        headers:{'Content-Type':'application/json','X-MS-Device-Info':deviceInfo,Authorization:'Bearer '+login.gsToken},
+        body:JSON.stringify({clientSessionId:'',titleId:'',systemUpdateGroup:'',settings:{nanoVersion:'V3;WebrtcTransport.dll',enableTextToSpeech:false,highContrast:0,locale:navigator.language||'pt-BR',useIceConnection:false,timezoneOffsetMinutes:new Date().getTimezoneOffset(),sdkType:'web',osName:'windows'},serverId:serverId,fallbackRegionNames:[]})
+      });
+      check();
+      if(!play.ok)throw new Error('Criação de sessão recusada (HTTP '+play.status+').');
+      const response=await play.json();check();
+      if(!response || typeof response.sessionId!=='string' || !/^[a-z0-9-]{8,80}$/i.test(response.sessionId))throw new Error('Resposta de sessão inválida.');
+      nxRemotePlay.sessionId=response.sessionId;
+      nxRemotePlay.sessionStatus='created';
+      nxRemotePlay.status='Sessão xHome criada. WebRTC ainda não conectado.';
+    }catch(e){
+      if(requestId!==nxRemotePlay.requestId)return;
+      nxRemotePlay.sessionStatus='failed';
+      nxRemotePlay.error=controller.signal.aborted?'Tempo limite da sessão (20 s).':String(e && e.message||e);
+      nxRemotePlay.status='Falha ao criar sessão';
+    }finally{
+      clearTimeout(timeout);
+      if(requestId===nxRemotePlay.requestId){nxRemotePlay.busy=false;nxRemotePlay.abortController=null;if(tabId==='remote')renderBody();}
+    }
   }
   const TAB_BUILDERS = {
     remote: function(root) {
@@ -2912,7 +2968,14 @@
         box.appendChild(mk('div','font-weight:700',c.name));box.appendChild(mk('div','font-size:11px;color:'+C.dim,'Modelo: '+c.type+' · Estado: '+c.state));
         const select=mk('button','cursor:pointer;padding:8px 12px;margin-top:7px;border-radius:8px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.selectedId===c.id?'Selecionado':'Selecionar console');
         select.addEventListener('click',function(e){e.stopPropagation();nxRemotePlay.selectedId=c.id;renderBody();});box.appendChild(select);root.appendChild(box);});
-      if(nxRemotePlay.selectedId) root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-top:10px','Console selecionado. A inicialização de sessão e a transmissão ainda dependem da integração com o cliente de streaming Xbox; nenhuma conexão foi iniciada.'));
+      if(nxRemotePlay.selectedId) {
+        const start=mk('button','cursor:pointer;padding:10px 14px;margin-top:10px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,'Iniciar sessão xHome (experimental)');
+        start.disabled=nxRemotePlay.busy;
+        start.addEventListener('click',function(e){e.stopPropagation();nxRemoteStartSession();});
+        root.appendChild(start);
+        root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-top:8px','A criação da sessão não inicia vídeo nem controles. WebRTC está pendente.'));
+        if(nxRemotePlay.sessionStatus==='created')root.appendChild(mk('div','font-size:11px;color:'+C.dim,'Sessão criada; aguardando integração WebRTC.'));
+      }
     },
     overview: function (root) {
       const intro = mk('div','font-size:19px;font-weight:750;letter-spacing:-.025em;margin:0 0 3px','Central de controle');
