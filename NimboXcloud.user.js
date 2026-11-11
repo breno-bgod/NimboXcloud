@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.1
+// @version      4.12.2
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.1';
+  const VER = '4.12.2';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2850,7 +2850,7 @@
 
       const g2 = group('Imagem', 'Perfis de apresentação CSS locais. Não são CAS, nitidez real nem upscaling.');
       g2.add(setRow('Perfil visual', 'Original não aplica filtros; Equilibrado e Vívido ajustam apenas contraste e cor.',
-        chips([{ k: 'original', label: 'Original' }, { k: 'balanced', label: 'Equilibrado' }, { k: 'vivid', label: 'Vívido' }, { k: 'custom', label: 'Manual' }], getPref(LS_VIDEO_PROFILE, 'original'), function (k) {
+        chips([{ k: 'original', label: 'Original' }, { k: 'balanced', label: 'Equilibrado' }, { k: 'vivid', label: 'Vívido' }, { k: 'custom', label: 'Manual' }], getPref(LS_VIDEO_PROFILE, 'custom'), function (k) {
           setPref(LS_VIDEO_PROFILE, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
         }), true));
       g2.add(setRow('Contraste adicional', 'Reforça o contraste do vídeo.',
@@ -4805,6 +4805,11 @@
       if (video !== lastAdjustedVideo) {
         restoreVideoAdjustments(lastAdjustedVideo);
         lastAdjustedVideo = video;
+        applyVideoAdjustments(video);
+      } else if (video && !nxVideoFilters.has(video) &&
+                 (getPref(LS_VIDEO_PROFILE, 'custom') !== 'original') &&
+                 (getPref(LS_VIDEO_COLOR, '0') !== '0' || getPref(LS_SHARPNESS, '0') !== '0')) {
+        // Reapply when the stream element persists but the host has reset its style.
         applyVideoAdjustments(video);
       }
     }, 2500);
