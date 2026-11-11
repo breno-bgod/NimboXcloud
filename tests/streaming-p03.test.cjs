@@ -35,3 +35,23 @@ test('NET-005: chosen video RTP report is local and has highest byte count', () 
   assert.match(body, /r\.bytesReceived \|\| 0/);
   assert.match(body, /selectedCandidatePairId/);
 });
+
+test('NET-004: IPv4 preference cannot discard the last viable ICE candidate', () => {
+  const start = src.indexOf('  function rewriteIce(');
+  const end = src.indexOf('  // ---------- 8.', start);
+  assert.ok(start > 0 && end > start);
+  const body = src.slice(start, end);
+  assert.match(body, /keep\.some\(function \(ln\)/);
+  assert.match(body, /keep\.some\(function \(item\)/);
+  assert.match(body, /if \(!dropped\) return false/);
+});
+
+test('NET-001: reconstructed play requests preserve abort and referrer policy', () => {
+  const start = src.indexOf('  function patchPlayRequest(');
+  const end = src.indexOf('  // ---------- 9.', start);
+  assert.ok(start > 0 && end > start);
+  const body = src.slice(start, end);
+  assert.match(body, /signal: req\.signal/);
+  assert.match(body, /referrerPolicy: req\.referrerPolicy/);
+  assert.match(body, /keepalive: req\.keepalive/);
+});
