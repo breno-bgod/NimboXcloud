@@ -120,7 +120,7 @@
       const ua = nxConsoleLabProfile === 'android' ? (function () {
           // Perfil mobile: preservar a identidade Android real quando presente.
           // Não inventar uma versão de Chromium nem capacidades de hardware.
-          return /Android/i.test(nxConsoleNativeUA) ? nxConsoleNativeUA : nxConsoleNativeUA;
+          return nxConsoleNativeUA;
         })() : nxConsoleLabProfile === 'xboxone'
         ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; Xbox; Xbox One) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36 Edge/17.17115'
         : nxConsoleLabProfile === 'xbox'
@@ -685,7 +685,8 @@
   function patchPlayRequest(input, init) {
     const r = resCfg();
     const profileOs = nxPlatformProfile.sessionOs;
-    const effectiveOs = profileOs || r.osName;
+    const effectiveOs = (nxConsoleLabProfile === 'xbox' || nxConsoleLabProfile === 'xboxone') ? null : (profileOs || r.osName);
+    // Console: não enviar osName Windows/Tizen de qualidade como se fosse identidade Xbox.
     if (!effectiveOs) return Promise.resolve({ input: input, init: init });
     // An aborted request must not be parsed/rebuilt before reaching native fetch.
     if ((init && init.signal && init.signal.aborted) ||
