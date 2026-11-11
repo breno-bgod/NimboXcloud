@@ -24,3 +24,9 @@ test('Pointer Lock policy documented without claiming gameplay validation', () =
 test.todo('CORE-001.F01: native pointer relock after ESC/focus loss (real browser)');
 test.todo('INPUT-004: touch and physical controller coexistence (real browser)');
 test.todo('HUD-007: native HUD interaction and multitouch (real xCloud session)');
+
+test('CORE-005: legacy pointer-lock opt-out defaults to previous behavior', () => {
+  assert.match(src, /localStorage\.getItem\('nx\.pointerLockLegacyF9'\) !== '0'/);
+  assert.match(src, /if \(nxPointerLockLegacyF9 && typeof originalRequestPointerLock === 'function'\)/);
+  assert.match(src, /if \(!nxPointerLockLegacyF9\) return;/);
+});
