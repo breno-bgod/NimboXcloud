@@ -25,6 +25,19 @@ Minha intenção é estudar como levar à nova versão recursos de controle, ace
 
 **O NimboXcloud é um userscript experimental e de código aberto.** Estou desenvolvendo-o para funcionar sobre o site oficial do Xbox Cloud Gaming; ele não hospeda jogos, não substitui o serviço e não garante acesso ou recursos que dependem da Microsoft.
 
+## Estado do projeto e funcionalidades congeladas
+
+**Antes de instalar, contribuir ou criar um fork:** leia o [registro oficial de decisões, funcionalidades congeladas, recursos experimentais e problemas conhecidos](./docs/PROJECT_STATUS_AND_DECISIONS.md).
+
+O NimboXcloud ainda **não está homologado como versão estável**. Algumas funções estão no código, mas foram retiradas da interface ou congeladas para evitar expectativas incorretas:
+
+- **Congelados:** Remote Play, curvas do analógico, laboratório de identidade Xbox e equalizador avançado. A ocultação e a desativação completa de todos os módulos ainda estão em andamento.
+- **Experimentais disponíveis para testes:** Fortnite Console e giroscópio aplicado ao jogo; GPU/WebGL2 e editor de HUD continuam sob avaliação, sem garantia de funcionamento.
+- **Mantidos:** painel NX, diagnóstico e seleção de servidor (troca de servidor já relatada como funcional pelo mantenedor).
+- **Em revisão:** bitrate/qualidade (50 Mbps configurados não garantem 50 Mbps recebidos), perfil Automático e estabilidade do CI.
+
+**Colaboradores e outras IAs:** usem o [registro de decisões](./docs/PROJECT_STATUS_AND_DECISIONS.md) como fonte de verdade antes de alterar recursos suspensos. O [roteiro de desenvolvimento](./docs/ROADMAP.md) apresenta as prioridades de estabilização.
+
 ## O que estou implementando e testando
 
 | Área | Recursos presentes no código |
