@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         NimboXcloud
+// @name         NimboXcloud | KReight
 // @namespace    https://github.com/breno-bgod/NimboXcloud
 // @version      3.6.37
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
