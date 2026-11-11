@@ -2808,7 +2808,7 @@
   nxHudAutoLoadGame();
   // Descoberta xHome: utiliza somente credenciais locais da sessão Xbox autenticada.
   // Não substitui a negociação WebRTC/ICE nem cria uma sessão Remote Play.
-  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:'', peer:null};
+  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:'', peer:null, mediaStream:null, videoElement:null};
   function nxRemoteGssvToken() {
     try { const v=JSON.parse(localStorage.getItem('xboxcom_xbl_user_info')||'null');
       const t=v && v.tokens && v.tokens['http://gssv.xboxlive.com/'];
@@ -2822,13 +2822,25 @@
       }
     }} catch (_) {} return '';
   }
+  function nxRemoteStop() {
+    nxRemotePlay.requestId++;
+    if(nxRemotePlay.abortController)nxRemotePlay.abortController.abort();
+    nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
+    if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
+    if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){}}
+    if(nxRemotePlay.mediaStream){try{nxRemotePlay.mediaStream.getTracks().forEach(function(t){t.stop();});}catch(_){}nxRemotePlay.mediaStream=null;}
+    nxRemotePlay.sessionStatus='stopped';nxRemotePlay.sessionId='';nxRemotePlay.status='Reprodução local encerrada';nxRemotePlay.error='';
+    if(tabId==='remote')renderBody();
+  }
   function nxRemoteCancel() {
-    if(!nxRemotePlay.busy) return;
+    if(!nxRemotePlay.busy)return;
     nxRemotePlay.requestId++;
     if(nxRemotePlay.abortController) nxRemotePlay.abortController.abort();
     nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
     nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';nxRemotePlay.regionShortName='';nxRemotePlay.checkedAt=0;nxRemotePlay.attempts=[];
     if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
+    if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){}}
+    if(nxRemotePlay.mediaStream){try{nxRemotePlay.mediaStream.getTracks().forEach(function(t){t.stop();});}catch(_){}nxRemotePlay.mediaStream=null;}
     nxRemotePlay.status=nxRemotePlay.sessionStatus==='authenticating'||nxRemotePlay.sessionStatus==='requesting'?'Operação cancelada':'Consulta cancelada';nxRemotePlay.error='';nxRemotePlay.sessionStatus='cancelled';nxRemotePlay.sessionId='';
     if(tabId==='remote') renderBody();
   }
@@ -2963,6 +2975,20 @@
       if(typeof RTCPeerConnection==='function'){
         const peer=new RTCPeerConnection();
         nxRemotePlay.peer=peer;
+        if(typeof MediaStream==='function'){
+          const stream=new MediaStream();
+          nxRemotePlay.mediaStream=stream;
+          peer.ontrack=function(event){
+            if(requestId!==nxRemotePlay.requestId)return;
+            const tracks=event.streams&&event.streams[0]?event.streams[0].getTracks():[event.track];
+            for(const track of tracks)if(track && !stream.getTracks().some(function(t){return t.id===track.id;}))stream.addTrack(track);
+            if(nxRemotePlay.videoElement){
+              nxRemotePlay.videoElement.srcObject=stream;
+              nxRemotePlay.videoElement.play().catch(function(){});
+            }
+            if(tabId==='remote')renderBody();
+          };
+        }
         const localIceCandidates=[];
         peer.onicecandidate=function(event){
           if(!event || !event.candidate || requestId!==nxRemotePlay.requestId || controller.signal.aborted)return;
@@ -3053,6 +3079,8 @@
     }catch(e){
       if(requestId!==nxRemotePlay.requestId)return;
       if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
+      if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){} }
+      nxRemotePlay.mediaStream=null;
       nxRemotePlay.sessionStatus='failed';
       nxRemotePlay.error=controller.signal.aborted?'Tempo limite da sessão (20 s).':String(e && e.message||e);
       nxRemotePlay.status='Falha ao criar sessão';
@@ -3082,6 +3110,17 @@
         box.appendChild(mk('div','font-weight:700',c.name));box.appendChild(mk('div','font-size:11px;color:'+C.dim,'Modelo: '+c.type+' · Estado: '+c.state));
         const select=mk('button','cursor:pointer;padding:8px 12px;margin-top:7px;border-radius:8px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.selectedId===c.id?'Selecionado':'Selecionar console');
         select.addEventListener('click',function(e){e.stopPropagation();nxRemotePlay.selectedId=c.id;renderBody();});box.appendChild(select);root.appendChild(box);});
+      if(nxRemotePlay.mediaStream){
+        if(!nxRemotePlay.videoElement){
+          const video=document.createElement('video');
+          video.autoplay=true;video.playsInline=true;video.controls=true;video.style.cssText='display:block;width:100%;max-height:48vh;margin-top:12px;background:#000;border-radius:10px';
+          nxRemotePlay.videoElement=video;
+        }
+        nxRemotePlay.videoElement.srcObject=nxRemotePlay.mediaStream;
+        root.appendChild(nxRemotePlay.videoElement);
+        const stop=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,'Encerrar reprodução local');
+        stop.addEventListener('click',function(e){e.stopPropagation();nxRemoteStop();});root.appendChild(stop);
+      }
       if(nxRemotePlay.selectedId) {
         const start=mk('button','cursor:pointer;padding:10px 14px;margin-top:10px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,'Iniciar sessão xHome (experimental)');
         start.disabled=nxRemotePlay.busy;
