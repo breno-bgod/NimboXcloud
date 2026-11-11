@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.8.0
+// @version      3.8.1
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.8.0';
+  const VER = '3.8.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2160,6 +2160,29 @@
       g2.add(infoRow('Falhas de leitura', function () { return String(nxGamepadMonitor.errors); }));
       root.appendChild(g2.root);
 
+      const inputPreview = group('Perfis de analógico — simulação',
+        'Visualização local das curvas e zonas mortas. Não modifica os comandos enviados ao xCloud.');
+      inputPreview.add(setRow('Perfil de teste', 'Escolha uma curva para visualizar o comportamento dos eixos.',
+        chips(Object.keys(nxInputProfiles).map(function (k) { return { k: k, label: nxInputProfiles[k].label }; }),
+          nxInputProfileName(), function (k) {
+            setPref(NX_INPUT_PROFILE_KEY, k);
+            nxSampleGamepads();
+            renderBody();
+          }), true));
+      inputPreview.add(infoRow('Zona morta', function () {
+        return Math.round(nxInputProfiles[nxInputProfileName()].deadzone * 100) + '%';
+      }));
+      inputPreview.add(infoRow('Curva', function () {
+        return String(nxInputProfiles[nxInputProfileName()].curve);
+      }));
+      inputPreview.add(infoRow('Eixos simulados (até 4)', function () {
+        return nxGamepadMonitor.snapshots.length ?
+          nxGamepadMonitor.snapshots.map(function (p) {
+            return '#' + p.index + ': ' + p.axisPreview.map(function (v) { return v.toFixed(2); }).join(', ');
+          }).join(' | ') : 'Conecte e mova um controle';
+      }, 'Valores normalizados de -1 a 1. Não afeta o jogo.'));
+      root.appendChild(inputPreview.root);
+
       const g3 = group('Acessórios');
       const micButtons = mk('div', 'display:flex;gap:6px;flex-wrap:wrap');
       const micToggle = actBtn(getPref(LS_MIC_ENABLED, '0') === '1' ? 'Microfone: ativado' : 'Microfone: desativado', function () {
@@ -2629,6 +2652,25 @@
     return 'r' + row + 'c' + col;
   }
   // Camada única de observação de controles: somente leitura, sem interceptar getGamepads.
+  const NX_INPUT_PROFILE_KEY = 'nx.input.previewProfile.v1';
+  const nxInputProfiles = {
+    default: { label: 'Padrão', deadzone: 0.12, curve: 1 },
+    precision: { label: 'Precisão', deadzone: 0.08, curve: 1.6 },
+    racing: { label: 'Corrida', deadzone: 0.05, curve: 1.2 },
+    accessible: { label: 'Acessibilidade', deadzone: 0.18, curve: 0.75 }
+  };
+  function nxInputProfileName() {
+    const name = getPref(NX_INPUT_PROFILE_KEY, 'default');
+    return Object.prototype.hasOwnProperty.call(nxInputProfiles, name) ? name : 'default';
+  }
+  function nxPreviewAxis(value, profile) {
+    if (!Number.isFinite(value)) return 0;
+    const x = Math.max(-1, Math.min(1, value));
+    const magnitude = Math.abs(x);
+    if (magnitude <= profile.deadzone) return 0;
+    const normalized = (magnitude - profile.deadzone) / (1 - profile.deadzone);
+    return Math.sign(x) * Math.pow(normalized, profile.curve);
+  }
   const nxGamepadMonitor = { connected: 0, active: 0, snapshots: [], lastChange: null, errors: 0 };
   function nxSampleGamepads() {
     let pads;
@@ -2640,11 +2682,13 @@
       if (!pad || !pad.connected) continue;
       const buttons = Array.from(pad.buttons || []);
       const axes = Array.from(pad.axes || []);
+      const profile = nxInputProfiles[nxInputProfileName()];
       next.push({
         index: pad.index, mapping: pad.mapping || 'unknown',
         buttons: buttons.length, axes: axes.length,
         pressed: buttons.reduce(function (n, b) { return n + (b && b.pressed ? 1 : 0); }, 0),
-        movingAxes: axes.filter(function (v) { return Number.isFinite(v) && Math.abs(v) > 0.18; }).length
+        movingAxes: axes.filter(function (v) { return Number.isFinite(v) && Math.abs(v) > 0.18; }).length,
+        axisPreview: axes.slice(0, 4).map(function (v) { return Math.round(nxPreviewAxis(v, profile) * 100) / 100; })
       });
     }
     const signature = next.map(function (p) { return p.index + ':' + p.mapping + ':' + p.buttons + ':' + p.axes; }).join('|');
@@ -2710,7 +2754,7 @@
       v: VER,
       url: location.href,
       inputCapabilities: inputCapabilities(),
-      gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors },
+      gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), previewOnly: true },
       inputNegotiation: lastInputNegotiation,
       touchSession: touchSessionDiagnostics,
       touchFullscreenPolicy: touchFullscreenPolicy,
