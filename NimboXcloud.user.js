@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.0.3
+// @version      4.0.4
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.0.3';
+  const VER = '4.0.4';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2205,6 +2205,9 @@
 
       const gyroGroup = group('Giroscópio — calibração experimental',
         'Leitura local dos sensores para diagnóstico. Não controla a câmera do jogo.');
+      gyroGroup.add(infoRow('Amostras recebidas', function () {
+        return String(nxGyroPreviewState().samples);
+      }));
       gyroGroup.add(infoRow('Sensor', function () {
         const g = nxGyroPreviewState();
         return g.enabled ? (g.receiving ? 'Recebendo dados' : 'Aguardando movimento') : g.permission;
@@ -2901,6 +2904,12 @@
   const nxVirtualInputs = Object.create(null);
   const NX_VIRTUAL_INPUT_TTL = 2000;
   const NX_VIRTUAL_INPUT_LIMIT = 8;
+  function nxPruneVirtualInputs() {
+    const now = Date.now();
+    Object.keys(nxVirtualInputs).forEach(function (id) {
+      if (now - nxVirtualInputs[id].at > NX_VIRTUAL_INPUT_TTL) delete nxVirtualInputs[id];
+    });
+  }
   function nxRegisterVirtualInput(id, kind, active) {
     if (typeof id !== 'string' || !/^[a-z0-9_-]{1,32}$/i.test(id)) return false;
     if (kind !== 'touch-hud' && kind !== 'gyro' && kind !== 'virtual-keyboard' && kind !== 'virtual-mouse') return false;
@@ -2908,15 +2917,13 @@
       delete nxVirtualInputs[id];
       return true;
     }
+    nxPruneVirtualInputs();
     if (!Object.prototype.hasOwnProperty.call(nxVirtualInputs, id) && Object.keys(nxVirtualInputs).length >= NX_VIRTUAL_INPUT_LIMIT) return false;
     nxVirtualInputs[id] = { kind: kind, at: Date.now() };
     return true;
   }
   function nxVirtualInputState() {
-    const now = Date.now();
-    Object.keys(nxVirtualInputs).forEach(function (id) {
-      if (now - nxVirtualInputs[id].at > NX_VIRTUAL_INPUT_TTL) delete nxVirtualInputs[id];
-    });
+    nxPruneVirtualInputs();
     const kinds = Object.keys(nxVirtualInputs).map(function (id) { return nxVirtualInputs[id].kind; });
     return { count: kinds.length, kinds: Array.from(new Set(kinds)), injectionEnabled: false,
       note: 'Registro interno de atividade virtual; nenhuma entrada é enviada ao xCloud.' };
@@ -2927,6 +2934,7 @@
     const raw = Number(getPref(NX_GYRO_SMOOTH_KEY, '0.25'));
     return Number.isFinite(raw) ? Math.max(0.05, Math.min(1, raw)) : 0.25;
   }
+  let nxGyroRequestGeneration = 0;
   const nxGyroPreview = { enabled: false, permission: 'não solicitada', samples: 0, lastAt: 0,
     alpha: null, beta: null, gamma: null, originBeta: null, originGamma: null,
     filteredX: null, filteredY: null, error: '' };
@@ -2949,6 +2957,7 @@
   }
   async function nxStartGyroPreview() {
     if (nxGyroPreview.enabled) return true;
+    const generation = ++nxGyroRequestGeneration;
     if (typeof DeviceOrientationEvent === 'undefined') {
       nxGyroPreview.permission = 'indisponível';
       nxGyroPreview.error = 'DeviceOrientationEvent não disponível';
@@ -2957,23 +2966,31 @@
     try {
       if (typeof DeviceOrientationEvent.requestPermission === 'function') {
         const permission = await DeviceOrientationEvent.requestPermission();
+        if (generation !== nxGyroRequestGeneration || document.visibilityState === 'hidden') return false;
         nxGyroPreview.permission = permission;
         if (permission !== 'granted') return false;
       } else nxGyroPreview.permission = 'API disponível';
+      if (generation !== nxGyroRequestGeneration || document.visibilityState === 'hidden') return false;
       nxGyroPreview.enabled = true;
       nxGyroPreview.error = '';
       window.addEventListener('deviceorientation', nxGyroOnOrientation, { passive: true });
       return true;
     } catch (err) {
+      if (generation !== nxGyroRequestGeneration) return false;
       nxGyroPreview.permission = 'erro';
       nxGyroPreview.error = String(err && err.message || err).slice(0, 120);
       return false;
     }
   }
   function nxStopGyroPreview() {
+    ++nxGyroRequestGeneration;
     nxGyroPreview.enabled = false;
     window.removeEventListener('deviceorientation', nxGyroOnOrientation);
     nxRegisterVirtualInput('nx-gyro-preview', 'gyro', false);
+    nxGyroPreview.lastAt = 0;
+    nxGyroPreview.beta = null;
+    nxGyroPreview.gamma = null;
+    nxResetGyroCalibration();
   }
   function nxResetGyroCalibration() {
     nxGyroPreview.originBeta = null;
@@ -2982,7 +2999,8 @@
     nxGyroPreview.filteredY = null;
   }
   function nxCalibrateGyroPreview() {
-    if (!Number.isFinite(nxGyroPreview.beta) || !Number.isFinite(nxGyroPreview.gamma)) return false;
+    if (!nxGyroPreview.enabled || Date.now() - nxGyroPreview.lastAt > 2000 ||
+      !Number.isFinite(nxGyroPreview.beta) || !Number.isFinite(nxGyroPreview.gamma)) return false;
     nxGyroPreview.originBeta = nxGyroPreview.beta;
     nxGyroPreview.originGamma = nxGyroPreview.gamma;
     nxGyroPreview.filteredX = 0;
@@ -3082,6 +3100,9 @@
     check('giroscópio não injeta comandos', nxGyroPreviewState().gameplayInput === false);
     check('suavização do sensor válida', nxGyroSmoothFactor() > 0 && nxGyroSmoothFactor() <= 1);
     check('pausa automática do sensor configurada', nxGyroPreviewState().autoPauseOnHidden === true);
+    check('sensor desativado por padrão', nxGyroPreviewState().gameplayInput === false);
+    check('limite de entradas virtuais', NX_VIRTUAL_INPUT_LIMIT === 8);
+    check('janela de expiração virtual', NX_VIRTUAL_INPUT_TTL === 2000);
     return { passed: tests.filter(function (t) { return t.pass; }).length,
       total: tests.length, tests: tests, note: 'Autoteste matemático e estrutural; não substitui teste de streaming.' };
   }
