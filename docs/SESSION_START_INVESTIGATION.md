@@ -3,7 +3,7 @@
 Data: 2026-11-11. Estado: pesquisa e auditoria estática; testes reais pendentes.
 
 ## Objetivo
-Iniciar uma partida com vídeo e controles funcionais no site novo, antes de expandir os perfis Xbox.
+**Correção de premissa confirmada pelo usuário:** o NimboXcloud JÁ inicia partidas no novo play.xbox.com nos perfis Automático, Desktop e Mobile/Android. A falha ocorre somente ao selecionar os perfis Smart TV, Xbox e Xbox One. Preservar o fluxo de streaming funcional e diagnosticar especificamente a negociação de perfis não funcionais.
 
 ## Evidências externas
 - Better xCloud (README, aviso de 6 nov. 2026): suporte atual apenas a xbox.com/play; desenvolvimento para play.xbox.com em andamento. https://github.com/redphx/better-xcloud
@@ -20,6 +20,19 @@ Iniciar uma partida com vídeo e controles funcionais no site novo, antes de exp
 5. O diagnóstico registra status e etapa para `/sessions/cloud/play`, `state`, `connect`, `configuration`, `sdp`, `ice`, `keepalive`; não registra payloads sensíveis. É possível localizar a etapa de falha, desde que as rotas correspondam.
 6. Existem outros hooks de região, ICE e ponteiro; não presumir que todos sejam seguros para o novo site sem isolamento por módulo.
 
+## Matriz de reprodução informada pelo usuário
+
+| Perfil | Resultado |
+|---|---|
+| Automático | Partida inicia |
+| Desktop | Partida inicia |
+| Mobile/Android | Partida inicia |
+| Smart TV | Falha ao iniciar |
+| Xbox | Falha ao iniciar |
+| Xbox One | Falha ao iniciar |
+
+**Consequência:** não tratar incompatibilidade geral com play.xbox.com como causa; investigar somente diferenças entre perfis.
+
 ## Hipóteses, por ordem de verificação
 - H1: criação da sessão nem é observada devido a mudanças de endpoint ou de transporte.
 - H2: o servidor rejeita criação por corpo, identidade, região ou autenticação.
@@ -28,12 +41,12 @@ Iniciar uma partida com vídeo e controles funcionais no site novo, antes de exp
 - H5: conflitos entre hooks de qualidade, região, touch e perfis alteram a negociação.
 
 ## Plano de correção, depois de evidências
-1. Capturar apenas caminho sanitizado, método, status e duração das etapas (sem tokens, IDs, headers sensíveis ou payload integral).
-2. Executar baseline Automático realmente passivo (identidade e negociação de plataforma originais), para separar defeito do cliente oficial e defeito dos hooks.
+1. Usar Automático, Desktop e Mobile como controles positivos e comparar com Smart TV, Xbox e Xbox One. Capturar apenas caminho sanitizado, método, status e duração das etapas (sem tokens, IDs, headers sensíveis ou payload integral).
+2. Preservar o funcionamento comprovado dos três perfis positivos; investigar se o modo Automático altera osName antes de considerar mudanças nele.
 3. Comparar baseline com módulos ativados individualmente (região, qualidade, touch, console).
 4. Corrigir primeiro o estágio comprovadamente defeituoso, com fallback e teste sintático.
 5. Manter Xbox experimental desligado por padrão até comprovação de início de partida.
 6. Realizar teste real em Edge/Chrome na fase final, conforme decisão do usuário.
 
 ## Limitações
-Não há logs da tentativa de ontem neste estudo. Não atribuir a falha a um módulo específico sem o status/etapa da sessão. Nenhuma mudança de execução foi realizada nesta investigação.
+A informação de reprodução por perfil foi fornecida pelo usuário; não há logs das tentativas por perfil neste estudo. Não atribuir a falha a um módulo específico sem o status/etapa da sessão. Nenhuma mudança de execução foi realizada nesta investigação.
