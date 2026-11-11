@@ -9,6 +9,8 @@
 // @run-at       document-start
 // @grant        none
 // @supportURL   https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR/issues
+// @updateURL    https://raw.githubusercontent.com/breno-bgod/Xbox-Cloud-Unlock-PTBR/main/NimboXcloud.user.js
+// @downloadURL  https://raw.githubusercontent.com/breno-bgod/Xbox-Cloud-Unlock-PTBR/main/NimboXcloud.user.js
 // ==/UserScript==
 
 /*
