@@ -1,5 +1,11 @@
 # NimboXcloud
 
+<p align="center">
+  <strong>Português</strong> · <a href="./README_EN.md"><strong>English — Read the full project description</strong></a>
+</p>
+
+> **English-speaking visitors:** The complete English version of this README, including features, development status, installation, limitations and credits, is available in **[README_EN.md](./README_EN.md)**.
+
 **Mais controle sobre o Xbox Cloud Gaming, diretamente no navegador.**
 
 O **NimboXcloud** é um userscript de código aberto que adiciona uma central de controle ao [Xbox Cloud Gaming](https://play.xbox.com/). Ele permite personalizar a experiência de streaming, ajustar imagem e áudio, organizar controles e acompanhar a qualidade da conexão — sem substituir o serviço oficial.
@@ -89,4 +95,4 @@ O NimboXcloud **não é afiliado à Microsoft ou ao Xbox**. Ajustes de região p
 - [Plano de desenvolvimento e testes pendentes](./DEVELOPMENT_ROADMAP.md)
 - [Arquitetura e limites técnicos](./docs/ARQUITETURA.md)
 - [Guia de contribuição](./CONTRIBUTING.md)
-- [Read in English](./README_EN.md)
+- [English — full project description](./README_EN.md)
