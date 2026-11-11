@@ -1,6 +1,6 @@
 # P01 — Entradas: execução consolidada e AUD-01
 
-**Data:** 2026-11-11 · **Runtime:** v4.11.8 · **Status:** IMPLEMENTAÇÃO PARCIAL / AUD-01 ABERTA
+**Data:** 2026-11-11 · **Runtime:** v4.11.10 · **Status:** IMPLEMENTAÇÃO PARCIAL / AUD-01 ABERTA
 
 | Item | Implementação encontrada ou realizada | Situação |
 |---|---|---|
@@ -31,3 +31,14 @@
 6. Rodar CI e guardar logs e SHA; corrigir falhas.
 
 **Não marcar INPUT-001..007 nem AUD-01 como concluídos até cumprir os critérios acima.**
+
+
+## Segunda etapa — correções e decisão de auditoria (2026-11-11)
+- `954962c6`: INPUT-004: sobreposição touch/mouse não é mais disparada por teclado e exige timestamp válido do outro dispositivo.
+- `7b027c95`: teste de classificação teclado/toque/mouse.
+- `e38c11ad`: INPUT-003: eventos sem `movementX/movementY` numéricos são contabilizados como inválidos, não convertidos implicitamente em zero.
+- `ed9618e9`: teste para movimento relativo ausente.
+- Cenário isolado executado contra a v4.11.10: **passou** (1 sobreposição touch/mouse, 1 movimento válido, 1 evento inválido).
+- Tentativa de `git ls-remote` no ambiente de execução: **falhou por DNS** (`Could not resolve host: github.com`). Não houve checkout, execução Node nem teste real em navegador.
+
+**AUD-01: REVISÃO ESTÁTICA PARCIAL — NÃO APROVADA PARA ENCERRAMENTO.** A implementação de teclado/mouse virtual jogável e a arbitragem ativa de inputs não foram demonstradas; `nxCoordState` continua somente diagnóstico. INPUT-007 exige testes reais em Chrome/Edge Android/desktop com gamepad físico. Nenhum item INPUT-001..007 foi marcado integralmente concluído.
