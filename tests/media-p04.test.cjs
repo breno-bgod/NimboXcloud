@@ -31,3 +31,17 @@ test('MEDIA-003: visual profiles are user-selectable and legacy preferences surv
   assert.match(src, /setPref\(LS_VIDEO_PROFILE, 'custom'\); setPref\(LS_SHARPNESS/);
   assert.match(src, /setPref\(LS_VIDEO_PROFILE, 'custom'\); setPref\(LS_VIDEO_COLOR/);
 });
+
+test('MEDIA-004: fullscreen requires user action and video fit is reversible', () => {
+  assert.match(src, /actBtn\('Entrar \/ Sair', nxConsoleLabFullScreen/);
+  assert.match(src, /function applyVideoFit\(video\)/);
+  assert.match(src, /function restoreVideoFit\(video\)/);
+  assert.match(src, /video\.style\.removeProperty\('object-fit'\)/);
+  assert.match(src, /restoreVideoFit\(lastAdjustedVideo\)/);
+});
+test('MEDIA-006: hidden-tab eco mode restores filters when visibility changes', () => {
+  assert.match(src, /const LS_VIDEO_ECO = 'xcu\.videoEco\.v1'/);
+  assert.match(src, /document\.visibilityState === 'hidden'/);
+  assert.match(src, /document\.addEventListener\('visibilitychange', function \(\) \{/);
+  assert.match(src, /restoreVideoAdjustments\(video\)/);
+});
