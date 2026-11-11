@@ -3003,7 +3003,51 @@
         if(!answer)throw new Error('Resposta SDP não recebida.');
         await peer.setRemoteDescription({type:'answer',sdp:answer});check();
         nxRemotePlay.sessionStatus='sdp-ready';
-        nxRemotePlay.status='SDP negociado; conexão ICE e mídia ainda pendentes.';
+        nxRemotePlay.status='SDP negociado. Preparando candidatos ICE…';
+        // ICE candidates may arrive before or after the SDP answer.
+        const candidates=[];
+        const iceSend=async function(candidate){
+          check();
+          const res=await fetch(sessionUrl+'/ice',{
+            method:'POST',redirect:'error',signal:controller.signal,
+            headers:{'Content-Type':'application/json',Authorization:'Bearer '+login.gsToken},
+            body:JSON.stringify({candidate:JSON.stringify(candidate)})
+          });check();
+          if(!res.ok)throw new Error('Envio ICE recusado (HTTP '+res.status+').');
+        };
+        peer.onicecandidate=function(event){
+          if(!event || !event.candidate || requestId!==nxRemotePlay.requestId || controller.signal.aborted)return;
+          const c=event.candidate;
+          candidates.push({candidate:c.candidate,sdpMid:c.sdpMid,sdpMLineIndex:c.sdpMLineIndex});
+        };
+        // Local candidates gathered before this handler are represented in localDescription SDP.
+        // Remote candidates are accepted only as valid candidate objects.
+        const iceRes=await fetch(sessionUrl+'/ice',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});check();
+        if(!iceRes.ok)throw new Error('Consulta ICE recusada (HTTP '+iceRes.status+').');
+        const iceData=await iceRes.json();check();
+        const remoteList=Array.isArray(iceData)?iceData:Array.isArray(iceData&&iceData.candidates)?iceData.candidates:[];
+        for(const entry of remoteList){
+          check();
+          let candidate=entry;
+          if(typeof candidate==='string'){try{candidate=JSON.parse(candidate);}catch(_){continue;}}
+          if(candidate && typeof candidate.candidate==='string' && candidate.candidate.length<8192){
+            await peer.addIceCandidate(candidate);check();
+          }
+        }
+        for(const candidate of candidates){await iceSend(candidate);}
+        nxRemotePlay.sessionStatus='ice-pending';
+        nxRemotePlay.status='Candidatos ICE processados; aguardando conexão WebRTC.';
+        peer.onconnectionstatechange=function(){
+          if(requestId!==nxRemotePlay.requestId)return;
+          if(peer.connectionState==='connected'){
+            nxRemotePlay.sessionStatus='connected';
+            nxRemotePlay.status='WebRTC conectado. Renderização de mídia e controles pendentes.';
+          }else if(peer.connectionState==='failed'||peer.connectionState==='closed'){
+            nxRemotePlay.sessionStatus='disconnected';
+            nxRemotePlay.status='Conexão WebRTC '+peer.connectionState+'.';
+          }
+          if(tabId==='remote')renderBody();
+        };
       }else{
         nxRemotePlay.status='Xbox provisionado; WebRTC indisponível neste navegador.';
       }
