@@ -111,16 +111,16 @@
   // não altera cabeçalhos HTTP, autenticação, tokens, gamepad ou autorização do servidor.
   const nxConsoleNativeUA = navigator.userAgent;
   const nxConsoleLabProfile = (function () {
-    try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off'; return p === 'xboxone' ? 'xbox' : (['off','android','xbox','windows','smarttv'].includes(p) ? p : 'off'); }
+    try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off'; return ['off','android','xbox','xboxone','xboxseries','windows','smarttv'].includes(p) ? p : 'off'; }
     catch (_) { return 'off'; }
   })();
   const nxConsoleLabState = { profile: nxConsoleLabProfile, applied: false, error: '', nativeUA: nxConsoleNativeUA, startedAt: new Date().toISOString() };
   // Compatibilidade conservadora: perfis Xbox/TV não falsificam UA.
   // A interface mantém o perfil escolhido, mas o navegador negocia como dispositivo real.
-  const nxCompatibilityProfiles = ['xbox', 'xboxone', 'smarttv'];
+  const nxCompatibilityProfiles = ['xbox', 'xboxone', 'xboxseries', 'smarttv'];
   const nxCompatibilityMode = nxCompatibilityProfiles.includes(nxConsoleLabProfile);
   nxConsoleLabState.identityMode = nxCompatibilityMode ? 'native-compatible' : 'legacy-profile';
-  nxConsoleLabState.applied = nxCompatibilityMode;
+  nxConsoleLabState.applied = false; // Seleção não comprova identidade Xbox.
   if (nxCompatibilityMode) {
     nxConsoleLabState.note = 'Perfil de experiência ativo; identidade nativa preservada para compatibilidade de sessão';
   } else if (nxConsoleLabProfile !== 'off') {
@@ -139,7 +139,8 @@
     windows: { label: 'Desktop', sessionOs: 'windows', input: 'keyboard-mouse-preferred' },
     smarttv: { label: 'Smart TV compatível', sessionOs: null, input: 'gamepad-preferred' },
     xbox: { label: 'Xbox compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' },
-    xboxone: { label: 'Xbox One compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' }
+    xboxone: { label: 'Xbox One compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' },
+    xboxseries: { label: 'Xbox Series X|S compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' }
   }[nxConsoleLabProfile]);
   const nxProfileSessionState = { attempted: 0, patched: 0, lastRequestedOs: null, lastOutcome: 'not-observed' };
   // Diagnóstico passivo inspirado no XFly: não lê tokens, payloads ou identificadores.
@@ -298,6 +299,26 @@
       limitations:'Um nome de modelo ou User-Agent JavaScript nao equivale a identidade de hardware; verificar headers efetivos no DevTools.'
     };
   }
+  // Referências de hardware não verificadas; preserva autenticação e capacidades nativas.
+  const nxConsoleProfileManifest = Object.freeze({
+    xboxone: Object.freeze({id:'xboxone',label:'Xbox One',referenceVerified:false}),
+    xboxseries: Object.freeze({id:'xboxseries',label:'Xbox Series X|S',referenceVerified:false})
+  });
+  function nxConsoleProfileValidation() {
+    const manifest=nxConsoleProfileManifest[nxConsoleLabProfile] || null;
+    const evidence=nxProtocolEvidence();
+    const js=evidence.observed.javascriptIdentity;
+    const native=js.userAgent===nxConsoleNativeUA;
+    return {
+      selected:nxConsoleLabProfile,manifest:manifest,
+      state:manifest ? (native?'selected-native-preserved':'modified-unverified') : (nxConsoleLabProfile==='off'?'off':'other-profile'),
+      identity:{jsUserAgentChanged:!native,platform:js.platform,clientHintsPlatform:js.clientHints?js.clientHints.platform:null,touchPoints:js.maxTouchPoints},
+      layers:{javascript:native?'native-preserved':'modified-local',httpHeaders:'not-observable',
+        deviceCapabilities:'native-preserved',input:'native-preserved',session:nxSessionHealth().state,consoleAuthorization:'not-verified'},
+      warningsObserved:nxConsoleLabEvents.filter(function(e){return e.type==='unsupported-device-warning';}).length,
+      note:'Perfil nao comprova identidade Xbox. HTTP e TLS requerem verificacao externa.'
+    };
+  }
   function nxConsoleLabReport() {
     const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
     const note = (function () { try { return localStorage.getItem(LS_CONSOLE_NOTES) || ''; } catch (_) { return ''; } })();
@@ -311,7 +332,7 @@
       platformExperience: nxPlatformProfile, profileSession: Object.assign({}, nxProfileSessionState),
        compatibility: { enabled: nxCompatibilityMode, identityMode: nxConsoleLabState.identityMode, nativeUserAgentPreserved: navigator.userAgent === nxConsoleNativeUA, sessionOsRewriteDisabled: nxCompatibilityMode, clientHintsOverrideDisabled: nxCompatibilityMode },
        clientHintsExperiment: { enabled: nxClientHintsMode, applied: nxClientHintsApplied, note: 'Somente navigator.userAgentData JS; nao altera cabecalhos HTTP' },
-      protocolEvidence: nxProtocolEvidence(),
+      protocolEvidence: nxProtocolEvidence(), consoleProfileValidation: nxConsoleProfileValidation(),
       offeringTrace: nxOfferingTrace.slice(), offeringTraceNotice: 'Somente host, metodo, status e duracao; sem credenciais.',
        sessionTrace: nxSessionTrace.slice(),
       sessionHealth: nxSessionHealth(), compatibilityVerdict: nxCompatibilityVerdict(),
@@ -326,7 +347,7 @@
     };
   }
   function nxConsoleLabSetProfile(profile) {
-    if (!['off','android','xbox','windows','smarttv'].includes(profile)) return;
+    if (!['off','android','xbox','xboxone','xboxseries','windows','smarttv'].includes(profile)) return;
     try { localStorage.setItem(LS_CONSOLE_LAB, profile); } catch (_) {}
     // Reiniciar a página é necessário para negociar desde o document-start.
     location.reload();
@@ -3526,7 +3547,7 @@
        if (nxConsoleLabProfile === 'xbox') lab.add(setRow('Interface Xbox Shell', 'Desative para recuperar imediatamente a interface original do painel. A alteração não modifica o streaming.', chips([{k:'on',label:'Ativar'},{k:'off',label:'Desativar'}],nxShellEnabled ? 'on' : 'off',function(k){try{localStorage.setItem(LS_NX_SHELL,k === 'on' ? '1' : '0');}catch(_){} location.reload();}),true));
        if (nxShellEnabled) lab.add(infoRow('Último erro Xbox Shell', function () { return nxShellStats.lastError || 'Nenhum'; }));
        lab.add(infoRow('SO da sessão solicitado', function () { return nxProfileSessionState.lastRequestedOs || 'Original / não observado'; }));
-       lab.add(infoRow('Perfil desta sessão', function () { return nxConsoleLabState.profile + (nxConsoleLabState.applied ? ' · aplicado' : ' · original'); }));
+       lab.add(infoRow('Perfil desta sessão', function () { return nxConsoleLabState.profile + ' · ' + nxConsoleProfileValidation().state; }));
       lab.add(infoRow('Identidade contém Xbox;', function () { return navigator.userAgent.includes('Xbox;') ? 'Sim' : 'Não'; }));
       lab.add(infoRow('Erro de identidade', function () { return nxConsoleLabState.error || 'Nenhum'; }));
       lab.add(infoRow('Aviso de incompatibilidade', function () { return nxConsoleLabWarning() ? 'Detectado' : 'Não detectado'; }));
@@ -3534,8 +3555,8 @@
       lab.add(infoRow('Tela cheia', function () { return document.fullscreenElement || document.webkitFullscreenElement ? 'Ativa' : 'Desativada'; }));
       lab.add(setRow('Tela cheia e horizontal', 'Ative após selecionar Xbox ou Smart TV. O navegador exige um toque ou clique para entrar em tela cheia; a orientação horizontal é solicitada quando suportada.',
         actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'primary')));
-      lab.add(setRow('Perfil de plataforma', 'Xbox reúne Xbox e Xbox One, pois ambos utilizam o mesmo modo compatível. A interface pode priorizar gamepad, mas não desativa toque nativo nem transforma o site em Xbox OS.',
-        chips([{k:'off',label:'Original'},{k:'android',label:'Android'},{k:'windows',label:'Desktop'},{k:'xbox',label:'Xbox'},{k:'smarttv',label:'Smart TV'}],
+      lab.add(setRow('Perfil de plataforma', 'Xbox One e Series X|S sao perfis independentes. Preservam identidade e controles nativos; nao comprovam autorizacao Xbox.',
+        chips([{k:'off',label:'Original'},{k:'android',label:'Android'},{k:'windows',label:'Desktop'},{k:'xbox',label:'Xbox legado'},{k:'xboxone',label:'Xbox One'},{k:'xboxseries',label:'Series X|S'},{k:'smarttv',label:'Smart TV'}],
           nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
       lab.add(setRow('Client Hints (avançado)',
         'Ocultar navigator.userAgentData apenas no JavaScript, conforme Xperience XCloud. Não altera headers e pode prejudicar compatibilidade.',
