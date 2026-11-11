@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.38
+// @version      4.12.39
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.38';
+  const VER = '4.12.39';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -4491,20 +4491,20 @@
   const NX_KEY_BIND_KEY='nx.panel.keyBinding.v1';
   const nxPadNames=['A / X','B / círculo','X / quadrado','Y / triângulo','L1','R1','L2','R2','View / Share','Menu / Options','L3','R3','Cima','Baixo','Esquerda','Direita'];
   function nxPadBinding(){
-    try {const b=JSON.parse(getPref(NX_PAD_BIND_KEY,'[10,11]'));
-      return Array.isArray(b)&&b.length>=1&&b.length<=4&&b.every(function(v){return Number.isInteger(v)&&v>=0&&v<=15;})&&new Set(b).size===b.length?b:[10,11];
-    }catch(_){return [10,11];}
+    try {const b=JSON.parse(getPref(NX_PAD_BIND_KEY,'null'));
+      return Array.isArray(b)&&b.length>=1&&b.length<=4&&b.every(function(v){return Number.isInteger(v)&&v>=0&&v<=15;})&&new Set(b).size===b.length?b:null;
+    }catch(_){return null;}
   }
   function nxKeyBinding(){
-    try {const b=JSON.parse(getPref(NX_KEY_BIND_KEY,'["ControlLeft","ShiftLeft","KeyH"]'));
-      return Array.isArray(b)&&b.length>=1&&b.length<=4&&b.every(function(v){return typeof v==='string'&&/^[a-zA-Z0-9]+$/.test(v);})&&new Set(b).size===b.length?b:['ControlLeft','ShiftLeft','KeyH'];
-    }catch(_){return ['ControlLeft','ShiftLeft','KeyH'];}
+    try {const b=JSON.parse(getPref(NX_KEY_BIND_KEY,'null'));
+      return Array.isArray(b)&&b.length>=1&&b.length<=4&&b.every(function(v){return typeof v==='string'&&/^[a-zA-Z0-9]+$/.test(v);})&&new Set(b).size===b.length?b:null;
+    }catch(_){return null;}
   }
   let nxCapturePad=null;
   let nxCaptureKeys=null;
   const nxKeysHeld=new Set();
   let nxKeyboardComboActive=false;
-  function nxBindingLabel(b,names){return b.map(function(v){return names?names[v]||('Botão '+v):v.replace(/^Key/,'');}).join(' + ');}
+  function nxBindingLabel(b,names){if(!b)return 'Não configurado';return b.map(function(v){return names?names[v]||('Botão '+v):v.replace(/^Key/,'');}).join(' + ');}
   function nxBindControls(root){
     const g=group('Atalhos do painel','Configure de 1 a 4 botões simultâneos. Recomendamos 2 ou 3 para evitar abertura acidental durante o jogo.');
     const padText=mk('div','font-size:12px;margin-bottom:8px;color:'+C.text,nxBindingLabel(nxPadBinding(),nxPadNames));
@@ -4514,13 +4514,15 @@
         nxCapturePad={held:new Set(),max:0,started:Date.now(),label:padText};
         padText.textContent='Pressione de 1 a 4 botões e solte para salvar…';
       },'primary')));
-    g.add(setRow('Restaurar controle','Padrão: L3 + R3',actBtn('Restaurar',function(){nxCapturePad=null;setPref(NX_PAD_BIND_KEY,'[10,11]');renderBody();},'ghost')));
+    g.add(setRow('Limpar atalho do controle','Sem combinação automática.',actBtn('Limpar',function(){nxCapturePad=null;localStorage.removeItem(NX_PAD_BIND_KEY);renderBody();},'ghost')));
     const keyText=mk('div','font-size:12px;margin-bottom:8px;color:'+C.text,nxBindingLabel(nxKeyBinding()));
     g.add(keyText);
     g.add(setRow('Atalho do teclado','Clique em Gravar, mantenha as teclas pressionadas e solte para salvar. Máximo de quatro teclas.',
       actBtn('Gravar teclado',function(){nxCaptureKeys={held:new Set(),max:0,label:keyText};keyText.textContent='Pressione a combinação e solte para salvar…';},'primary')));
-    g.add(setRow('Restaurar teclado','Padrão: Ctrl + Shift + H',actBtn('Restaurar',function(){nxCaptureKeys=null;setPref(NX_KEY_BIND_KEY,'["ControlLeft","ShiftLeft","KeyH"]');renderBody();},'ghost')));
-    g.add(note('A navegação por controle ainda pode enviar comandos ao jogo; a supressão no canal de streaming está pendente.'));
+    g.add(setRow('Limpar atalho do teclado','Sem combinação automática.',actBtn('Limpar',function(){nxCaptureKeys=null;localStorage.removeItem(NX_KEY_BIND_KEY);renderBody();},'ghost')));
+    g.add(note('Atalhos ficam salvos no armazenamento local do navegador. Sem atalho configurado, abra o NX pelo botão na tela. A navegação por controle ainda pode enviar comandos ao jogo.'));
+    g.add(note('Outras preferências do NX, incluindo vídeo, áudio, região e controles, já são salvas localmente quando alteradas. Não é necessário salvar cada opção novamente.'));
+
     root.appendChild(g.root);
   }
   // Navegação de controle no painel NX. Somente leitura da Gamepad API.
@@ -4544,7 +4546,7 @@
       return;
     }
     const bind=nxPadBinding();
-    const combo=pads.some(function(p){return bind.every(function(i){return pressed(p,i);});});
+    const combo=!!bind&&pads.some(function(p){return bind.every(function(i){return pressed(p,i);});});
     if (combo && !nxPadUiState.combo) {
       setOpen(!openUI,true);
       nxPadUiState.lastAt=Date.now();
@@ -6199,7 +6201,7 @@ void main(){
         nxCaptureKeys.label.textContent=nxBindingLabel(Array.from(nxCaptureKeys.held).slice(0,4))+' — solte para salvar';
         return;
       }
-      const bind=nxKeyBinding();const matched=bind.every(function(code){return nxKeysHeld.has(code);});
+      const bind=nxKeyBinding();const matched=!!bind&&bind.every(function(code){return nxKeysHeld.has(code);});
       if(matched&&!nxKeyboardComboActive){nxKeyboardComboActive=true;e.preventDefault();e.stopImmediatePropagation();setOpen(!openUI,true);}
     },true);
     document.addEventListener('keyup',function(e){
@@ -6211,7 +6213,7 @@ void main(){
           setPref(NX_KEY_BIND_KEY,JSON.stringify(b));nxCaptureKeys=null;renderBody();
         }
       }
-      if(!nxKeyBinding().every(function(code){return nxKeysHeld.has(code);}))nxKeyboardComboActive=false;
+      const bind=nxKeyBinding();if(!bind||!bind.every(function(code){return nxKeysHeld.has(code);}))nxKeyboardComboActive=false;
     },true);
     window.addEventListener('blur',function(){nxKeysHeld.clear();nxKeyboardComboActive=false;});
     document.addEventListener('keydown', function (e) {
