@@ -4,6 +4,18 @@
 > Última revisão: 2026-11-11. Versão de referência: `4.12.27`, branch `main`.
 > **Este documento registra decisões de produto, não certifica funcionamento em uma sessão real.** Consulte os testes, CI e evidências antes de declarar qualquer recurso estável.
 
+## Política de documentação: somente escopo vigente
+
+A documentação oficial é um **registro do estado atual e do trabalho futuro aprovado**, não um diário de todas as tentativas. Aplique as seguintes regras:
+
+- **Documentar:** funcionalidades efetivamente presentes, limitações confirmadas, pendências atuais, recursos congelados com intenção de retomada e melhorias aprovadas.
+- **Documentar temporariamente:** recursos destinados à remoção que ainda possuem código, configuração persistida ou risco de impacto. Identificar como *remoção pendente* até concluir limpeza e testes.
+- **Não adicionar ao roteiro final:** protótipos que falharam e nunca foram incorporados, hipóteses descartadas e ideias sem decisão de implementação.
+- **Após remoção definitiva:** retirar o item da matriz de recursos ativos/congelados e do roteiro; não manter uma seção permanente de tentativas fracassadas. O histórico técnico continuará disponível no Git e, quando necessário, nas notas de versão.
+- **Não apagar fatos relevantes enquanto houver risco residual:** antes de excluir a documentação de um recurso, verificar que código, interface, preferências antigas e testes associados foram tratados.
+
+O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que precisa ser corrigido e o que será desenvolvido**, sem confundir experimentos abandonados com compromissos futuros.
+
 ## Propósito e princípios
 
 O NimboXcloud é um userscript independente para a nova experiência de Xbox Cloud Gaming em `https://play.xbox.com/`. Busca oferecer monitoramento, personalização, controles e recursos de acessibilidade sem substituir o serviço Xbox. Prioridade: **iniciar e manter partidas estáveis**, preservar controle/toque nativos e permitir recuperação quando uma opção falhar.
