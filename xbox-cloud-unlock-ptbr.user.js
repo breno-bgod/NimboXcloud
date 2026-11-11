@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud
 // @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
-// @version      3.6.32
+// @version      3.6.33
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -59,7 +59,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.32';
+  const VER = '3.6.33';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1137,11 +1137,19 @@
         nxLibraryButton = document.createElement('button');
         nxLibraryButton.id = 'nimboxcloud-library-button';
         nxLibraryButton.type = 'button';
-        nxLibraryButton.textContent = 'NX';
+        nxLibraryButton.setAttribute('aria-label', 'Abrir painel NimboXcloud');
+        nxLibraryButton.innerHTML = '';
+        const libraryIcon = document.createElement('img');
+        libraryIcon.src = brandIcon.src;
+        libraryIcon.alt = '';
+        libraryIcon.draggable = false;
+        libraryIcon.style.cssText = 'display:block;width:19px;height:19px;object-fit:contain';
+        nxLibraryButton.appendChild(libraryIcon);
         nxLibraryButton.title = 'NimboXcloud — configurações antes de jogar';
-        nxLibraryButton.style.cssText = 'border:1px solid #556276;background:#121b2a;color:#e9f4ff;' +
-          'font:700 12px/1 sans-serif;border-radius:8px;padding:6px;cursor:pointer;' +
-          'min-width:30px;min-height:30px;z-index:2147483000;flex-shrink:0';
+        nxLibraryButton.style.cssText = 'border:0;background:transparent;color:#e9f4ff;' +
+          'display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;' +
+          'border-radius:6px;padding:3px;cursor:pointer;width:28px;height:28px;' +
+          'min-width:28px;min-height:28px;z-index:2147483000;flex-shrink:0';
         nxLibraryButton.addEventListener('click', function (e) {
           e.preventDefault(); e.stopPropagation(); setOpen(!openUI, true);
         });
@@ -1161,9 +1169,13 @@
       const ar = nxLibraryButton.getBoundingClientRect();
       wrap.style.top = Math.min(innerHeight - 48, Math.max(44, ar.bottom + 8)) + 'px';
       wrap.style.alignItems = 'flex-end';
-      // Nunca ocultar o NX flutuante: o botao integrado pode estar recortado
-      // pelo layout dinamico da biblioteca.
-      if (pillEl) pillEl.style.display = 'inline-flex';
+      // Mostrar um único acesso: o botão da barra substitui a pílula flutuante.
+      // Se o botão integrado estiver recortado/invisível, preservar o fallback.
+      const buttonRect = nxLibraryButton.getBoundingClientRect();
+      const buttonVisible = buttonRect.width >= 18 && buttonRect.height >= 18 &&
+        buttonRect.top >= 0 && buttonRect.bottom <= innerHeight &&
+        buttonRect.left >= 0 && buttonRect.right <= innerWidth;
+      if (pillEl) pillEl.style.display = buttonVisible ? 'none' : 'inline-flex';
     } else {
       if (nxLibraryButton) nxLibraryButton.style.display = 'none';
       wrap.style.display = 'flex';
