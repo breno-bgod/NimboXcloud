@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.4
+// @version      4.11.5
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.4';
+  const VER = '4.11.5';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3428,13 +3428,10 @@
     return merged;
   }
   function nxInputBridgeStatus() {
+    // Consulta somente leitura: abrir o painel nunca deve apagar preferencias.
+    // Se outro script substituiu a API, a ponte NimboXcloud deixa de ser chamada.
     if (nxInputBridge.installed && navigator.getGamepads !== nxInputBridge.wrapper) {
-      nxInputBridge.foreignOverride = true;
-      nxInputBridge.installed = false;
-      nxInputBridge.enabled = false;
-      setPref(NX_GYRO_GAME_KEY, '0');
-      nxInputBridge.error = 'Outro script substituiu a Gamepad API; processamento NimboXcloud suspenso';
-      setPref(NX_INPUT_APPLY_KEY, '0');
+      return 'Outro script controla a Gamepad API; ponte NimboXcloud inativa';
     }
     return nxInputBridge.installed ? 'Ativo' : (nxInputBridge.error || 'Nativo / simulação');
   }
