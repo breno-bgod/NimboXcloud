@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.38
+// @version      3.6.39
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.37';
+  const VER = '3.6.39';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1699,7 +1699,7 @@
       sl.style.cssText = 'width:100%;accent-color:' + C.accent + ';margin:0;height:28px';
       sl.addEventListener('pointerdown', function (e) { e.stopPropagation(); sliderDragging = true; });
       sl.addEventListener('input', function () {
-        const v = activeStreamVideo();
+        const v = activeStreamAudio();
         if (!v) return;
         const n = Number(sl.value) / 100;
         v.volume = n; v.muted = false;
@@ -1711,9 +1711,9 @@
       ctl.appendChild(sl); ctl.appendChild(pct);
       const volRow = setRow('Volume do jogo', '', ctl, true);
       g1.add(volRow);
-      liveDesc(volRow, function () { return activeStreamVideo() ? '' : 'Disponível durante a partida.'; });
+      liveDesc(volRow, function () { return activeStreamAudio() ? '' : 'Saída de áudio do streaming não encontrada; confira volume do sistema e do xCloud.'; });
       liveFns.push(function () {
-        const v = activeStreamVideo();
+        const v = activeStreamAudio();
         sl.disabled = !v;
         sl.style.opacity = v ? '1' : '.45';
         if (v && !sliderDragging) {
@@ -1725,7 +1725,7 @@
       const muteBtn = actBtn('Silenciar', function () { toggleMute(); }, 'ghost');
       g1.add(setRow('Mudo', 'Silencia ou reativa o áudio do streaming.', muteBtn));
       liveFns.push(function () {
-        const v = activeStreamVideo();
+        const v = activeStreamAudio();
         muteBtn.textContent = v && v.muted ? 'Reativar som' : 'Silenciar';
         muteBtn.style.opacity = v ? '1' : '.45';
       });
@@ -1774,7 +1774,10 @@
       root.appendChild(g2.root);
 
       const g3 = group('Acessórios');
-      const mic = setRow('Microfone', '', actBtn('Verificar', function () { inspectMicrophone(); }, 'ghost'));
+      const micButtons = mk('div', 'display:flex;gap:6px;flex-wrap:wrap');
+      micButtons.appendChild(actBtn('Testar microfone', function () { inspectMicrophone(); }, 'ghost'));
+      micButtons.appendChild(actBtn('Parar teste', function () { stopMicrophoneTest(); }, 'ghost'));
+      const mic = setRow('Microfone', 'Solicita permissão e mede a entrada local. O envio de voz ao jogo continua dependendo do chat de voz nativo do xCloud.', micButtons);
       g3.add(mic);
       liveDesc(mic, function () { return S.micStatus; });
       const vib = setRow('Vibração', '', actBtn('Testar', function () { testVibration(); }, 'ghost'));
@@ -2333,15 +2336,48 @@
     setPref(LS_NX_SHORTCUT, next);
     pushLog('shortcut', 'Atalho NX: Ctrl+Shift+' + next.slice(3));
   }
-  function inspectMicrophone() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-      S.micStatus = 'API indisponível neste navegador'; update(); return;
+  let micTestStream = null, micTestContext = null, micTestTimer = null;
+  function stopMicrophoneTest() {
+    if (micTestTimer) { clearInterval(micTestTimer); micTestTimer = null; }
+    if (micTestStream) { micTestStream.getTracks().forEach(function (t) { t.stop(); }); micTestStream = null; }
+    if (micTestContext) { Promise.resolve(micTestContext.close()).catch(function () {}); micTestContext = null; }
+    S.micStatus = 'Teste encerrado. O microfone não está sendo capturado pelo NX.';
+    update();
+  }
+  async function inspectMicrophone() {
+    stopMicrophoneTest();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      S.micStatus = 'Captura indisponível: confira HTTPS e permissões do navegador'; update(); return;
     }
-    navigator.mediaDevices.enumerateDevices().then(function (devices) {
-      const count = devices.filter(function (d) { return d.kind === 'audioinput'; }).length;
-      S.micStatus = count ? count + ' entrada(s) detectada(s); integração com xCloud não confirmada' : 'Nenhuma entrada detectada ou permissão restrita';
+    S.micStatus = 'Solicitando permissão do microfone…'; update();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
+      micTestStream = stream;
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) { S.micStatus = 'Microfone autorizado, mas medição de áudio indisponível'; update(); return; }
+      const ctx = new AudioCtx(); micTestContext = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser(); analyser.fftSize = 1024;
+      source.connect(analyser); // Nunca conectar ao destino: evita eco/realimentação.
+      const samples = new Uint8Array(analyser.fftSize);
+      const refresh = function () {
+        if (micTestStream !== stream) return;
+        analyser.getByteTimeDomainData(samples);
+        let power = 0;
+        for (let i = 0; i < samples.length; i++) { const v = (samples[i] - 128) / 128; power += v * v; }
+        const level = Math.min(100, Math.round(Math.sqrt(power / samples.length) * 250));
+        S.micStatus = 'Captura local ativa · nível ' + level + '% · voz no jogo depende do xCloud';
+        update();
+      };
+      refresh(); micTestTimer = setInterval(refresh, 350);
+      stream.getAudioTracks().forEach(function (track) {
+        track.addEventListener('ended', function () { if (micTestStream === stream) stopMicrophoneTest(); });
+      });
+    } catch (err) {
+      stopMicrophoneTest();
+      S.micStatus = 'Não foi possível acessar o microfone: ' + String(err && err.name || err);
       update();
-    }).catch(function (err) { S.micStatus = 'Erro: ' + String(err && err.name || err); update(); });
+    }
   }
   function testVibration() {
     let pads = [];
@@ -2418,14 +2454,22 @@
       }, 'image/png');
     } catch (err) { S.lastErr = 'Captura: ' + String(err && err.message || err); schedule(); }
   }
+  function activeStreamAudio() {
+    const media = Array.from(document.querySelectorAll('video,audio'));
+    const candidates = media.filter(function (v) {
+      const stream = v.srcObject;
+      if (stream && typeof stream.getAudioTracks === 'function') return stream.getAudioTracks().length > 0;
+      return !!(v.currentSrc && v.currentSrc.startsWith('blob:'));
+    });
+    return candidates.find(function (v) { return v.readyState >= 2 && !v.paused; }) || candidates[0] || null;
+  }
   function activeStreamVideo() {
     const videos = Array.from(document.querySelectorAll('video'));
     const candidates = videos.filter(function (v) { return v.srcObject || (v.currentSrc && v.currentSrc.startsWith('blob:')); });
-    // Evitar controlar vídeos promocionais ou prévias que não são o streaming WebRTC.
     return candidates.find(function (v) { return v.readyState >= 2 && !v.paused; }) || candidates[0] || null;
   }
   function adjustVolume(delta) {
-    const video = activeStreamVideo();
+    const video = activeStreamAudio();
     if (!video) { S.lastErr = 'Volume: vídeo de streaming não encontrado'; schedule(); return; }
     const next = Math.max(0, Math.min(1, Math.round((video.volume + delta) * 10) / 10));
     video.volume = next;
@@ -2434,7 +2478,7 @@
     schedule();
   }
   function toggleMute() {
-    const video = activeStreamVideo();
+    const video = activeStreamAudio();
     if (!video) { S.lastErr = 'Volume: vídeo de streaming não encontrado'; schedule(); return; }
     video.muted = !video.muted;
     schedule();
@@ -2445,7 +2489,7 @@
     S.diagnosticsWarnings = [
       'RTT: apenas sessões usadas; sondagem ativa não implementada',
       'Contraste adicional: filtro CSS, não é nitidez real nem CAS',
-      'Microfone: detecção de entradas, sem controle do áudio do xCloud',
+      'Microfone: teste de captura local com permissão; transmissão ao jogo depende do xCloud',
       'Vibração: teste local, sem remapeamento do feedback do streaming',
       'Remote Play: diagnóstico de indisponibilidade; protocolo não integrado'
     ];
@@ -2458,14 +2502,16 @@
       if (e.code === 'KeyD') { e.preventDefault(); console.log('[NX diagnostic]', { qos: S.qos, history: S.qosHistory, diagnosis: S.lastDiagnosis }); }
     }, false);
     // Reaplicar volume salvo apenas quando um elemento de vídeo de streaming existir.
-    let lastVolumeVideo = null;
+    let lastVolumeAudio = null, lastAdjustedVideo = null;
     setInterval(function () {
-      const v = activeStreamVideo();
-      if (!v || v === lastVolumeVideo) return;
-      lastVolumeVideo = v;
-      const stored = Number(getPref(LS_VOLUME, '1'));
-      if (Number.isFinite(stored)) v.volume = Math.max(0, Math.min(1, stored));
-      applyVideoAdjustments(v);
+      const audio = activeStreamAudio();
+      if (audio && audio !== lastVolumeAudio) {
+        lastVolumeAudio = audio;
+        const stored = Number(getPref(LS_VOLUME, '1'));
+        if (Number.isFinite(stored)) audio.volume = Math.max(0, Math.min(1, stored));
+      }
+      const video = activeStreamVideo();
+      if (video && video !== lastAdjustedVideo) { lastAdjustedVideo = video; applyVideoAdjustments(video); }
     }, 2500);
     buildUI();
     update();
