@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         NimboXcloud
-// @namespace    https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR
+// @namespace    https://github.com/breno-bgod/NimboXcloud
 // @version      3.6.37
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
@@ -8,9 +8,9 @@
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @supportURL   https://github.com/breno-bgod/Xbox-Cloud-Unlock-PTBR/issues
-// @updateURL    https://raw.githubusercontent.com/breno-bgod/Xbox-Cloud-Unlock-PTBR/main/NimboXcloud.user.js
-// @downloadURL  https://raw.githubusercontent.com/breno-bgod/Xbox-Cloud-Unlock-PTBR/main/NimboXcloud.user.js
+// @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
+// @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
+// @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // ==/UserScript==
 
 /*
