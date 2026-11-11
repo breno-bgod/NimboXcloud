@@ -54,3 +54,12 @@ test('INPUT-004 keyboard activity is not classified as touch/mouse overlap', () 
   ctx.record('mouse');
   assert.equal(ctx.sources.simultaneous, 1);
 });
+
+test('INPUT-006 polling errors clear stale gamepad snapshots before retry', () => {
+  const start = src.indexOf('  function nxSampleGamepads() {');
+  const end = src.indexOf('  let nxInputDiagnosticsStarted = ', start);
+  assert.ok(start > 0 && end > start);
+  const code = src.slice(start, end);
+  assert.match(code, /catch \(err\) \{\s*nxGamepadMonitor\.errors\+\+;\s*nxGamepadMonitor\.connected = 0;/);
+  assert.match(code, /nxGamepadMonitor\.snapshots = \[\];\s*nxGamepadMonitor\.lastSignature = undefined;/);
+});
