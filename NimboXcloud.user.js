@@ -2809,18 +2809,31 @@
     overview: function (root) {
       const intro = mk('div','font-size:19px;font-weight:750;letter-spacing:-.025em;margin:0 0 3px','Central de controle');
       root.appendChild(intro);
-      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:16px','Escolha o que deseja ajustar. Recursos avançados ficam dentro de cada área.'));
-      const nav = mk('div','display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:18px');
-      TABS.filter(function (t) { return t.id !== 'overview'; }).forEach(function (t) {
-        const btn = mk('button','all:unset;box-sizing:border-box;cursor:pointer;min-height:95px;padding:13px 12px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;border-radius:13px;background:rgba(255,255,255,.045);border:1px solid '+C.line+';color:'+C.text+';-webkit-tap-highlight-color:transparent');
-        btn.setAttribute('aria-label','Abrir '+t.label);
-        btn.appendChild(ico(ICONS[t.id] || ICONS.advanced,20));
-        btn.appendChild(mk('span','font-size:13px;font-weight:700',t.label));
-        btn.appendChild(mk('span','font-size:10.5px;line-height:1.3;color:'+C.dim,t.desc));
-        btn.addEventListener('click',function (e) { e.stopPropagation(); setTab(t.id); });
-        nav.appendChild(btn);
+      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:12px','Status e ajustes rápidos primeiro. Todas as configurações continuam acessíveis abaixo.'));
+      // Navegação compacta: opções existentes, sem duplicar gerenciadores ou controles.
+      const nav = mk('div','display:flex;flex-direction:column;gap:5px;margin:12px 0');
+      const navGroups = [
+        { title: 'Jogo e controles', ids: ['stream','controls'] },
+        { title: 'Áudio e acessórios', ids: ['audio','voice'] },
+        { title: 'Conexão e sistema', ids: ['region','advanced'] }
+      ];
+      navGroups.forEach(function (g) {
+        nav.appendChild(mk('div','font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:'+C.dim+';margin:8px 0 2px',g.title));
+        g.ids.forEach(function (id) {
+          const t = TABS.find(function (item) { return item.id === id; });
+          if (!t) return;
+          const btn = mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 11px;min-height:44px;border-radius:9px;background:rgba(255,255,255,.035);border:1px solid '+C.line+';color:'+C.text);
+          btn.setAttribute('aria-label','Abrir '+t.label);
+          btn.appendChild(ico(ICONS[t.id] || ICONS.advanced,17));
+          const labels = mk('span','flex:1;min-width:0;display:flex;flex-direction:column');
+          labels.appendChild(mk('span','font-size:12px;font-weight:650',t.label));
+          labels.appendChild(mk('span','font-size:10px;color:'+C.dim,t.desc));
+          btn.appendChild(labels);
+          btn.appendChild(mk('span','font-size:16px;color:'+C.dim,'›'));
+          btn.addEventListener('click',function (e) { e.stopPropagation(); setTab(t.id); });
+          nav.appendChild(btn);
+        });
       });
-      root.appendChild(nav);
       const ban = mk('div', 'display:flex;align-items:center;gap:11px;padding:12px;border-radius:12px;border:1px solid ' + C.line + ';background:' + C.panel);
       const bdot = mk('span', 'width:10px;height:10px;border-radius:50%;flex:0 0 auto');
       const btxt = mk('div', 'min-width:0;flex:1');
@@ -2906,6 +2919,7 @@
       cg.add(infoRow('Rede', function () { return v4on() ? 'IPv4 forçado' : 'IPv4 + IPv6'; }));
       cg.add(infoRow('Região da loja', function () { return cfg().name; }));
       root.appendChild(cg.root);
+      root.appendChild(nav);
     },
 
     stream: function (root) {
