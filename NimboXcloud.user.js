@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.48
+// @version      3.6.49
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.48';
+  const VER = '3.6.49';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2770,16 +2770,19 @@
         const monoMerger = ctx.createChannelMerger(2), stereoGain = ctx.createGain(), monoGain = ctx.createGain();
         const pan = ctx.createStereoPanner(), compressor = ctx.createDynamicsCompressor(), limiter = ctx.createDynamicsCompressor();
         limiter.threshold.value = -4; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.003;
-        const bypass = ctx.createGain(), compressed = ctx.createGain(), limited = ctx.createGain();
+        const bypass = ctx.createGain(), compressed = ctx.createGain(), limited = ctx.createGain(), compToLimit = ctx.createGain(), directToLimit = ctx.createGain();
         let prev = source; filters.forEach(function (node) { prev.connect(node); prev = node; }); prev.connect(dialogue);
         dialogue.connect(stereoGain); stereoGain.connect(pan);
         dialogue.connect(monoSplitter); monoSplitter.connect(monoMix,0); monoSplitter.connect(monoMix,1);
         monoMix.connect(monoMerger,0,0); monoMix.connect(monoMerger,0,1); monoMerger.connect(monoGain); monoGain.connect(pan);
         pan.connect(bypass); bypass.connect(ctx.destination);
         pan.connect(compressor); compressor.connect(compressed); compressed.connect(ctx.destination);
-        pan.connect(limiter); limiter.connect(limited); limited.connect(ctx.destination);
+        pan.connect(directToLimit); directToLimit.connect(limiter);
+        compressor.connect(compToLimit); compToLimit.connect(limiter);
+        limiter.connect(limited); limited.connect(ctx.destination);
         nxAudioGraph = {media:media,ctx:ctx,filters:filters,dialogue:dialogue,pan:pan,compressor:compressor,limiter:limiter,
-          stereoGain:stereoGain,monoGain:monoGain,bypass:bypass,compressed:compressed,limited:limited};
+          stereoGain:stereoGain,monoGain:monoGain,bypass:bypass,compressed:compressed,limited:limited,
+          compToLimit:compToLimit,directToLimit:directToLimit};
         applyAudioOutput();
       }
       const g = nxAudioGraph;
@@ -2794,6 +2797,8 @@
       g.bypass.gain.value = !compress && !limit ? 1 : 0;
       g.compressed.gain.value = compress && !limit ? 1 : 0;
       g.limited.gain.value = limit ? 1 : 0;
+      g.compToLimit.gain.value = limit && compress ? 1 : 0;
+      g.directToLimit.gain.value = limit && !compress ? 1 : 0;
       Promise.resolve(g.ctx.resume()).catch(function () {});
     } catch (e) { S.lastErr = 'Web Audio: '+String(e && e.name || e); }
   }
