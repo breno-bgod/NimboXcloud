@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.7.0
+// @version      4.7.1
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.7.0';
+  const VER = '4.7.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1892,7 +1892,11 @@
     try {
       const parts = new URL(location.href).pathname.split('/').filter(Boolean);
       const index = parts.indexOf('play');
-      return index >= 0 && parts[index + 1] ? nxHudGameId(parts[index + 1]) : '';
+      if (index < 0) return '';
+      const candidates = parts.slice(index + 1);
+      if (candidates[0] === 'games') candidates.shift();
+      if (!candidates.length) return '';
+      return nxHudGameId(candidates[candidates.length - 1]);
     } catch (_) { return ''; }
   }
   function nxHudGameBindings() {
