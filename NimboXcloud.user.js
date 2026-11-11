@@ -2853,7 +2853,9 @@
         throw new Error('Resposta xHome incompleta.');
       const regions=login.offeringSettings.regions.slice().sort(function(a,b){return Number(!!b.isDefault)-Number(!!a.isDefault);});
       let found=[];
+      let successfulRegions=0;
       for(const region of regions) {
+        if(!region || typeof region.baseUri!=='string') {nxRemotePlay.attempts.push('Região ignorada: configuração inválida');continue;}
         // Do not send the xHome bearer token to an untrusted origin from a malformed region response.
         let regionOrigin;
         try { const u=new URL(region.baseUri);if(u.protocol!=='https:' || u.username || u.password || !/(^|\.)xboxlive\.com$/i.test(u.hostname)) {nxRemotePlay.attempts.push('Região ignorada: origem não autorizada');continue;}regionOrigin=u.origin; }
@@ -2863,12 +2865,14 @@
           if(res.status===401 || res.status===403) throw new Error('Acesso xHome negado (HTTP '+res.status+'). Faça login novamente na conta Xbox.');
           if(!res.ok) {nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': HTTP '+res.status);continue;}
           const json=await res.json();
-          if(!Array.isArray(json.results)) {nxRemotePlay.attempts.push('Resposta sem lista de consoles');continue;}
+          if(!json || !Array.isArray(json.results)) {nxRemotePlay.attempts.push('Resposta sem lista de consoles');continue;}
+          successfulRegions++;
           nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': '+json.results.length+' console(s)');
           if(json.results.length){found=json.results;nxRemotePlay.region=String(region.name||region.shortName||region.baseUri);break;}
         } catch (e) {if(controller.signal.aborted || (e && /^Acesso xHome negado/.test(String(e.message)))) throw e;nxRemotePlay.attempts.push('Região indisponível: '+String(e && e.name||'erro'));}
       }
       if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+      if(!successfulRegions) throw new Error('Não foi possível consultar nenhuma região xHome. Verifique conexão, CORS e autenticação.');
       nxRemotePlay.consoles=found.filter(function(c){return c && typeof c.serverId==='string' && c.serverId.length>0;}).map(function(c){return {id:c.serverId,name:String(c.deviceName||c.name||c.serverName||'Xbox'),type:String(c.consoleType||'Xbox'),state:String(c.powerState||c.state||'Unknown')};});
       nxRemotePlay.status=nxRemotePlay.consoles.length?nxRemotePlay.consoles.length+' console(s) encontrado(s)':'Nenhum console vinculado encontrado';
       if(!nxRemotePlay.consoles.some(function(c){return c.id===nxRemotePlay.selectedId;})) nxRemotePlay.selectedId='';
