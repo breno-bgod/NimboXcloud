@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.49
+// @version      3.6.50
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.49';
+  const VER = '3.6.50';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2731,6 +2731,7 @@
     } catch (err) { S.lastErr = 'Captura: ' + String(err && err.message || err); schedule(); }
   }
   let nxAudioGraph = null;
+  const nxAudioGraphs = new WeakMap();
   function getAudioBands() {
     try { const a = JSON.parse(getPref(LS_AUDIO_BANDS,'[0,0,0,0,0,0,0,0,0,0]'));
       if (Array.isArray(a) && a.length === 10) return a.map(function (n) { return Math.max(-12,Math.min(12,Number(n)||0)); });
@@ -2750,10 +2751,7 @@
   }
   function applyAudioProcessing() {
     const media = activeStreamAudio(); if (!media) return;
-    if (nxAudioGraph && nxAudioGraph.media !== media) {
-      try { nxAudioGraph.ctx.close().catch(function () {}); } catch (e) {}
-      nxAudioGraph = null;
-    }
+    if (nxAudioGraph && nxAudioGraph.media !== media) nxAudioGraph = nxAudioGraphs.get(media) || null;
     const enabled = getPref(LS_AUDIO_FX,'0') === '1';
     if (!enabled && !nxAudioGraph) return;
     try {
@@ -2783,6 +2781,7 @@
         nxAudioGraph = {media:media,ctx:ctx,filters:filters,dialogue:dialogue,pan:pan,compressor:compressor,limiter:limiter,
           stereoGain:stereoGain,monoGain:monoGain,bypass:bypass,compressed:compressed,limited:limited,
           compToLimit:compToLimit,directToLimit:directToLimit};
+        nxAudioGraphs.set(media,nxAudioGraph);
         applyAudioOutput();
       }
       const g = nxAudioGraph;
