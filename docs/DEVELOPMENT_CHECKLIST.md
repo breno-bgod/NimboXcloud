@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-027 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
+**Edição:** PM-028 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
 
 ## Regras permanentes
 
@@ -368,3 +368,12 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `9f6ec41f`: auditoria P03 ampliada.
 - **P03 continua em andamento:** NET-001 e NET-004 receberam correções concretas, NET-002/003/006 ainda precisam de revisão de código; NET-005 exige validação real; AUD-03 aberta.
 - **P02:** código automático implementado, teste real pendente. **P01:** código pendente. **P00/P04–P07:** sem mudança.
+
+
+## P03 — fallback e cancelamentos (2026-11-11)
+- `98f3a5a3` v4.11.26: NET-002 fallback sem alteração da lista do servidor, reescrita idempotente; NET-001 injeção restrita a HTTPS; NET-006 separa AbortError de falha de rede.
+- `2ee55f1a`: regressões estáticas adicionadas; `1cf05fce`: auditoria P03 ampliada.
+- **NET-001..005:** implementações presentes com correções; compatibilidade real e revisão de integração pendentes.
+- **NET-006:** diagnóstico passivo implementado; recuperação automática NÃO implementada por ausência de API/contrato de reconexão seguro do xCloud. Não declarar código 100% concluído.
+- **AUD-03:** aberta; testes reais e suíte Node completa não confirmados.
+- **P02:** lógica de sincronização implementada, testes reais pendentes; **P01:** código pendente; **P00/P04–P07:** sem mudança.
