@@ -239,17 +239,18 @@ test('session: valid selected console requests xHome play without leaking bearer
   const api=harness(async(url,opts)=>{
     calls.push({url,opts});
     if(calls.length===1)return ok(login);
-    return ok({sessionId:'12345678-1234-1234-1234-123456789abc',state:'Provisioning'});
+    if(calls.length===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc',state:'Provisioning'});
+    return ok({state:'Provisioned'});
   });
   api.state.consoles=[{id:'console-1',name:'Xbox'}];
   api.state.selectedId='console-1';
   api.state.regionShortName='wus';
   await api.startSession();
-  assert.equal(calls.length,2);
+  assert.equal(calls.length,3);
   assert.match(calls[1].url,/^https:\/\/wus\.core\.gssv-play-prodxhome\.xboxlive\.com\/v5\/sessions\/home\/play$/);
   assert.equal(JSON.parse(calls[1].opts.body).serverId,'console-1');
   assert.equal(calls[1].opts.redirect,'error');
-  assert.equal(api.state.sessionStatus,'created');
+  assert.equal(api.state.sessionStatus,'provisioned');
   assert.ok(!JSON.stringify(api.state).includes('TEST_BEARER'));
 });
 test('session: invalid region blocks all network requests',async()=>{
@@ -272,4 +273,18 @@ test('session: HTTP rejection never reports created',async()=>{
   assert.equal(n,2);
   assert.equal(api.state.sessionStatus,'failed');
   assert.match(api.state.error,/403/);
+});
+
+test('session: terminal provisioning error fails safely',async()=>{
+  let n=0;
+  const api=harness(async()=>{
+    if(++n===1)return ok(login);
+    if(n===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    return ok({state:'Failed'});
+  });
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  assert.equal(n,3);
+  assert.equal(api.state.sessionStatus,'failed');
+  assert.match(api.state.error,/não provisionada/);
 });
