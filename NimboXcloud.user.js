@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.10.0
+// @version      4.10.1
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.10.0';
+  const VER = '4.10.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2002,11 +2002,30 @@
           return nxHudGameId(id) === id && typeof data.gameBindings[id] === 'string' &&
             Object.prototype.hasOwnProperty.call(data.profiles, data.gameBindings[id]);
         })) return false;
-    // Transação lógica: nenhuma preferência é modificada até a validação integral.
-    setPref(NX_HUD_PROFILES_KEY, JSON.stringify(data.profiles));
-    setPref(NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(data.gameBindings));
-    nxHudSaveLayout(data.layout);
+    // A validação ocorre antes de qualquer escrita. Se o armazenamento falhar,
+    // restauramos os valores anteriores, inclusive quando a quota estiver esgotada.
+    const writes = [
+      [NX_HUD_PROFILES_KEY, JSON.stringify(data.profiles)],
+      [NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(data.gameBindings)],
+      [NX_HUD_LAYOUT_KEY, JSON.stringify(data.layout)]
+    ];
+    const previous = [];
+    try {
+      writes.forEach(function (pair) {
+        previous.push([pair[0], localStorage.getItem(pair[0])]);
+      });
+      writes.forEach(function (pair) { localStorage.setItem(pair[0], pair[1]); });
+    } catch (_) {
+      previous.forEach(function (pair) {
+        try {
+          if (pair[1] === null) localStorage.removeItem(pair[0]);
+          else localStorage.setItem(pair[0], pair[1]);
+        } catch (_) {}
+      });
+      return false;
+    }
     nxHudLastRoute = null;
+    nxHudLastAppliedProfile = '';
     return true;
   }
   function nxHudReadLayout() {
@@ -3663,6 +3682,7 @@
     check('HUD teclado rejeita botão desconhecido', nxHudNudge(nudgeLayout, 'invalid', 1, 0) === false);
     check('HUD teclado rejeita movimento inválido', nxHudNudge(nudgeLayout, 'a', NaN, 0) === false);
     check('backup HUD rejeita JSON inválido', !nxHudImportBackup('{'));
+    check('backup HUD rejeita JSON excessivo', !nxHudImportBackup(' '.repeat(65537)));
     check('backup HUD rejeita formato desconhecido', !nxHudImportBackup('{"format":"outro"}'));
     check('backup HUD exportado tem formato correto',
       JSON.parse(nxHudExportBackup()).format === 'nimboxcloud-hud-backup-v1');
