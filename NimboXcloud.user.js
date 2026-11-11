@@ -3677,7 +3677,7 @@
     wrap = mk('div', [
       'position:fixed', 'right:12px', 'top:12px',
       'z-index:' + ZBASE, 'pointer-events:none',
-      'width:380px', 'max-width:calc(100vw - 16px)',
+      'width:360px', 'max-width:calc(100vw - 16px)',
       'display:flex', 'flex-direction:column', 'align-items:flex-end',
       'font:12px/1.5 ' + UI_FONT, 'color:' + C.text, 'text-align:left'
     ].join(';'));
@@ -3861,6 +3861,64 @@
       label.appendChild(check);label.appendChild(mk('span','',item[1]));fields.appendChild(label);
     });
     section.appendChild(fields);root.appendChild(section);nxOverviewOriginal(root);
+  };
+    // NX UI v2: início minimalista com quatro grupos; páginas legadas preservadas.
+  const nxMonitorSettingsPage=TAB_BUILDERS.overview;
+  TABS.push({id:'personalize',label:'Personalização',desc:'Monitor, aparência e posição'});
+  TABS.push({id:'dashboard',label:'Dashboard',desc:'Gráficos e indicadores detalhados'});
+  TAB_BUILDERS.personalize=function(root){
+    const temp=document.createElement('div');
+    nxMonitorSettingsPage(temp);
+    if(temp.firstElementChild)root.appendChild(temp.firstElementChild);
+    root.appendChild(mk('div','font-size:11px;color:'+C.dim+';line-height:1.5;margin-top:12px','As opções de monitor são independentes do painel. A posição também pode ser alterada arrastando o monitor durante uma transmissão.'));
+  };
+  TAB_BUILDERS.dashboard=function(root){
+    nxOverviewOriginal(root);
+  };
+  TAB_BUILDERS.overview=function(root){
+    root.appendChild(mk('div','font-size:18px;font-weight:750;letter-spacing:-.02em;margin-bottom:4px','NX · Central'));
+    root.appendChild(mk('div','font-size:11px;color:'+C.dim+';line-height:1.5;margin-bottom:12px','Ajustes organizados. O painel pode ser fechado a qualquer momento.'));
+    const status=mk('div','padding:10px 12px;border-radius:10px;background:'+C.panel+';border:1px solid '+C.line+';margin-bottom:10px');
+    const state=mk('div','font-size:12px;font-weight:700');
+    const metrics=mk('div','font-size:11px;color:'+C.dim+';margin-top:4px;line-height:1.5');
+    status.appendChild(state);status.appendChild(metrics);root.appendChild(status);
+    liveFns.push(function(){
+      state.textContent=linkState().text;
+      const q=S.qos||{};
+      metrics.textContent='FPS '+fmtN(q.decodedFps||q.fps)+'  ·  RTT '+fmtN(q.rtt,' ms')+'  ·  '+(S.serverActual||'Servidor automático');
+    });
+    const groups=[
+      {title:'Transmissão',sub:'Qualidade, servidores e estatísticas',icon:ICONS.stream,links:[['stream','Imagem e transmissão'],['region','Rede e servidores'],['dashboard','Dashboard e gráficos']]},
+      {title:'Controles',sub:'Gamepad, toque, áudio e acessórios',icon:ICONS.controls,links:[['controls','Controle e HUD'],['audio','Áudio'],['voice','Voz e acessórios']]},
+      {title:'Personalização',sub:'Monitor, transparência e layout',icon:ICONS.overview,links:[['personalize','Configurar NX Stream Monitor']]},
+      {title:'Avançado',sub:'Ferramentas e diagnóstico',icon:ICONS.advanced,links:[['advanced','Sistema e laboratório']]}
+    ];
+    groups.forEach(function(g){
+      const section=mk('div','margin-bottom:8px;border:1px solid '+C.line+';border-radius:11px;overflow:hidden;background:'+C.panel);
+      const button=mk('button','all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:11px;padding:12px;color:'+C.text+';text-align:left');
+      button.setAttribute('aria-expanded','false');
+      button.appendChild(ico(g.icon,19));
+      const titles=mk('span','display:flex;flex-direction:column;gap:3px;min-width:0;flex:1');
+      titles.appendChild(mk('span','font-size:13px;font-weight:700',g.title));
+      titles.appendChild(mk('span','font-size:10.5px;color:'+C.dim,g.sub));
+      button.appendChild(titles);
+      button.appendChild(ico('M6 9l6 6 6-6',15));
+      const details=mk('div','display:none;padding:0 8px 8px');
+      g.links.forEach(function(link){
+        const entry=mk('button','all:unset;box-sizing:border-box;display:block;cursor:pointer;width:100%;text-align:left;font-size:12px;color:'+C.text+';padding:11px 12px;border-top:1px solid '+C.line,link[1]);
+        entry.addEventListener('click',function(e){e.stopPropagation();setTab(link[0]);});
+        details.appendChild(entry);
+      });
+      button.addEventListener('click',function(e){
+        e.stopPropagation();
+        const open=details.style.display==='none';
+        details.style.display=open?'block':'none';
+        button.setAttribute('aria-expanded',String(open));
+      });
+      section.appendChild(button);section.appendChild(details);root.appendChild(section);
+    });
+    const monitor=actBtn(nxTelemetryEnabled?'Ocultar monitor de desempenho':'Ativar monitor de desempenho',function(){nxTelemetryToggle(!nxTelemetryEnabled);renderBody();},'ghost');
+    monitor.style.width='100%';monitor.style.marginTop='4px';root.appendChild(monitor);
   };
     function setOpen(v, byUser) {
     openUI = !!v;
