@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.27
+// @version      4.12.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.27';
+  const VER = '4.12.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -4561,15 +4561,43 @@
     }
     update();
   }
+  // P04: preserve the host's original inline filter and restore it on bypass.
+  // This is presentation-only CSS; no decoding, capture or frame copying.
+  const nxVideoFilters = new WeakMap();
+  function restoreVideoAdjustments(video) {
+    if (!video) return;
+    const state = nxVideoFilters.get(video);
+    if (!state) return;
+    if (video.style.filter === state.applied) {
+      if (state.original) video.style.setProperty('filter', state.original, state.priority);
+      else video.style.removeProperty('filter');
+    }
+    nxVideoFilters.delete(video);
+  }
   function applyVideoAdjustments(video) {
     if (!video) return;
     const color = Math.max(0, Math.min(2, Number(getPref(LS_VIDEO_COLOR, '0')) || 0));
     const sharp = Math.max(0, Math.min(2, Number(getPref(LS_SHARPNESS, '0')) || 0));
+    if (!color && !sharp) { restoreVideoAdjustments(video); return; }
     const contrast = [1, 1.04, 1.10][color] || 1;
     const saturation = [1, 1.06, 1.10][color] || 1;
-    // O ajuste de "nitidez" é apenas contraste CSS; sem convolução de pixels.
+    // The legacy "sharpness" option is contrast only, not CAS/upscaling.
     const extraContrast = [1, 1.07, 1.14][sharp] || 1;
-    video.style.filter = 'contrast(' + (contrast * extraContrast).toFixed(3) + ') saturate(' + saturation.toFixed(3) + ')';
+    let state = nxVideoFilters.get(video);
+    if (state && video.style.filter !== state.applied) {
+      // The host changed its own filter: do not overwrite it.
+      nxVideoFilters.delete(video);
+      return;
+    }
+    if (!state) {
+      state = { original: video.style.getPropertyValue('filter'),
+        priority: video.style.getPropertyPriority('filter'), applied: '' };
+      nxVideoFilters.set(video, state);
+    }
+    const adjustment = 'contrast(' + (contrast * extraContrast).toFixed(3) +
+      ') saturate(' + saturation.toFixed(3) + ')';
+    state.applied = (state.original && state.original !== 'none' ? state.original + ' ' : '') + adjustment;
+    video.style.setProperty('filter', state.applied, state.priority);
   }
   function cycleSharpness() {
     const video = activeStreamVideo();
@@ -4764,7 +4792,11 @@
       if (audio && nxAudioGraph && nxAudioGraph.media !== audio) applyAudioProcessing();
       if (audio && getPref(LS_AUDIO_FX,'0') === '1' && !nxAudioGraph) applyAudioProcessing();
       const video = activeStreamVideo();
-      if (video && video !== lastAdjustedVideo) { lastAdjustedVideo = video; applyVideoAdjustments(video); }
+      if (video !== lastAdjustedVideo) {
+        restoreVideoAdjustments(lastAdjustedVideo);
+        lastAdjustedVideo = video;
+        applyVideoAdjustments(video);
+      }
     }, 2500);
     buildUI();
     update();
