@@ -205,3 +205,10 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Adicionado teste para resposta com região nula e região padrão válida; total de treze cenários escritos em `tests/xhome-discovery.test.cjs`.
 - Validação realizada: parse integral do userscript via `new Function` PASS. Não houve execução comprovada dos treze testes em Node ou GitHub Actions, nem testes em Xbox/navegador.
 - Próxima tarefa concreta: obter logs do GitHub Actions para o workflow `xhome-tests.yml`, corrigir falhas reais e, após testes verdes, integrar criação de sessão xHome de forma isolada do Cloud Gaming.
+
+## 2026-11-11 — xHome: proteção contra respostas tardias após cancelamento
+- HEAD inicial `fccccca60db6c8c2f3fdd60cdb79322d2502510f`; commits `039daf936d65dde7ac73f18a69dc5e8dadf5560f` e `29c8b2f473be43f5004087639ad7d671e4644572`; HEAD final será este registro.
+- `NimboXcloud.user.js`: verificação de `requestId` e `AbortController.signal.aborted` após fetch de login, leitura JSON de login, início de cada região, fetch regional e leitura JSON regional; catch regional também propaga cancelamento. Impede mutação de `attempts`, `region` e `consoles` por consultas canceladas.
+- `tests/xhome-discovery.test.cjs`: dois testes com promises controladas para cancelamento durante leitura JSON do login e da lista regional; total de quinze cenários definidos.
+- Verificação: parse integral JavaScript com `new Function` PASS. Execução Node/GitHub Actions dos testes não confirmada. Sem teste real de conta Xbox, browser ou WebRTC.
+- Próxima prioridade: obter resultados verificáveis do CI, corrigir falhas e avançar para criação de sessão xHome após validação de protocolo e autorização, sem alterar caminho de Cloud Gaming.
