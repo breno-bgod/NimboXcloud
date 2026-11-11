@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.6.1
+// @version      4.7.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.6.1';
+  const VER = '4.7.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1882,6 +1882,54 @@
     setPref(NX_HUD_PROFILES_KEY, JSON.stringify(profiles));
     return true;
   }
+  const NX_HUD_GAME_BINDINGS_KEY = 'nx.hud.editor.gameBindings.v1';
+  function nxHudGameId(raw) {
+    if (typeof raw !== 'string') return '';
+    const value = raw.trim().toLowerCase();
+    return /^[a-z0-9_-]{2,64}$/.test(value) ? value : '';
+  }
+  function nxHudCurrentGameId() {
+    try {
+      const parts = new URL(location.href).pathname.split('/').filter(Boolean);
+      const index = parts.indexOf('play');
+      return index >= 0 && parts[index + 1] ? nxHudGameId(parts[index + 1]) : '';
+    } catch (_) { return ''; }
+  }
+  function nxHudGameBindings() {
+    try {
+      const value = JSON.parse(getPref(NX_HUD_GAME_BINDINGS_KEY, '{}'));
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+      const result = {}, profiles = nxHudProfilesRead();
+      Object.keys(value).slice(0, 100).forEach(function (key) {
+        const id = nxHudGameId(key), profile = nxHudProfileName(value[key]);
+        if (id && profile && Object.prototype.hasOwnProperty.call(profiles, profile))
+          result[id] = profile;
+      });
+      return result;
+    } catch (_) { return {}; }
+  }
+  function nxHudBindGame(gameId, profileName) {
+    const id = nxHudGameId(gameId);
+    if (!id || !Object.prototype.hasOwnProperty.call(nxHudProfilesRead(), profileName)) return false;
+    const bindings = nxHudGameBindings();
+    if (!Object.prototype.hasOwnProperty.call(bindings, id) && Object.keys(bindings).length >= 100) return false;
+    bindings[id] = profileName;
+    setPref(NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(bindings));
+    return true;
+  }
+  function nxHudUnbindGame(gameId) {
+    const id = nxHudGameId(gameId), bindings = nxHudGameBindings();
+    if (!id || !Object.prototype.hasOwnProperty.call(bindings, id)) return false;
+    delete bindings[id];
+    setPref(NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(bindings));
+    return true;
+  }
+  function nxHudAutoLoadGame() {
+    const id = nxHudCurrentGameId();
+    if (!id) return false;
+    const name = nxHudGameBindings()[id];
+    return name ? nxHudProfileLoad(name) : false;
+  }
   function nxHudReadLayout() {
     try { return nxHudValidateLayout(JSON.parse(getPref(NX_HUD_LAYOUT_KEY, '{}'))); }
     catch (_) { return nxHudValidateLayout(null); }
@@ -1964,6 +2012,10 @@
     }));
     const profiles = nxHudProfilesRead();
     const names = Object.keys(profiles).sort();
+    const gameId = nxHudCurrentGameId();
+    outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
+      gameId ? 'Jogo identificado na URL: ' + gameId :
+        'Jogo não identificado na URL. Associação automática indisponível nesta página.'));
     if (names.length) {
       const selection = mk('select', 'width:100%;padding:9px;border-radius:8px;background:' + C.panel + ';color:' + C.text + ';border:1px solid ' + C.line);
       names.forEach(function (name) {
@@ -1973,6 +2025,15 @@
         selection.appendChild(option);
       });
       outer.appendChild(selection);
+      if (gameId) {
+        outer.appendChild(actBtn('Associar ao jogo atual', function () {
+          toast(nxHudBindGame(gameId, selection.value) ?
+            'Perfil associado a este jogo (prévia)' : 'Não foi possível associar o perfil');
+        }));
+        outer.appendChild(actBtn('Remover associação do jogo', function () {
+          toast(nxHudUnbindGame(gameId) ? 'Associação removida' : 'Sem associação para este jogo');
+        }));
+      }
       outer.appendChild(actBtn('Carregar perfil', function () {
         if (nxHudProfileLoad(selection.value)) { renderBody(); toast('Perfil carregado'); }
       }));
@@ -1999,6 +2060,8 @@
     }));
     return outer;
   }
+  // Aplica somente a prévia local, nunca os botões reais do xCloud.
+  nxHudAutoLoadGame();
   const TAB_BUILDERS = {
     overview: function (root) {
       const intro = mk('div','font-size:19px;font-weight:750;letter-spacing:-.025em;margin:0 0 3px','Central de controle');
@@ -3459,6 +3522,8 @@
     check('idade máxima do sensor limitada', NX_GYRO_MAX_AGE_MS <= 250);
     check('controle alvo válido', nxGyroTargetIndex() >= 0 && nxGyroTargetIndex() <= 3);
     check('linha do tempo com limite de eventos', NX_INPUT_EVENTS_MAX === 30);
+    check('identificador de jogo rejeita caminho', nxHudGameId('../bad') === '');
+    check('identificador de jogo normalizado', nxHudGameId('GAME_123') === 'game_123');
     check('nome de perfil de HUD válido', nxHudProfileName('Corrida 1') === 'Corrida 1');
     check('nome de perfil de HUD inválido rejeitado', nxHudProfileName('../bad') === '');
     check('layout de HUD tem oito elementos', Object.keys(nxHudReadLayout()).length === 8);
@@ -3596,7 +3661,8 @@
       inputCoordination: nxCoordState(),
       virtualInputs: nxVirtualInputState(),
       gyroPreview: nxGyroPreviewState(),
-      hudEditor: { layout: nxHudReadLayout(), savedProfileNames: Object.keys(nxHudProfilesRead()), gameplayApplied: false },
+      hudEditor: { layout: nxHudReadLayout(), savedProfileNames: Object.keys(nxHudProfilesRead()),
+        currentGameId: nxHudCurrentGameId(), gameBindings: nxHudGameBindings(), gameplayApplied: false },
       gyroGame: { enabled: nxGyroGameEnabled(), activation: nxGyroActivationMode(),
         blend: nxGyroBlend(), targetGamepadIndex: nxGyroTargetIndex(),
         maxSensorAgeMs: NX_GYRO_MAX_AGE_MS,
