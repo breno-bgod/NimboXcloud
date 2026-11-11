@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.0
+// @version      4.11.1
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.0';
+  const VER = '4.11.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2111,24 +2111,39 @@
   // Read-only discovery: accessibility labels are hints, not verified gameplay controls.
   // Never reposition, intercept events, or retain DOM references from this probe.
   function nxHudDomProbe() {
-    const result = { scanned: 0, candidates: 0, shadowRoots: 0, inaccessibleFrames: 0 };
+    const result = { scanned: 0, candidates: 0, interactive: 0, visible: 0,
+      shadowRoots: 0, inaccessibleFrames: 0, truncated: false };
     const pending = [document];
     const pattern = /\b(?:left stick|right stick|joystick|thumbstick|d[\s-]?pad|trigger|bumper|touch control|virtual controller)\b/i;
+    // Walk incrementally: avoid querySelectorAll('*') allocating a full DOM snapshot.
     while (pending.length && result.scanned < 1500) {
       const root = pending.shift();
-      let elements;
-      try { elements = root.querySelectorAll('*'); } catch (_) { continue; }
-      for (const el of elements) {
-        if (result.scanned++ >= 1500) break;
+      let walker;
+      try { walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT); }
+      catch (_) { continue; }
+      let el;
+      while (result.scanned < 1500 && (el = walker.nextNode())) {
+        result.scanned++;
         if (el.shadowRoot) { result.shadowRoots++; pending.push(el.shadowRoot); }
         if (el.tagName === 'IFRAME') {
           try { if (el.contentDocument) pending.push(el.contentDocument); else result.inaccessibleFrames++; }
           catch (_) { result.inaccessibleFrames++; }
         }
         const label = (el.getAttribute('aria-label') || el.getAttribute('data-testid') || '').slice(0, 100);
-        if (pattern.test(label)) result.candidates++;
+        if (!pattern.test(label)) continue;
+        result.candidates++;
+        const role = (el.getAttribute('role') || '').toLowerCase();
+        if (/^(?:button|slider|application|joystick)$/.test(role) ||
+            /^(?:BUTTON|INPUT)$/.test(el.tagName) || el.hasAttribute('tabindex'))
+          result.interactive++;
+        try {
+          const box = el.getBoundingClientRect();
+          if (box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== 'hidden')
+            result.visible++;
+        } catch (_) { /* Cross-document layout may be unavailable. */ }
       }
     }
+    result.truncated = result.scanned >= 1500;
     return result;
   }
   function nxHudEditor() {
@@ -2672,7 +2687,9 @@
         'Arraste os botões para montar um layout e salve perfis locais por jogo. Ainda não altera o HUD do xCloud.');
       hudEditorGroup.add(infoRow('Sinais de controles na página', function () {
         const probe = nxHudDomProbe();
-        return probe.candidates + ' candidatos / ' + probe.scanned + ' elementos examinados';
+        return probe.candidates + ' candidatos (' + probe.interactive + ' interativos, ' +
+          probe.visible + ' visíveis) / ' + probe.scanned + ' examinados' +
+          (probe.truncated ? ' [limite atingido]' : '');
       }, 'Inspeção somente leitura de rótulos de acessibilidade; não confirma controles reais nem altera o HUD. Limite de 1500 elementos.'));
       hudEditorGroup.add(setRow('Carregar perfil automaticamente',
         'Desativado por padrão: evita substituir posições editadas quando você navega entre jogos. Afeta apenas a prévia.',
