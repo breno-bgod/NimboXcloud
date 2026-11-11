@@ -71,3 +71,32 @@ test('timeout: aborted fetch cannot populate consoles',async()=>{
   assert.equal(api.state.consoles.length,0);
   assert.match(api.state.error,/Tempo limite/);
 });
+
+test('403: stops discovery without retrying another region',async()=>{
+  let n=0;
+  const api=harness(async()=>++n===1?ok(login):{ok:false,status:403});
+  await api.discover();
+  assert.equal(n,2);
+  assert.match(api.state.error,/403/);
+  assert.equal(api.state.consoles.length,0);
+});
+test('login request rejects redirects while sending GSSV token',async()=>{
+  let options;
+  const api=harness(async (_url,opts)=>{options=opts;throw new TypeError('redirect blocked');});
+  await api.discover();
+  assert.equal(options.redirect,'error');
+  assert.equal(api.state.consoles.length,0);
+  assert.equal(api.state.status,'Falha na consulta');
+});
+test('discovery request rejects redirects while sending bearer token',async()=>{
+  const calls=[];
+  const api=harness(async (url,opts)=>{
+    calls.push({url,opts});
+    if(calls.length===1)return ok(login);
+    throw new TypeError('redirect blocked');
+  });
+  await api.discover();
+  assert.equal(calls.length,2);
+  assert.equal(calls[1].opts.redirect,'error');
+  assert.equal(api.state.consoles.length,0);
+});
