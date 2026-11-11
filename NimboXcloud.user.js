@@ -8,6 +8,7 @@
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -3612,6 +3613,23 @@
           toast('Diagnóstico de entradas limpo');
         }, 'ghost')));
       root.appendChild(coordination.root);
+
+      // Touch HUD é carregado pelo @require oficial: um único módulo e nenhuma instalação separada.
+      const nxTouchGroup = group('HUD de teclado e mouse por toque',
+        'Mouse relativo pelo dedo, joystick WASD, botões configuráveis e editor próprio. Requer suporte de teclado/mouse no jogo e na sessão.');
+      nxTouchGroup.add(infoRow('Módulo', function () {
+        return window.NimboTouch ? 'Carregado · v' + window.NimboTouch.version : 'Indisponível';
+      }, 'Integração experimental: não converte mouse em analógico e não garante compatibilidade com todos os jogos.'));
+      nxTouchGroup.add(setRow('Configurar teclado e mouse',
+        'Abre o editor e a ativação do touchpad. Ao abrir, o painel NX é recolhido.',
+        actBtn('Abrir Touch HUD', function () {
+          if (!window.NimboTouch || typeof window.NimboTouch.open !== 'function') {
+            toast('Touch HUD indisponível; atualize o userscript'); return;
+          }
+          setOpen(false, true);
+          window.NimboTouch.open();
+        }, 'primary')));
+      root.appendChild(nxTouchGroup.root);
 
       const hudEditorGroup = group('Editor de HUD — prévia arrastável',
         'Arraste os botões para montar um layout e salve perfis locais por jogo. Ainda não altera o HUD do xCloud.');
