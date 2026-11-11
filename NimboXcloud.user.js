@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.6
+// @version      4.12.7
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -115,24 +115,18 @@
     catch (_) { return 'off'; }
   })();
   const nxConsoleLabState = { profile: nxConsoleLabProfile, applied: false, error: '', nativeUA: nxConsoleNativeUA, startedAt: new Date().toISOString() };
-  if (nxConsoleLabProfile !== 'off') {
+  // Compatibilidade conservadora: perfis Xbox/TV não falsificam UA.
+  // A interface mantém o perfil escolhido, mas o navegador negocia como dispositivo real.
+  const nxCompatibilityProfiles = ['xbox', 'xboxone', 'smarttv'];
+  const nxCompatibilityMode = nxCompatibilityProfiles.includes(nxConsoleLabProfile);
+  nxConsoleLabState.identityMode = nxCompatibilityMode ? 'native-compatible' : 'legacy-profile';
+  nxConsoleLabState.applied = nxCompatibilityMode;
+  if (nxCompatibilityMode) {
+    nxConsoleLabState.note = 'Perfil de experiência ativo; identidade nativa preservada para compatibilidade de sessão';
+  } else if (nxConsoleLabProfile !== 'off') {
     try {
-      const ua = nxConsoleLabProfile === 'android' ? (function () {
-          // Perfil mobile: preservar a identidade Android real quando presente.
-          // Não inventar uma versão de Chromium nem capacidades de hardware.
-          return nxConsoleNativeUA;
-        })() : nxConsoleLabProfile === 'xboxone'
-        ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; Xbox; Xbox One) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36 Edge/17.17115'
-        : nxConsoleLabProfile === 'xbox'
-        ? (function () {
-          // O token Xbox deve ficar dentro dos comentarios de plataforma do UA.
-          // Acrescenta-lo apos Safari/Edg produz um UA malformado.
-          const match = nxConsoleNativeUA.match(/^([^()]*)\(([^)]*)\)(.*)$/);
-          if (!match) return nxConsoleNativeUA;
-          const platform = match[2].replace(/;?\s*Xbox(?: One)?\s*;?/gi, '').replace(/;\s*$/, '');
-          return match[1] + '(' + platform + '; Xbox)' + match[3];
-        })()
-        : nxConsoleLabProfile === 'smarttv' ? 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 7.0) AppleWebKit/537.36 (KHTML, like Gecko) 94.0.4606.31/7.0 TV Safari/537.36' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0';
+      const ua = nxConsoleLabProfile === 'android' ? nxConsoleNativeUA
+        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0';
       Object.defineProperty(navigator, 'userAgent', { configurable: true, get: function () { return ua; } });
       nxConsoleLabState.applied = navigator.userAgent === ua;
     } catch (err) { nxConsoleLabState.error = String(err && err.message || err); }
@@ -143,9 +137,9 @@
     off: { label: 'Automático', sessionOs: null, input: 'native' },
     android: { label: 'Android Mobile', sessionOs: 'android', input: 'touch-preferred' },
     windows: { label: 'Desktop', sessionOs: 'windows', input: 'keyboard-mouse-preferred' },
-    smarttv: { label: 'Smart TV', sessionOs: 'tizen', input: 'gamepad-preferred' },
-    xbox: { label: 'Xbox experimental', sessionOs: null, input: 'gamepad-preferred' },
-    xboxone: { label: 'Xbox One legado', sessionOs: null, input: 'gamepad-preferred' }
+    smarttv: { label: 'Smart TV compatível', sessionOs: null, input: 'gamepad-preferred' },
+    xbox: { label: 'Xbox compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' },
+    xboxone: { label: 'Xbox One compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' }
   }[nxConsoleLabProfile]);
   const nxProfileSessionState = { attempted: 0, patched: 0, lastRequestedOs: null, lastOutcome: 'not-observed' };
   // Diagnóstico passivo inspirado no XFly: não lê tokens, payloads ou identificadores.
@@ -173,7 +167,7 @@
     try { return localStorage.getItem('nx.consoleLab.hideClientHints.v1') === '1'; } catch (_) { return false; }
   })();
   let nxClientHintsApplied = false;
-  if (nxClientHintsMode && nxConsoleLabProfile !== 'off') {
+  if (nxClientHintsMode && nxConsoleLabProfile !== 'off' && !nxCompatibilityMode) {
     try {
       Object.defineProperty(navigator, 'userAgentData', { configurable: true, get: function () { return undefined; } });
       nxClientHintsApplied = typeof navigator.userAgentData === 'undefined';
@@ -251,6 +245,7 @@
       unsupportedDeviceDialogDetected: nxConsoleLabWarning(),
       unsupportedDeviceWarningsObserved: nxConsoleLabEvents.filter(function (e) { return e.type === 'unsupported-device-warning'; }).length,
       platformExperience: nxPlatformProfile, profileSession: Object.assign({}, nxProfileSessionState),
+       compatibility: { enabled: nxCompatibilityMode, identityMode: nxConsoleLabState.identityMode, nativeUserAgentPreserved: navigator.userAgent === nxConsoleNativeUA, sessionOsRewriteDisabled: nxCompatibilityMode, clientHintsOverrideDisabled: nxCompatibilityMode },
        clientHintsExperiment: { enabled: nxClientHintsMode, applied: nxClientHintsApplied, note: 'Somente navigator.userAgentData JS; nao altera cabecalhos HTTP' },
       sessionTrace: nxSessionTrace.slice(),
       sessionHealth: nxSessionHealth(),
@@ -685,7 +680,7 @@
   function patchPlayRequest(input, init) {
     const r = resCfg();
     const profileOs = nxPlatformProfile.sessionOs;
-    const effectiveOs = (nxConsoleLabProfile === 'xbox' || nxConsoleLabProfile === 'xboxone') ? null : (profileOs || r.osName);
+    const effectiveOs = nxCompatibilityMode ? null : (profileOs || r.osName);
     // Console: não enviar osName Windows/Tizen de qualidade como se fosse identidade Xbox.
     if (!effectiveOs) return Promise.resolve({ input: input, init: init });
     // An aborted request must not be parsed/rebuilt before reaching native fetch.
