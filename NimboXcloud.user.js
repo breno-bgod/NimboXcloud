@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.7.5
+// @version      3.7.6
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.7.5';
+  const VER = '3.7.6';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -138,10 +138,14 @@
     'device is not supported for streaming'
   ];
   function nxConsoleLabWarning() {
-    const candidates = document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="alert"], dialog');
-    for (const node of candidates) {
-      const text = (node.textContent || '').toLowerCase().replace(/\\s+/g, ' ').slice(0, 1000);
-      if (nxConsoleLabWarnings.some(function (w) { return text.includes(w); })) return true;
+    // Detecta avisos visíveis mesmo quando a interface não usa ARIA dialog.
+    const nodes = document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="alert"], dialog, h1, h2, h3, p, span, div');
+    for (const node of nodes) {
+      if (node.childElementCount > 4 || node.closest('[id^="nx-"]')) continue;
+      const rect = node.getBoundingClientRect();
+      if (!rect.width || !rect.height || rect.bottom < 0 || rect.top > innerHeight) continue;
+      const value = (node.textContent || '').toLowerCase().replace(/\s+/g, ' ').slice(0, 350);
+      if (nxConsoleLabWarnings.some(function (w) { return value.includes(w); })) return true;
     }
     return false;
   }
@@ -189,6 +193,7 @@
       nativeUserAgent: nxConsoleLabState.nativeUA, pageUserAgent: navigator.userAgent,
       note: note.slice(0, 500), startedAt: nxConsoleLabState.startedAt,
       unsupportedDeviceDialogDetected: nxConsoleLabWarning(),
+      unsupportedDeviceWarningsObserved: nxConsoleLabEvents.filter(function (e) { return e.type === 'unsupported-device-warning'; }).length,
       capabilities: nxConsoleLabCapabilities(),
       events: nxConsoleLabEvents.slice(),
       fullscreenActive: !!(document.fullscreenElement || document.webkitFullscreenElement),
@@ -2556,6 +2561,17 @@
     window.addEventListener('pagehide', function () { diagLog('pagehide'); }, true);
   }
 
+  function compactInteractionEvents() {
+    const important = new Set(['diagnostics-start','pageshow','pagehide','gamepadconnected','gamepaddisconnected','fullscreenchange','pointerlockchange','pointerlockerror','visibilitychange','resize']);
+    const counts = {};
+    const timeline = [];
+    for (const e of diagEvents) {
+      counts[e.type] = (counts[e.type] || 0) + 1;
+      if (important.has(e.type)) timeline.push(e);
+    }
+    return { state: diagState(), counts: counts, timeline: timeline.slice(-30),
+      retained: DIAG_MAX, note: 'Eventos de foco e toque agregados por tipo para reduzir o relatório; sem coordenadas ou teclas.' };
+  }
   function buildReport() {
     return JSON.stringify({
       v: VER,
@@ -2564,7 +2580,7 @@
       inputNegotiation: lastInputNegotiation,
       touchSession: touchSessionDiagnostics,
       touchFullscreenPolicy: touchFullscreenPolicy,
-      interactionDiagnostics: { state: diagState(), events: diagEvents.slice(), retained: DIAG_MAX, note: 'Eventos locais; zonas 4x4; teclas e coordenadas exatas não registradas. Screenshot físico não é detectável diretamente.' },
+      interactionDiagnostics: compactInteractionEvents(),
       region: cfg(),
       stream: { pin: S.serverPin, actual: S.serverActual, label: srvBtnLabel(), ipv4Only: v4on(), resolution: resBtnLabel(), bitrateLimit: bitrateCfg().label, playPatched: S.playPatched },
       territory: { before: S.territoryBefore, now: S.territoryNow, cookie: getCookie('territory') },
