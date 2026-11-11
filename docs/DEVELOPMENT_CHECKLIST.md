@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-004 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime não modificado
+**Edição:** PM-005 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime não modificado
 
 ## Regras permanentes
 
@@ -32,7 +32,7 @@
 | CORE-003 | Registrar baseline de reprodução de erros de mouse, Pointer Lock e touchscreen | relatos + navegador | cenários reproduzíveis documentados | IMPLEMENTADO |
 | CORE-004 | Criar suite de lint, parse e smoke tests sem conta | Xperience/build | comandos reproduzíveis com saída e falha CI | EM_ANDAMENTO (parse verificado; lint/CI pendentes) |
 | CORE-005 | Criar configuração de feature flags e rollback de módulos experimentais | NimboXcloud | desligar recursos sem reinstalar script | PENDENTE |
-| CORE-006 | Verificar licença, atribuição e proveniência de cada módulo adaptado | MIT/AGPL | inventário de proveniência revisado | PENDENTE |
+| CORE-006 | Verificar licença, atribuição e proveniência de cada módulo adaptado | MIT/AGPL | inventário de proveniência revisado | EM_ANDAMENTO (matriz inicial publicada) |
 
 ### P01 — Entrada: mouse, teclado, gamepad e Pointer Lock (prioridade crítica)
 
@@ -158,3 +158,11 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `tests/baseline.test.cjs` atualizado para não confundir detecção da interceptação com teste de funcionamento; três testes de navegador/xCloud marcados explicitamente como TODO.
 - GitHub Actions: consulta de execuções associadas ao commit anterior não retornou execuções; status do workflow **não confirmado**.
 - **AUD-00 não concluída**; CORE-004 continua em andamento, aguardando lint, execução do CI e cenários reais. Runtime preservado.
+
+
+## P00 — pacote 2 e verificação documental (2026-11-11)
+- `docs/P00_MODULE_INVENTORY.md`: inventário estático de Pointer Lock, gamepad, touch, rede, armazenamento, HUD e diagnóstico. CORE-001 **EM_ANDAMENTO**, pois faltam donos, teardown e testes reais.
+- `docs/P00_CHANGE_HISTORY.md`: histórico de commits v4.6.0–v4.11.2 classificado. CORE-002 **EM_ANDAMENTO**; diffs ainda pendentes.
+- `docs/P00_PROVENANCE.md`: matriz preliminar MIT/AGPL. CORE-006 **EM_ANDAMENTO**; licenças por arquivo ainda pendentes.
+- Auditoria documental: os três arquivos foram publicados; não houve mudança de runtime. CI e testes reais permanecem sem validação.
+- A próxima rodada deve aprofundar CORE-001/002/006 e CORE-005; somente depois fechar AUD-00.
