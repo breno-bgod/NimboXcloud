@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.9
+// @version      4.12.10
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.9';
+  const VER = '4.12.10';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1257,18 +1257,21 @@
   const el = {};
 
   // Xbox Shell experimental: apresentação independente da identidade de rede.
-  const nxShellEnabled = nxConsoleLabProfile === 'xbox';
-  let nxShellLastInput = 0, nxShellPrevButtons = [], nxShellPrevAxis = 0;
+  const LS_NX_SHELL = 'nx.xboxShell.enabled.v1';
+  const nxShellEnabled = nxConsoleLabProfile === 'xbox' && (function () { try { return localStorage.getItem(LS_NX_SHELL) !== '0'; } catch (_) { return true; } })();
+  let nxShellLastInput = 0, nxShellPrevButtons = [], nxShellPrevAxis = 0, nxShellHeldSince = 0;
+  const nxShellStats = { moves: 0, actions: 0, errors: 0, lastError: '' };
+  function nxShellError(e) { nxShellStats.errors++; nxShellStats.lastError = String(e && e.message || e); }
   function nxShellInstall() {
     if (!nxShellEnabled || document.getElementById('nx-console-shell-css')) return;
     const css = document.createElement('style');
     css.id = 'nx-console-shell-css';
     css.textContent = [
-      '#__xcu_panel__.nx-console-shell{left:50%!important;right:auto!important;top:50%!important;transform:translate(-50%,-50%)!important;width:min(960px,calc(100vw - 28px))!important;max-width:none!important;align-items:stretch!important}',
-      '#__xcu_panel__.nx-console-shell [aria-label="Painel NimboXcloud"]{width:100%!important;max-height:calc(100dvh - 28px)!important;border-radius:18px!important;box-shadow:0 22px 90px #000b!important}',
+      '#__xcu_panel__.nx-console-shell.nx-shell-open{left:50%!important;right:auto!important;top:50%!important;transform:translate(-50%,-50%)!important;width:min(960px,calc(100vw - 28px))!important;max-width:none!important;align-items:stretch!important}',
+      '#__xcu_panel__.nx-console-shell.nx-shell-open [aria-label="Painel NimboXcloud"]{width:100%!important;max-height:calc(100dvh - 28px)!important;border-radius:18px!important;box-shadow:0 22px 90px #000b!important}',
       '#__xcu_panel__.nx-console-shell button:focus-visible,#__xcu_panel__.nx-console-shell select:focus-visible,#__xcu_panel__.nx-console-shell input:focus-visible{outline:3px solid #80dfff!important;outline-offset:2px!important}',
       '#__xcu_panel__.nx-console-shell button{min-height:34px}',
-      '@media (orientation:landscape) and (min-width:700px){#__xcu_panel__.nx-console-shell [aria-label="Painel NimboXcloud"]{max-height:calc(100dvh - 20px)!important}}'
+      '@media (orientation:landscape) and (min-width:700px){#__xcu_panel__.nx-console-shell.nx-shell-open [aria-label="Painel NimboXcloud"]{max-height:calc(100dvh - 20px)!important}}'
     ].join('');
     (document.head || document.documentElement).appendChild(css);
   }
@@ -1283,31 +1286,57 @@
     const active = document.activeElement;
     const index = nodes.indexOf(active);
     const next = nodes[(index < 0 ? (direction > 0 ? 0 : nodes.length - 1) : (index + direction + nodes.length) % nodes.length)];
-    if (next) { next.focus({preventScroll:true}); next.scrollIntoView({block:'nearest',behavior:'instant'}); }
+    if (next) { next.focus({preventScroll:true}); next.scrollIntoView({block:'nearest',behavior:'auto'}); nxShellStats.moves++; }
   }
   function nxShellGamepadPoll() {
-    if (!nxShellEnabled || !navigator.getGamepads) return;
-    let pads;
-    try { pads = Array.from(navigator.getGamepads()).filter(Boolean); } catch (_) { return; }
-    const pad = pads[0];
-    if (!pad) { nxShellPrevButtons = []; nxShellPrevAxis = 0; return; }
-    const pressed = (pad.buttons || []).map(function (b) { return !!(b && b.pressed); });
-    const axis = pad.axes && Math.abs(pad.axes[1] || 0) > .65 ? Math.sign(pad.axes[1]) : 0;
-    const edge = function (i) { return pressed[i] && !nxShellPrevButtons[i]; };
-    const now = Date.now();
-    if (openUI && now - nxShellLastInput > 125) {
-      if (edge(12) || (axis < 0 && nxShellPrevAxis >= 0)) { nxShellMove(-1); nxShellLastInput = now; }
-      else if (edge(13) || (axis > 0 && nxShellPrevAxis <= 0)) { nxShellMove(1); nxShellLastInput = now; }
-      else if (edge(0)) {
-        const active = document.activeElement;
-        if (cardEl && cardEl.contains(active) && active.matches('button,[role="button"]')) active.click();
-        else nxShellMove(1);
-        nxShellLastInput = now;
-      } else if (edge(1)) { if (tabId !== 'overview') setTab('overview'); else setOpen(false,true); nxShellLastInput = now; }
+    if (!nxShellEnabled || !openUI || !cardEl || !cardEl.isConnected || document.hidden || !navigator.getGamepads) {
+      nxShellPrevButtons = []; nxShellPrevAxis = 0; nxShellHeldSince = 0; return;
     }
-    nxShellPrevButtons = pressed;
-    nxShellPrevAxis = axis;
+    try {
+      const pad = Array.from(navigator.getGamepads()).filter(Boolean)[0];
+      if (!pad) { nxShellPrevButtons = []; nxShellPrevAxis = 0; return; }
+      const pressed = (pad.buttons || []).map(function (b) { return !!(b && b.pressed); });
+      const axis = pad.axes && Math.abs(pad.axes[1] || 0) > .65 ? Math.sign(pad.axes[1]) : 0;
+      const edge = function (i) { return pressed[i] && !nxShellPrevButtons[i]; };
+      const now = Date.now();
+      const direction = pressed[12] ? -1 : pressed[13] ? 1 : axis;
+      const previous = nxShellPrevButtons[12] ? -1 : nxShellPrevButtons[13] ? 1 : nxShellPrevAxis;
+      if (!direction) nxShellHeldSince = 0;
+      else if (direction !== previous) nxShellHeldSince = now;
+      const repeat = direction && direction === previous && nxShellHeldSince && now - nxShellHeldSince > 420 && now - nxShellLastInput > 160;
+      if (now - nxShellLastInput > 130) {
+        if (direction && (direction !== previous || repeat)) {
+          nxShellMove(direction); nxShellLastInput = now;
+        } else if (edge(0)) {
+          const active = document.activeElement;
+          if (cardEl.contains(active)) {
+            if (active.matches('button,[role="button"]')) { active.click(); nxShellStats.actions++; }
+            else if (active.matches('input[type="checkbox"],input[type="radio"]')) { active.click(); nxShellStats.actions++; }
+            else if (active.matches('select')) { active.focus(); }
+            else nxShellMove(1);
+          } else nxShellMove(1);
+          nxShellLastInput = now;
+        } else if (edge(1)) {
+          if (tabId !== 'overview') setTab('overview'); else setOpen(false,true);
+          nxShellLastInput = now;
+        } else if (edge(14) || edge(15)) {
+          const active = document.activeElement;
+          if (cardEl.contains(active) && active.matches('input[type="range"]')) {
+            const step = Number(active.step) || 1;
+            const min = Number(active.min) || 0;
+            const max = Number(active.max) || 100;
+            active.value = String(Math.min(max,Math.max(min,Number(active.value) + (edge(15) ? step : -step))));
+            active.dispatchEvent(new Event('input',{bubbles:true}));
+            active.dispatchEvent(new Event('change',{bubbles:true}));
+            nxShellLastInput = now;
+          }
+        }
+      }
+      nxShellPrevButtons = pressed;
+      nxShellPrevAxis = axis;
+    } catch (err) { nxShellError(err); }
   }
+
   if (nxShellEnabled) {
     nxShellInstall();
     setInterval(nxShellGamepadPoll, 90);
@@ -3372,7 +3401,9 @@
 
       const lab = group('Plataforma e modo console', 'Perfis Xbox e TV preservam a identidade nativa para iniciar jogos. Tela cheia e orientação horizontal dependem de permissão do navegador e de uma ação do usuário.');
       lab.add(infoRow('Entrada preferencial', function () { return nxPlatformProfile.input; }));
-       if (nxShellEnabled) lab.add(infoRow('Xbox Shell', function () { return 'Ativo · layout amplo + navegação A/B/direcional no painel'; }));
+       lab.add(infoRow('Xbox Shell', function () { return nxShellEnabled ? 'Ativo · ' + nxShellStats.moves + ' movimentos · ' + nxShellStats.errors + ' erros' : 'Desativado'; }));
+       if (nxConsoleLabProfile === 'xbox') lab.add(setRow('Interface Xbox Shell', 'Desative para recuperar imediatamente a interface original do painel. A alteração não modifica o streaming.', chips([{k:'on',label:'Ativar'},{k:'off',label:'Desativar'}],nxShellEnabled ? 'on' : 'off',function(k){try{localStorage.setItem(LS_NX_SHELL,k === 'on' ? '1' : '0');}catch(_){} location.reload();}),true));
+       if (nxShellEnabled) lab.add(infoRow('Último erro Xbox Shell', function () { return nxShellStats.lastError || 'Nenhum'; }));
        lab.add(infoRow('SO da sessão solicitado', function () { return nxProfileSessionState.lastRequestedOs || 'Original / não observado'; }));
        lab.add(infoRow('Perfil desta sessão', function () { return nxConsoleLabState.profile + (nxConsoleLabState.applied ? ' · aplicado' : ' · original'); }));
       lab.add(infoRow('Identidade contém Xbox;', function () { return navigator.userAgent.includes('Xbox;') ? 'Sim' : 'Não'; }));
@@ -3587,6 +3618,7 @@
     if (byUser) userTouched = true;
     if (!cardEl) return;
     cardEl.style.display = openUI ? 'flex' : 'none';
+    if (nxShellEnabled && wrap) wrap.classList.toggle('nx-shell-open', openUI);
     if (openUI) { syncNXPlacement(); if (!isInGame()) fitCard(); renderBody(); update(); }
   }
 
