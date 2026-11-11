@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.7
+// @version      4.12.8
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -111,7 +111,7 @@
   // não altera cabeçalhos HTTP, autenticação, tokens, gamepad ou autorização do servidor.
   const nxConsoleNativeUA = navigator.userAgent;
   const nxConsoleLabProfile = (function () {
-    try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off'; return ['off','android','xbox','windows','smarttv','xboxone'].includes(p) ? p : 'off'; }
+    try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off'; return p === 'xboxone' ? 'xbox' : (['off','android','xbox','windows','smarttv'].includes(p) ? p : 'off'); }
     catch (_) { return 'off'; }
   })();
   const nxConsoleLabState = { profile: nxConsoleLabProfile, applied: false, error: '', nativeUA: nxConsoleNativeUA, startedAt: new Date().toISOString() };
@@ -231,7 +231,7 @@
     const target = document.documentElement;
     const request = target.requestFullscreen || target.webkitRequestFullscreen;
     if (!request) { nxConsoleLabEvent('fullscreen-unavailable', 'Fullscreen API indisponível'); toast('Tela cheia indisponível neste navegador'); return; }
-    try { Promise.resolve(request.call(target)).then(function () { nxConsoleLabEvent('fullscreen', 'ativado'); }).catch(function (e) { nxConsoleLabEvent('fullscreen-error', e.message); toast('Navegador bloqueou tela cheia'); }); }
+    try { Promise.resolve(request.call(target)).then(function () { nxConsoleLabEvent('fullscreen', 'ativado'); if (nxCompatibilityMode && screen.orientation && screen.orientation.lock) Promise.resolve(screen.orientation.lock('landscape')).catch(function (e) { nxConsoleLabEvent('orientation-lock-unavailable', String(e && e.message || e)); }); }).catch(function (e) { nxConsoleLabEvent('fullscreen-error', e.message); toast('Navegador bloqueou tela cheia'); }); }
     catch (e) { nxConsoleLabEvent('fullscreen-error', e.message); toast('Navegador bloqueou tela cheia'); }
   }
   function nxConsoleLabReport() {
@@ -260,7 +260,7 @@
     };
   }
   function nxConsoleLabSetProfile(profile) {
-    if (!['off','android','xbox','windows','smarttv','xboxone'].includes(profile)) return;
+    if (!['off','android','xbox','windows','smarttv'].includes(profile)) return;
     try { localStorage.setItem(LS_CONSOLE_LAB, profile); } catch (_) {}
     // Reiniciar a página é necessário para negociar desde o document-start.
     location.reload();
@@ -3313,7 +3313,7 @@
         }, 'ghost')));
       root.appendChild(g3.root);
 
-      const lab = group('Laboratório Xbox · experimental', 'A identidade é modificada apenas no JavaScript da página. Não há desbloqueio de catálogo, alteração de autenticação ou garantia de modo console. Alterar o perfil recarrega a página.');
+      const lab = group('Plataforma e modo console', 'Perfis Xbox e TV preservam a identidade nativa para iniciar jogos. Tela cheia e orientação horizontal dependem de permissão do navegador e de uma ação do usuário.');
       lab.add(infoRow('Entrada preferencial', function () { return nxPlatformProfile.input; }));
        lab.add(infoRow('SO da sessão solicitado', function () { return nxProfileSessionState.lastRequestedOs || 'Original / não observado'; }));
        lab.add(infoRow('Perfil desta sessão', function () { return nxConsoleLabState.profile + (nxConsoleLabState.applied ? ' · aplicado' : ' · original'); }));
@@ -3322,12 +3322,12 @@
       lab.add(infoRow('Aviso de incompatibilidade', function () { return nxConsoleLabWarning() ? 'Detectado' : 'Não detectado'; }));
       lab.add(infoRow('WebRTC / H.264 MSE', function () { const c = nxConsoleLabCapabilities(); return (c.webRTC ? 'Sim' : 'Não') + ' / ' + (c.mediaSourceH264 === null ? 'Indefinido' : c.mediaSourceH264 ? 'Sim' : 'Não'); }));
       lab.add(infoRow('Tela cheia', function () { return document.fullscreenElement || document.webkitFullscreenElement ? 'Ativa' : 'Desativada'; }));
-      lab.add(setRow('Modo console em tela cheia', 'Expande a página inteira mantendo o painel NX acessível. Não altera a autorização ou o sistema operacional.',
+      lab.add(setRow('Tela cheia e horizontal', 'Ative após selecionar Xbox ou Smart TV. O navegador exige um toque ou clique para entrar em tela cheia; a orientação horizontal é solicitada quando suportada.',
         actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'primary')));
-      lab.add(setRow('Identidade de teste', 'Padrão é desligado. Teste cada perfil na mesma conta e no mesmo jogo.',
-        chips([{k:'off',label:'Original'},{k:'android',label:'Android'},{k:'xbox',label:'Xbox JS'},{k:'xboxone',label:'Xbox One'},{k:'windows',label:'Windows JS'},{k:'smarttv',label:'Smart TV'}],
+      lab.add(setRow('Perfil de plataforma', 'Xbox reúne Xbox e Xbox One, pois ambos utilizam o mesmo modo compatível. A interface pode priorizar gamepad, mas não desativa toque nativo nem transforma o site em Xbox OS.',
+        chips([{k:'off',label:'Original'},{k:'android',label:'Android'},{k:'windows',label:'Desktop'},{k:'xbox',label:'Xbox'},{k:'smarttv',label:'Smart TV'}],
           nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
-      lab.add(setRow('Client Hints (experimental)',
+      lab.add(setRow('Client Hints (avançado)',
         'Ocultar navigator.userAgentData apenas no JavaScript, conforme Xperience XCloud. Não altera headers e pode prejudicar compatibilidade.',
         chips([{k:'off',label:'Normal'},{k:'on',label:'Ocultar JS'}],
           nxClientHintsMode ? 'on' : 'off', function (k) {
