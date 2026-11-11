@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.8.5
+// @version      3.9.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.8.5';
+  const VER = '3.9.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2169,7 +2169,7 @@
 
       const coordination = group('Coordenação de entradas — diagnóstico',
         'Prioridade visual das fontes. Não bloqueia toque, mouse, teclado ou controle.');
-      coordination.add(setRow('Preferência de fonte', 'Automático usa a última atividade recente com prioridade de controle físico.',
+      coordination.add(setRow('Preferência de fonte', 'Automático sugere a fonte com atividade mais recente nos últimos 2 segundos.',
         chips(Object.keys(nxCoordModes).map(function (k) {
           return { k: k, label: nxCoordModes[k] };
         }), nxCoordMode(), function (k) {
@@ -2202,6 +2202,11 @@
           renderBody();
           toast('Leitura nativa restaurada');
         }, 'ghost')));
+      inputPreview.add(infoRow('Integridade da Gamepad API', function () {
+        if (nxInputBridge.foreignOverride) return 'Outro script assumiu o controle';
+        if (nxInputBridge.installed && navigator.getGamepads !== nxInputBridge.wrapper) return 'Alterada por outro script';
+        return nxInputBridge.installed ? 'Ponte experimental ativa' : 'API nativa';
+      }));
       inputPreview.add(infoRow('Recuperações automáticas', function () {
         return String(nxInputBridge.fallbacks);
       }));
@@ -2718,7 +2723,8 @@
     return Math.sign(x) * Math.pow(normalized, profile.curve);
   }
   const NX_INPUT_APPLY_KEY = 'nx.input.applyAxes.v1';
-  const nxInputBridge = { enabled: false, installed: false, error: '', transformedReads: 0, nativeReads: 0, fallbacks: 0, lastFallback: '' };
+  const nxInputBridge = { enabled: false, installed: false, error: '', transformedReads: 0, nativeReads: 0, fallbacks: 0, lastFallback: '', foreignOverride: false, restored: false };
+  const nxOriginalGamepadDescriptor = Object.getOwnPropertyDescriptor(navigator, 'getGamepads');
   const nxNativeGetGamepads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads.bind(navigator) : null;
   function nxInputEnabled() { return getPref(NX_INPUT_APPLY_KEY, '0') === '1'; }
   function nxRestoreNativeGamepads(reason) {
@@ -2726,18 +2732,31 @@
     nxInputBridge.lastFallback = String(reason || 'Recuperação manual').slice(0, 160);
     nxInputBridge.error = nxInputBridge.lastFallback;
     nxInputBridge.enabled = false;
-    try { localStorage.setItem(NX_INPUT_APPLY_KEY, '0'); } catch (_) {}
+    setPref(NX_INPUT_APPLY_KEY, '0');
     if (nxNativeGetGamepads) {
       try {
-        Object.defineProperty(navigator, 'getGamepads',
-          { configurable: true, writable: true, value: nxNativeGetGamepads });
+        if (navigator.getGamepads !== nxInputBridge.wrapper && nxInputBridge.installed) {
+          nxInputBridge.foreignOverride = true;
+          nxInputBridge.error += '; outro script alterou a Gamepad API; não sobrescrito';
+          return;
+        }
+        if (nxOriginalGamepadDescriptor) {
+          Object.defineProperty(navigator, 'getGamepads', nxOriginalGamepadDescriptor);
+        } else {
+          delete navigator.getGamepads;
+        }
         nxInputBridge.installed = false;
+        nxInputBridge.restored = true;
       } catch (err) { nxInputBridge.error += '; restauração: ' + String(err && err.message || err); }
     }
   }
   function nxInstallInputBridge() {
     nxInputBridge.enabled = nxInputEnabled();
     if (!nxInputBridge.enabled || !nxNativeGetGamepads) return;
+    if (Object.prototype.hasOwnProperty.call(navigator, 'getGamepads') && nxOriginalGamepadDescriptor && !nxOriginalGamepadDescriptor.configurable) {
+      nxInputBridge.error = 'Gamepad API não configurável; processamento ignorado';
+      return;
+    }
     try {
       const bridge = function () {
         let pads;
@@ -2752,6 +2771,8 @@
             const axes = Array.from(pad.axes, function (v, i) {
               return i < 4 ? nxPreviewAxis(v, profile) : v;
             });
+            // Evita criar um novo objeto se não houver diferença perceptível.
+            if (axes.every(function (v, i) { return Object.is(v, pad.axes[i]); })) return pad;
             const output = { id: pad.id, index: pad.index, connected: pad.connected,
               mapping: pad.mapping, timestamp: pad.timestamp, axes: axes, buttons: pad.buttons };
             try { if ('vibrationActuator' in pad) output.vibrationActuator = pad.vibrationActuator; } catch (_) {}
@@ -2762,10 +2783,12 @@
           return result;
         } catch (err) {
           nxRestoreNativeGamepads('Falha no processamento: ' + String(err && err.message || err));
-          return pads || nxNativeGetGamepads();
+          if (pads) return pads;
+          try { return nxNativeGetGamepads(); } catch (_) { return []; }
         }
       };
       Object.defineProperty(navigator, 'getGamepads', { configurable: true, writable: true, value: bridge });
+      nxInputBridge.wrapper = bridge;
       nxInputBridge.installed = navigator.getGamepads === bridge;
       if (!nxInputBridge.installed) nxInputBridge.error = 'Não foi possível instalar o processamento';
     } catch (err) { nxInputBridge.error = String(err && err.message || err); }
@@ -2809,7 +2832,8 @@
     });
     const configured = nxCoordMode();
     const priority = ['gamepad', 'touch', 'mouse', 'keyboard'];
-    const active = configured !== 'auto' ? configured : (priority.find(function (k) { return recent[k]; }) || 'none');
+    const active = configured !== 'auto' ? configured : (priority.filter(function (k) { return recent[k]; })
+      .sort(function (a, b) { return nxInputSources[b].lastAt - nxInputSources[a].lastAt; })[0] || 'none');
     const simultaneous = priority.filter(function (k) { return recent[k]; });
     return {
       configured: configured, suggested: active,
@@ -2850,10 +2874,10 @@
       });
     }
     const signature = next.map(function (p) { return p.index + ':' + p.mapping + ':' + p.buttons + ':' + p.axes; }).join('|');
-    if (signature !== nxGamepadMonitor.lastSignature) {
+    if (nxGamepadMonitor.lastSignature !== undefined && signature !== nxGamepadMonitor.lastSignature) {
       nxGamepadMonitor.lastChange = new Date().toISOString();
-      nxGamepadMonitor.lastSignature = signature;
     }
+    nxGamepadMonitor.lastSignature = signature;
     nxGamepadMonitor.connected = next.length;
     nxGamepadMonitor.active = next.filter(function (p) { return p.pressed || p.movingAxes; }).length;
     if (nxGamepadMonitor.active) nxRecordInputSource('gamepad');
@@ -2922,7 +2946,7 @@
       inputCapabilities: inputCapabilities(),
       inputSources: nxInputSourcesReport(),
       inputCoordination: nxCoordState(),
-      gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback } },
+      gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback, foreignOverride: nxInputBridge.foreignOverride, restored: nxInputBridge.restored } },
       inputNegotiation: lastInputNegotiation,
       touchSession: touchSessionDiagnostics,
       touchFullscreenPolicy: touchFullscreenPolicy,
