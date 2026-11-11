@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-012 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.5 com opt-out reversível de Pointer Lock
+**Edição:** PM-013 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.6 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -229,3 +229,10 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - Verificação isolada adicional em sandbox JavaScript: modo desativado e modo ativo com wrapper externo; **2/2 cenários preservaram preferências e API de terceiros**. Não houve teste em navegador ou sessão xCloud.
 - **Pendências P00:** CORE-001 inventário completo/teardown; CORE-002 diff por função; CORE-004 CI/lint; CORE-005 flags/rollback geral; CORE-006 licenças por arquivo; AUD-00 validação.
 - **Próximos pacotes pendentes:** P01 INPUT-001..007/AUD-01; P02 HUD-001..007/AUD-02; P03 NET-001..006/AUD-03; P04 MEDIA-001..006/AUD-04; P05 DIAG-001..010/AUD-05; P06 ACC-001..006/AUD-06; P07 REL-001..006/AUD-07.
+
+
+## AUD-00.9 — simplificação da restauração da Gamepad API (2026-11-11)
+- `78827f2d`: v4.11.6 remove condição de ownership duplicada e inalcançável em `nxRestoreNativeGamepads`, preservando guarda anterior que não sobrescreve wrappers de terceiros.
+- `4a43cd0b`: testes para restauração repetida e ponte desativada com API já pertencente a terceiro.
+- Sintaxe do userscript e da suíte verificadas; execução Node, CI e navegador real ainda não confirmadas.
+- **P00 aberto:** CORE-001, CORE-002, CORE-004, CORE-005, CORE-006 e AUD-00. **P01–P07 pendentes:** INPUT-001..007, HUD-001..007, NET-001..006, MEDIA-001..006, DIAG-001..010, ACC-001..006, REL-001..006, AUD-01..07.
