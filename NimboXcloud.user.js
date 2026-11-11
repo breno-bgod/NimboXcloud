@@ -2811,12 +2811,13 @@
   const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0};
   function nxRemoteGssvToken() {
     try { const v=JSON.parse(localStorage.getItem('xboxcom_xbl_user_info')||'null');
-      const t=v && v.tokens && v.tokens['http://gssv.xboxlive.com/']; if(t && t.token) return t.token; } catch (_) {}
+      const t=v && v.tokens && v.tokens['http://gssv.xboxlive.com/'];
+      if(t && typeof t.token==='string' && t.token && (!t.expiration || Date.parse(t.expiration)>Date.now())) return t.token; } catch (_) {}
     try { for(let i=0;i<localStorage.length;i++) { const k=localStorage.key(i);
       if(!k || !k.startsWith('Auth.User.')) continue;
       const u=JSON.parse(localStorage.getItem(k)||'null');
       for(const t of (u && Array.isArray(u.tokens)?u.tokens:[])) {
-        if(!String(t.relyingParty||'').includes('gssv.xboxlive.com')) continue;
+        if(!/^https?:\/\/gssv\.xboxlive\.com\/?$/i.test(String(t.relyingParty||''))) continue;
         if(t.tokenData && t.tokenData.token && new Date(t.tokenData.expiration)>new Date()) return t.tokenData.token;
       }
     }} catch (_) {} return '';
@@ -2851,7 +2852,7 @@
       if(!auth.ok) throw new Error('Login xHome recusado (HTTP '+auth.status+').');
       const login=await auth.json();
       if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
-      if(!login.gsToken || !login.offeringSettings || !Array.isArray(login.offeringSettings.regions))
+      if(!login || typeof login.gsToken!=='string' || !login.gsToken || !login.offeringSettings || !Array.isArray(login.offeringSettings.regions))
         throw new Error('Resposta xHome incompleta.');
       const regions=login.offeringSettings.regions.slice().sort(function(a,b){return Number(!!(b && b.isDefault))-Number(!!(a && a.isDefault));});
       let found=[];
