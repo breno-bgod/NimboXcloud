@@ -165,3 +165,40 @@ test('default region sorts before malformed entries without crashing',async()=>{
   assert.equal(api.state.status,'Nenhum console vinculado encontrado');
   assert.equal(api.state.error,'');
 });
+
+test('cancel after regional response before JSON: ignore late payload and attempts',async()=>{
+  let resolveJson, notifyJson;
+  const jsonStarted=new Promise(resolve=>{notifyJson=resolve;});
+  let n=0;
+  const api=harness(async()=>{
+    if(++n===1)return ok(login);
+    return {ok:true,status:200,json:()=>{notifyJson();return new Promise(resolve=>{resolveJson=resolve;});}};
+  });
+  const pending=api.discover();
+  await jsonStarted;
+  api.cancel();
+  resolveJson({results:[{serverId:'stale-console',deviceName:'Stale Xbox'}]});
+  await pending;
+  assert.equal(api.state.status,'Consulta cancelada');
+  assert.equal(api.state.attempts.length,0);
+  assert.equal(api.state.consoles.length,0);
+  assert.equal(api.state.region,'');
+});
+
+test('cancel after login response before JSON: never request a region',async()=>{
+  let resolveJson, notifyJson;
+  const jsonStarted=new Promise(resolve=>{notifyJson=resolve;});
+  let requests=0;
+  const api=harness(async()=>{
+    requests++;
+    return {ok:true,status:200,json:()=>{notifyJson();return new Promise(resolve=>{resolveJson=resolve;});}};
+  });
+  const pending=api.discover();
+  await jsonStarted;
+  api.cancel();
+  resolveJson(login);
+  await pending;
+  assert.equal(requests,1);
+  assert.equal(api.state.status,'Consulta cancelada');
+  assert.equal(api.state.consoles.length,0);
+});
