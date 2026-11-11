@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.24
+// @version      4.12.25
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -124,7 +124,11 @@
   // não altera cabeçalhos HTTP, autenticação, tokens, gamepad ou autorização do servidor.
   const nxConsoleNativeUA = navigator.userAgent;
   const nxConsoleLabProfile = (function () {
-    try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off'; return ['off','android','xbox','xboxone','xboxseries','windows','smarttv'].includes(p) ? p : 'off'; }
+    try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off';
+      // Xbox One / Series permanecem no código para pesquisa futura, mas estão suspensos.
+      // Sessões antigas migram para o perfil genérico sem expor seletores específicos.
+      if (p === 'xboxone' || p === 'xboxseries') { localStorage.setItem(LS_CONSOLE_LAB, 'xbox'); return 'xbox'; }
+      return ['off','android','xbox','windows','smarttv'].includes(p) ? p : 'off'; }
     catch (_) { return 'off'; }
   })();
   const nxConsoleLabState = { profile: nxConsoleLabProfile, applied: false, error: '', nativeUA: nxConsoleNativeUA, startedAt: new Date().toISOString() };
@@ -361,7 +365,7 @@
     };
   }
   function nxConsoleLabSetProfile(profile) {
-    if (!['off','android','xbox','xboxone','xboxseries','windows','smarttv'].includes(profile)) return;
+    if (!['off','android','xbox','windows','smarttv'].includes(profile)) return;
     try { localStorage.setItem(LS_CONSOLE_LAB, profile); } catch (_) {}
     // Reiniciar a página é necessário para negociar desde o document-start.
     location.reload();
@@ -3962,8 +3966,8 @@
       lab.add(infoRow('Tela cheia', function () { return document.fullscreenElement || document.webkitFullscreenElement ? 'Ativa' : 'Desativada'; }));
       lab.add(setRow('Tela cheia e horizontal', 'Ative após selecionar Xbox ou Smart TV. O navegador exige um toque ou clique para entrar em tela cheia; a orientação horizontal é solicitada quando suportada.',
         actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'primary')));
-      lab.add(setRow('Perfil de plataforma', 'Xbox One e Series X|S sao perfis independentes. Preservam identidade e controles nativos; nao comprovam autorizacao Xbox.',
-        chips([{k:'off',label:'Original'},{k:'android',label:'Android'},{k:'windows',label:'Desktop'},{k:'xbox',label:'Xbox legado'},{k:'xboxone',label:'Xbox One'},{k:'xboxseries',label:'Series X|S'},{k:'smarttv',label:'Smart TV'}],
+      lab.add(setRow('Perfil de plataforma', 'Console é um perfil genérico experimental. Xbox One e Series X|S estão suspensos e preservados apenas no código; nenhum perfil comprova identidade ou autorização de hardware.',
+        chips([{k:'off',label:'Original'},{k:'android',label:'Android'},{k:'windows',label:'Desktop'},{k:'xbox',label:'Console'},{k:'smarttv',label:'Smart TV'}],
           nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
       lab.add(setRow('Fortnite: experiência de console (experimental)',
         'Inspirado no Better xCloud: desativa a sinalização de toque na configuração da sessão do Fortnite. Não muda User-Agent, não emula Xbox e pode não alterar a experiência no cliente novo. Requer reiniciar a sessão.',
