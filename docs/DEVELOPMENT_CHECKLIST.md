@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-008 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.3 com opt-out reversível de Pointer Lock
+**Edição:** PM-009 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.3 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -196,3 +196,13 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - Sintaxe do teste verificada na criação. **Execução Node e GitHub Actions não confirmadas**; testes reais do navegador seguem pendentes.
 - CORE-005 segue EM_ANDAMENTO: flag do Pointer Lock implementada, mas outras funcionalidades experimentais ainda não possuem rollback uniforme.
 - **Próximas ações:** confirmar CI, mapear e corrigir demais flags, revisar conflitos de entrada, completar AUD-00 antes de P01.
+
+
+## P00 — dois pacotes sequenciais e auditoria (2026-11-11)
+**Pacote P00.5 — histórico e rollback:**
+- `docs/P00_DIFF_AUDIT.md`, commit `bf157b41`: comparações reais de 3 intervalos, 19 commits no intervalo HUD, fronteiras de rollback documentadas. CORE-002 continua EM_ANDAMENTO (falta revisão de patch por função).
+
+**Pacote AUD-00.5 — teste de comportamento isolado:**
+- `tests/pointer-lock-policy.test.cjs`, commit `8532c009`: simula o ciclo lock → unlock → relock com DOM mock; cobre modo legado, opt-out e evento F9 não consumido.
+- A sintaxe do novo teste foi verificada na criação. Execução real em Node/CI **não confirmada**. Mock não substitui navegador nem xCloud.
+- P00 e AUD-00 **não encerrados**: faltam lint/CI confirmado, inventário completo de hooks, flags gerais, proveniência por arquivo e validação em sessão real.
