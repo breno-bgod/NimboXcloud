@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.10.6
+// @version      4.10.7
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.10.6';
+  const VER = '4.10.7';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2122,10 +2122,16 @@
         e.stopPropagation();
         const step = e.shiftKey ? 5 : 1;
         const delta = moves[e.key];
+        const previousPosition = layout[id].slice();
         if (nxHudNudge(layout, id, delta[0] * step, delta[1] * step)) {
           node.style.left = layout[id][0] + '%';
           node.style.top = layout[id][1] + '%';
-          if (!nxHudSaveLayout(layout)) toast('Não foi possível salvar a posição do HUD');
+          if (!nxHudSaveLayout(layout)) {
+            layout[id] = previousPosition;
+            node.style.left = previousPosition[0] + '%';
+            node.style.top = previousPosition[1] + '%';
+            toast('Não foi possível salvar a posição do HUD');
+          }
         }
       });
       node.addEventListener('pointerdown', function (e) {
@@ -2157,7 +2163,14 @@
           layout[id] = dragStart;
           node.style.left = dragStart[0] + '%';
           node.style.top = dragStart[1] + '%';
-        } else if (!nxHudSaveLayout(layout)) toast('Não foi possível salvar a posição do HUD');
+        } else if (!nxHudSaveLayout(layout)) {
+          // Do not leave an unsaved position visible or available for profile export.
+          const saved = nxHudReadLayout()[id];
+          layout[id] = saved.slice();
+          node.style.left = saved[0] + '%';
+          node.style.top = saved[1] + '%';
+          toast('Não foi possível salvar a posição do HUD');
+        }
         dragStart = null;
         pointerStart = null;
       }
