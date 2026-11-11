@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-024 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
+**Edição:** PM-025 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
 
 ## Regras permanentes
 
@@ -346,3 +346,9 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - **Código de sincronização e autoaplicação de perfis: implementado**, sujeito à identificação estrita dos controles e às flags opt-in.
 - **P02 aceite final pendente:** HUD-002/003/004/005/007 exigem comprovação no xCloud real; AUD-02 aberta. Não declarar HUD jogável validado sem sessão real.
 - **P01 e demais pacotes:** sem mudança de status.
+
+
+## P03 — início do lote de streaming (2026-11-11)
+- `184b95ca` (v4.11.23): NET-005, limpa QoS obsoleto quando RTCPeerConnection encerra; escolhe inbound-rtp de vídeo com maior volume de bytes; prioriza candidate-pair selecionado válido e succeeded.
+- **P03 NET-005 PARCIAL:** diagnóstico mais robusto; falta avaliação do fluxo real e de reconexões. NET-001/002/003/004/006 continuam pendentes de revisão de código; AUD-03 aberta.
+- **P02:** lógica de sincronização e perfis implementada; compatibilidade real e aceite final pendentes. **P01:** código e testes finais pendentes. **P00/P04–P07:** sem alteração.
