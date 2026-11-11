@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.9.1
+// @version      3.9.2
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.9.1';
+  const VER = '3.9.2';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2212,6 +2212,7 @@
           toast('Leitura nativa restaurada');
         }, 'ghost')));
       inputPreview.add(infoRow('Integridade da Gamepad API', function () {
+        nxInputBridgeStatus();
         if (nxInputBridge.foreignOverride) return 'Outro script assumiu o controle';
         if (nxInputBridge.installed && navigator.getGamepads !== nxInputBridge.wrapper) return 'Alterada por outro script';
         return nxInputBridge.installed ? 'Ponte experimental ativa' : 'API nativa';
@@ -2220,7 +2221,7 @@
         return String(nxInputBridge.fallbacks);
       }));
       inputPreview.add(infoRow('Processamento de entradas', function () {
-        return nxInputBridge.installed ? 'Ativo' : (nxInputBridge.error || 'Nativo / simulação');
+        return nxInputBridgeStatus();
       }));
       inputPreview.add(setRow('Perfil de teste', 'Escolha uma curva para visualizar o comportamento dos eixos.',
         chips(Object.keys(nxInputProfiles).map(function (k) { return { k: k, label: nxInputProfiles[k].label }; }),
@@ -2736,6 +2737,16 @@
   const nxOriginalGamepadDescriptor = Object.getOwnPropertyDescriptor(navigator, 'getGamepads');
   const nxNativeGetGamepads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads.bind(navigator) : null;
   function nxInputEnabled() { return getPref(NX_INPUT_APPLY_KEY, '0') === '1'; }
+  function nxInputBridgeStatus() {
+    if (nxInputBridge.installed && navigator.getGamepads !== nxInputBridge.wrapper) {
+      nxInputBridge.foreignOverride = true;
+      nxInputBridge.installed = false;
+      nxInputBridge.enabled = false;
+      nxInputBridge.error = 'Outro script substituiu a Gamepad API; processamento NimboXcloud suspenso';
+      setPref(NX_INPUT_APPLY_KEY, '0');
+    }
+    return nxInputBridge.installed ? 'Ativo' : (nxInputBridge.error || 'Nativo / simulação');
+  }
   function nxRestoreNativeGamepads(reason) {
     nxInputBridge.fallbacks++;
     nxInputBridge.lastFallback = String(reason || 'Recuperação manual').slice(0, 160);
@@ -2984,6 +2995,7 @@
       inputCapabilities: inputCapabilities(),
       inputSources: nxInputSourcesReport(),
       inputEventHistory: nxInputEvents.slice(),
+      inputBridgeHealth: nxInputBridgeStatus(),
       inputCoordination: nxCoordState(),
       gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback, foreignOverride: nxInputBridge.foreignOverride, restored: nxInputBridge.restored } },
       inputNegotiation: lastInputNegotiation,
@@ -3464,6 +3476,7 @@
     startInputDiagnostics();
     nxSampleGamepads();
     setInterval(function () {
+      nxInputBridgeStatus();
       if (document.visibilityState === 'visible') nxSampleGamepads();
     }, 750);
     S.diagnosticsWarnings = [
