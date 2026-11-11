@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.18
+// @version      4.12.19
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.17';
+  const VER = '4.12.19';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -106,6 +106,9 @@
   const LS_VIDEO_PROFILE = 'xcu.videoProfile.v1';
   const LS_VIDEO_FIT = 'xcu.videoFit.v1';
   const LS_VIDEO_ECO = 'xcu.videoEco.v1';
+  const LS_VIDEO_BRIGHTNESS='xcu.videoBrightness.v2';
+  const LS_VIDEO_CONTRAST='xcu.videoContrast.v2';
+  const LS_VIDEO_SATURATION='xcu.videoSaturation.v2';
 
   // Laboratório Xbox: experimental, desativado por padrão. Apenas identidade JS local;
   // não altera cabeçalhos HTTP, autenticação, tokens, gamepad ou autorização do servidor.
@@ -3383,19 +3386,35 @@
       g1.add(setRow('Chat x jogo','Controle independente exige fluxos separados do xCloud.',mk('span','font-size:11px','Não disponível em fluxo misto')));
       root.appendChild(g1.root);
 
-      const g2 = group('Imagem', 'Perfis de apresentação CSS locais. Não são CAS, nitidez real nem upscaling.');
-      g2.add(setRow('Perfil visual', 'Original não aplica filtros; Equilibrado e Vívido ajustam apenas contraste e cor.',
-        chips([{ k: 'original', label: 'Original' }, { k: 'balanced', label: 'Equilibrado' }, { k: 'vivid', label: 'Vívido' }, { k: 'custom', label: 'Manual' }], getPref(LS_VIDEO_PROFILE, 'custom'), function (k) {
-          setPref(LS_VIDEO_PROFILE, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
-        }), true));
-      g2.add(setRow('Contraste adicional', 'Reforça o contraste do vídeo.',
-        chips([{ k: '0', label: 'Desligado' }, { k: '1', label: 'Leve' }, { k: '2', label: 'Forte' }], getPref(LS_SHARPNESS, '0'), function (k) {
-          setPref(LS_VIDEO_PROFILE, 'custom'); setPref(LS_SHARPNESS, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
-        }), true));
-      g2.add(setRow('Cor e saturação', 'Deixa as cores mais vivas.',
-        chips([{ k: '0', label: 'Padrão' }, { k: '1', label: 'Vívido' }, { k: '2', label: 'Intenso' }], getPref(LS_VIDEO_COLOR, '0'), function (k) {
-          setPref(LS_VIDEO_PROFILE, 'custom'); setPref(LS_VIDEO_COLOR, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
-        }), true));
+      const g2 = group('Imagem', 'Calibracao local por filtro CSS unico. Ajustes moderados para preservar sombras e realces.');
+      g2.add(setRow('Perfil visual', 'Original restaura o video; os demais perfis substituem o filtro, sem acumular efeitos.',
+        chips([{k:'original',label:'Original'},{k:'balanced',label:'Equilibrado'},{k:'vivid',label:'Vivido'},{k:'custom',label:'Manual'}],
+          getPref(LS_VIDEO_PROFILE,'original'),function(k){
+            setPref(LS_VIDEO_PROFILE,k);applyVideoAdjustments(activeStreamVideo());renderBody();
+          }),true));
+      const cal=nxVideoCalibration();
+      function calibrationSlider(label,key,value,min,max,help){
+        const control=mk('div','display:flex;align-items:center;gap:10px;min-width:150px');
+        const slider=mk('input','flex:1;min-width:90px;accent-color:'+C.accent);
+        slider.type='range';slider.min=String(min);slider.max=String(max);slider.step='1';slider.value=String(value);
+        const readout=mk('span','font-variant-numeric:tabular-nums;min-width:40px;text-align:right',String(value)+'%');
+        slider.addEventListener('input',function(){
+          readout.textContent=slider.value+'%';
+          setPref(LS_VIDEO_PROFILE,'custom');
+          setPref(key,slider.value);
+          applyVideoAdjustments(activeStreamVideo());
+        });
+        slider.addEventListener('change',function(){renderBody();});
+        control.appendChild(slider);control.appendChild(readout);
+        g2.add(setRow(label,help,control,true));
+      }
+      calibrationSlider('Brilho',LS_VIDEO_BRIGHTNESS,cal.brightness,85,115,'Controla a luminosidade geral. Nao recupera detalhes ja perdidos no stream.');
+      calibrationSlider('Contraste',LS_VIDEO_CONTRAST,cal.contrast,85,115,'Ajusta a separacao de claros e escuros. Evite extremos para nao estourar brancos ou fechar pretos.');
+      calibrationSlider('Saturacao',LS_VIDEO_SATURATION,cal.saturation,75,125,'Ajusta a intensidade das cores sem alterar a resolucao.');
+      g2.add(setRow('Restaurar imagem','Remove apenas o filtro NX e volta a configuracao original.',
+        actBtn('Restaurar original',function(){
+          setPref(LS_VIDEO_PROFILE,'original');applyVideoAdjustments(activeStreamVideo());renderBody();
+        },'ghost')));
       g2.add(setRow('Enquadramento', 'Original preserva o site; Conter evita cortes; Preencher ocupa a tela, podendo cortar bordas.',
         chips([{ k: 'original', label: 'Original' }, { k: 'contain', label: 'Conter' }, { k: 'cover', label: 'Preencher' }], getPref(LS_VIDEO_FIT, 'original'), function (k) {
           setPref(LS_VIDEO_FIT, k); applyVideoFit(activeStreamVideo()); renderBody();
@@ -5377,37 +5396,52 @@
     state.applied = fit;
     video.style.setProperty('object-fit', fit, state.priority);
   }
+  // Uma unica cadeia de filtros substituida a cada ajuste; nunca empilhar camadas.
+  // Brilho/contraste/saturacao sao controles CSS, nao equalizacao independente de
+  // brancos/pretos nem sharpening real.
+  function nxVideoCalibration(){
+    const profile=getPref(LS_VIDEO_PROFILE,'original');
+    const presets={
+      original:{brightness:100,contrast:100,saturation:100},
+      balanced:{brightness:100,contrast:102,saturation:104},
+      vivid:{brightness:100,contrast:105,saturation:108}
+    };
+    if(presets[profile])return presets[profile];
+    const clamp=function(key,min,max,def){
+      const value=Number(getPref(key,String(def)));
+      return Number.isFinite(value)?Math.max(min,Math.min(max,value)):def;
+    };
+    return {
+      brightness:clamp(LS_VIDEO_BRIGHTNESS,85,115,100),
+      contrast:clamp(LS_VIDEO_CONTRAST,85,115,100),
+      saturation:clamp(LS_VIDEO_SATURATION,75,125,100)
+    };
+  }
   function applyVideoAdjustments(video) {
-    if (!video) return;
-    if (getPref(LS_VIDEO_ECO, '1') === '1' && document.visibilityState === 'hidden') {
-      restoreVideoAdjustments(video);
-      return;
+    if(!video)return;
+    if(getPref(LS_VIDEO_ECO,'1')==='1' && document.visibilityState==='hidden'){
+      restoreVideoAdjustments(video);return;
     }
-    const profile = getPref(LS_VIDEO_PROFILE, 'custom');
-    const color = profile === 'original' ? 0 : profile === 'balanced' ? 1 : profile === 'vivid' ? 2 :
-      Math.max(0, Math.min(2, Number(getPref(LS_VIDEO_COLOR, '0')) || 0));
-    const sharp = profile === 'original' ? 0 : profile === 'balanced' ? 0 : profile === 'vivid' ? 1 :
-      Math.max(0, Math.min(2, Number(getPref(LS_SHARPNESS, '0')) || 0));
-    if (!color && !sharp) { restoreVideoAdjustments(video); return; }
-    const contrast = [1, 1.04, 1.10][color] || 1;
-    const saturation = [1, 1.06, 1.10][color] || 1;
-    // The legacy "sharpness" option is contrast only, not CAS/upscaling.
-    const extraContrast = [1, 1.07, 1.14][sharp] || 1;
-    let state = nxVideoFilters.get(video);
-    if (state && video.style.filter !== state.applied) {
-      // The host changed its own filter: do not overwrite it.
+    const cal=nxVideoCalibration();
+    if(cal.brightness===100 && cal.contrast===100 && cal.saturation===100){
+      restoreVideoAdjustments(video);return;
+    }
+    let state=nxVideoFilters.get(video);
+    if(state && video.style.filter!==state.applied){
+      // Se o site mudou o filtro, nao anexar filtros a um resultado anterior do NX.
       nxVideoFilters.delete(video);
       return;
     }
-    if (!state) {
-      state = { original: video.style.getPropertyValue('filter'),
-        priority: video.style.getPropertyPriority('filter'), applied: '' };
-      nxVideoFilters.set(video, state);
+    if(!state){
+      state={original:video.style.getPropertyValue('filter'),
+        priority:video.style.getPropertyPriority('filter'),applied:''};
+      nxVideoFilters.set(video,state);
     }
-    const adjustment = 'contrast(' + (contrast * extraContrast).toFixed(3) +
-      ') saturate(' + saturation.toFixed(3) + ')';
-    state.applied = (state.original && state.original !== 'none' ? state.original + ' ' : '') + adjustment;
-    video.style.setProperty('filter', state.applied, state.priority);
+    const adjustment='brightness('+(cal.brightness/100).toFixed(3)+
+      ') contrast('+(cal.contrast/100).toFixed(3)+
+      ') saturate('+(cal.saturation/100).toFixed(3)+')';
+    state.applied=(state.original&&state.original!=='none'?state.original+' ':'')+adjustment;
+    video.style.setProperty('filter',state.applied,state.priority);
   }
   function cycleSharpness() {
     const video = activeStreamVideo();
@@ -5611,7 +5645,7 @@
         applyVideoAdjustments(video);
         applyVideoFit(video);
       } else if (video && !nxVideoFilters.has(video) &&
-                 (['balanced', 'vivid'].includes(getPref(LS_VIDEO_PROFILE, 'custom')) ||
+                 (['balanced', 'vivid'].includes(getPref(LS_VIDEO_PROFILE, 'original')) ||
                   (getPref(LS_VIDEO_PROFILE, 'custom') === 'custom' &&
                    (getPref(LS_VIDEO_COLOR, '0') !== '0' || getPref(LS_SHARPNESS, '0') !== '0')))) {
         // Reapply when the stream element persists but the host has reset its style.
