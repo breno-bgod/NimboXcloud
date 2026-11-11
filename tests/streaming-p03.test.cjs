@@ -55,3 +55,18 @@ test('NET-001: reconstructed play requests preserve abort and referrer policy', 
   assert.match(body, /referrerPolicy: req\.referrerPolicy/);
   assert.match(body, /keepalive: req\.keepalive/);
 });
+
+test('NET-002: unavailable data center retains server fallback and clears pin', () => {
+  const start = src.indexOf('  function rewriteRegions(');
+  const end = src.indexOf('  // ---------- 7.', start);
+  assert.ok(start > 0 && end > start);
+  const body = src.slice(start, end);
+  assert.match(body, /S\.serverPin = ''/);
+  assert.match(body, /if \(os\.regions\[0\] === hit/);
+  assert.match(body, /return false/);
+});
+
+test('NET-001/006: cancellation is distinguished from network failure', () => {
+  assert.match(src, /err && err\.name === 'AbortError' \? 'cancelled' : 'network-failure'/);
+  assert.match(src, /injectable\(u\.pathname\) && u\.protocol === 'https:'/);
+});
