@@ -21,3 +21,9 @@ Prioridade de código: confiabilidade da sessão, integridade das requisições,
 - NET-005: testes com WebRTC real e comparação de métricas.
 - NET-006: mapear estados reais de reconexão, evitar loops de retry.
 - AUD-03: aberta. P03 não está homologado.
+
+## Lote adicional — 2026-11-11
+- `59d0e275` v4.11.25: o filtro IPv4 experimental preserva o SDP/ICE original se a remoção de IPv6 deixaria zero candidatos de transporte; `patchPlayRequest` preserva `signal`, `referrerPolicy` e `keepalive`.
+- `503e787a`: regressões estáticas para os dois casos.
+- **Limites:** não garante conexão quando todos os candidatos são inválidos por outros motivos; a seleção efetiva continua com o navegador e o servidor. Não há evidência de ganhos de FPS/bitrate/latência sem testes reais.
+- **Próxima revisão de código:** tratamento de cancelamento e falhas de rede sem alterar comportamento do fetch; confiabilidade de seleção de data center e sessão.
