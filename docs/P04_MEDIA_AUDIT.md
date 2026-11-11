@@ -23,3 +23,8 @@
 - `a8c1e98e` v4.12.2: perfil inicial Manual para preservar ajustes legados já salvos.
 - `d9d9490e` v4.12.3: reavalia aplicação de Equilibrado/Vívido quando o host reseta o estilo do elemento.
 - MEDIA-003: implementação inicial concluída; teste de interação real pendente. MEDIA-001/002 permanecem parciais até homologação. MEDIA-004..006 exigem revisão de código.
+
+## Terceira etapa — MEDIA-004/006 (2026-11-11)
+- `f8edfa9b` v4.12.4: MEDIA-004 controle de tela cheia por gesto do usuário e enquadramento original/conter/preencher com restauração ao substituir vídeo; MEDIA-006 modo econômico opt-in por padrão, remove filtros CSS locais quando aba está oculta e reaplica quando visível.
+- O modo econômico não muda WebRTC, bitrate, FPS, áudio nem decodificação. O benefício de consumo energético não foi medido.
+- MEDIA-004/006: implementação de código concluída; testes reais pendentes. MEDIA-005: revisão de áudio reservada para fase final conforme decisão do projeto.
