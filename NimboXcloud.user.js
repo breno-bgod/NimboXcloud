@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.0
+// @version      4.12.1
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.0';
+  const VER = '4.12.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -103,6 +103,7 @@
   const LS_AUDIO_BALANCE = 'xcu.audioBalance';
   const LS_SHARPNESS = 'xcu.sharpness';
   const LS_VIDEO_COLOR = 'xcu.videoColor';
+  const LS_VIDEO_PROFILE = 'xcu.videoProfile.v1';
 
   // Laboratório Xbox: experimental, desativado por padrão. Apenas identidade JS local;
   // não altera cabeçalhos HTTP, autenticação, tokens, gamepad ou autorização do servidor.
@@ -2847,14 +2848,18 @@
       g1.add(setRow('Chat x jogo','Controle independente exige fluxos separados do xCloud.',mk('span','font-size:11px','Não disponível em fluxo misto')));
       root.appendChild(g1.root);
 
-      const g2 = group('Imagem', 'Ajustes visuais locais em CSS. Não são nitidez real, CAS nem upscaling.');
+      const g2 = group('Imagem', 'Perfis de apresentação CSS locais. Não são CAS, nitidez real nem upscaling.');
+      g2.add(setRow('Perfil visual', 'Original não aplica filtros; Equilibrado e Vívido ajustam apenas contraste e cor.',
+        chips([{ k: 'original', label: 'Original' }, { k: 'balanced', label: 'Equilibrado' }, { k: 'vivid', label: 'Vívido' }, { k: 'custom', label: 'Manual' }], getPref(LS_VIDEO_PROFILE, 'original'), function (k) {
+          setPref(LS_VIDEO_PROFILE, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
+        }), true));
       g2.add(setRow('Contraste adicional', 'Reforça o contraste do vídeo.',
         chips([{ k: '0', label: 'Desligado' }, { k: '1', label: 'Leve' }, { k: '2', label: 'Forte' }], getPref(LS_SHARPNESS, '0'), function (k) {
-          setPref(LS_SHARPNESS, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
+          setPref(LS_VIDEO_PROFILE, 'custom'); setPref(LS_SHARPNESS, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
         }), true));
       g2.add(setRow('Cor e saturação', 'Deixa as cores mais vivas.',
         chips([{ k: '0', label: 'Padrão' }, { k: '1', label: 'Vívido' }, { k: '2', label: 'Intenso' }], getPref(LS_VIDEO_COLOR, '0'), function (k) {
-          setPref(LS_VIDEO_COLOR, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
+          setPref(LS_VIDEO_PROFILE, 'custom'); setPref(LS_VIDEO_COLOR, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
         }), true));
       root.appendChild(g2.root);
 
@@ -4576,8 +4581,11 @@
   }
   function applyVideoAdjustments(video) {
     if (!video) return;
-    const color = Math.max(0, Math.min(2, Number(getPref(LS_VIDEO_COLOR, '0')) || 0));
-    const sharp = Math.max(0, Math.min(2, Number(getPref(LS_SHARPNESS, '0')) || 0));
+    const profile = getPref(LS_VIDEO_PROFILE, 'custom');
+    const color = profile === 'original' ? 0 : profile === 'balanced' ? 1 : profile === 'vivid' ? 2 :
+      Math.max(0, Math.min(2, Number(getPref(LS_VIDEO_COLOR, '0')) || 0));
+    const sharp = profile === 'original' ? 0 : profile === 'balanced' ? 0 : profile === 'vivid' ? 1 :
+      Math.max(0, Math.min(2, Number(getPref(LS_SHARPNESS, '0')) || 0));
     if (!color && !sharp) { restoreVideoAdjustments(video); return; }
     const contrast = [1, 1.04, 1.10][color] || 1;
     const saturation = [1, 1.06, 1.10][color] || 1;
@@ -4604,6 +4612,7 @@
     if (!video) { S.lastErr = 'Ajuste visual: vídeo não encontrado'; update(); return; }
     const modes = ['0', '1', '2'];
     const next = modes[(modes.indexOf(getPref(LS_SHARPNESS, '0')) + 1) % modes.length];
+    setPref(LS_VIDEO_PROFILE, 'custom');
     setPref(LS_SHARPNESS, next);
     applyVideoAdjustments(video);
     pushLog('video', 'Contraste adicional ' + next + '; não é nitidez real ou CAS');
@@ -4621,6 +4630,7 @@
     const video = activeStreamVideo();
     if (!video) { S.lastErr = 'Filtro: vídeo não encontrado'; schedule(); return; }
     const next = ((Number(getPref(LS_VIDEO_COLOR, '0')) || 0) + 1) % 3;
+    setPref(LS_VIDEO_PROFILE, 'custom');
     setPref(LS_VIDEO_COLOR, String(next));
     applyVideoAdjustments(video);
     pushLog('video', 'Cor/contraste CSS ' + next + ' (não aplica nitidez, CAS nem upscaling)');
