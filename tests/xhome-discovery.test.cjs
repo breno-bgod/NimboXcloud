@@ -9,7 +9,7 @@ const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
 const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel};';
-function harness(fetchImpl) {
+function harness(fetchImpl, storageOverride) {
   const ctx = {
     AbortController, URL, Date, setTimeout, clearTimeout,
     fetch: fetchImpl, tabId: 'other', renderBody() {},
@@ -18,6 +18,7 @@ function harness(fetchImpl) {
       get length() { return 0; }
     }
   };
+  if(storageOverride) ctx.localStorage=storageOverride;
   vm.createContext(ctx);
   vm.runInContext(code, ctx);
   return ctx.api;
@@ -201,4 +202,34 @@ test('cancel after login response before JSON: never request a region',async()=>
   assert.equal(requests,1);
   assert.equal(api.state.status,'Consulta cancelada');
   assert.equal(api.state.consoles.length,0);
+});
+
+test('null xHome login response: fail without requesting region',async()=>{
+  let n=0;
+  const api=harness(async()=>{n++;return ok(null);});
+  await api.discover();
+  assert.equal(n,1);
+  assert.equal(api.state.status,'Falha na consulta');
+  assert.match(api.state.error,/incompleta/);
+});
+test('expired cached GSSV token: no network request',async()=>{
+  let n=0;
+  const api=harness(async()=>{n++;throw new Error('network must not be called');},{
+    getItem(k){return k==='xboxcom_xbl_user_info'?JSON.stringify({tokens:{'http://gssv.xboxlive.com/':{token:'EXPIRED',expiration:'2020-01-01T00:00:00Z'}}}):null;},
+    get length(){return 0;}
+  });
+  await api.discover();
+  assert.equal(n,0);
+  assert.match(api.state.error,/GSSV/);
+});
+test('wrong relyingParty token: do not send token to xHome',async()=>{
+  let n=0;
+  const api=harness(async()=>{n++;throw new Error('network must not be called');},{
+    getItem(){return JSON.stringify({tokens:[{relyingParty:'https://gssv.xboxlive.com.attacker.test',tokenData:{token:'BAD',expiration:'2099-01-01T00:00:00Z'}}]});},
+    key(){return 'Auth.User.test';},
+    get length(){return 1;}
+  });
+  await api.discover();
+  assert.equal(n,0);
+  assert.match(api.state.error,/GSSV/);
 });
