@@ -6,14 +6,14 @@ O **NimboXcloud** é um userscript não oficial para o [Xbox Cloud Gaming](https
 
 O objetivo é oferecer escolhas ao jogador sem exigir que ele abandone o toque ou o controle físico. O script funciona sobre o site oficial e **não é um serviço de cloud gaming independente**.
 
-> **Estado atual:** versão **3.6.3**, em desenvolvimento. Recursos implementados no código não significam compatibilidade garantida com todas as versões do xCloud. Os testes reais de streaming em diferentes dispositivos ainda precisam ser documentados.
+> **Estado atual:** versão **3.6.37**, em desenvolvimento. Recursos implementados no código não significam compatibilidade garantida com todas as versões do xCloud. Os testes reais de streaming em diferentes dispositivos ainda precisam ser documentados.
 
 ## O que o projeto oferece
 
 | Recurso | Descrição |
 | --- | --- |
 | Perfis de vídeo | 1080p com perfil Windows por padrão; 1080p HQ/Tizen experimental e 720p manuais |
-| Bitrate | Opções automáticas e limites configuráveis de 5, 8, 10, 12 e 15 Mbps |
+| Bitrate | Opções automáticas e limites configuráveis; valores maiores podem ser solicitados pelo script, mas não são garantidos pelo servidor |
 | Região | Ajustes de mercado e território em respostas/requisições específicas do site |
 | Data center | Preferência por regiões de streaming disponíveis no script |
 | Conectividade | Opção de filtrar candidatos ICE IPv6 para priorizar IPv4 |
@@ -73,13 +73,13 @@ O projeto ainda está em fase experimental. **Nem toda ideia mencionada é uma f
 ## Instalação
 
 1. Instale um gerenciador de userscripts compatível, como o Tampermonkey.
-2. Abra [`xbox-cloud-unlock-ptbr.user.js`](./xbox-cloud-unlock-ptbr.user.js).
+2. Abra [`xbox-cloud-unlock-ptbr.user.js`](./NimboXcloud.user.js).
 3. No GitHub, use **Raw / Download raw file** e importe o arquivo no gerenciador.
 4. Ative o script e abra `https://play.xbox.com/`.
 
 O script é executado em `document-start`. A compatibilidade depende do navegador e das permissões do gerenciador de userscripts.
 
-**Atualizações:** a atualização automática pelo Tampermonkey ainda não está configurada. Enquanto o repositório permanecer privado, o download exige autorização do GitHub; após torná-lo público, a instalação poderá ser feita pelo arquivo Raw. Até a configuração do canal de atualização, importe novas versões manualmente.
+**Atualizações:** o script ainda não declara `@updateURL` nem `@downloadURL`; atualize manualmente até a configuração e validação desse mecanismo. Enquanto o repositório permanecer privado, o download exige autorização do GitHub; após torná-lo público, a instalação poderá ser feita pelo arquivo Raw. Até a configuração do canal de atualização, importe novas versões manualmente.
 
 ## Documentação
 
