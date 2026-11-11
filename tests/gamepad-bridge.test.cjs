@@ -62,3 +62,18 @@ test('status inspection does not modify stored settings when another script take
   assert.equal(JSON.stringify(a.store), before);
   assert.equal(a.navigator.getGamepads, foreign);
 });
+
+test('repeated native restore does not overwrite another script', () => {
+  const a = boot({ 'nx.input.applyAxes.v1': '1' }, []);
+  a.restore('first');
+  const foreign = () => [];
+  a.navigator.getGamepads = foreign;
+  a.restore('second');
+  assert.equal(a.navigator.getGamepads, foreign);
+});
+test('disabled bridge does not replace existing native Gamepad function', () => {
+  const foreign = () => [];
+  const a = boot({}, [], nav => { nav.getGamepads = foreign; });
+  assert.equal(a.navigator.getGamepads, foreign);
+  assert.equal(a.bridge.installed, false);
+});
