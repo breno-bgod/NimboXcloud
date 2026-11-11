@@ -2935,8 +2935,30 @@
       const response=await play.json();check();
       if(!response || typeof response.sessionId!=='string' || !/^[a-z0-9-]{8,80}$/i.test(response.sessionId))throw new Error('Resposta de sessão inválida.');
       nxRemotePlay.sessionId=response.sessionId;
-      nxRemotePlay.sessionStatus='created';
-      nxRemotePlay.status='Sessão xHome criada. WebRTC ainda não conectado.';
+      nxRemotePlay.sessionStatus='provisioning';
+      nxRemotePlay.status='Aguardando provisionamento do Xbox…';
+      if(tabId==='remote')renderBody();
+      const sessionUrl=base+'/v5/sessions/home/'+encodeURIComponent(response.sessionId);
+      let ready=false;
+      for(let attempt=0;attempt<12;attempt++){
+        check();
+        const stateResponse=await fetch(sessionUrl+'/state',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});
+        check();
+        if(!stateResponse.ok)throw new Error('Consulta de estado xHome recusada (HTTP '+stateResponse.status+').');
+        const state=await stateResponse.json();check();
+        if(state && state.state==='Provisioned'){ready=true;break;}
+        if(!state || state.state!=='Provisioning')throw new Error('Sessão xHome não provisionada: '+String(state && state.state||'resposta inválida').slice(0,80));
+        await new Promise(function(resolve,reject){
+          const timer=setTimeout(function(){controller.signal.removeEventListener('abort',onAbort);resolve();},1000);
+          function onAbort(){clearTimeout(timer);reject(new Error('Operação cancelada'));}
+          controller.signal.addEventListener('abort',onAbort,{once:true});
+          if(controller.signal.aborted)onAbort();
+        });
+      }
+      check();
+      if(!ready)throw new Error('Xbox não ficou pronto após 12 consultas de estado.');
+      nxRemotePlay.sessionStatus='provisioned';
+      nxRemotePlay.status='Xbox pronto para negociação WebRTC (ainda não conectada).';
     }catch(e){
       if(requestId!==nxRemotePlay.requestId)return;
       nxRemotePlay.sessionStatus='failed';
@@ -2974,7 +2996,7 @@
         start.addEventListener('click',function(e){e.stopPropagation();nxRemoteStartSession();});
         root.appendChild(start);
         root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-top:8px','A criação da sessão não inicia vídeo nem controles. WebRTC está pendente.'));
-        if(nxRemotePlay.sessionStatus==='created')root.appendChild(mk('div','font-size:11px;color:'+C.dim,'Sessão criada; aguardando integração WebRTC.'));
+        if(nxRemotePlay.sessionStatus==='provisioned')root.appendChild(mk('div','font-size:11px;color:'+C.dim,'Xbox provisionado; aguardando integração WebRTC.'));
       }
     },
     overview: function (root) {
