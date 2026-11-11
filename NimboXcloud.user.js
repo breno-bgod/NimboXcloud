@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.0.5
+// @version      4.0.6
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.0.5';
+  const VER = '4.0.6';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2227,6 +2227,16 @@
         const y = nxGyroPreviewState().tiltY;
         return y === null ? 'Calibre após ativar' : y + '°';
       }));
+      gyroGroup.add(setRow('Inverter eixo horizontal', 'Apenas visualização; não afeta o jogo.',
+        toggle(nxGyroInvertX(), function () {
+          setPref(NX_GYRO_INVERT_X_KEY, nxGyroInvertX() ? '0' : '1');
+          renderBody();
+        }, 'Inverter eixo horizontal')));
+      gyroGroup.add(setRow('Inverter eixo vertical', 'Apenas visualização; não afeta o jogo.',
+        toggle(nxGyroInvertY(), function () {
+          setPref(NX_GYRO_INVERT_Y_KEY, nxGyroInvertY() ? '0' : '1');
+          renderBody();
+        }, 'Inverter eixo vertical')));
       gyroGroup.add(setRow('Suavização da leitura', 'Afeta apenas a prévia local. Não modifica a mira.',
         chips([{ k: '0.1', label: 'Suave' }, { k: '0.25', label: 'Equilibrada' }, { k: '0.7', label: 'Rápida' }],
           getPref(NX_GYRO_SMOOTH_KEY, '0.25'), function (k) {
@@ -2936,6 +2946,10 @@
       note: 'Registro interno de atividade virtual; nenhuma entrada é enviada ao xCloud.' };
   }
   // Giroscópio em modo de observação: exige ativação explícita e nunca move o jogo.
+  const NX_GYRO_INVERT_X_KEY = 'nx.gyro.previewInvertX.v1';
+  const NX_GYRO_INVERT_Y_KEY = 'nx.gyro.previewInvertY.v1';
+  function nxGyroInvertX() { return getPref(NX_GYRO_INVERT_X_KEY, '0') === '1'; }
+  function nxGyroInvertY() { return getPref(NX_GYRO_INVERT_Y_KEY, '0') === '1'; }
   const NX_GYRO_SMOOTH_KEY = 'nx.gyro.previewSmoothing.v1';
   function nxGyroSmoothFactor() {
     const raw = Number(getPref(NX_GYRO_SMOOTH_KEY, '0.25'));
@@ -3032,8 +3046,9 @@
     return { enabled: g.enabled, permission: g.permission, samples: g.samples,
       receiving: g.enabled && Date.now() - g.lastAt < 2000,
       calibrated: g.originBeta !== null && g.originGamma !== null,
-      tiltX: g.filteredX === null ? null : Math.round(g.filteredX * 10) / 10,
-      tiltY: g.filteredY === null ? null : Math.round(g.filteredY * 10) / 10,
+      tiltX: g.filteredX === null ? null : Math.round((nxGyroInvertX() ? -1 : 1) * g.filteredX * 10) / 10,
+      tiltY: g.filteredY === null ? null : Math.round((nxGyroInvertY() ? -1 : 1) * g.filteredY * 10) / 10,
+      invertX: nxGyroInvertX(), invertY: nxGyroInvertY(),
       smoothing: nxGyroSmoothFactor(),
       screenAngle: g.screenAngle, orientationChanges: g.orientationChanges,
       autoPauseOnHidden: true,
@@ -3125,6 +3140,8 @@
     check('limite de entradas virtuais', NX_VIRTUAL_INPUT_LIMIT === 8);
     check('janela de expiração virtual', NX_VIRTUAL_INPUT_TTL === 2000);
     check('ângulo de tela normalizado', nxScreenAngle() >= 0 && nxScreenAngle() < 360);
+    check('inversão horizontal booleana', typeof nxGyroInvertX() === 'boolean');
+    check('inversão vertical booleana', typeof nxGyroInvertY() === 'boolean');
     return { passed: tests.filter(function (t) { return t.pass; }).length,
       total: tests.length, tests: tests, note: 'Autoteste matemático e estrutural; não substitui teste de streaming.' };
   }
