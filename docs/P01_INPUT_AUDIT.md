@@ -42,3 +42,12 @@
 - Tentativa de `git ls-remote` no ambiente de execução: **falhou por DNS** (`Could not resolve host: github.com`). Não houve checkout, execução Node nem teste real em navegador.
 
 **AUD-01: REVISÃO ESTÁTICA PARCIAL — NÃO APROVADA PARA ENCERRAMENTO.** A implementação de teclado/mouse virtual jogável e a arbitragem ativa de inputs não foram demonstradas; `nxCoordState` continua somente diagnóstico. INPUT-007 exige testes reais em Chrome/Edge Android/desktop com gamepad físico. Nenhum item INPUT-001..007 foi marcado integralmente concluído.
+
+
+## Retomada para encerramento (2026-11-11)
+- `e064f948` (v4.11.16): instalação repetida da ponte de gamepad não substitui wrapper próprio nem de terceiros.
+- `c3e98a09`: teste executável para repetição de instalação e propriedade externa.
+- `e14a4e46` (v4.11.17): falha no processamento do snapshot também limpa estado obsoleto.
+- `86411a4d`: teste para os dois caminhos de erro de leitura de gamepad.
+- Verificação isolada da ponte: reinstalação idempotente e proprietário externo preservado — PASSOU.
+- **Não encerrado:** INPUT-001, INPUT-003, INPUT-004 e INPUT-005 ainda não comprovam uma camada de entrada jogável unificada; INPUT-002, INPUT-006 e INPUT-007 requerem validação real; AUD-01 permanece ABERTA. Não confundir observação passiva com integração de teclado/mouse virtual.
