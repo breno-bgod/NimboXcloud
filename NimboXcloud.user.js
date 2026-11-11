@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.26
+// @version      4.12.27
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.23';
+  const VER = '4.12.27';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1758,7 +1758,6 @@
     { id: 'voice', label: 'Voz e acessórios', desc: 'Microfone e vibração' },
     { id: 'controls', label: 'Controles', desc: 'Entrada, gamepad e toque' },
     { id: 'region', label: 'Rede e região', desc: 'Servidores e disponibilidade' },
-    { id: 'remote', label: 'Remote Play', desc: 'Consoles vinculados à sua conta' },
     { id: 'advanced', label: 'Sistema', desc: 'Diagnóstico e ferramentas' }
   ];
   const PRESETS = [
@@ -3739,6 +3738,7 @@
         })));
       root.appendChild(gyroGroup.root);
 
+      /* NX_FROZEN_ANALOG_UI_START
       const inputPreview = group('Perfis de analógico',
         'Simulação por padrão. Aplicação experimental opcional com recarregamento e retorno imediato ao modo nativo.');
       inputPreview.add(setRow('Aplicar curvas ao jogo (experimental)',
@@ -3794,6 +3794,7 @@
           }).join(' | ') : 'Conecte e mova um controle';
       }, 'Valores normalizados de -1 a 1. Não afeta o jogo.'));
       root.appendChild(inputPreview.root);
+      NX_FROZEN_ANALOG_UI_END */
 
       const g3 = group('Acessórios');
       const micButtons = mk('div', 'display:flex;gap:6px;flex-wrap:wrap');
