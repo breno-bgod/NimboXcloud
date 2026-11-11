@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.7.8
+// @version      3.7.9
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.7.8';
+  const VER = '3.7.9';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1931,6 +1931,45 @@
     },
 
     stream: function (root) {
+      const healthGroup = group('Monitor de transmissão', 'Métricas reais do WebRTC e etapa de criação da sessão. Atualiza enquanto o painel estiver aberto.');
+      healthGroup.add(infoRow('Estado da sessão', function () {
+        const h = nxSessionHealth();
+        const labels = { streaming:'Recebendo vídeo', 'not-observed':'Sem tentativa capturada',
+          'network-error':'Falha de rede', 'access-rejected':'Acesso rejeitado',
+          'rate-limited':'Limite de requisições', 'server-error':'Erro do servidor',
+          'request-rejected':'Requisição rejeitada', 'session-accepted':'Sessão aceita', pending:'Aguardando' };
+        return labels[h.state] || h.state;
+      }));
+      const healthDetail = setRow('Diagnóstico', '', null, true);
+      healthGroup.add(healthDetail);
+      liveDesc(healthDetail, function () { return nxSessionHealth().explanation; });
+      healthGroup.add(infoRow('FPS recebido', function () {
+        const q = S.qos;
+        return q && (q.decodedFps != null || q.fps != null) ? String(q.decodedFps || q.fps || 0) : '—';
+      }));
+      healthGroup.add(infoRow('Bitrate recebido', function () {
+        const q = S.qos;
+        return q && Number.isFinite(q.kbps) ? (q.kbps / 1000).toFixed(2) + ' Mbps' : '—';
+      }));
+      healthGroup.add(infoRow('RTT WebRTC', function () {
+        return S.qos && Number.isFinite(S.qos.rtt) ? S.qos.rtt + ' ms' : '—';
+      }, 'Não equivale ao ping interno do jogo.'));
+      healthGroup.add(infoRow('Jitter', function () {
+        return S.qos && Number.isFinite(S.qos.jitter) ? S.qos.jitter + ' ms' : '—';
+      }));
+      healthGroup.add(infoRow('Perda de pacotes', function () {
+        const q = S.qos;
+        const n = q && (Number.isFinite(q.instLoss) ? q.instLoss : q.loss);
+        return Number.isFinite(n) ? n.toFixed(1) + '%' : '—';
+      }));
+      healthGroup.add(infoRow('Decodificação', function () {
+        return S.qos && Number.isFinite(S.qos.decodeMs) ? S.qos.decodeMs + ' ms/quadro' : '—';
+      }));
+      healthGroup.add(infoRow('Quadros descartados', function () {
+        return S.qos && Number.isFinite(S.qos.dropped) ? String(S.qos.dropped) : '—';
+      }));
+      healthGroup.add(infoRow('Codec', function () { return S.qos && S.qos.codec || '—'; }));
+      root.appendChild(healthGroup.root);
       root.appendChild(note('Alterações valem na próxima partida — não é preciso recarregar a página.'));
 
       const g1 = group('Data center');
