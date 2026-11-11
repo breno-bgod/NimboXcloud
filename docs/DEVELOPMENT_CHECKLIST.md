@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-028 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
+**Edição:** PM-029 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
 
 ## Regras permanentes
 
@@ -377,3 +377,9 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - **NET-006:** diagnóstico passivo implementado; recuperação automática NÃO implementada por ausência de API/contrato de reconexão seguro do xCloud. Não declarar código 100% concluído.
 - **AUD-03:** aberta; testes reais e suíte Node completa não confirmados.
 - **P02:** lógica de sincronização implementada, testes reais pendentes; **P01:** código pendente; **P00/P04–P07:** sem mudança.
+
+
+## P03 — revisão de negociação SDP (2026-11-11)
+- `af64755b` v4.11.27: NET-001 não reconstrói requisições de play já canceladas; NET-003 não injeta bitrate em seção de vídeo rejeitada e preserva quebras de linha SDP.
+- `dd9768ee`: regressões estáticas atualizadas; auditoria P03 ampliada.
+- **P03:** correções de código aplicadas em NET-001..005; NET-006 mantém diagnóstico passivo sem reconexão automática não verificada. AUD-03 aberta; suíte Node e testes reais não executados nesta etapa.
