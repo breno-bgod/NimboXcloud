@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.10.5
+// @version      4.10.6
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.10.5';
+  const VER = '4.10.6';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2085,8 +2085,11 @@
   }
   function nxHudSaveLayout(layout) {
     const clean = nxHudValidateLayout(layout);
-    setPref(NX_HUD_LAYOUT_KEY, JSON.stringify(clean));
-    return clean;
+    const value = JSON.stringify(clean);
+    try {
+      localStorage.setItem(NX_HUD_LAYOUT_KEY, value);
+      return localStorage.getItem(NX_HUD_LAYOUT_KEY) === value;
+    } catch (_) { return false; }
   }
   function nxHudNudge(layout, id, dx, dy) {
     if (!layout || !Object.prototype.hasOwnProperty.call(NX_HUD_DEFAULT, id) ||
@@ -2122,7 +2125,7 @@
         if (nxHudNudge(layout, id, delta[0] * step, delta[1] * step)) {
           node.style.left = layout[id][0] + '%';
           node.style.top = layout[id][1] + '%';
-          nxHudSaveLayout(layout);
+          if (!nxHudSaveLayout(layout)) toast('Não foi possível salvar a posição do HUD');
         }
       });
       node.addEventListener('pointerdown', function (e) {
@@ -2154,7 +2157,7 @@
           layout[id] = dragStart;
           node.style.left = dragStart[0] + '%';
           node.style.top = dragStart[1] + '%';
-        } else nxHudSaveLayout(layout);
+        } else if (!nxHudSaveLayout(layout)) toast('Não foi possível salvar a posição do HUD');
         dragStart = null;
         pointerStart = null;
       }
@@ -2166,7 +2169,7 @@
     outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
       'Acessibilidade: selecione um botão e use as setas para mover 1%; Shift + setas move 5%. Arrastos cancelados são revertidos.'));
     const reset = actBtn('Restaurar posições', function () {
-      nxHudSaveLayout(NX_HUD_DEFAULT);
+      if (!nxHudSaveLayout(NX_HUD_DEFAULT)) { toast('Não foi possível restaurar o layout'); return; }
       renderBody();
       toast('Layout de prévia restaurado');
     }, 'ghost');
