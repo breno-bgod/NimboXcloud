@@ -1086,6 +1086,7 @@
     }
   }, true);
   document.addEventListener('keydown', function (e) {
+    if (!nxPointerLockLegacyF9) return;
     if (!e.isTrusted || e.code !== 'F9' || e.repeat || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const active = document.activeElement;
     if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return;
