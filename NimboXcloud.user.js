@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.9.0
+// @version      3.9.1
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.9.0';
+  const VER = '3.9.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2184,6 +2184,15 @@
         return nxCoordState().mixed ? nxCoordState().activeSources.join(' + ') : 'Não detectadas';
       }, 'Janela de observação de 2 segundos; uso simultâneo pode ser intencional.'));
       coordination.add(infoRow('Interferência no jogo', function () { return 'Nenhuma (somente diagnóstico)'; }));
+      coordination.add(infoRow('Eventos recentes', function () { return String(nxInputEvents.length); },
+        'Histórico limitado aos 30 eventos mais recentes, sem registrar teclas ou coordenadas.'));
+      coordination.add(setRow('Limpar diagnóstico de entradas', 'Zera contadores e histórico desta sessão.',
+        actBtn('Limpar', function () {
+          nxResetInputDiagnostics();
+          nxSampleGamepads();
+          renderBody();
+          toast('Diagnóstico de entradas limpo');
+        }, 'ghost')));
       root.appendChild(coordination.root);
 
       const inputPreview = group('Perfis de analógico',
@@ -2796,6 +2805,12 @@
   // Instala no início do userscript, antes de a interface do site inicializar.
   nxInstallInputBridge();
   // Telemetria agregada de fontes de entrada; nunca envia ou injeta comandos.
+  const nxInputEvents = [];
+  const NX_INPUT_EVENTS_MAX = 30;
+  function nxInputEvent(kind, detail) {
+    nxInputEvents.push({ at: new Date().toISOString(), kind: kind, detail: String(detail || '').slice(0, 90) });
+    if (nxInputEvents.length > NX_INPUT_EVENTS_MAX) nxInputEvents.shift();
+  }
   const nxInputSources = {
     touch: { count: 0, lastAt: 0 }, mouse: { count: 0, lastAt: 0 },
     keyboard: { count: 0, lastAt: 0 }, gamepad: { count: 0, lastAt: 0 },
@@ -2808,11 +2823,13 @@
     if (now - source.lastAt < 100) return;
     source.count++;
     source.lastAt = now;
+    nxInputEvent('source', name);
     if (name !== 'gamepad') {
       const other = name === 'touch' ? 'mouse' : 'touch';
       if (now - nxInputSources[other].lastAt < 300 && now - nxInputSources.lastConflictAt > 500) {
         nxInputSources.simultaneous++;
         nxInputSources.lastConflictAt = now;
+        nxInputEvent('overlap', name + '/' + other);
       }
     }
   }
@@ -2853,29 +2870,48 @@
       note: 'Observação passiva; toque pode gerar eventos de mouse sintéticos. Sobreposição não comprova conflito.'
     };
   }
+  function nxResetInputDiagnostics() {
+    ['touch', 'mouse', 'keyboard', 'gamepad'].forEach(function (k) {
+      nxInputSources[k].count = 0;
+      nxInputSources[k].lastAt = 0;
+    });
+    nxInputSources.simultaneous = 0;
+    nxInputSources.lastConflictAt = 0;
+    nxInputEvents.length = 0;
+    nxGamepadMonitor.errors = 0;
+    nxGamepadMonitor.lastChange = null;
+    nxGamepadMonitor.lastSignature = undefined;
+  }
   const nxGamepadMonitor = { connected: 0, active: 0, snapshots: [], lastChange: null, errors: 0 };
   function nxSampleGamepads() {
     let pads;
     try { pads = nxNativeGetGamepads ? nxNativeGetGamepads() : []; }
-    catch (_) { nxGamepadMonitor.errors++; return; }
+    catch (err) { nxGamepadMonitor.errors++; nxInputEvent('gamepad-error', err && err.name || 'read'); return; }
     const next = [];
-    for (let i = 0; i < pads.length; i++) {
-      const pad = pads[i];
-      if (!pad || !pad.connected) continue;
-      const buttons = Array.from(pad.buttons || []);
-      const axes = Array.from(pad.axes || []);
-      const profile = nxInputProfiles[nxInputProfileName()];
-      next.push({
-        index: pad.index, mapping: pad.mapping || 'unknown',
-        buttons: buttons.length, axes: axes.length,
-        pressed: buttons.reduce(function (n, b) { return n + (b && b.pressed ? 1 : 0); }, 0),
-        movingAxes: axes.filter(function (v) { return Number.isFinite(v) && Math.abs(v) > 0.18; }).length,
-        axisPreview: axes.slice(0, 4).map(function (v) { return Math.round(nxPreviewAxis(v, profile) * 100) / 100; })
-      });
+    const profile = nxInputProfiles[nxInputProfileName()];
+    try {
+      for (let i = 0; i < (pads ? pads.length : 0); i++) {
+        const pad = pads[i];
+        if (!pad || !pad.connected) continue;
+        const buttons = Array.from(pad.buttons || []);
+        const axes = Array.from(pad.axes || []);
+        next.push({
+          index: pad.index, mapping: pad.mapping || 'unknown',
+          buttons: buttons.length, axes: axes.length,
+          pressed: buttons.reduce(function (n, b) { return n + (b && b.pressed ? 1 : 0); }, 0),
+          movingAxes: axes.filter(function (v) { return Number.isFinite(v) && Math.abs(v) > 0.18; }).length,
+          axisPreview: axes.slice(0, 4).map(function (v) { return Math.round(nxPreviewAxis(v, profile) * 100) / 100; })
+        });
+      }
+    } catch (err) {
+      nxGamepadMonitor.errors++;
+      nxInputEvent('gamepad-error', err && err.name || 'snapshot');
+      return;
     }
     const signature = next.map(function (p) { return p.index + ':' + p.mapping + ':' + p.buttons + ':' + p.axes; }).join('|');
     if (nxGamepadMonitor.lastSignature !== undefined && signature !== nxGamepadMonitor.lastSignature) {
       nxGamepadMonitor.lastChange = new Date().toISOString();
+      nxInputEvent('gamepad-connection', next.length + ' connected');
     }
     nxGamepadMonitor.lastSignature = signature;
     nxGamepadMonitor.connected = next.length;
@@ -2884,9 +2920,11 @@
     nxGamepadMonitor.snapshots = next;
   }
   function startInputDiagnostics() {
-    document.addEventListener('touchstart', function () { nxRecordInputSource('touch'); }, { passive: true, capture: true });
+    document.addEventListener('touchstart', function (e) {
+      if (e.isTrusted) nxRecordInputSource('touch');
+    }, { passive: true, capture: true });
     document.addEventListener('pointerdown', function (e) {
-      if (e.pointerType === 'mouse') nxRecordInputSource('mouse');
+      if (e.pointerType === 'mouse' && e.isTrusted) nxRecordInputSource('mouse');
     }, true);
     document.addEventListener('keydown', function (e) {
       if (e.isTrusted && !e.repeat) nxRecordInputSource('keyboard');
@@ -2945,6 +2983,7 @@
       url: location.href,
       inputCapabilities: inputCapabilities(),
       inputSources: nxInputSourcesReport(),
+      inputEventHistory: nxInputEvents.slice(),
       inputCoordination: nxCoordState(),
       gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback, foreignOverride: nxInputBridge.foreignOverride, restored: nxInputBridge.restored } },
       inputNegotiation: lastInputNegotiation,
