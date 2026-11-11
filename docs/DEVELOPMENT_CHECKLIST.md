@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-025 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
+**Edição:** PM-026 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
 
 ## Regras permanentes
 
@@ -352,3 +352,11 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `184b95ca` (v4.11.23): NET-005, limpa QoS obsoleto quando RTCPeerConnection encerra; escolhe inbound-rtp de vídeo com maior volume de bytes; prioriza candidate-pair selecionado válido e succeeded.
 - **P03 NET-005 PARCIAL:** diagnóstico mais robusto; falta avaliação do fluxo real e de reconexões. NET-001/002/003/004/006 continuam pendentes de revisão de código; AUD-03 aberta.
 - **P02:** lógica de sincronização e perfis implementada; compatibilidade real e aceite final pendentes. **P01:** código e testes finais pendentes. **P00/P04–P07:** sem alteração.
+
+
+## P03 — lote de confiabilidade WebRTC (2026-11-11)
+- `3b41b238` v4.11.24: evita editar SDP em rollback/descrições sem offer/answer; não altera SDP idêntico; não publica QoS após fechamento; libera trava de amostragem em rejeições.
+- `6649b531`: criado `tests/streaming-p03.test.cjs`.
+- `cf7747ba`: criado `docs/P03_STREAMING_AUDIT.md` com inventário de NET-001..006 e riscos.
+- **P03 EM ANDAMENTO:** NET-005 melhorias implementadas; NET-001/002/003/004/006 revisão e compatibilidade ainda pendentes; AUD-03 aberta. Sem teste real, sem alegação de aumento de bitrate ou FPS.
+- **P02:** sincronização implementada, validação real pendente; **P01:** código pendente; **P00/P04–P07:** inalterados.
