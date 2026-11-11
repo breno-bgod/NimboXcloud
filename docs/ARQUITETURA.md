@@ -40,3 +40,17 @@ Esses endpoints e estruturas internas podem mudar sem aviso. O script é não of
 
 ## Manutenção
 Ao alterar interceptações de rede, verificar se os dados esperados ainda existem; preservar o comportamento original quando possível; evitar conflitos com outros userscripts; validar a sintaxe e testar o fluxo de toque, gamepad, DeX, tela cheia e diferentes perfis.
+
+## NX UI e telemetria — reorganização de 2026-11-11
+
+- **Navegação:** a página inicial apresenta Transmissão, Controles, Personalização e Avançado como grupos recolhíveis. Cada grupo direciona para construtores de páginas já existentes; as rotinas de streaming, áudio, controles e diagnóstico não foram duplicadas nesta mudança.
+- **Dashboard:** acesso separado para os indicadores e gráficos existentes; uma visualização imersiva completa ainda depende de desenvolvimento e validação.
+- **NX Stream Monitor:** sobreposição opcional, independente do cartão principal e atualizada a partir de `S.qos`, alimentado pelo `getStats()` do WebRTC. Não executa novas sondagens de rede.
+- **Configuração:** `nx.monitor.settings.v1` mantém layout, campos, escala, opacidade, cor e posição; `nx.telemetry.overlay.v1` controla a ativação.
+- **Métricas:** FPS decodificado, RTT WebRTC, bitrate estimado da recepção, perda, resolução e jitter dependem da disponibilidade das estatísticas. RTT não é ping interno do jogo.
+- **Regiões:** bandeiras mapeadas para identificadores conhecidos de datacenter. `S.serverActual` pode não estar identificado. Seleção de região, endereço de saída e datacenter real são conceitos distintos.
+- **Comparação histórica:** `S.latencyByServer` guarda médias e amostras de datacenters realmente usados; não equivale a sondagem ativa de todos os servidores.
+- **Riscos a validar:** montagem em fullscreen, arrasto por toque, limite da viewport, acessibilidade por gamepad, sobreposição do HUD nativo e compatibilidade com mudanças de DOM do xCloud.
+
+**Estado:** código em desenvolvimento; verificação de presença no repositório não substitui teste autenticado em navegador real.
+
