@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.35
+// @version      4.12.36
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.35';
+  const VER = '4.12.36';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -145,11 +145,9 @@
     nxConsoleLabState.note = 'Perfil de experiência ativo; identidade nativa preservada para compatibilidade de sessão';
   } else if (nxConsoleLabProfile !== 'off') {
     try {
-      const ua = nxConsoleLabProfile === 'android'
-        ? (/Android/i.test(nxConsoleNativeUA) ? nxConsoleNativeUA : 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36 EdgA/140.0.0.0')
-        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0';
-      Object.defineProperty(navigator, 'userAgent', { configurable: true, get: function () { return ua; } });
-      nxConsoleLabState.applied = navigator.userAgent === ua;
+      // Nunca mascarar a identidade real do navegador: mobile deve permanecer mobile.
+      // A seleção é preferência de interface, não um spoof de User-Agent.
+      nxConsoleLabState.applied = false;
     } catch (err) { nxConsoleLabState.error = String(err && err.message || err); }
   }
   // Perfil central de experiência: apenas ajustes suportados pelo userscript.
@@ -1662,9 +1660,10 @@
   }
   function nxDockPanel() {
     if (!wrap || !cardEl) return;
-    const width = Math.min(580, Math.max(300, Math.round(innerWidth * (innerWidth < 1000 ? .74 : .43))));
+    const isMobile = /Android|iPhone|iPad/i.test(nxConsoleNativeUA) && !(window.matchMedia && matchMedia('(pointer:fine) and (min-width:1000px)').matches);
+    const width = isMobile ? Math.min(460, Math.max(260, Math.round(innerWidth * .68))) : Math.min(580, Math.max(340, Math.round(innerWidth * .43)));
     wrap.style.left='auto';wrap.style.right='0';wrap.style.top='0';wrap.style.bottom='0';
-    wrap.style.width=width+'px';wrap.style.maxWidth='100vw';wrap.style.height='100dvh';
+    wrap.style.width=Math.min(innerWidth,width)+'px';wrap.style.maxWidth='100vw';wrap.style.height='100dvh';
     wrap.style.alignItems='stretch';wrap.style.display='flex';
     cardEl.style.maxWidth='100%';cardEl.style.maxHeight='100dvh';cardEl.style.height='100dvh';
     cardEl.style.marginTop='0';cardEl.style.borderRadius='0';
@@ -5346,6 +5345,7 @@
     if (pillEl) {
       pillEl.style.opacity = '1';
       pillEl.style.pointerEvents = 'auto';
+      if (openUI) pillEl.style.display='none';
     }
 
     // Na primeira entrada no streaming, recolhe automaticamente para não atrapalhar os controles do jogo
