@@ -40,3 +40,15 @@ test('HUD-002 DOM discovery remains passive', () => {
   assert.doesNotMatch(probe, /\.style\.[a-z]+\s*=/);
   assert.doesNotMatch(probe, /\.dispatchEvent\(/);
 });
+
+test('HUD-005 drag events are owned by one pointer and released before capture loss', () => {
+  const begin = src.indexOf('  function nxHudEditor() {');
+  const end = src.indexOf('  // Aplica somente a prévia local', begin);
+  assert.ok(begin > 0 && end > begin);
+  const editor = src.slice(begin, end);
+  assert.match(editor, /let activePointerId = null;/);
+  assert.match(editor, /if \(!e\.isPrimary \|\| activePointerId !== null\) return;/);
+  assert.match(editor, /activePointerId = e\.pointerId;/);
+  assert.match(editor, /if \(activePointerId !== e\.pointerId \|\| !node\.hasPointerCapture\(e\.pointerId\)\) return;/);
+  assert.match(editor, /activePointerId = null;\s*if \(node\.hasPointerCapture\(e\.pointerId\)\) node\.releasePointerCapture/);
+});
