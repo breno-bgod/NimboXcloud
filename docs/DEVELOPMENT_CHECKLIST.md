@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-021 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
+**Edição:** PM-022 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
 
 ## Regras permanentes
 
@@ -318,3 +318,13 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `86411a4d`: regressão para ambos os tipos de erro de leitura.
 - `eb85e385`: AUD-01 revisada sem aprovação indevida.
 - **P01 ainda não concluído:** INPUT-001/003/004/005 precisam de integração funcional; INPUT-002/006/007 testes reais; AUD-01 ABERTA. P02 continua com HUD-003/004 pendentes; P00/P03–P07 inalterados.
+
+
+## Política de execução confirmada (2026-11-11)
+- **Implementar/corrigir código em todos os pacotes antes da etapa final de validação real** (Chrome/Edge, Android, controle físico e partidas). Não tratar código ausente como 'apenas teste'.
+- Testes automatizados de regressão podem acompanhar cada alteração de código; testes manuais reais ficam concentrados no fim.
+- `bcfb8b93`: v4.11.19, HUD-005 permite ajustar de 60% a 160% o tamanho dos botões **da prévia**, persistindo a configuração independentemente das posições.
+- `2e5bbf0c`: teste de persistência e limites da escala.
+- **P02 ainda precisa de código:** HUD-002 identificação robusta dos controles jogáveis; HUD-003 integração segura; HUD-004 movimentação real; HUD-005 escala e safe areas reais; HUD-006 perfis aplicados ao HUD real. HUD-007 e aceite real AUD-02 ficam para validação final.
+- **P01 ainda precisa de código:** INPUT-001/003/004/005, além de defeitos encontrados em INPUT-002/006. Não encerrar P01 por testes isolados.
+- **Demais pacotes:** P00 auditoria parcial; P03 NET-001..006/AUD-03; P04 MEDIA-001..006/AUD-04; P05 DIAG-001..010/AUD-05; P06 ACC-001..006/AUD-06; P07 REL-001..006/AUD-07.
