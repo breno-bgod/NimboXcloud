@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-026 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
+**Edição:** PM-027 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
 
 ## Regras permanentes
 
@@ -360,3 +360,11 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `cf7747ba`: criado `docs/P03_STREAMING_AUDIT.md` com inventário de NET-001..006 e riscos.
 - **P03 EM ANDAMENTO:** NET-005 melhorias implementadas; NET-001/002/003/004/006 revisão e compatibilidade ainda pendentes; AUD-03 aberta. Sem teste real, sem alegação de aumento de bitrate ou FPS.
 - **P02:** sincronização implementada, validação real pendente; **P01:** código pendente; **P00/P04–P07:** inalterados.
+
+
+## P03 — segurança ICE e requisições (2026-11-11)
+- `59d0e275` v4.11.25: NET-004 não descarta o último candidato ICE viável; NET-001 preserva signal/referrerPolicy/keepalive na requisição de play reconstruída.
+- `503e787a`: regressões escritas em `tests/streaming-p03.test.cjs`.
+- `9f6ec41f`: auditoria P03 ampliada.
+- **P03 continua em andamento:** NET-001 e NET-004 receberam correções concretas, NET-002/003/006 ainda precisam de revisão de código; NET-005 exige validação real; AUD-03 aberta.
+- **P02:** código automático implementado, teste real pendente. **P01:** código pendente. **P00/P04–P07:** sem mudança.
