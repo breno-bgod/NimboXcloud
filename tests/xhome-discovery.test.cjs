@@ -9,7 +9,7 @@ const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
 const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,startSession:nxRemoteStartSession};';
-function harness(fetchImpl, storageOverride) {
+function harness(fetchImpl, storageOverride, rtcClass) {
   const ctx = {
     AbortController, URL, Date, setTimeout, clearTimeout,
     fetch: fetchImpl, tabId: 'other', renderBody() {}, navigator:{language:'pt-BR'},
@@ -19,6 +19,7 @@ function harness(fetchImpl, storageOverride) {
     }
   };
   if(storageOverride) ctx.localStorage=storageOverride;
+  if(rtcClass) ctx.RTCPeerConnection=rtcClass;
   vm.createContext(ctx);
   vm.runInContext(code, ctx);
   return ctx.api;
@@ -287,4 +288,35 @@ test('session: terminal provisioning error fails safely',async()=>{
   assert.equal(n,3);
   assert.equal(api.state.sessionStatus,'failed');
   assert.match(api.state.error,/não provisionada/);
+});
+
+test('session: WebRTC offer is sent and SDP answer is applied',async()=>{
+  const calls=[],peers=[];
+  class FakePeer{
+    constructor(){this.localDescription=null;this.remoteDescription=null;this.closed=false;peers.push(this);}
+    addTransceiver(kind,options){assert.equal(options.direction,'recvonly');}
+    createDataChannel(){return {};}
+    async createOffer(){return {type:'offer',sdp:'v=0\\r\\n'};}
+    async setLocalDescription(offer){this.localDescription=offer;}
+    async setRemoteDescription(answer){this.remoteDescription=answer;}
+    close(){this.closed=true;}
+  }
+  const api=harness(async(url,opts)=>{
+    calls.push({url,opts});
+    if(calls.length===1)return ok(login);
+    if(calls.length===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    if(calls.length===3)return ok({state:'Provisioned'});
+    if(calls.length===4)return {ok:true,status:204};
+    return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0\\r\\n',status:'success'})});
+  },null,FakePeer);
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  assert.equal(calls.length,5);
+  assert.match(calls[3].url,/\/sdp$/);
+  assert.equal(calls[3].opts.method,'POST');
+  assert.equal(JSON.parse(calls[3].opts.body).messageType,'offer');
+  assert.equal(peers.length,1);
+  assert.equal(peers[0].remoteDescription.type,'answer');
+  assert.equal(api.state.sessionStatus,'sdp-ready');
+  assert.ok(!JSON.stringify(api.state).includes('TEST_BEARER'));
 });
