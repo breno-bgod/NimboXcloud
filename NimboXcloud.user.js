@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.3
+// @version      4.12.4
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.3';
+  const VER = '4.12.4';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -104,6 +104,8 @@
   const LS_SHARPNESS = 'xcu.sharpness';
   const LS_VIDEO_COLOR = 'xcu.videoColor';
   const LS_VIDEO_PROFILE = 'xcu.videoProfile.v1';
+  const LS_VIDEO_FIT = 'xcu.videoFit.v1';
+  const LS_VIDEO_ECO = 'xcu.videoEco.v1';
 
   // Laboratório Xbox: experimental, desativado por padrão. Apenas identidade JS local;
   // não altera cabeçalhos HTTP, autenticação, tokens, gamepad ou autorização do servidor.
@@ -2861,6 +2863,16 @@
         chips([{ k: '0', label: 'Padrão' }, { k: '1', label: 'Vívido' }, { k: '2', label: 'Intenso' }], getPref(LS_VIDEO_COLOR, '0'), function (k) {
           setPref(LS_VIDEO_PROFILE, 'custom'); setPref(LS_VIDEO_COLOR, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
         }), true));
+      g2.add(setRow('Enquadramento', 'Original preserva o site; Conter evita cortes; Preencher ocupa a tela, podendo cortar bordas.',
+        chips([{ k: 'original', label: 'Original' }, { k: 'contain', label: 'Conter' }, { k: 'cover', label: 'Preencher' }], getPref(LS_VIDEO_FIT, 'original'), function (k) {
+          setPref(LS_VIDEO_FIT, k); applyVideoFit(activeStreamVideo()); renderBody();
+        }), true));
+      g2.add(setRow('Tela cheia', 'Solicita a Fullscreen API apenas por ação do usuário.',
+        actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'ghost')));
+      g2.add(setRow('Economia de recursos', 'Desativa filtros visuais locais enquanto a aba estiver oculta; não altera o stream ou FPS do servidor.',
+        chips([{ k: '1', label: 'Ativa' }, { k: '0', label: 'Desativada' }], getPref(LS_VIDEO_ECO, '1'), function (k) {
+          setPref(LS_VIDEO_ECO, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
+        }), true));
       root.appendChild(g2.root);
 
       const g3 = group('Captura');
@@ -4579,8 +4591,37 @@
     }
     nxVideoFilters.delete(video);
   }
+  const nxVideoFits = new WeakMap();
+  function restoreVideoFit(video) {
+    if (!video) return;
+    const state = nxVideoFits.get(video);
+    if (!state) return;
+    if (video.style.objectFit === state.applied) {
+      if (state.original) video.style.setProperty('object-fit', state.original, state.priority);
+      else video.style.removeProperty('object-fit');
+    }
+    nxVideoFits.delete(video);
+  }
+  function applyVideoFit(video) {
+    if (!video) return;
+    const fit = getPref(LS_VIDEO_FIT, 'original');
+    if (fit !== 'contain' && fit !== 'cover') { restoreVideoFit(video); return; }
+    let state = nxVideoFits.get(video);
+    if (state && video.style.objectFit !== state.applied) { nxVideoFits.delete(video); return; }
+    if (!state) {
+      state = { original: video.style.getPropertyValue('object-fit'),
+        priority: video.style.getPropertyPriority('object-fit'), applied: fit };
+      nxVideoFits.set(video, state);
+    }
+    state.applied = fit;
+    video.style.setProperty('object-fit', fit, state.priority);
+  }
   function applyVideoAdjustments(video) {
     if (!video) return;
+    if (getPref(LS_VIDEO_ECO, '1') === '1' && document.visibilityState === 'hidden') {
+      restoreVideoAdjustments(video);
+      return;
+    }
     const profile = getPref(LS_VIDEO_PROFILE, 'custom');
     const color = profile === 'original' ? 0 : profile === 'balanced' ? 1 : profile === 'vivid' ? 2 :
       Math.max(0, Math.min(2, Number(getPref(LS_VIDEO_COLOR, '0')) || 0));
@@ -4804,8 +4845,10 @@
       const video = activeStreamVideo();
       if (video !== lastAdjustedVideo) {
         restoreVideoAdjustments(lastAdjustedVideo);
+        restoreVideoFit(lastAdjustedVideo);
         lastAdjustedVideo = video;
         applyVideoAdjustments(video);
+        applyVideoFit(video);
       } else if (video && !nxVideoFilters.has(video) &&
                  (['balanced', 'vivid'].includes(getPref(LS_VIDEO_PROFILE, 'custom')) ||
                   (getPref(LS_VIDEO_PROFILE, 'custom') === 'custom' &&
@@ -4814,6 +4857,10 @@
         applyVideoAdjustments(video);
       }
     }, 2500);
+    document.addEventListener('visibilitychange', function () {
+      const video = activeStreamVideo();
+      if (video) applyVideoAdjustments(video);
+    });
     buildUI();
     update();
     tick();
