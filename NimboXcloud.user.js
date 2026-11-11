@@ -1,14 +1,13 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.29
+// @version      4.12.30
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -58,12 +57,13894 @@
  *   serviço; o uso é por conta e risco do usuário.
  */
 
+/* NX TOUCH HUD · módulo integrado ao userscript principal (fonte: modules/NimboXcloud-Touch-HUD.user.js) */
+/* Extraído do módulo de HUD NimboPlay. Origem do projeto: Better xCloud (redphx, MIT)
+   e Even Better xCloud (Endymi0n74). Não inclui seus serviços de entrada ou renderização. */
+(function(){'use strict';
+/*
+NimboPlay is a fork of Better xCloud by redphx.
+Original project: https://github.com/redphx/better-xcloud
+The upstream authorship and MIT license are retained.
+
+MIT License
+
+Copyright (c) redphx
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+*/
+const VERSION='1.1.0';
+if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
+const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
+// Separate namespace; read existing HUD data once, without overwriting the fork.
+const localStorage={
+ getItem(key){try{return window.localStorage.getItem('NimboTouch.'+key)??window.localStorage.getItem(key);}catch{return null;}},
+ setItem(key,value){window.localStorage.setItem('NimboTouch.'+key,value);},
+ removeItem(key){window.localStorage.removeItem('NimboTouch.'+key);}
+};
+const errors=[];
+const NimboDiag={add(scope,message,detail){errors.push({scope,message,detail:String(detail||''),at:Date.now()});if(errors.length>20)errors.shift();console.warn('[Nimbo Touch]',message,detail||'');},check(){return [];}};
+const NimboStore={writeDebounced(key,value){localStorage.setItem(key,value);}};
+function eventBus(){const listeners=new Map();return {on(name,fn){if(!listeners.has(name))listeners.set(name,new Set());listeners.get(name).add(fn);},emit(name,data){for(const fn of listeners.get(name)||[])fn(data);}};}
+const BxEventBus={Script:eventBus(),Stream:eventBus()};
+const BxEvent={XCLOUD_POLLING_MODE_CHANGED:'nimbo-touch-unused-polling'};
+const STATES={isPlaying:false};
+const api={streamSession:null,inputChannel:null};
+let ui=null,nimboTransport=null,nimboCandidate=null,nimboGameStream=null;
+let nimboFiberRoot=null,nimboFiberQueue=[],nimboFiberIndex=0;
+const nimboModules=new Set();
+function nativeDialogVisible(){
+ for(const node of document.querySelectorAll('#dialog-root [role="dialog"],#game-stream [role="dialog"],#gamepass-dialog-root [role="dialog"]')){
+  let hidden=false;
+  for(let p=node;p;p=p.parentElement){const c=getComputedStyle(p);if(p.hidden||p.getAttribute('aria-hidden')==='true'||c.display==='none'||c.visibility==='hidden'||c.opacity==='0'){hidden=true;break;}}
+  if(!hidden){const r=node.getBoundingClientRect();if(r.width>0&&r.height>0)return true;}
+ }
+ return false;
+}
+function nimboCapture(raw){
+ if(!raw||raw.isShutdown||typeof raw.onVirtualMouseInput!=='function'||typeof raw.updateInputConfigurationAsync!=='function')return false;
+ nimboCandidate=raw;
+ if(raw.connectionState!=='Connected')return false;
+ if(nimboTransport?.raw===raw)return true;
+ const old=nimboTransport;
+ if(ui)ui.stop();
+ if(old)old.dispose().catch(e=>NimboDiag.add('sessão','Falha ao finalizar entrada',e.message));
+ nimboTransport=new NimboXboxTransport(raw);
+ api.streamSession=nimboTransport.facade;api.inputChannel=nimboTransport.channel;
+ STATES.isPlaying=true;
+ if(ui){ui.mount();touchPanel.refresh();}
+ return true;
+}
+
+
+class NimboXboxTransport {
+  constructor(raw) {
+    this.raw=raw;this.previous=null;this.applied=null;this.queue=Promise.resolve();this.buttons=0;
+    this.hasInput=false;this.held=new Map();this.flushTimer=null;this.disposed=false;
+    this.channel={
+      queueMouseInput:reading=>this.mouse(reading),
+      sendKeyboardInput:reading=>this.keyboard(reading)
+    };
+    const service=this;
+    this.facade=new Proxy(raw,{get(target,key){
+      if(key==='updateInputConfigurationAsync')return options=>service.configure(options);
+      const value=Reflect.get(target,key,target);
+      return typeof value==='function'?value.bind(target):value;
+    }});
+  }
+  connected(){return !this.disposed&&!this.raw.isShutdown&&this.raw.connectionState==='Connected';}
+  assertConnected(){if(!this.connected())throw Error('A sessão não está conectada.');}
+  serialize(task){const result=this.queue.catch(()=>{}).then(task);this.queue=result;return result;}
+  configure(options){
+    return this.serialize(async()=>{
+      this.assertConnected();
+      // As opções nativas não são convertidas em toque forçado.
+      const restore=options.enableKeyboardInput===false&&options.enableMouseInput===false&&options.enableTouchInput===true;
+      if(restore&&this.previous)return this.restoreNow();
+      const activating=options.enableMouseInput===true&&options.enableKeyboardInput===true;
+      if(activating&&!this.previous){
+        const config=this.raw.configuration.inputConfiguration;
+        this.previous=Object.fromEntries(['enableMouseInput','enableKeyboardInput','enableTouchInput','enableAbsoluteMouse'].map(key=>[key,config[key]]));
+      }
+      // Keyboard packets are translated directly, never dispatched to the page.
+      // Keep the native physical-keyboard configuration at its original value.
+      const applied={...options};
+      if(activating){
+        applied.enableKeyboardInput=this.previous.enableKeyboardInput;
+        // O toque nativo permanece como o Xbox o deixou. Desligá-lo deixava a sessão sem
+        // nenhuma entrada por toque quando a HUD do Nimbo não estava visível.
+        applied.enableTouchInput=typeof this.previous.enableTouchInput==='boolean'?this.previous.enableTouchInput:true;
+        this.applied={...applied};
+      }
+      try{return await nimboApplyInput(this.raw,applied);}
+      catch(error){if(activating)try{await this.restoreNow();}catch{}throw error;}
+    });
+  }
+  async restoreNow(){
+    if(!this.previous)return;
+    const saved=this.previous,applied=this.applied||{},current=this.raw.configuration?.inputConfiguration||{},restore={};
+    this.release();
+    // Se o Xbox mudou um campo enquanto a HUD estava ativa, respeita a mudança.
+    for(const key of Object.keys(saved))if(Object.hasOwn(applied,key)&&Object.is(current[key],applied[key]))restore[key]=saved[key];
+    if(!this.raw.isShutdown&&Object.keys(restore).length)await nimboApplyInput(this.raw,restore);
+    this.previous=null;this.applied=null;
+  }
+  restore(){return this.serialize(()=>this.restoreNow());}
+  mouse(reading){
+    this.assertConnected();
+    for(const key of ['X','Y','WheelX','WheelY','Buttons'])if(!Number.isFinite(reading[key]))throw Error('Leitura de mouse inválida.');
+    if(reading.Type!==0)throw Error('Este adaptador usa somente mouse relativo.');
+    this.hasInput=true;this.buttons=reading.Buttons&31;
+    this.raw.onVirtualMouseInput({...reading,Buttons:this.buttons});
+  }
+  nativeChannel(){return this.raw.stream?.inputChannel;}
+  keyboard(reading){
+    this.assertConnected();const channel=this.nativeChannel();
+    if(typeof channel?.sendKeyboardInput!=='function')throw Error('Canal de teclado indisponível nesta sessão.');
+    if(!reading||!Number.isFinite(reading.windowsKey)||!Number.isFinite(reading.reportType))throw Error('O SDK não traduziu esta tecla.');
+    channel.sendKeyboardInput(reading);this.hasInput=true;
+    if(reading.isPressed)this.held.set(reading.windowsKey,{...reading});else this.held.delete(reading.windowsKey);
+    // V2 updates keyboard state without flushing; flush via the official mouse
+    // path after its minimum frame interval, preserving held mouse buttons.
+    this.flushKeyboard();
+  }
+  flushKeyboard(){
+    if(this.flushTimer!==null)return;
+    this.flushTimer=setTimeout(()=>{this.flushTimer=null;if(this.connected())try{
+      this.raw.onVirtualMouseInput({Type:0,X:0,Y:0,Buttons:this.buttons,WheelX:0,WheelY:0});
+    }catch{}},Math.max(9,Math.min(100,this.raw.configuration?.inputConfiguration?.minTimeBetweenInputFramesMs||9)));
+  }
+  sendKey(code,pressed,keysDown){
+    const manager=this.raw.stream?.inputManager;
+    if(typeof manager?.getKeyboardReading!=='function')throw Error('Tradutor de teclado do SDK indisponível.');
+    const special={Space:' ',ShiftLeft:'Shift',ControlLeft:'Control',AltLeft:'Alt',Tab:'Tab',Enter:'Enter',Escape:'Escape',Backspace:'Backspace',ArrowUp:'ArrowUp',ArrowDown:'ArrowDown',ArrowLeft:'ArrowLeft',ArrowRight:'ArrowRight'};
+    const key=special[code]??(/^Key[A-Z]$/.test(code)?code.slice(3).toLowerCase():/^Digit[0-9]$/.test(code)?code.slice(5):/^F(?:[1-9]|1[0-2])$/.test(code)?code:null);
+    if(key===null)throw Error('Tecla inválida.');
+    const event=new KeyboardEvent(pressed?'keydown':'keyup',{code,key,shiftKey:keysDown.has('ShiftLeft'),ctrlKey:keysDown.has('ControlLeft'),altKey:keysDown.has('AltLeft'),repeat:false});
+    // Construct and translate only: no synthetic keyboard events reach the DOM.
+    this.keyboard(manager.getKeyboardReading(event));
+  }
+  release(){
+    clearTimeout(this.flushTimer);this.flushTimer=null;
+    if(!this.hasInput&&!this.held.size&&!this.buttons)return;
+    const channel=this.nativeChannel();
+    for(const reading of this.held.values())try{channel?.sendKeyboardInput({...reading,isPressed:false});}catch{}
+    this.held.clear();this.buttons=0;this.hasInput=false;
+    if(!this.raw.isShutdown)try{this.raw.onVirtualMouseInput({Type:0,X:0,Y:0,Buttons:0,WheelX:0,WheelY:0});}catch{}
+  }
+  async dispose(){if(this.disposed)return;try{await this.restore();}finally{this.release();this.disposed=true;}}
+}
+function nimboApplyInput(raw,options){return raw.updateInputConfigurationAsync(options);}
+
+
+const touchPanel={isOpen:false,element:null,launcher:null,
+ mount(){
+  if(this.element)return;
+  const style=document.createElement('style');style.textContent=`
+#nimbo-touch-panel,#nimbo-touch-launcher{font:14px system-ui,sans-serif;box-sizing:border-box;color:#f4f4f4}
+#nimbo-touch-launcher{position:fixed;top:8px;right:8px;z-index:10000;border:1px solid #f3cf55;border-radius:12px;background:#202126;padding:10px 14px;touch-action:manipulation;cursor:pointer}
+#nimbo-touch-panel{position:fixed;inset:12px;max-width:620px;max-height:calc(100dvh - 24px);margin:auto;overflow:auto;z-index:10010;background:#181b20f5;border:1px solid #66604a;border-radius:16px;padding:18px;overscroll-behavior:contain}
+html:has(#__xcu_panel__) #nimbo-touch-launcher{display:none!important}\n#nimbo-touch-panel[hidden]{display:none!important}#nimbo-touch-panel h2{margin:0;font-size:20px}#nimbo-touch-panel p{line-height:1.5;color:#cdd0d5}
+#nimbo-touch-panel button,#nimbo-touch-panel select{min-height:44px;border:1px solid #555b66;background:#292d35;color:#fff;border-radius:8px;padding:8px 12px;font:inherit}
+#nimbo-touch-panel .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0}#nimbo-touch-panel label{display:block;margin:12px 0}#nimbo-touch-panel input[type=range]{width:100%;accent-color:#ffd43b}
+#nimbo-touch-panel .primary{background:#ffd43b;color:#171a20;border-color:#ffd43b}#nimbo-touch-panel pre{white-space:pre-wrap;font-size:12px;max-height:120px;overflow:auto}
+#nimbo-touch-root button{font-family:system-ui,sans-serif}#nimbo-touch-root .forma-save{background:#ffd43b;color:#171a20}
+#nimbo-touch-root [hidden]{display:none!important}
+`;document.documentElement.append(style);
+  this.launcher=document.createElement('button');this.launcher.id='nimbo-touch-launcher';this.launcher.textContent='Nimbo Touch';this.launcher.type='button';this.launcher.onclick=()=>this.isOpen?this.close():this.open();
+  this.element=document.createElement('section');this.element.id='nimbo-touch-panel';this.element.hidden=true;this.element.setAttribute('role','dialog');this.element.setAttribute('aria-label','Nimbo Touch — touchpad e HUD');
+  const h=document.createElement('h2');h.textContent='Nimbo Touch';this.element.append(h);
+  this.status=document.createElement('p');this.status.setAttribute('role','status');this.element.append(this.status);
+  const row=document.createElement('div');row.className='row';
+  const button=(text,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=fn;row.append(b);return b;};
+  this.toggle=button('Ativar touchpad',async()=>{if(ui.wanted){ui.stop();this.refresh();return;}if(!nimboTransport?.connected()){this.status.textContent='Sessão ainda não encontrada. Abra um jogo e aguarde.';return;}this.close();await ui.start();this.refresh();});this.toggle.className='primary';
+  button('Editar HUD',()=>{this.close();ui.mount();ui.editHud();});
+  button('Fechar',()=>this.close());this.element.append(row);
+  const profileLabel=document.createElement('label');profileLabel.textContent='Perfil da HUD';this.profiles=document.createElement('select');this.profiles.style.cssText='display:block;width:100%;margin-top:8px';this.profiles.onchange=()=>{ui.switchProfile(this.profiles.value);this.refresh();};profileLabel.append(this.profiles);this.element.append(profileLabel);
+  const duplicate=document.createElement('button');duplicate.textContent='Duplicar perfil';duplicate.onclick=()=>{const name=prompt('Nome do novo perfil:');if(name?.trim()){ui.duplicateProfile(name.trim().slice(0,60));this.refresh();}};this.element.append(duplicate);
+  for(const [key,title,min,max]of [['sensitivity','Velocidade do touchpad',.05,50],['gainX','Sensibilidade horizontal',.1,5],['gainY','Sensibilidade vertical',.1,5]]){
+   const label=document.createElement('label'),caption=document.createElement('span'),slider=document.createElement('input');slider.type='range';slider.min=min;slider.max=max;slider.step=key==='sensitivity'?'.05':'.1';slider.value=ui[key];caption.textContent=title+': '+Number(ui[key]).toFixed(1);slider.setAttribute('aria-label',title);
+   slider.oninput=()=>{ui[key]=Number(slider.value);caption.textContent=title+': '+ui[key].toFixed(1);};
+   slider.onchange=()=>{try{localStorage.setItem('BxTouchpad.motion.v7',JSON.stringify({version:1,touchGain:ui.sensitivity,touchX:ui.gainX,touchY:ui.gainY}));}catch(e){NimboDiag.add('dados','Não foi possível salvar sensibilidade',e.message);}};label.append(caption,slider);this.element.append(label);
+  }
+  const note=document.createElement('p');note.textContent='No editor, arraste os controles, adicione uma tecla vazia e escolha seu comando, tamanho e opacidade. O joystick envia WASD. O jogo precisa aceitar mouse e teclado.';this.element.append(note);
+  const diag=document.createElement('button');diag.textContent='Mostrar diagnóstico';this.report=document.createElement('pre');this.report.hidden=true;diag.onclick=()=>{this.report.hidden=!this.report.hidden;this.report.textContent=JSON.stringify(diagnostic(),null,2);};this.element.append(diag,this.report);
+  this.reparent();this.refresh();
+ },
+ reparent(){const host=document.fullscreenElement||document.documentElement;for(const el of [this.element,this.launcher])if(el&&el.parentElement!==host)host.append(el);},
+ open(){if(!ui||ui.editingHud)return;this.mount();this.isOpen=true;ui.pause('Configurações do touchpad');this.element.hidden=false;this.reparent();this.refresh();},
+ close(){this.isOpen=false;if(this.element)this.element.hidden=true;ui?.ensureResumeWatch();},
+ refresh(){if(!ui||!this.element)return;this.status.textContent=nimboTransport?.connected()?(ui.wanted?'Touchpad ligado'+(ui.active?'':' · pausado enquanto o painel estiver aberto'):'Sessão conectada · touchpad desligado'):'Aguardando sessão do xCloud. Você já pode editar a HUD.';this.toggle.textContent=ui.wanted?'Desativar touchpad':'Ativar touchpad';this.launcher.textContent=ui.wanted?'Touchpad ligado':'Nimbo Touch';
+ const signature=JSON.stringify(ui.profileStore?.profiles.map(p=>[p.id,p.name]));if(signature!==this.signature){this.signature=signature;this.profiles.replaceChildren();for(const p of ui.profileStore?.profiles||[]){const opt=document.createElement('option');opt.value=p.id;opt.textContent=p.name;this.profiles.append(opt);}}this.profiles.value=ui.profileStore?.activeId||'';
+ }
+};
+function diagnostic(){return {version:VERSION,connected:!!nimboTransport?.connected(),wanted:!!ui?.wanted,active:!!ui?.active,editing:!!ui?.editingHud,hidden:document.hidden,pointerLock:!!document.pointerLockElement,lastTouch:ui?.lastTouchEvent,viewport:[innerWidth,innerHeight],errors:errors.map(e=>({...e,detail:e.detail.replace(/https?:\/\/\S+/g,'[URL]')}))};}
+
+
+class BxTouchpad {
+  constructor() {
+    this.active = false;
+    this.loadBindings();
+    this.busy = false;
+    this.epoch = 0;
+    this.buttons = 0;
+    this.pointers = new Map();
+    this.remainder = [0, 0];
+    this.sensitivity = 1;
+    try { const n = Number(localStorage.getItem('BxTouchpad.sensitivity')); if (n >= .1 && n <= 5) this.sensitivity = n; } catch {}
+    BxEventBus.Stream.on('state.playing', () => this.mount());
+    BxEventBus.Stream.on('state.stopped', () => this.destroy());
+    BxEventBus.Script.on('dialog.shown', () => this.pause('Painel aberto'));
+    window.addEventListener('blur', () => this.pause('Janela sem foco'));
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.pause('Página oculta'); });
+    document.addEventListener('fullscreenchange', () => this.reparent());
+  }
+  static keyOptions() {
+    const codes = ['Mouse0','Mouse2','Space','ShiftLeft','ControlLeft','AltLeft','Tab','Enter','Escape','Backspace', 'ArrowUp','ArrowDown','ArrowLeft','ArrowRight'];
+    for (let i = 65; i <= 90; i++) codes.push('Key' + String.fromCharCode(i));
+    for (let i = 0; i <= 9; i++) codes.push('Digit' + i);
+    for (let i = 1; i <= 12; i++) codes.push('F' + i);
+    return codes;
+  }
+  loadBindings() {
+    this.keysDown = new Set();
+    this.buttonPage = 0;
+    this.bindings = [
+      {label:'W', code:'KeyW', slot:'w'}, {label:'A',code:'KeyA',slot:'a'},
+      {label:'S',code:'KeyS',slot:'s'}, {label:'D',code:'KeyD',slot:'d'},
+      {label:'Atirar',code:'Mouse0',slot:'fire'}, {label:'Mirar',code:'Mouse2',slot:'aim'},
+      {label:'Pular',code:'Space'}, {label:'Correr',code:'ShiftLeft'},
+      {label:'Agachar',code:'ControlLeft'}, {label:'Recarregar',code:'KeyR'},
+      {label:'Interagir',code:'KeyF'}, {label:'Trocar arma',code:'Digit2'},
+      {label:'Granada',code:'KeyG'}, {label:'Mapa',code:'Tab'}
+    ];
+    try {
+      const saved = JSON.parse(localStorage.getItem('BxTouchpad.bindings.v2') || 'null');
+      const slots = ['w','a','s','d','fire','aim'];
+      if (Array.isArray(saved) && saved.length >= 6 && saved.length <= 26 &&
+          saved.every(b => b && typeof b.label === 'string' && b.label.length <= 24 && BxTouchpad.keyOptions().includes(b.code)) &&
+          slots.every(slot => saved.filter(b => b.slot === slot).length === 1) &&
+          saved.every(b => !b.slot || slots.includes(b.slot))) this.bindings = saved;
+    } catch {}
+  }
+  // Feed the SDK's own DOM keyboard translator; do not guess its wire format.
+  // Observe the exposed channel to detect synchronous forwarding, and stop with
+  // an explicit error when the client rejects synthetic keys.
+  sendKey(code,pressed){if(!nimboTransport)throw Error('Sessão não encontrada');nimboTransport.sendKey(code,pressed,this.keysDown);}
+  syncKeys(wanted) {
+    // Releases first, presses second; shared mappings stay held until all fingers lift.
+    const old = new Set(this.keysDown);
+    this.keysDown = new Set(wanted);
+    try {
+      for (const code of old) if (!wanted.has(code)) this.sendKey(code, false);
+      for (const code of wanted) if (!old.has(code)) this.sendKey(code, true);
+    } catch (error) {
+      // Include previous and newly requested keys in cleanup after partial failure.
+      this.keysDown = new Set([...old, ...wanted]);
+      throw error;
+    }
+  }
+  releaseKeys() {
+    const held = [...this.keysDown]; this.keysDown.clear();
+    for (const code of held) try { this.sendKey(code, false); } catch (error) { console.warn('[BxTouchpad] Key release:',code,error.message); }
+  }
+  renderMappedButtons() {
+    if (!this.mapped) return;
+    this.mapped.replaceChildren();
+    const extras = this.bindings.filter(b => !b.slot);
+    const pages = Math.max(1, Math.ceil(extras.length / 4));
+    this.buttonPage %= pages;
+    if (this.pageButton) this.pageButton.textContent = `Botões ${this.buttonPage + 1}/${pages}`;
+    for (const binding of this.bindings) {
+      const index = extras.indexOf(binding);
+      if (!binding.slot && Math.floor(index / 4) !== this.buttonPage) continue;
+      const button = document.createElement('button'); button.className = 'mapped-button';
+      button.textContent = binding.label; button.title = binding.code;
+      if (binding.slot) button.dataset.slot = binding.slot;
+      this.bindSurface(button, 'binding', binding.code);
+      this.mapped.appendChild(button);
+    }
+  }
+  editBindings() {
+    this.stop();
+    if (this.editor) return;
+    const panel = this.editor = document.createElement('div'); panel.className = 'mapping-editor';
+    const title = document.createElement('h3'); title.textContent = 'Mapear botões';
+    const note = document.createElement('p'); note.textContent = 'Segure para manter a tecla pressionada. Ajuste as teclas conforme as configurações do jogo. As alterações ficam salvas neste navegador.';
+    const rows = document.createElement('div');
+    let draft = this.bindings.map(b => ({...b}));
+    const draw = () => {
+      rows.replaceChildren();
+      draft.forEach((binding, index) => {
+        const row = document.createElement('div'); row.className = 'mapping-row';
+        const name = document.createElement('input'); name.type = 'text'; name.maxLength = 24; name.value = binding.label; name.setAttribute('aria-label','Nome do botão');
+        name.oninput = () => { binding.label = name.value; };
+        const select = document.createElement('select'); select.setAttribute('aria-label','Tecla de ' + binding.label);
+        for (const code of BxTouchpad.keyOptions()) { const option = document.createElement('option'); option.value = code; option.textContent = code; select.append(option); }
+        select.value = binding.code; select.onchange = () => { binding.code = select.value; };
+        row.append(name,select);
+        if (!binding.slot) { const remove = document.createElement('button'); remove.textContent = 'Remover'; remove.onclick = () => { draft.splice(index,1); draw(); }; row.append(remove); }
+        rows.append(row);
+      });
+    };
+    draw();
+    const add = document.createElement('button'); add.textContent = '+ Botão'; add.onclick = () => { if (draft.length < 26) { draft.push({label:'Novo botão',code:'KeyE'}); draw(); } };
+    const save = document.createElement('button'); save.textContent = 'Salvar'; save.onclick = () => {
+      draft = draft.map(b => ({...b,label:b.label.trim() || b.code}));
+      try { localStorage.setItem('BxTouchpad.bindings.v2',JSON.stringify(draft)); }
+      catch { note.textContent = 'Não foi possível salvar. Libere o armazenamento do navegador e tente novamente.'; return; }
+      this.bindings = draft; this.renderMappedButtons(); panel.remove(); this.editor = null;
+    };
+    const cancel = document.createElement('button'); cancel.textContent = 'Cancelar'; cancel.onclick = () => { panel.remove(); this.editor = null; };
+    panel.append(title,note,rows,add,save,cancel); this.root.append(panel);
+  }
+
+  send(x = 0, y = 0) {
+    const channel = api?.inputChannel;
+    if (typeof channel?.queueMouseInput !== 'function') throw Error('Canal de mouse indisponível. Os patches podem estar incompatíveis com o site.');
+    channel.queueMouseInput({Type: 0, X: x, Y: y, Buttons: this.buttons, WheelX: 0, WheelY: 0});
+  }
+  move(dx, dy) {
+    this.remainder[0] += dx * this.sensitivity;
+    this.remainder[1] += dy * this.sensitivity;
+    const x = Math.trunc(this.remainder[0]), y = Math.trunc(this.remainder[1]);
+    this.remainder[0] -= x; this.remainder[1] -= y;
+    // Split large movements rather than silently dropping distance.
+    let rx = x, ry = y;
+    while (rx || ry) { const sx = Math.max(-32767, Math.min(32767, rx)), sy = Math.max(-32767, Math.min(32767, ry)); this.send(sx, sy); rx -= sx; ry -= sy; }
+  }
+  async start() {
+    if (this.busy || this.active) return;
+    if (!nimboTransport?.connected()) { this.status.textContent="Abra um jogo; aguardando a conexão com a sessão."; return; }
+    if (typeof api.inputChannel?.queueMouseInput !== 'function' || typeof api.streamSession?.updateInputConfigurationAsync !== 'function') { this.status.textContent = 'Canal indisponível; verifique a compatibilidade dos patches.'; return; }
+    this.busy = true;
+    const epoch = ++this.epoch;
+    const session = api.streamSession;
+    try {
+      await session.updateInputConfigurationAsync({enableKeyboardInput: true, enableMouseInput: true, enableAbsoluteMouse: false, enableTouchInput: false});
+      if (epoch !== this.epoch || !this.root) return;
+      this.active = true; this.buttons = 0; this.remainder = [0, 0]; this.send();
+      this.pad.hidden = false; this.mapped.hidden = false;
+      this.toggle.textContent = 'Pausar touchpad';
+      this.status.textContent = 'Ativo — WASD à esquerda; arraste à direita. Teclado virtual experimental.';
+    } catch (error) { this.handleInputFailure(error); if (this.status) this.status.textContent = 'Falha temporária: ' + error.message; }
+    finally { this.busy = false; }
+  }
+  stop() {
+    ++this.epoch;
+    this.releaseKeys();
+    if (this.active) { this.buttons = 0; try { this.send(); } catch {} }
+    this.active = false; this.pointers.clear(); this.remainder = [0, 0];
+    if (this.pad) { this.pad.hidden = true; this.mapped.hidden = true; this.toggle.textContent = 'Ativar touchpad'; this.status.textContent = 'Pausado — comandos de mouse soltos.'; }
+    // Keep native input configured until the stream ends; changing it during a
+    // pending activation can race the streaming SDK. No input is sent while paused.
+  }
+  bindSurface(element, kind, code = null) {
+    element.addEventListener('pointerdown', e => {
+      if (!this.active || e.pointerType !== 'touch') return;
+      e.preventDefault(); e.stopPropagation();
+      if (kind === 'pad' && [...this.pointers.values()].some(p => p.kind === 'pad')) return;
+      element.setPointerCapture(e.pointerId);
+      this.pointers.set(e.pointerId, {kind, code, x: e.clientX, y: e.clientY});
+      this.updateButtons();
+    });
+    element.addEventListener('pointermove', e => {
+      const p = this.pointers.get(e.pointerId); if (!p || !this.active) return;
+      e.preventDefault(); e.stopPropagation();
+      try { if (p.kind === 'pad') this.move(e.clientX - p.x, e.clientY - p.y); p.x = e.clientX; p.y = e.clientY; }
+      catch (error) { this.stop(); this.status.textContent = error.message; }
+    });
+    const release = e => { if (!this.pointers.delete(e.pointerId)) return; e.stopPropagation(); this.updateButtons(); };
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) element.addEventListener(type, release);
+    element.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  updateButtons() {
+    let buttons = 0; const wanted = new Set();
+    for (const p of this.pointers.values()) {
+      if (p.code === 'Mouse0') buttons |= 1;
+      else if (p.code === 'Mouse2') buttons |= 2;
+      else if (p.kind === 'binding') wanted.add(p.code);
+    }
+    this.buttons = buttons;
+    if (this.active) try { this.send(); this.syncKeys(wanted); }
+    catch (error) { this.stop(); this.status.textContent = error.message; }
+  }
+  reparent() { if (this.root) (document.fullscreenElement || document.documentElement).appendChild(this.root); }
+  mount() {
+    if (this.root) return;
+    const root = this.root = document.createElement('div'); root.id = 'nimbo-touch-root';
+    const style = document.createElement('style');
+    style.textContent = `#nimbo-touch-root{position:fixed;inset:0;z-index:2500;pointer-events:none;font:12px Arial;color:white}#nimbo-touch-root [hidden]{display:none!important}#nimbo-touch-root button,#nimbo-touch-root input{pointer-events:auto}#nimbo-touch-root button{background:#143c29e8;color:white;border:1px solid #ffffff88;border-radius:9px;padding:10px;min-height:44px}#nimbo-touch-root .toolbar{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:#111d;padding:6px;border-radius:8px;max-width:65vw;pointer-events:auto}#nimbo-touch-root .status{display:block;max-width:360px;margin-top:4px}#nimbo-touch-root .pad{position:absolute;right:0;top:24%;bottom:86px;width:56%;pointer-events:auto;touch-action:none;user-select:none;background:transparent;border:0;box-sizing:border-box}#nimbo-touch-root.hud-editing .pad{border:1px dashed #ffffff80}#nimbo-touch-root .pad span{position:absolute;bottom:12px;right:12px;opacity:.5}#nimbo-touch-root .action{position:absolute;bottom:18px;touch-action:none;user-select:none;width:80px;height:64px}#nimbo-touch-root .fire{left:18px}#nimbo-touch-root .aim{left:110px}`;
+    style.textContent += `#nimbo-touch-root .mapped{position:absolute;inset:0;pointer-events:none}#nimbo-touch-root .mapped-button{pointer-events:auto;touch-action:none;user-select:none;min-width:54px;min-height:54px}#nimbo-touch-root .mapped-button[data-slot]{position:absolute}#nimbo-touch-root [data-slot=w]{left:76px;bottom:168px}#nimbo-touch-root [data-slot=a]{left:16px;bottom:108px}#nimbo-touch-root [data-slot=s]{left:76px;bottom:108px}#nimbo-touch-root [data-slot=d]{left:136px;bottom:108px}#nimbo-touch-root [data-slot=fire]{left:16px;bottom:18px}#nimbo-touch-root [data-slot=aim]{left:106px;bottom:18px}#nimbo-touch-root .mapped{display:flex;justify-content:flex-end;align-items:flex-end;gap:6px;padding:8px 8px 12px 205px;box-sizing:border-box;overflow-x:auto}#nimbo-touch-root .mapped-button:not([data-slot]){flex-shrink:0;max-width:100px;padding:6px}#nimbo-touch-root .mapping-editor{position:absolute;inset:8px 5%;background:#161b20;color:white;padding:12px;overflow:auto;pointer-events:auto;border:1px solid #888;border-radius:12px}#nimbo-touch-root .mapping-row{display:flex;gap:6px;margin:8px 0}#nimbo-touch-root .mapping-row input{width:40%;min-width:0}#nimbo-touch-root select{pointer-events:auto;background:white;color:black;min-height:44px}#nimbo-touch-root .mapping-editor button{margin:4px}#nimbo-touch-root .toolbar input[type=range]{max-width:100px}`;
+    const toolbar = document.createElement('div'); toolbar.className = 'toolbar';
+    this.toggle = document.createElement('button'); this.toggle.textContent = 'Ativar touchpad';
+    this.toggle.onclick = () => this.active ? this.stop() : this.start();
+    const label = document.createElement('label'); label.textContent = ' Sensibilidade ';
+    const slider = document.createElement('input'); slider.type = 'range'; slider.min = '.1'; slider.max = '5'; slider.step = '.1'; slider.value = String(this.sensitivity); slider.setAttribute('aria-label', 'Sensibilidade do touchpad');
+    const value = document.createElement('span'); value.textContent = this.sensitivity.toFixed(1);
+    slider.oninput = () => { this.sensitivity = Number(slider.value); value.textContent = this.sensitivity.toFixed(1); NimboStore.writeDebounced('BxTouchpad.sensitivity', String(this.sensitivity)); };
+    this.status = document.createElement('span'); this.status.className = 'status'; this.status.textContent = 'Mouse por toque experimental. Ative durante a partida.';
+    const map = document.createElement('button'); map.textContent = 'Mapear botões'; map.onclick = () => this.editBindings();
+    this.pageButton = document.createElement('button'); this.pageButton.onclick = () => { this.stop(); this.buttonPage++; this.renderMappedButtons(); };
+    label.append(slider, value); toolbar.append(this.toggle, map, this.pageButton, label, this.status);
+    this.pad = document.createElement('div'); this.pad.className = 'pad'; this.pad.hidden = true;
+    const hint = document.createElement('span'); hint.textContent = 'Arraste para mover a mira'; this.pad.append(hint);
+    this.mapped = document.createElement('div'); this.mapped.className = 'mapped'; this.mapped.hidden = true;
+    this.renderMappedButtons(); this.bindSurface(this.pad, 'pad');
+    root.append(style, this.pad, this.mapped, toolbar); this.reparent();
+  }
+  destroy() { this.stop(); this.root?.remove(); this.root = null; this.editor = null; }
+}
+
+class BxTouchpadHud extends BxTouchpad {
+  constructor() {
+    super();
+    this.hud = this.readHud();
+    this.editingHud = false;
+    this.elements = new Map();
+    
+    window.addEventListener('resize', () => {
+      // A resized viewport changes touch geometry; never keep a direction held.
+      if (this.active || this.wanted) this.pause('Mudança do tamanho da tela');
+      this.applyAllGeometry();
+    });
+  }
+  readHud() {
+    try {
+      const data = JSON.parse(localStorage.getItem('BxTouchpad.hud.v4') || 'null');
+      if (data?.version === 1 && data.items && typeof data.items === 'object' && !Array.isArray(data.items)) {
+        const items = Object.create(null);
+        for (const [id, item] of Object.entries(data.items)) {
+          if (!item || !['x','y','size','opacity'].every(k => Number.isFinite(item[k]))) continue;
+          items[id] = {x: Math.max(0,Math.min(1,item.x)), y: Math.max(0,Math.min(1,item.y)), size: Math.max(32,Math.min(200,item.size)), opacity:Math.max(0,Math.min(1,item.opacity)), visible:item.visible !== false};
+          if (Number.isFinite(item.w)) items[id].w = Math.max(.1,Math.min(1,item.w));
+          if (Number.isFinite(item.h)) items[id].h = Math.max(.1,Math.min(1,item.h));
+        }
+        return {version:1,items};
+      }
+    } catch {}
+    return {version:1,items:Object.create(null)};
+  }
+  normalizeIds() {
+    const used = new Set(['joystick','pad']);
+    this.bindings.forEach((b,index) => {
+      let id = b.slot || (typeof b.id === 'string' && /^[\w-]{1,60}$/.test(b.id) ? b.id : 'extra-' + index);
+      while (used.has(id)) id += '-x';
+      b.id = id; used.add(id);
+    });
+  }
+  defaultGeometry(id) {
+    if (id === 'joystick') return {x:.15,y:.73,size:112,opacity:.5,visible:true};
+    if (id === 'pad') return {x:.70,y:.49,size:60,w:.59,h:.86,opacity:.3,visible:true};
+    if (id === 'fire') return {x:.12,y:.23,size:56,opacity:.5,visible:true};
+    if (id === 'aim') return {x:.87,y:.23,size:56,opacity:.5,visible:true};
+    const index = Math.max(0,this.bindings.filter(b=>!['w','a','s','d','fire','aim'].includes(b.slot)).findIndex(b=>b.id === id));
+    const positions = [[.92,.57],[.32,.78],[.91,.77],[.80,.88],[.70,.88],[.60,.88],[.74,.64],[.48,.89]];
+    const pos = positions[index] || [.40 + ((index-8)%5)*.11,.38-Math.floor((index-8)/5)*.1];
+    return {x:pos[0],y:pos[1],size:46,opacity:.45,visible:true};
+  }
+  geometry(id) {
+    const g = this.hud.items[id] || (this.hud.items[id] = this.defaultGeometry(id));
+    if (id === 'pad') {if (!Number.isFinite(g.w)) g.w=.59;if (!Number.isFinite(g.h)) g.h=.86;}
+    return g;
+  }
+  viewport() {
+    const rect = this.root?.getBoundingClientRect();
+    return {width:rect?.width || window.innerWidth,height:rect?.height || window.innerHeight};
+  }
+  applyGeometry(id, element) {
+    const g = this.geometry(id), v = this.viewport();
+    const w = id === 'pad' ? g.w * v.width : Math.min(g.size,v.width,v.height);
+    const h = id === 'pad' ? g.h * v.height : Math.min(g.size,v.width,v.height);
+    // Store relative centers; clamp only the displayed coordinates on rotation.
+    const x = Math.max(w/2,Math.min(v.width-w/2,g.x*v.width));
+    const y = Math.max(h/2,Math.min(v.height-h/2,g.y*v.height));
+    Object.assign(element.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px',opacity:String(this.editingHud ? Math.max(.4,g.opacity) : g.opacity)});
+    element.hidden = !this.editingHud && (!this.active || !g.visible);
+    element.classList.toggle('hud-selected',this.editingHud && this.selectedId === id);
+  }
+  applyAllGeometry() {
+    if (!this.elements) return;
+    for (const [id,element] of this.elements) this.applyGeometry(id,element);
+  }
+  register(id, element, label) {
+    element.dataset.hudId = id; element.setAttribute('aria-label',label);
+    this.elements.set(id,element);
+    this.registeredElements ||= new WeakSet();
+    if (this.registeredElements.has(element)) {this.applyGeometry(id,element);return;}
+    this.registeredElements.add(element);
+    // Capture phase: editing must never send game input.
+    element.addEventListener('pointerdown',e => {
+      if (!this.editingHud) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (this.drag) return;
+      this.selectHud(id);
+      element.setPointerCapture(e.pointerId);
+      const rect = element.getBoundingClientRect();
+      this.drag = {id,pointerId:e.pointerId,x:e.clientX,y:e.clientY,cx:rect.left+rect.width/2,cy:rect.top+rect.height/2};
+    },true);
+    element.addEventListener('pointermove',e => {
+      if (!this.editingHud || this.drag?.pointerId !== e.pointerId) return;
+      e.preventDefault();e.stopImmediatePropagation();
+      const v = this.viewport(), g = this.geometry(id), r = this.root.getBoundingClientRect();
+      g.x = Math.max(0,Math.min(1,(this.drag.cx + e.clientX-this.drag.x-r.left)/v.width));
+      g.y = Math.max(0,Math.min(1,(this.drag.cy + e.clientY-this.drag.y-r.top)/v.height));
+      this.applyGeometry(id,element);
+    },true);
+    const finish = e => {
+      if (!this.editingHud) return;
+      e.stopImmediatePropagation();
+      if (this.drag?.pointerId === e.pointerId) this.drag = null;
+    };
+    for (const type of ['pointerup','pointercancel','lostpointercapture']) element.addEventListener(type,finish,true);
+    this.applyGeometry(id,element);
+  }
+  renderMappedButtons() {
+    if (!this.mapped) return;
+    this.normalizeIds();
+    this.mapped.replaceChildren();
+    this.elements = new Map();
+    if (this.pad) this.register('pad',this.pad,'Área de mira');
+    const stick = this.stick = document.createElement('div'); stick.className = 'hud-stick';
+    stick.setAttribute('role','group');
+    this.knob = document.createElement('span'); this.knob.className = 'hud-stick-knob';
+    const hint = document.createElement('span'); hint.className = 'hud-stick-label'; hint.textContent = 'WASD';
+    stick.append(this.knob,hint); this.mapped.append(stick); this.register('joystick',stick,'Joystick que envia WASD');
+    this.bindJoystick(stick);
+    for (const binding of this.bindings) {
+      if (['w','a','s','d'].includes(binding.slot)) continue;
+      const button = document.createElement('button');button.type = 'button';button.className = 'hud-button';
+      button.textContent = binding.label;button.title = binding.code;
+      this.mapped.append(button);this.register(binding.id,button,binding.label);
+      this.bindSurface(button,'binding',binding.code);
+    }
+    if (this.pageButton) this.pageButton.hidden = true;
+    this.applyAllGeometry();
+  }
+  static stickDirections(x,y) {
+    if (Math.hypot(x,y) < .24) return [];
+    const result = [];
+    // Digital 8-way movement: no analog/gamepad commands are emitted.
+    if (x < -.38) result.push('a');
+    if (x > .38) result.push('d');
+    if (y < -.38) result.push('w');
+    if (y > .38) result.push('s');
+    return result;
+  }
+  bindJoystick(element) {
+    const update = e => {
+      const p = this.pointers.get(e.pointerId);if (!p || p.kind !== 'joystick') return;
+      const r = element.getBoundingClientRect(), radius = r.width/2;
+      let x = (e.clientX-r.left-radius)/radius, y = (e.clientY-r.top-r.height/2)/(r.height/2);
+      const length = Math.hypot(x,y);if (length > 1) {x/=length;y/=length;}
+      p.codes = BxTouchpadHud.stickDirections(x,y).map(slot=>this.bindings.find(b=>b.slot===slot)?.code).filter(Boolean);
+      this.knob.style.transform = `translate(${x*radius*.5}px,${y*radius*.5}px)`;
+      this.updateButtons();
+    };
+    element.addEventListener('pointerdown',e => {
+      if (!this.active || this.editingHud || e.pointerType !== 'touch') return;
+      e.preventDefault();e.stopPropagation();
+      if ([...this.pointers.values()].some(p=>p.kind==='joystick')) return;
+      element.setPointerCapture(e.pointerId);
+      this.pointers.set(e.pointerId,{kind:'joystick',codes:[]}); update(e);
+    });
+    element.addEventListener('pointermove',e => {if (this.pointers.get(e.pointerId)?.kind !== 'joystick') return;e.preventDefault();e.stopPropagation();update(e);});
+    const release = e => {
+      if (this.pointers.get(e.pointerId)?.kind !== 'joystick') return;
+      this.pointers.delete(e.pointerId);this.knob.style.transform = 'translate(0,0)';e.stopPropagation();this.updateButtons();
+    };
+    for (const type of ['pointerup','pointercancel','lostpointercapture']) element.addEventListener(type,release);
+    element.addEventListener('contextmenu',e=>e.preventDefault());
+  }
+  updateButtons() {
+    let buttons = 0; const wanted = new Set();
+    for (const p of this.pointers.values()) {
+      const codes = p.kind === 'joystick' ? p.codes : p.kind === 'binding' ? [p.code] : [];
+      for (const code of codes) {
+        if (code === 'Mouse0') buttons |= 1;
+        else if (code === 'Mouse2') buttons |= 2;
+        else wanted.add(code);
+      }
+    }
+    this.buttons = buttons;
+    if (this.active) try { this.send();this.syncKeys(wanted); }
+    catch (error) {this.stop();this.status.textContent = error.message;this.showMenu(true);}
+  }
+  
+  openTouchSettings(){touchPanel.open();}
+  showMenu(show) {
+    if (!this.toolbar) return;
+    this.toolbar.hidden = !show;
+  }
+  async start() {
+    if (this.editingHud || this.editor) return;
+    await super.start();
+    if (this.active) {this.applyAllGeometry();this.showMenu(false);}
+  }
+  stop() {
+    super.stop();
+    if (this.knob) this.knob.style.transform = 'translate(0,0)';
+    if (this.toolbar) this.showMenu(true);
+  }
+  selectHud(id) {
+    this.selectedId = id;
+    this.applyAllGeometry();
+    if (!this.properties) return;
+    const g = this.geometry(id);
+    const binding = this.bindings.find(b=>b.id===id);
+    this.properties.options.value = id;
+    this.properties.title.textContent = id==='joystick'?'Joystick WASD':id==='pad'?'Área de mira':binding?.label || id;
+    this.properties.size.value = g.size;this.properties.size.disabled = id==='pad';
+    this.properties.opacity.value = Math.round(g.opacity*100);
+    this.properties.visible.checked = g.visible;
+    this.properties.w.value = Math.round((g.w || .59)*100);
+    this.properties.h.value = Math.round((g.h || .86)*100);
+    this.properties.area.hidden = id!=='pad';
+    this.properties.sizeText.textContent = g.size+' px';this.properties.opacityText.textContent = Math.round(g.opacity*100)+'%';
+    this.properties.wText.textContent = Math.round((g.w || .59)*100)+'%';this.properties.hText.textContent = Math.round((g.h || .86)*100)+'%';
+  }
+  editHud() {
+    this.stop();if (this.editingHud || this.editor) return;
+    this.snapshot = JSON.stringify(this.hud);this.editingHud = true;this.showMenu(false);
+    this.mapped.hidden = false;this.pad.hidden = false;this.root.classList.add('hud-editing');
+    const panel = this.hudPanel = document.createElement('div');panel.className = 'hud-properties';
+    const title = document.createElement('strong');
+    const note = document.createElement('span');note.textContent = 'Arraste os controles. Toque para ajustar.';
+    const options = document.createElement('select');options.setAttribute('aria-label','Selecionar controle');
+    for (const [id,el] of this.elements) {const option=document.createElement('option');option.value=id;option.textContent=el.getAttribute('aria-label');options.append(option);}
+    options.onchange=()=>this.selectHud(options.value);
+    const range = (name,min,max) => {
+      const label=document.createElement('label');label.textContent=name+' ';
+      const input=document.createElement('input');input.type='range';input.min=min;input.max=max;input.setAttribute('aria-label',name);
+      const value=document.createElement('span');label.append(input,value);return {label,input,value};
+    };
+    const size=range('Tamanho',32,200),opacity=range('Opacidade',0,100),w=range('Largura da mira',10,100),h=range('Altura da mira',10,100);
+    const area=document.createElement('div');area.append(w.label,h.label);
+    const visibleLabel=document.createElement('label'),visible=document.createElement('input');visible.type='checkbox';visibleLabel.append(visible,document.createTextNode(' Mostrar no jogo'));
+    this.properties={options,title,size:size.input,sizeText:size.value,opacity:opacity.input,opacityText:opacity.value,visible,w:w.input,wText:w.value,h:h.input,hText:h.value,area};
+    const change = () => {
+      const g=this.geometry(this.selectedId);g.size=Number(size.input.value);g.opacity=Number(opacity.input.value)/100;g.visible=visible.checked;
+      if (this.selectedId==='pad') {g.w=Number(w.input.value)/100;g.h=Number(h.input.value)/100;}
+      this.selectHud(this.selectedId);options.value=this.selectedId;
+    };
+    for (const input of [size.input,opacity.input,visible,w.input,h.input]) input.oninput=change;
+    const actions=document.createElement('div');actions.className='hud-editor-actions';
+    const button=(label,action)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=action;return b;};
+    actions.append(button('Salvar HUD',()=>{
+      try {
+        // Persist stable button identifiers as well as their geometry.
+        localStorage.setItem('BxTouchpad.bindings.v2',JSON.stringify(this.bindings));
+        localStorage.setItem('BxTouchpad.hud.v4',JSON.stringify(this.hud));
+      } catch {note.textContent='Não foi possível salvar no navegador. Tente novamente.';return;}
+      this.closeHudEditor();
+    }),button('Cancelar',()=>{this.hud=JSON.parse(this.snapshot);this.closeHudEditor();}),button('Restaurar padrão',()=>{this.hud={version:1,items:Object.create(null)};this.applyAllGeometry();this.selectHud(this.selectedId);}));
+    // The property panel can be collapsed so it never prevents moving a control beneath it.
+    const body=document.createElement('div');body.append(note,options,title,size.label,opacity.label,visibleLabel,area,actions);
+    const collapse=button('Recolher ajustes',()=>{body.hidden=!body.hidden;collapse.textContent=body.hidden?'Abrir ajustes':'Recolher ajustes';});
+    panel.append(collapse,body);this.root.append(panel);this.selectHud('joystick');options.value='joystick';
+  }
+  closeHudEditor() {
+    this.editingHud=false;this.drag=null;this.hudPanel?.remove();this.hudPanel=null;this.properties=null;
+    this.root.classList.remove('hud-editing');this.mapped.hidden=true;this.pad.hidden=true;
+    this.applyAllGeometry();this.showMenu(true);
+  }
+  editBindings() {
+    if (this.editingHud) return;
+    super.editBindings();
+  }
+  openMenu() {
+    this.mount();
+    if (!this.editingHud && !this.editor) this.showMenu(true);
+  }
+  mount() {
+    if (this.root) return;
+    super.mount();
+    this.toolbar=this.root.querySelector('.toolbar');
+    const style=document.createElement('style');style.textContent=`
+#nimbo-touch-root{font:12px Arial!important}
+#nimbo-touch-root .toolbar{top:8px;left:50%;max-width:min(75vw,440px);padding:8px;display:flex;flex-wrap:wrap;gap:6px;z-index:30;box-sizing:border-box}
+#nimbo-touch-root .toolbar button{font:12px Arial!important;padding:7px 10px;min-height:36px}
+#nimbo-touch-root .toolbar .status{font:11px Arial;flex-basis:100%}
+#nimbo-touch-root .mapped{display:block;position:absolute;inset:0;overflow:visible;padding:0;z-index:2;pointer-events:none}
+#nimbo-touch-root .hud-button,#nimbo-touch-root .hud-stick,#nimbo-touch-root .pad{position:absolute;transform:translate(-50%,-50%);box-sizing:border-box;touch-action:none;user-select:none;-webkit-user-select:none;pointer-events:auto;min-width:0;min-height:0;right:auto;bottom:auto;margin:0}
+#nimbo-touch-root .hud-button{line-height:1.1;border-radius:50%;z-index:3;max-width:none}
+#nimbo-touch-root .hud-stick{border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(20,40,36,.52);border:2px solid rgba(188,239,218,.85);box-sizing:border-box}
+#nimbo-touch-root .hud-stick-knob{display:block;width:38%;height:38%;border-radius:50%;background:rgba(210,245,229,.6);border:1px solid rgba(255,255,255,.7);pointer-events:none}
+#nimbo-touch-root .hud-stick-label{position:absolute;bottom:10%;pointer-events:none}
+#nimbo-touch-root .pad{z-index:1}
+#nimbo-touch-root .pad span{display:none}
+#nimbo-touch-root.hud-editing .pad:after{position:absolute;pointer-events:none}
+#nimbo-touch-root .hud-properties{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:min(440px,80vw);max-height:85vh;overflow:auto;background:#14201ff5;border:1px solid #68c8a5;border-radius:10px;padding:8px;box-sizing:border-box;pointer-events:auto;z-index:40;font:12px Arial;color:#fff}
+#nimbo-touch-root .hud-properties button{font:12px Arial!important;padding:6px;min-height:32px;margin:2px}
+#nimbo-touch-root .hud-properties strong,#nimbo-touch-root .hud-properties label,#nimbo-touch-root .hud-properties span{display:block;margin:4px 0}
+#nimbo-touch-root .hud-properties label span{display:inline}
+#nimbo-touch-root .hud-properties input[type=range]{width:55%;vertical-align:middle}
+#nimbo-touch-root .hud-properties select{font:12px Arial;min-height:32px;max-width:100%}
+#nimbo-touch-root .mapping-editor{z-index:50;font:12px Arial}
+#nimbo-touch-root .mapping-editor input,#nimbo-touch-root .mapping-editor select{font:12px Arial!important}
+`;
+    this.root.append(style);
+    const edit=document.createElement('button');edit.type='button';edit.textContent='Editar HUD';edit.onclick=()=>this.editHud();
+    const hide=document.createElement('button');hide.type='button';hide.textContent='Recolher menu';hide.onclick=()=>this.showMenu(false);
+    const better=document.createElement('button');better.type='button';better.textContent='NimboPlay';better.onclick=()=>this.openTouchSettings();
+    this.toolbar.prepend(edit);this.toolbar.append(better,hide);
+    this.applyAllGeometry();
+  }
+  destroy() {
+    if (this.editingHud) this.hud=JSON.parse(this.snapshot);
+    this.editingHud=false;this.drag=null;this.hudPanel=null;this.properties=null;
+    super.destroy();this.toolbar=null;this.elements.clear();
+  }
+}
+
+class BxTouchpadUnified extends BxTouchpadHud {
+  constructor() {
+    super();this.nativeSections=new Set();
+  }
+  static keyLabel(code) {
+    const labels={Mouse0:'Mouse 1',Mouse2:'Mouse 2',Space:'Espaço',ShiftLeft:'Shift',ControlLeft:'Ctrl',AltLeft:'Alt',Backspace:'⌫',ArrowUp:'↑',ArrowDown:'↓',ArrowLeft:'←',ArrowRight:'→',Escape:'Esc'};
+    return labels[code] || (/^Key[A-Z]$/.test(code)?code.slice(3):/^Digit\d$/.test(code)?code.slice(5):code);
+  }
+  itemLabel(id) {
+    if(id==='pad')return 'Área do mouse';
+    if(id==='joystick')return 'Joystick WASD';
+    return BxTouchpadUnified.keyLabel(this.bindings.find(b=>b.id===id)?.code || id);
+  }
+  renderMappedButtons() {
+    super.renderMappedButtons();
+    if(!this.elements)return;
+    for(const [id,el] of this.elements){
+      if(id!=='pad'&&id!=='joystick')el.textContent=this.itemLabel(id);
+      el.setAttribute('aria-label',this.itemLabel(id));
+    }
+  }
+  // All activation/configuration entry points live in the original settings dialog.
+  showMenu() {if(this.toolbar)this.toolbar.hidden=true;}
+  mount() {
+    if(this.root)return;
+    super.mount();
+    this.toolbar.hidden=true;
+    const style=document.createElement('style');style.textContent=`
+#nimbo-touch-root .toolbar{display:none!important}
+#nimbo-touch-root .hud-properties{width:min(390px,82vw);font:12px Arial!important}
+#nimbo-touch-root .hud-properties select,#nimbo-touch-root .hud-properties button{font:12px Arial!important;line-height:1.2!important;min-height:32px!important}
+#nimbo-touch-root .hud-properties .unified-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0}
+#nimbo-touch-root .hud-properties .unified-row label{display:flex;align-items:center;gap:6px;margin:0}
+#nimbo-touch-root .hud-properties .direction-keys{display:flex;flex-wrap:wrap;gap:4px}
+#nimbo-touch-root .hud-properties .direction-keys label{display:flex;align-items:center;gap:3px}
+#nimbo-touch-root .hud-properties .direction-keys select{max-width:100px}
+#nimbo-touch-root .hud-button{white-space:normal}
+`;
+    this.root.append(style);this.refreshNativeSections();
+  }
+  openMenu(){this.openTouchSettings();}
+  async start(){await super.start();this.refreshNativeSections();}
+  stop(){super.stop();this.refreshNativeSections();}
+  refreshNativeSections(){
+    if(!this.nativeSections)return;
+    for(const section of this.nativeSections){
+      section.toggle.textContent=this.active?'Desativar controles na tela':'Ativar controles na tela';
+      section.state.textContent=this.active?'Ativo. Abra este mesmo painel para desativar.':'Desativado. Configure sua HUD ou ative durante o jogo.';
+    }
+  }
+  
+  refreshEditorOptions(){
+    if(!this.properties)return;
+    const select=this.properties.options;select.replaceChildren();
+    for(const [id] of this.elements){const option=document.createElement('option');option.value=id;option.textContent=this.itemLabel(id);select.append(option);}
+    select.value=this.selectedId;
+  }
+  selectHud(id){
+    if(!this.elements.has(id))id='joystick';
+    super.selectHud(id);
+    if(!this.properties)return;
+    const binding=this.bindings.find(b=>b.id===id);
+    const p=this.properties;p.title.textContent=this.itemLabel(id);
+    p.keyRow.hidden=!binding;p.key.value=binding?.code || 'KeyE';
+    p.remove.hidden=!binding;
+    p.directions.hidden=id!=='joystick';
+    for(const [slot,select]of Object.entries(p.directionSelects))select.value=this.bindings.find(b=>b.slot===slot)?.code || 'KeyW';
+  }
+  addKey(code){
+    if(!this.editingHud||!BxTouchpad.keyOptions().includes(code))return;
+    if(this.bindings.length>=46){this.properties.note.textContent='Limite de 42 botões na HUD.';return;}
+    const id='key-'+Date.now()+'-'+(this.nextId=(this.nextId||0)+1);
+    this.bindings.push({id,label:BxTouchpadUnified.keyLabel(code),code});
+    this.hud.items[id]={x:.5,y:.6,size:48,opacity:.5,visible:true};
+    this.renderMappedButtons();this.refreshEditorOptions();this.selectHud(id);
+  }
+  changeKey(id,code){
+    if(!this.editingHud||!BxTouchpad.keyOptions().includes(code))return;
+    const b=this.bindings.find(b=>b.id===id);if(!b)return;
+    b.code=code;b.label=BxTouchpadUnified.keyLabel(code);
+    this.renderMappedButtons();this.refreshEditorOptions();this.selectHud(id);
+  }
+  removeKey(id){
+    if(!this.editingHud)return;
+    const b=this.bindings.find(b=>b.id===id);if(!b)return;
+    this.bindings=this.bindings.filter(b=>b!==b);delete this.hud.items[id];
+    this.renderMappedButtons();this.refreshEditorOptions();this.selectHud('joystick');
+  }
+  clearKeys(){
+    if(!this.editingHud)return;
+    const keep=new Set(['w','a','s','d']);
+    for(const b of this.bindings)if(!keep.has(b.slot))delete this.hud.items[b.id];
+    this.bindings=this.bindings.filter(b=>keep.has(b.slot));
+    this.renderMappedButtons();this.refreshEditorOptions();this.selectHud('joystick');
+  }
+  editBindings(){this.editHud();}
+  editHud(){
+    this.stop();if(this.editingHud)return;
+    this.mount();
+    this.snapshot=JSON.stringify(this.hud);this.bindingSnapshot=JSON.stringify(this.bindings);
+    this.editingHud=true;this.mapped.hidden=false;this.pad.hidden=false;this.root.classList.add('hud-editing');
+    const panel=this.hudPanel=document.createElement('div');panel.className='hud-properties';
+    const body=document.createElement('div');
+    const button=(text,action)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=action;return b;};
+    const collapse=button('Recolher editor',()=>{body.hidden=!body.hidden;collapse.textContent=body.hidden?'Abrir editor':'Recolher editor';});
+    const title=document.createElement('strong'),note=document.createElement('span');note.textContent='Escolha a tecla, adicione e arraste. Toque em um controle para ajustar.';
+    const options=document.createElement('select');options.setAttribute('aria-label','Selecionar controle');options.onchange=()=>this.selectHud(options.value);
+    const keys=()=>{const select=document.createElement('select');for(const code of BxTouchpad.keyOptions()){const o=document.createElement('option');o.value=code;o.textContent=BxTouchpadUnified.keyLabel(code);select.append(o);}return select;};
+    const addRow=document.createElement('div');addRow.className='unified-row';const addSelect=keys();addSelect.value='KeyE';addSelect.setAttribute('aria-label','Nova tecla');
+    addRow.append(addSelect,button('+ Adicionar tecla',()=>this.addKey(addSelect.value)),button('Limpar botões',()=>this.clearKeys()));
+    const keyRow=document.createElement('label');keyRow.textContent='Tecla ';const key=keys();key.setAttribute('aria-label','Tecla do botão selecionado');key.onchange=()=>this.changeKey(this.selectedId,key.value);keyRow.append(key);
+    const remove=button('Remover tecla',()=>this.removeKey(this.selectedId));
+    const directions=document.createElement('div');directions.className='direction-keys';const directionSelects={};
+    for(const [slot,arrow]of Object.entries({w:'↑',a:'←',s:'↓',d:'→'})){const row=document.createElement('label');row.textContent=arrow;const select=keys();select.setAttribute('aria-label','Tecla da direção '+arrow);select.onchange=()=>{const b=this.bindings.find(b=>b.slot===slot);if(b){b.code=select.value;b.label=BxTouchpadUnified.keyLabel(select.value);this.renderMappedButtons();this.refreshEditorOptions();this.selectHud('joystick');}};directionSelects[slot]=select;row.append(select);directions.append(row);}
+    const range=(name,min,max)=>{const label=document.createElement('label');label.textContent=name+' ';const input=document.createElement('input');input.type='range';input.min=min;input.max=max;input.setAttribute('aria-label',name);const value=document.createElement('span');label.append(input,value);return{label,input,value};};
+    const size=range('Tamanho',32,200),opacity=range('Opacidade',0,100),w=range('Largura do mouse',10,100),h=range('Altura do mouse',10,100);
+    const visibleLabel=document.createElement('label'),visible=document.createElement('input');visible.type='checkbox';visibleLabel.append(visible,document.createTextNode(' Mostrar no jogo'));
+    const area=document.createElement('div');area.append(w.label,h.label);
+    this.properties={options,title,note,key,keyRow,remove,directions,directionSelects,size:size.input,sizeText:size.value,opacity:opacity.input,opacityText:opacity.value,visible,w:w.input,wText:w.value,h:h.input,hText:h.value,area};
+    const change=()=>{const g=this.geometry(this.selectedId);g.size=Number(size.input.value);g.opacity=Number(opacity.input.value)/100;g.visible=visible.checked;if(this.selectedId==='pad'){g.w=Number(w.input.value)/100;g.h=Number(h.input.value)/100;}this.selectHud(this.selectedId);};
+    for(const input of[size.input,opacity.input,visible,w.input,h.input])input.oninput=change;
+    const actions=document.createElement('div');actions.className='hud-editor-actions';
+    actions.append(button('Salvar HUD',()=>{
+      try{
+        const saved=JSON.stringify({version:1,bindings:this.bindings,hud:this.hud});
+        // One authoritative write prevents half-saved layouts/key lists.
+        localStorage.setItem('BxTouchpad.unified.v6',saved);
+      }catch{note.textContent='Não foi possível salvar. Sua edição continua aberta.';return;}
+      this.finishEditing(false);
+    }),button('Cancelar',()=>this.finishEditing(true)),button('Restaurar posições',()=>{this.hud={version:1,items:Object.create(null)};this.applyAllGeometry();this.selectHud(this.selectedId);}));
+    body.append(note,addRow,options,title,keyRow,remove,directions,size.label,opacity.label,visibleLabel,area,actions);panel.append(collapse,body);this.root.append(panel);
+    this.refreshEditorOptions();this.selectHud('joystick');
+  }
+  finishEditing(cancel,returnToSettings=true){
+    if(!this.editingHud)return;
+    if(cancel){this.bindings=JSON.parse(this.bindingSnapshot);this.hud=JSON.parse(this.snapshot);}
+    this.editingHud=false;this.drag=null;this.hudPanel?.remove();this.hudPanel=null;this.properties=null;
+    this.root.classList.remove('hud-editing');this.renderMappedButtons();this.mapped.hidden=true;this.pad.hidden=true;
+    if(returnToSettings){this.openTouchSettings();}
+  }
+  loadUnified(){
+    try{
+      const saved=JSON.parse(localStorage.getItem('BxTouchpad.unified.v6')||'null');
+      if(saved?.version!==1||!Array.isArray(saved.bindings)||saved.bindings.length<4||saved.bindings.length>46)return;
+      const slots=['w','a','s','d'];
+      if(!slots.every(slot=>saved.bindings.filter(b=>b.slot===slot).length===1))return;
+      if(!saved.bindings.every(b=>b&&typeof b.id==='string'&&/^[\w-]{1,60}$/.test(b.id)&&BxTouchpad.keyOptions().includes(b.code)))return;
+      if(new Set(saved.bindings.map(b=>b.id)).size!==saved.bindings.length)return;
+      if(!saved.hud||saved.hud.version!==1||!saved.hud.items||typeof saved.hud.items!=='object')return;
+      this.bindings=saved.bindings.map(b=>({...b,label:BxTouchpadUnified.keyLabel(b.code)}));
+      const items=Object.create(null);
+      for(const[id,g]of Object.entries(saved.hud.items)){
+        if(!g||!['x','y','size','opacity'].every(k=>Number.isFinite(g[k])))continue;
+        items[id]={x:Math.max(0,Math.min(1,g.x)),y:Math.max(0,Math.min(1,g.y)),size:Math.max(32,Math.min(200,g.size)),opacity:Math.max(0,Math.min(1,g.opacity)),visible:g.visible!==false};
+        if(Number.isFinite(g.w))items[id].w=Math.max(.1,Math.min(1,g.w));if(Number.isFinite(g.h))items[id].h=Math.max(.1,Math.min(1,g.h));
+      }
+      this.hud={version:1,items};
+    }catch(error){console.warn('[BxTouchpad] HUD salva inválida:',error.message);}
+  }
+  destroy(){
+    if(this.editingHud)this.finishEditing(true,false);
+    super.destroy();
+  }
+}
+
+class BxTouchpadGain extends BxTouchpadUnified {
+ constructor(){super();this.gainX=1;this.gainY=1;try{const c=JSON.parse(localStorage.getItem('BxTouchpad.motion.v7')||'{}');this.sensitivity=finite(c.touchGain,.05,50,this.sensitivity);this.gainX=finite(c.touchX,.1,5,1);this.gainY=finite(c.touchY,.1,5,1);}catch{}}
+ move(dx,dy){return super.move(dx*this.gainX,dy*this.gainY);}
+}
+class BxTouchpadProfiles extends BxTouchpadGain {
+  constructor(){
+    super();this.profilePanels=new Set();this.tapToPlace=null;this.placeBlank=false;
+  }
+  static copy(value){return JSON.parse(JSON.stringify(value));}
+  static validLayout(data){
+    if(!data||!Array.isArray(data.bindings)||data.bindings.length<4||data.bindings.length>46)return false;
+    const slots=['w','a','s','d'];
+    if(!slots.every(slot=>data.bindings.filter(b=>b?.slot===slot).length===1))return false;
+    if(!data.bindings.every(b=>b&&typeof b.id==='string'&&/^[\w-]{1,60}$/.test(b.id)&&
+      (BxTouchpad.keyOptions().includes(b.code)||(!slots.includes(b.slot)&&b.code===null))))return false;
+    if(new Set(data.bindings.map(b=>b.id)).size!==data.bindings.length)return false;
+    if(data.bindings.some(b=>b.slot&&!['w','a','s','d','fire','aim'].includes(b.slot)))return false;
+    return !!data.hud&&data.hud.version===1&&!!data.hud.items&&typeof data.hud.items==='object'&&!Array.isArray(data.hud.items);
+  }
+  static cleanHud(hud){
+    const items=Object.create(null);
+    for(const[id,g]of Object.entries(hud.items)){
+      if(!g||!['x','y','size','opacity'].every(k=>Number.isFinite(g[k])))continue;
+      items[id]={x:Math.max(0,Math.min(1,g.x)),y:Math.max(0,Math.min(1,g.y)),size:Math.max(32,Math.min(200,g.size)),opacity:Math.max(0,Math.min(1,g.opacity)),visible:g.visible!==false};
+      if(id==='joystick'){items[id].sprintEnabled=g.sprintEnabled===true;items[id].sprintCode=BxTouchpad.keyOptions().includes(g.sprintCode)&&!g.sprintCode.startsWith('Mouse')?g.sprintCode:'ShiftLeft';}
+      if(Number.isFinite(g.w))items[id].w=Math.max(.1,Math.min(1,g.w));if(Number.isFinite(g.h))items[id].h=Math.max(.1,Math.min(1,g.h));
+    }
+    return {version:1,items};
+  }
+  static starter(id,name,codes){
+    const bindings=[{id:'w',slot:'w',code:'KeyW',label:'W'},{id:'a',slot:'a',code:'KeyA',label:'A'},{id:'s',slot:'s',code:'KeyS',label:'S'},{id:'d',slot:'d',code:'KeyD',label:'D'}];
+    codes.forEach((code,i)=>bindings.push({id:'preset-'+i,code,label:BxTouchpadUnified.keyLabel(code)}));
+    const items={joystick:{x:.14,y:.73,size:110,opacity:.5,visible:true},pad:{x:.70,y:.49,size:60,w:.59,h:.86,opacity:.3,visible:true}};
+    bindings.slice(4).forEach((b,i)=>{
+      const pos=i===0?[.12,.22]:i===1?[.87,.22]:[.94-((i-2)%5)*.095,.89-Math.floor((i-2)/5)*.15];
+      items[b.id]={x:pos[0],y:pos[1],size:i<2?56:44,opacity:.5,visible:true};
+    });
+    return {id,name,bindings,hud:{version:1,items}};
+  }
+  loadProfiles(){
+    this.normalizeIds();
+    const personal={id:'personal',name:'Minha HUD atual',bindings:BxTouchpadProfiles.copy(this.bindings),hud:BxTouchpadProfiles.copy(this.hud)};
+    let profiles=null,activeId='personal';
+    let priorRaw=null;
+    try{
+      priorRaw=localStorage.getItem('BxTouchpad.profiles.v8');
+      const saved=JSON.parse(priorRaw||'null');
+      if(saved?.version===1&&Array.isArray(saved.profiles)&&saved.profiles.length>0&&saved.profiles.length<=32&&
+        saved.profiles.every(p=>p&&typeof p.id==='string'&&/^[\w-]{1,60}$/.test(p.id)&&typeof p.name==='string'&&p.name.trim()&&p.name.length<=60&&BxTouchpadProfiles.validLayout(p))&&
+        new Set(saved.profiles.map(p=>p.id)).size===saved.profiles.length){
+        profiles=saved.profiles.map(p=>({...p,bindings:BxTouchpadProfiles.copy(p.bindings),hud:BxTouchpadProfiles.cleanHud(p.hud)}));
+        activeId=profiles.some(p=>p.id===saved.activeId)?saved.activeId:profiles[0].id;
+      }
+    }catch(error){console.warn('[BxTouchpad] Perfis inválidos:',error.message);}
+    if(!profiles){
+      if(priorRaw){try{localStorage.setItem('BxTouchpad.profiles.v8.recovery',priorRaw);}catch{this.profileStorageError='Não foi possível guardar uma cópia de recuperação dos perfis anteriores.';}}
+      profiles=[personal,
+        BxTouchpadProfiles.starter('fortnite','Fortnite — base editável',['Mouse0','Mouse2','Space','ShiftLeft','ControlLeft','KeyR','KeyE','Digit1','Digit2','Digit3','Digit4','Digit5','Tab','KeyM','KeyQ']),
+        BxTouchpadProfiles.starter('battlefield','Battlefield — base editável',['Mouse0','Mouse2','Space','ShiftLeft','ControlLeft','KeyR','KeyE','KeyF','KeyG','Digit1','Digit2','Digit3','Digit4','KeyQ','KeyM','Tab']),
+        BxTouchpadProfiles.starter('cod','Call of Duty — base editável',['Mouse0','Mouse2','Space','ShiftLeft','ControlLeft','KeyR','KeyF','KeyC','KeyG','KeyQ','Digit1','Digit2','Digit4','KeyB','Tab','KeyM'])];
+    }
+    this.profileStore={version:1,activeId,profiles};
+    this.activateProfileData(profiles.find(p=>p.id===activeId));
+    // Commit migration once, keeping all old v6/v7 keys as a recovery copy.
+    try{if(!priorRaw||!this.profileStorageError)localStorage.setItem('BxTouchpad.profiles.v8',JSON.stringify(this.profileStore));}catch{this.profileStorageError='Não foi possível salvar os perfis neste navegador.';}
+  }
+  activateProfileData(profile){
+    this.bindings=BxTouchpadProfiles.copy(profile.bindings);this.hud=BxTouchpadProfiles.copy(profile.hud);
+    this.activeProfileId=profile.id;this.profileStore.activeId=profile.id;
+    if(this.root){this.renderMappedButtons();this.mapped.hidden=true;this.pad.hidden=true;}
+  }
+  currentProfile(){return this.profileStore?.profiles.find(p=>p.id===this.activeProfileId);}
+  persistProfiles(store){localStorage.setItem('BxTouchpad.profiles.v8',JSON.stringify(store));this.profileStore=store;this.profileStorageError='';}
+  switchProfile(id){
+    if(this.editingHud||!this.profileStore)return false;
+    const profile=this.profileStore.profiles.find(p=>p.id===id);if(!profile)return false;
+    this.stop();
+    const store=BxTouchpadProfiles.copy(this.profileStore);store.activeId=id;
+    try{this.persistProfiles(store);}catch{this.profileStorageError='Não foi possível salvar a troca de perfil.';this.refreshProfilePanels();return false;}
+    this.activateProfileData(profile);this.refreshProfilePanels();return true;
+  }
+  duplicateProfile(name,empty=false){
+    if(this.editingHud||!this.profileStore||this.profileStore.profiles.length>=32)return false;
+    name=String(name||'').trim().slice(0,60);if(!name)return false;
+    const id='profile-'+Date.now()+'-'+(this.profileCounter=(this.profileCounter||0)+1);
+    const profile=empty?BxTouchpadProfiles.starter(id,name,[]):{id,name,bindings:BxTouchpadProfiles.copy(this.bindings),hud:BxTouchpadProfiles.copy(this.hud)};
+    const store=BxTouchpadProfiles.copy(this.profileStore);store.profiles.push(profile);store.activeId=id;
+    try{this.persistProfiles(store);}catch{this.profileStorageError='Não foi possível salvar o novo perfil.';this.refreshProfilePanels();return false;}
+    this.stop();this.activateProfileData(profile);this.refreshProfilePanels();return true;
+  }
+  refreshProfilePanels(){
+    if(!this.profilePanels||!this.profileStore)return;
+    for(const panel of this.profilePanels){
+      panel.select.replaceChildren();for(const p of this.profileStore.profiles){const option=document.createElement('option');option.value=p.id;option.textContent=p.name;panel.select.append(option);}
+      panel.select.value=this.activeProfileId;panel.status.textContent=this.profileStorageError||'Cada perfil mantém suas próprias teclas e posições. Mouse e giroscópio mantêm seus ajustes gerais.';
+    }
+  }
+  
+  itemLabel(id){
+    const b=this.bindings.find(b=>b.id===id);
+    if(b&&b.code===null)return 'Botão vazio';
+    return super.itemLabel(id);
+  }
+  renderMappedButtons(){
+    if(!this.mapped)return;
+    this.normalizeIds();this.mapped.replaceChildren();this.elements=new Map();
+    if(this.pad)this.register('pad',this.pad,'Área do mouse');
+    const stick=this.stick=document.createElement('div');stick.className='hud-stick';stick.setAttribute('role','group');
+    this.knob=document.createElement('span');this.knob.className='hud-stick-knob';const hint=document.createElement('span');hint.className='hud-stick-label';hint.textContent='WASD';stick.append(this.knob,hint);
+    this.mapped.append(stick);this.register('joystick',stick,'Joystick WASD');this.bindJoystick(stick);
+    for(const b of this.bindings){
+      if(['w','a','s','d'].includes(b.slot))continue;
+      const el=document.createElement('button');el.type='button';el.className='hud-button'+(b.code===null?' hud-unassigned':'');el.textContent=b.code===null?'':BxTouchpadUnified.keyLabel(b.code);
+      this.mapped.append(el);this.register(b.id,el,this.itemLabel(b.id));
+      // Empty placeholders have no input handler and never send a null key.
+      if(b.code!==null)this.bindSurface(el,'binding',b.code);
+    }
+    if(this.pageButton)this.pageButton.hidden=true;
+    this.applyAllGeometry();this.positionDeleteBadge();
+  }
+  applyGeometry(id,element){
+    super.applyGeometry(id,element);
+    if(!this.editingHud&&this.bindings.find(b=>b.id===id)?.code===null)element.hidden=true;
+    if(this.selectedId===id)this.positionDeleteBadge();
+  }
+  mount(){
+    if(this.root)return;
+    super.mount();
+    const style=document.createElement('style');style.textContent=`
+#nimbo-touch-root.hud-editing{pointer-events:auto}
+#nimbo-touch-root .hud-delete-one{position:absolute;transform:translate(-50%,-50%);width:30px;height:30px;min-width:30px;min-height:30px;padding:0;border-radius:50%;border:2px solid white;background:#c62828;color:white;font:bold 19px Arial!important;line-height:26px!important;pointer-events:auto;touch-action:manipulation;z-index:32}
+#nimbo-touch-root .hud-properties{width:min(360px,82vw)}
+#nimbo-touch-root .hud-properties .hud-profile-name{font-weight:bold;color:#bcecff;margin:4px 0}
+`;
+    this.root.append(style);
+    this.deleteBadge=document.createElement('button');this.deleteBadge.type='button';this.deleteBadge.className='hud-delete-one';this.deleteBadge.dataset.editorAction='true';this.deleteBadge.textContent='×';this.deleteBadge.setAttribute('aria-label','Excluir somente o botão selecionado');this.deleteBadge.hidden=true;
+    this.deleteBadge.addEventListener('pointerdown',e=>e.stopPropagation());
+    this.deleteBadge.onclick=e=>{e?.preventDefault();e?.stopPropagation();if(this.editingHud)this.removeKey(this.selectedId);};this.root.append(this.deleteBadge);
+    this.bindBackgroundPlacement();
+  }
+  positionDeleteBadge(){
+    if(!this.deleteBadge)return;
+    const b=this.bindings.find(b=>b.id===this.selectedId),el=this.elements?.get(this.selectedId);
+    this.deleteBadge.hidden=!this.editingHud||!b||['w','a','s','d'].includes(b.slot)||!el;
+    if(this.deleteBadge.hidden)return;
+    const r=el.getBoundingClientRect(),root=this.root.getBoundingClientRect(),v=this.viewport();
+    this.deleteBadge.style.left=Math.max(16,Math.min(v.width-16,r.right-root.left+2))+'px';this.deleteBadge.style.top=Math.max(16,Math.min(v.height-16,r.top-root.top-2))+'px';
+  }
+  selectHud(id){
+    super.selectHud(id);
+    if(this.properties){const b=this.bindings.find(b=>b.id===this.selectedId);this.properties.key.value=b?.code??'';this.properties.remove.hidden=true;}
+    this.positionDeleteBadge();
+  }
+  addBlank(clientX,clientY){
+    if(!this.editingHud)return;
+    if(this.bindings.length>=46){this.properties.note.textContent='Limite de 42 botões neste perfil.';return;}
+    const id='blank-'+Date.now()+'-'+(this.nextId=(this.nextId||0)+1),root=this.root.getBoundingClientRect(),v=this.viewport();
+    this.bindings.push({id,label:'',code:null});this.hud.items[id]={x:Math.max(0,Math.min(1,(clientX-root.left)/v.width)),y:Math.max(0,Math.min(1,(clientY-root.top)/v.height)),size:48,opacity:.5,visible:true};
+    this.renderMappedButtons();this.refreshEditorOptions();this.selectHud(id);this.placeBlank=false;
+    this.properties.note.textContent='Botão vazio criado. Escolha a tecla abaixo quando quiser.';
+  }
+  removeKey(id){
+    if(!this.editingHud)return;
+    const b=this.bindings.find(b=>b.id===id);if(!b||['w','a','s','d'].includes(b.slot))return;
+    const index=this.bindings.indexOf(b);this.bindings.splice(index,1);delete this.hud.items[id];
+    this.renderMappedButtons();this.refreshEditorOptions();
+    const next=this.bindings.slice(index).find(b=>!['w','a','s','d'].includes(b.slot))||this.bindings.find(b=>!['w','a','s','d'].includes(b.slot));this.selectHud(next?.id||'joystick');
+    this.properties.note.textContent='Somente o botão selecionado foi excluído. Os demais ajustes foram mantidos.';
+  }
+  // Bulk deletion is deliberately disabled in this editor.
+  clearKeys(){if(this.editingHud)this.properties.note.textContent='Selecione um botão e use o X vermelho para excluí-lo individualmente.';}
+  bindBackgroundPlacement(){
+    this.root.addEventListener('pointerdown',e=>{
+      if(!this.editingHud||this.tapToPlace||this.drag)return;
+      let control=null;
+      for(let node=e.target;node&&node!==this.root;node=node.parentElement){
+        if(node===this.hudPanel||node.dataset?.editorAction)return;
+        if(node.dataset?.hudId)control=node.dataset.hudId;
+      }
+      if(control&&control!=='pad')return;
+      if(control==='pad'&&this.selectedId==='pad'&&!this.placeBlank)return;
+      e.preventDefault();e.stopImmediatePropagation();this.root.setPointerCapture(e.pointerId);this.tapToPlace={id:e.pointerId,x:e.clientX,y:e.clientY,moved:false};
+    },true);
+    this.root.addEventListener('pointermove',e=>{
+      if(!this.tapToPlace||this.tapToPlace.id!==e.pointerId)return;
+      e.preventDefault();e.stopImmediatePropagation();if(Math.hypot(e.clientX-this.tapToPlace.x,e.clientY-this.tapToPlace.y)>8)this.tapToPlace.moved=true;
+    },true);
+    const finish=(e,cancel)=>{
+      if(!this.tapToPlace||this.tapToPlace.id!==e.pointerId)return;
+      e.preventDefault();e.stopImmediatePropagation();const tap=this.tapToPlace;this.tapToPlace=null;
+      if(!cancel&&!tap.moved&&this.editingHud)this.addBlank(e.clientX,e.clientY);
+    };
+    this.root.addEventListener('pointerup',e=>finish(e,false),true);this.root.addEventListener('pointercancel',e=>finish(e,true),true);this.root.addEventListener('lostpointercapture',e=>finish(e,true),true);
+  }
+  editHud(){
+    this.stop();if(this.editingHud)return;this.mount();
+    this.snapshot=JSON.stringify(this.hud);this.bindingSnapshot=JSON.stringify(this.bindings);this.editingHud=true;this.placeBlank=false;this.tapToPlace=null;
+    this.mapped.hidden=false;this.pad.hidden=false;this.root.classList.add('hud-editing');
+    const panel=this.hudPanel=document.createElement('div');panel.className='hud-properties';const body=document.createElement('div');
+    const button=(text,action)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=action;return b;};
+    const collapse=button('Recolher editor',()=>{body.hidden=!body.hidden;collapse.textContent=body.hidden?'Abrir editor':'Recolher editor';});
+    const profileName=document.createElement('div');profileName.className='hud-profile-name';profileName.textContent='Perfil: '+(this.currentProfile()?.name||'Minha HUD');
+    const title=document.createElement('strong'),note=document.createElement('span');note.textContent='Toque numa área livre para criar um botão vazio. Selecione um botão para ajustar; o X vermelho exclui só ele.';
+    const options=document.createElement('select');options.setAttribute('aria-label','Selecionar controle');options.onchange=()=>this.selectHud(options.value);
+    const keys=()=>{const select=document.createElement('select');for(const[code,text]of[['','Sem tecla (vazio)'],...BxTouchpad.keyOptions().map(k=>[k,BxTouchpadUnified.keyLabel(k)])]){const o=document.createElement('option');o.value=code;o.textContent=text;select.append(o);}return select;};
+    const add=button('Adicionar botão vazio',()=>{this.placeBlank=true;note.textContent='Toque na posição onde quer criar o botão vazio.';body.hidden=true;collapse.textContent='Abrir editor';});
+    const keyRow=document.createElement('label');keyRow.textContent='Tecla ';const key=keys();key.setAttribute('aria-label','Tecla do botão selecionado');key.onchange=()=>{
+      if(key.value){this.changeKey(this.selectedId,key.value);}else{const b=this.bindings.find(b=>b.id===this.selectedId);if(b){b.code=null;b.label='';this.renderMappedButtons();this.refreshEditorOptions();this.selectHud(b.id);}}
+    };keyRow.append(key);
+    const remove=document.createElement('button');remove.hidden=true;
+    const directions=document.createElement('div');directions.className='direction-keys';const directionSelects={};
+    for(const[slot,arrow]of Object.entries({w:'↑',a:'←',s:'↓',d:'→'})){
+      const row=document.createElement('label');row.textContent=arrow;const select=keys();select.children[0].remove();select.setAttribute('aria-label','Tecla da direção '+arrow);select.onchange=()=>{const b=this.bindings.find(b=>b.slot===slot);if(b){b.code=select.value;b.label=BxTouchpadUnified.keyLabel(select.value);this.renderMappedButtons();this.refreshEditorOptions();this.selectHud('joystick');}};directionSelects[slot]=select;row.append(select);directions.append(row);
+    }
+    const range=(name,min,max)=>{const label=document.createElement('label');label.textContent=name+' ';const input=document.createElement('input');input.type='range';input.min=min;input.max=max;input.setAttribute('aria-label',name);const value=document.createElement('span');label.append(input,value);return{label,input,value};};
+    const size=range('Tamanho',32,200),opacity=range('Opacidade',0,100),w=range('Largura do mouse',10,100),h=range('Altura do mouse',10,100);
+    const visibleLabel=document.createElement('label'),visible=document.createElement('input');visible.type='checkbox';visibleLabel.append(visible,document.createTextNode(' Mostrar no jogo'));
+    const area=document.createElement('div');area.append(w.label,h.label);
+    this.properties={options,title,note,key,keyRow,remove,directions,directionSelects,size:size.input,sizeText:size.value,opacity:opacity.input,opacityText:opacity.value,visible,w:w.input,wText:w.value,h:h.input,hText:h.value,area};
+    const change=()=>{const g=this.geometry(this.selectedId);g.size=Number(size.input.value);g.opacity=Number(opacity.input.value)/100;g.visible=visible.checked;if(this.selectedId==='pad'){g.w=Number(w.input.value)/100;g.h=Number(h.input.value)/100;}this.selectHud(this.selectedId);};
+    for(const input of[size.input,opacity.input,visible,w.input,h.input])input.oninput=change;
+    const actions=document.createElement('div');actions.className='hud-editor-actions';
+    actions.append(button('Salvar perfil',()=>{
+      const store=BxTouchpadProfiles.copy(this.profileStore),index=store.profiles.findIndex(p=>p.id===this.activeProfileId);
+      if(index<0){note.textContent='Perfil atual não encontrado.';return;}
+      store.profiles[index]={...store.profiles[index],bindings:BxTouchpadProfiles.copy(this.bindings),hud:BxTouchpadProfiles.copy(this.hud)};
+      try{this.persistProfiles(store);}catch{note.textContent='Não foi possível salvar. A edição continua aberta.';return;}
+      this.finishEditing(false);
+    }),button('Cancelar',()=>this.finishEditing(true)));
+    body.append(profileName,note,add,options,title,keyRow,directions,size.label,opacity.label,visibleLabel,area,actions);panel.append(collapse,body);this.root.append(panel);
+    this.refreshEditorOptions();this.selectHud('joystick');this.applyAllGeometry();
+  }
+  finishEditing(cancel,returnToSettings=true){
+    this.tapToPlace=null;this.placeBlank=false;
+    super.finishEditing(cancel,returnToSettings);if(this.deleteBadge)this.deleteBadge.hidden=true;this.refreshProfilePanels();
+  }
+}
+
+class BxTouchpadOverlay extends BxTouchpadProfiles {
+  constructor(){
+    super();this.undoPast=[];this.undoFuture=[];this.historyBusy=false;
+    window.addEventListener('resize',()=>{this.editorPointerHistory=null;if(this.editingHud)this.dockInspector();});
+    document.addEventListener('fullscreenchange',()=>{if(this.editingHud){this.reparent();this.dockInspector();this.updateFullscreenButton();}});
+  }
+  editorState(){return JSON.stringify({bindings:this.bindings,hud:this.hud});}
+  recordEditor(before){
+    if(!this.editingHud||this.historyBusy||before===this.editorState())return;
+    this.undoPast.push(before);if(this.undoPast.length>60)this.undoPast.shift();this.undoFuture=[];this.updateHistoryButtons();
+  }
+  editorChange(action){
+    if(!this.editingHud||this.historyBusy)return action();
+    const before=this.editorState();this.historyBusy=true;
+    try{return action();}finally{this.historyBusy=false;this.recordEditor(before);}
+  }
+  addBlank(x,y){return this.editorChange(()=>super.addBlank(x,y));}
+  removeKey(id){return this.editorChange(()=>super.removeKey(id));}
+  changeKey(id,code){return this.editorChange(()=>super.changeKey(id,code));}
+  updateHistoryButtons(){if(this.undoButton)this.undoButton.disabled=!this.undoPast.length;if(this.redoButton)this.redoButton.disabled=!this.undoFuture.length;}
+  restoreEditorHistory(redo=false){
+    if(!this.editingHud)return;const from=redo?this.undoFuture:this.undoPast,to=redo?this.undoPast:this.undoFuture;if(!from.length)return;
+    to.push(this.editorState());const state=JSON.parse(from.pop());this.bindings=state.bindings;this.hud=state.hud;this.drag=null;this.tapToPlace=null;this.editorPointerHistory=null;
+    this.renderMappedButtons();this.refreshEditorOptions();this.selectHud(this.selectedId);this.updateHistoryButtons();
+  }
+  mount(){
+    if(this.root)return;super.mount();
+    const style=document.createElement('style');style.textContent=`
+#nimbo-touch-root.hud-editing{background:transparent!important;inset:0!important;isolation:isolate;z-index:2147483000!important}
+#nimbo-touch-root .hud-properties{top:76px;right:max(12px,env(safe-area-inset-right));left:auto;transform:none;width:264px;max-width:calc(100vw - 24px);max-height:calc(100% - 90px);padding:0;border:1px solid #41544c;background:#182124f5;border-radius:12px;box-shadow:0 12px 36px #0004;color:#eef2ee;overscroll-behavior:contain;font:12px system-ui!important}
+#nimbo-touch-root .hud-properties[data-dock=left]{right:auto;left:max(12px,env(safe-area-inset-left))}
+#nimbo-touch-root .hud-properties .forma-property-head{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #35423e;gap:8px}
+#nimbo-touch-root .hud-properties .forma-property-head span{margin:0;font:11px system-ui!important;letter-spacing:.5px}
+#nimbo-touch-root .hud-properties .forma-property-head button{min-width:44px!important;min-height:44px!important;padding:5px!important;margin:0!important}
+#nimbo-touch-root .hud-properties .forma-property-body{padding:14px}
+#nimbo-touch-root .hud-properties .forma-property-body>strong{font:600 17px system-ui!important;margin:14px 0 16px;color:#b8edcf}
+#nimbo-touch-root .hud-properties label{font:12px system-ui!important;margin:12px 0 4px}
+#nimbo-touch-root .hud-properties select{width:100%;background:#252d30;color:#eef2ee;border:1px solid #53635d;border-radius:7px;padding:6px;min-height:40px!important;font:12px system-ui!important}
+#nimbo-touch-root .hud-properties input[type=range]{width:100%;accent-color:#b8edcf;min-height:32px;margin:4px 0}
+#nimbo-touch-root .hud-properties input[type=checkbox]{accent-color:#b8edcf}
+#nimbo-touch-root .hud-properties label span{color:#b8edcf;font:11px ui-monospace,monospace!important}
+#nimbo-touch-root .hud-properties .direction-keys label{flex:1 1 40%;min-width:0;margin:3px 0}
+#nimbo-touch-root .hud-properties .direction-keys select{min-width:0;max-width:90px}
+#nimbo-touch-root .hud-properties[data-collapsed=true]{top:auto;bottom:max(12px,env(safe-area-inset-bottom));width:210px}
+#nimbo-touch-root .hud-properties[data-collapsed=true] .forma-property-head{border-bottom:0}
+#nimbo-touch-root .forma-editor-bar{position:absolute;top:max(10px,env(safe-area-inset-top));left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));display:flex;align-items:center;justify-content:space-between;gap:10px;z-index:50;pointer-events:auto;background:#111c20ed;border:1px solid #3d514a;border-radius:10px;padding:6px 8px;box-sizing:border-box;color:#eef2ee;font:12px system-ui!important}
+#nimbo-touch-root .forma-editor-bar .forma-caption{min-width:0;max-width:28%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
+#nimbo-touch-root .forma-caption strong{display:block;font-size:12px;font-weight:600;color:#e0f2e6}
+#nimbo-touch-root .forma-caption small{font-size:10px;color:#aabbb2}
+#nimbo-touch-root .forma-actions{display:flex;align-items:center;gap:5px;flex-shrink:0}
+#nimbo-touch-root .forma-editor-bar button,#nimbo-touch-root .forma-property-head button{background:#24312c;color:#eef2ee;border:1px solid #496055;border-radius:7px;min-height:40px;padding:8px 11px;font:12px system-ui!important;line-height:1.2!important;margin:0;touch-action:manipulation}
+#nimbo-touch-root .forma-editor-bar button:disabled{opacity:.35}
+#nimbo-touch-root .forma-editor-bar .forma-save{background:#b8edcf;color:#16392b;border-color:#b8edcf;font-weight:600!important}
+#nimbo-touch-root .forma-editor-bar button:focus-visible,#nimbo-touch-root .hud-properties button:focus-visible,#nimbo-touch-root .hud-properties select:focus-visible{outline:2px solid #b8edcf;outline-offset:2px}
+#nimbo-touch-root .forma-editor-note{position:absolute;left:50%;bottom:max(10px,env(safe-area-inset-bottom));transform:translateX(-50%);max-width:46%;padding:7px 11px;border-radius:7px;color:#e0eee5;background:#122018ce;pointer-events:none;z-index:40;font:11px system-ui!important;text-align:center;line-height:1.4!important}
+@media(max-height:540px){#nimbo-touch-root .hud-properties{top:70px;width:225px;max-height:calc(100% - 84px)}#nimbo-touch-root .forma-property-body{padding:10px}#nimbo-touch-root .hud-properties .forma-property-body>strong{font-size:14px!important;margin:10px 0}#nimbo-touch-root .hud-properties label{margin-top:8px}#nimbo-touch-root .forma-editor-note{font-size:10px!important;max-width:43%}}
+@media(max-width:760px){#nimbo-touch-root .forma-caption{display:none}#nimbo-touch-root .forma-editor-bar{justify-content:center;gap:4px}#nimbo-touch-root .forma-actions{gap:3px}#nimbo-touch-root .forma-editor-bar button{padding:7px 8px;font-size:11px!important}}
+@media(orientation:portrait) and (max-width:600px){#nimbo-touch-root .forma-editor-bar{flex-wrap:wrap}#nimbo-touch-root .hud-properties{top:112px;max-height:calc(100% - 180px)}#nimbo-touch-root .forma-editor-note{max-width:90%}}
+`;this.root.append(style);
+    this.root.addEventListener('pointerdown',e=>{
+      if(!this.editingHud||this.editorPointerHistory)return;let node=e.target;
+      while(node&&node!==this.root){if(node.dataset?.editorAction)return;if(node.dataset?.hudId){this.editorPointerHistory={id:e.pointerId,state:this.editorState()};return;}node=node.parentElement;}
+    },true);
+    const finish=e=>{if(this.editorPointerHistory?.id!==e.pointerId)return;const before=this.editorPointerHistory.state;this.editorPointerHistory=null;this.recordEditor(before);};
+    for(const type of ['pointerup','pointercancel','lostpointercapture'])this.root.addEventListener(type,finish,true);
+    // Keep editor interactions inside the overlay; the stream itself remains live.
+    for(const type of ['pointerdown','pointermove','pointerup','click','keydown','keyup','wheel'])this.root.addEventListener(type,e=>{if(this.editingHud)e.stopPropagation();});
+  }
+  selectHud(id){super.selectHud(id);if(this.editingHud)this.dockInspector();}
+  dockInspector(){
+    if(!this.hudPanel)return;const g=this.geometry(this.selectedId||'joystick');
+    this.hudPanel.dataset.dock=g.x>.5?'left':'right';
+    if(this.propertyCaption)this.propertyCaption.textContent=this.itemLabel(this.selectedId||'joystick')+' · ajustes';
+  }
+  setInspectorCollapsed(collapsed){
+    if(!this.propertyBody||!this.hudPanel)return;this.propertyBody.hidden=collapsed;this.hudPanel.dataset.collapsed=String(collapsed);
+    this.collapseButton.textContent=collapsed?'⌃':'⌄';this.collapseButton.setAttribute('aria-expanded',String(!collapsed));this.collapseButton.setAttribute('aria-label',collapsed?'Abrir propriedades':'Recolher propriedades');
+  }
+  updateFullscreenButton(){if(this.fullscreenButton){this.fullscreenButton.disabled=!!document.fullscreenElement;this.fullscreenButton.textContent=document.fullscreenElement?'Tela cheia ✓':'Tela cheia';}}
+  requestEditorFullscreen(){
+    if(document.fullscreenElement){this.reparent();this.updateFullscreenButton();return;}
+    const request=document.documentElement.requestFullscreen;
+    if(!request){if(this.properties)this.properties.note.textContent='Use a opção de tela cheia do navegador. O editor continua sobre o jogo.';return;}
+    try{Promise.resolve(request.call(document.documentElement)).then(()=>{if(!this.editingHud)return;this.reparent();this.applyAllGeometry();this.updateFullscreenButton();}).catch(()=>{if(this.properties)this.properties.note.textContent='O navegador não permitiu tela cheia. Toque em Tela cheia para tentar novamente.';});}
+    catch{if(this.properties)this.properties.note.textContent='Use a opção de tela cheia do navegador.';}
+  }
+  editHud(){
+    if(this.editingHud)return;
+    touchPanel.close();
+    
+    super.editHud();if(!this.editingHud)return;
+    this.reparent();this.undoPast=[];this.undoFuture=[];this.editorPointerHistory=null;
+    const panel=this.hudPanel,collapse=panel.children[0],body=panel.children[1];
+    const profileName=body.children[0],add=body.children[2],actions=panel.querySelector('.hud-editor-actions');
+    const save=actions.children[0],cancel=actions.children[1];
+    this.propertyBody=body;this.collapseButton=collapse;body.className='forma-property-body';panel.dataset.editorAction='true';
+    const head=document.createElement('div');head.className='forma-property-head';this.propertyCaption=document.createElement('span');head.append(this.propertyCaption,collapse);panel.prepend(head);
+    collapse.onclick=()=>this.setInspectorCollapsed(!body.hidden);this.setInspectorCollapsed(false);
+    const bar=this.editorBar=document.createElement('div');bar.className='forma-editor-bar';bar.dataset.editorAction='true';
+    const caption=document.createElement('div');caption.className='forma-caption';const title=document.createElement('strong');title.textContent='Editar HUD';const sub=document.createElement('small');sub.textContent=this.currentProfile()?.name||'Meu perfil';caption.append(title,sub);bar.append(caption);profileName.remove();
+    const tools=document.createElement('div');tools.className='forma-actions';
+    const button=(text,label,action)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.setAttribute('aria-label',label);b.title=label;b.onclick=action;return b;};
+    add.textContent='+ Tecla';add.setAttribute('aria-label','Adicionar tecla vazia');add.onclick=()=>{this.placeBlank=true;this.properties.note.textContent='Toque no jogo onde a nova tecla deve ficar.';this.setInspectorCollapsed(true);};
+    this.undoButton=button('↶','Desfazer',()=>this.restoreEditorHistory());this.redoButton=button('↷','Refazer',()=>this.restoreEditorHistory(true));
+    this.fullscreenButton=button('Tela cheia','Entrar em tela cheia',()=>this.requestEditorFullscreen());tools.append(add,this.undoButton,this.redoButton,this.fullscreenButton);
+    const end=document.createElement('div');end.className='forma-actions';save.textContent='Salvar e jogar';save.className='forma-save';end.append(cancel,save);actions.remove();bar.append(tools,end);this.root.append(bar);
+    this.properties.note.className='forma-editor-note';this.properties.note.textContent='Edição: os toques ajustam a HUD. O jogo continua rodando.';this.root.append(this.properties.note);
+    // Existing validated editor handlers remain responsible for data mutations.
+    for(const input of [this.properties.size,this.properties.opacity,this.properties.visible,this.properties.w,this.properties.h]){const original=input.oninput;input.oninput=()=>this.editorChange(()=>original());}
+    for(const input of [this.properties.key,...Object.values(this.properties.directionSelects)]){const original=input.onchange;input.onchange=()=>this.editorChange(()=>original());}
+    this.updateHistoryButtons();this.dockInspector();this.requestEditorFullscreen();this.applyAllGeometry();
+  }
+  finishEditing(cancel,returnToSettings=true){
+    if(!this.editingHud)return;this.editorBar?.remove();this.properties?.note?.remove();
+    this.editorBar=null;this.propertyBody=null;this.propertyCaption=null;this.undoButton=null;this.redoButton=null;this.fullscreenButton=null;this.editorPointerHistory=null;
+    super.finishEditing(cancel,false);
+    if(!returnToSettings)return;
+    if(cancel){this.openTouchSettings();return;}
+    // Saved HUD returns to play; start() retains all native support checks.
+    this.start().then(()=>{if(!this.active){const message=this.status?.textContent;this.openTouchSettings();for(const section of this.nativeSections)section.state.textContent=message||'HUD salva. Ative os controles quando o jogo estiver pronto.';}});
+  }
+}
+
+class BxTouchpadExclusive extends BxTouchpadOverlay {
+  syncNativeTouchVisibility(){
+    const exclusive=!!this.root&&(this.active||this.editingHud);
+    document.documentElement.classList.toggle('nimbo-touch-exclusive',exclusive);
+  }
+  mount(){
+    if(this.root)return;
+    super.mount();
+    const style=document.createElement('style');style.dataset.bxTouchpadExclusive='true';
+    // These IDs are the native touch surface used by NimboPlay's TouchController.
+    // Deliberately do not match all canvases, the video renderer, #StreamHud or Guide.
+    // CSS also applies if Xbox inserts/replaces its touch surface after activation.
+    style.textContent=`
+html.nimbo-touch-exclusive #BabylonCanvasContainer-main,
+html.nimbo-touch-exclusive #BabylonCanvasContainer-main *,
+html.nimbo-touch-exclusive #babylon-canvas,
+html.nimbo-touch-exclusive #babylon-canvas * {
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+`;
+    this.root.append(style);this.syncNativeTouchVisibility();
+  }
+  async start(){
+    try{await super.start();}
+    finally{this.syncNativeTouchVisibility();}
+  }
+  stop(){
+    super.stop();this.syncNativeTouchVisibility();
+  }
+  editHud(){
+    try{super.editHud();}
+    finally{this.syncNativeTouchVisibility();}
+  }
+  finishEditing(cancel,returnToSettings=true){
+    try{super.finishEditing(cancel,returnToSettings);}
+    finally{this.syncNativeTouchVisibility();}
+  }
+  destroy(){
+    try{super.destroy();}
+    finally{document.documentElement.classList.remove('nimbo-touch-exclusive');}
+  }
+}
+
+class BxTouchpadSession extends BxTouchpadExclusive {
+  constructor(){
+    super();this.wanted=false;this.desiredSession=null;this.focused=true;this.resumeTimer=null;this.latched=new Set();this.rawTouches=new Set();this.touchPeak=0;this.touchCancels=0;this.lastTouchEvent='—';this.showTouchDiagnostics=false;
+    window.addEventListener('focus',()=>{this.focused=true;this.retryAt=0;this.ensureResumeWatch();});
+    window.addEventListener('blur',()=>{this.focused=false;this.pause('Janela sem foco');});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden){this.focused=true;this.retryAt=0;this.ensureResumeWatch();}});
+    document.addEventListener('fullscreenchange',()=>{this.pause('Mudança de tela cheia');this.ensureResumeWatch();});
+    BxEventBus.Script.on('dialog.dismissed',()=>this.ensureResumeWatch());
+    window.addEventListener(BxEvent.XCLOUD_POLLING_MODE_CHANGED,()=>this.checkResume());
+    for(const type of ['pointerdown','pointerup','pointercancel','lostpointercapture'])document.addEventListener(type,e=>this.observeTouch(e),true);
+  }
+  pause(reason='Pausa temporária'){
+    this.pauseReason=reason;this.latched?.clear();super.stop();if(this.editingHud){this.mapped.hidden=false;this.pad.hidden=false;}this.rawTouches?.clear();this.refreshInputVisuals();this.refreshNativeSections();this.ensureResumeWatch();
+  }
+  stop(){
+    this.wanted=false;this.desiredSession=null;this.latched?.clear();clearTimeout(this.resumeTimer);this.resumeTimer=null;
+    super.stop();this.rawTouches?.clear();this.refreshInputVisuals();this.refreshNativeSections();
+  }
+  canResume(){
+ if(!this.root||this.editingHud||this.editor||document.hidden||touchPanel.isOpen||!STATES.isPlaying)return false;
+ if(!this.desiredSession||api.streamSession!==this.desiredSession)return false;
+ return !nativeDialogVisible();
+}
+  ensureResumeWatch(){
+    if(!this.wanted||this.resumeTimer)return;
+    this.resumeTimer=window.setTimeout(()=>{this.resumeTimer=null;this.checkResume();},200);
+  }
+  checkResume(){
+    if(!this.wanted)return;
+    if(api?.streamSession!==this.desiredSession){this.stop();return;}
+    if(this.canResume()){if(!this.active&&!this.busy)this.start(true);}
+    else if(this.active)this.pause('Menu ou página temporariamente indisponível');
+    this.ensureResumeWatch();
+  }
+  async start(automatic=false){
+    if(!automatic){
+      if(!STATES.isPlaying||!api?.streamSession){this.stop();if(this.status)this.status.textContent='Abra uma sessão de jogo antes de ativar os controles.';return;}
+      this.wanted=true;this.desiredSession=api.streamSession;
+    }
+    if(!this.wanted)return;
+    if(!this.canResume()){this.refreshNativeSections();this.ensureResumeWatch();return;}
+    if(this.busy||this.active){this.ensureResumeWatch();return;}
+    const pending=super.start(),attemptEpoch=this.epoch;
+    await pending;
+    // A canceled attempt keeps user intent. A failed supported attempt does not loop forever.
+    if(!this.active&&this.epoch===attemptEpoch){this.wanted=false;this.desiredSession=null;}
+    this.refreshNativeSections();this.ensureResumeWatch();
+  }
+  openTouchSettings(){const wanted=this.wanted,session=this.desiredSession;super.openTouchSettings();this.wanted=wanted;this.desiredSession=session;this.refreshNativeSections();this.ensureResumeWatch();}
+  editHud(){
+    const wanted=this.wanted,session=this.desiredSession;
+    super.editHud();this.wanted=wanted;this.desiredSession=session;
+    if(!this.editingHud||!this.properties)return;
+    this.properties.opacity.min='0';
+    const addButton=this.editorBar?.children[1]?.children[0];if(addButton){const add=addButton.onclick;addButton.onclick=()=>{this.libraryChoice=null;add();};}
+    const box=document.createElement('div');box.className='bx-action-options';
+    const label=document.createElement('label');label.textContent='Comportamento';
+    const behavior=document.createElement('select');behavior.setAttribute('aria-label','Comportamento do botão');
+    for(const [value,text]of [['hold','Segurar'],['toggle','Trava de mira: tocar liga/desliga'],['aim-fire','Mirar + atirar enquanto segura']]){const option=document.createElement('option');option.value=value;option.textContent=text;behavior.append(option);}
+    behavior.onchange=()=>this.editorChange(()=>{const b=this.bindings.find(b=>b.id===this.selectedId);if(!b)return;b.behavior=behavior.value;this.renderMappedButtons();this.selectHud(b.id);});label.append(behavior);
+    const visualLabel=document.createElement('label');visualLabel.textContent='Visual';const visual=document.createElement('select');visual.setAttribute('aria-label','Visual do botão');
+    for(const [value,text]of [['key','Somente tecla'],['both','Ícone + tecla'],['icon','Somente ícone']]){const o=document.createElement('option');o.value=value;o.textContent=text;visual.append(o);}visual.onchange=()=>this.editorChange(()=>{const b=this.bindings.find(b=>b.id===this.selectedId);if(b){b.visual=visual.value;this.renderMappedButtons();this.selectHud(b.id);}});visualLabel.append(visual);
+    box.append(label,visualLabel);this.propertyBody.append(box);this.actionProperties={box,behavior,visual};
+    const library=document.createElement('label');library.textContent='Biblioteca de controles';const select=document.createElement('select');select.setAttribute('aria-label','Biblioteca de controles');
+    for(const [value,text]of [['','Escolher…'],['blank','+ Tecla vazia'],['fire','◉ Disparo · Mouse 1'],['aim','⊕ Mira · Mouse 2'],['combo','⊕ Mirar + atirar'],['stick','✥ Joystick WASD existente']]){const o=document.createElement('option');o.value=value;o.textContent=text;select.append(o);}
+    select.onchange=()=>{const value=select.value;select.value='';if(!value)return;if(value==='stick'){this.selectHud('joystick');return;}this.libraryChoice=value;this.placeBlank=true;this.properties.note.textContent='Toque onde deseja colocar o controle escolhido.';this.setInspectorCollapsed(true);};library.append(select);this.propertyBody.prepend(library);
+    this.selectHud(this.selectedId);this.ensureResumeWatch();
+  }
+  finishEditing(cancel,returnToSettings=true){
+    this.actionProperties=null;this.libraryChoice=null;super.finishEditing(cancel,returnToSettings);this.ensureResumeWatch();
+  }
+  addBlank(x,y){
+    this.editorChange(()=>{
+      const count=this.bindings.length;super.addBlank(x,y);if(this.bindings.length===count)return;
+      const b=this.bindings.find(b=>b.id===this.selectedId),choice=this.libraryChoice;this.libraryChoice=null;
+      if(choice&&choice!=='blank'){b.code=choice==='aim'?'Mouse2':'Mouse0';b.icon=choice==='aim'?'aim':'fire';b.visual='both';b.behavior=choice==='combo'?'aim-fire':'hold';this.renderMappedButtons();this.refreshEditorOptions();this.selectHud(b.id);}
+    });
+  }
+  behaviorOf(b){return b?.behavior==='toggle'&&b.code==='Mouse2'?'toggle':b?.behavior==='aim-fire'&&b.code==='Mouse0'?'aim-fire':'hold';}
+  codesOf(b){return this.behaviorOf(b)==='aim-fire'?['Mouse2','Mouse0']:b?.code?[b.code]:[];}
+  selectHud(id){
+    super.selectHud(id);const p=this.actionProperties;if(!p)return;const b=this.bindings.find(b=>b.id===this.selectedId);p.box.hidden=!b;if(!b)return;
+    p.behavior.value=this.behaviorOf(b);p.behavior.children[1].disabled=b.code!=='Mouse2';p.behavior.children[2].disabled=b.code!=='Mouse0';p.visual.value=['both','icon'].includes(b.visual)?b.visual:'key';
+  }
+  renderMappedButtons(){
+    super.renderMappedButtons();if(!this.elements)return;
+    for(const b of this.bindings){const node=this.elements.get(b.id);if(!node||!b.code||['w','a','s','d'].includes(b.slot))continue;
+      const combined=this.behaviorOf(b)==='aim-fire',text=combined?'M1 + M2':BxTouchpadUnified.keyLabel(b.code);
+      node.textContent=text;node.setAttribute('aria-label',text+(this.behaviorOf(b)==='toggle'?' · trava de mira':''));
+      if(['both','icon'].includes(b.visual)){
+        const mark=document.createElement('span');mark.className='bx-control-symbol';
+        // Static, local icon shapes; never interpolate stored user content into markup.
+        mark.innerHTML=b.code==='Mouse2'?'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 1v6m0 10v6M1 12h6m10 0h6"/><circle cx="12" cy="12" r="1"/></svg>':b.code==='Mouse0'?'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 17V9l3-4 3 4v8ZM9 13h6"/></svg>':'';
+        if(mark.innerHTML){node.textContent='';node.append(mark);if(b.visual==='both'){const caption=document.createElement('span');caption.textContent=text;caption.className='bx-control-caption';node.append(caption);}}
+      }
+    }
+    this.refreshInputVisuals();
+  }
+  bindSurface(element,kind,code=null){
+    element.addEventListener('pointerdown',e=>{
+      if(!this.active||this.editingHud||e.pointerType!=='touch'||this.pointers.has(e.pointerId))return;
+      e.preventDefault();e.stopPropagation();
+      if(kind==='pad'&&[...this.pointers.values()].some(p=>p.kind==='pad'))return;
+      const b=this.bindings.find(b=>b.id===element.dataset.hudId);
+      element.setPointerCapture(e.pointerId);
+      if(kind==='binding'&&this.behaviorOf(b)==='toggle'){
+        if([...this.pointers.values()].some(p=>p.controlId===b.id))return;
+        this.latched.has(b.id)?this.latched.delete(b.id):this.latched.add(b.id);
+        this.pointers.set(e.pointerId,{kind:'toggle',controlId:b.id,x:e.clientX,y:e.clientY});
+      }else this.pointers.set(e.pointerId,{kind,code,controlId:b?.id,codes:kind==='binding'?this.codesOf(b):[],x:e.clientX,y:e.clientY});
+      this.updateButtons();
+    });
+    element.addEventListener('pointermove',e=>{const p=this.pointers.get(e.pointerId);if(!p||!this.active)return;e.preventDefault();e.stopPropagation();try{if(p.kind==='pad')this.move(e.clientX-p.x,e.clientY-p.y);p.x=e.clientX;p.y=e.clientY;}catch(error){this.stop();this.status.textContent=error.message;}});
+    const release=e=>{const p=this.pointers.get(e.pointerId);if(!p)return;this.pointers.delete(e.pointerId);if(e.type!=='pointerup'&&p.kind==='toggle')this.latched.delete(p.controlId);e.stopPropagation();this.updateButtons();};
+    for(const type of ['pointerup','pointercancel','lostpointercapture'])element.addEventListener(type,release);
+    element.addEventListener('contextmenu',e=>e.preventDefault());
+  }
+  updateButtons(){
+    let buttons=0;const wanted=new Set();const accept=code=>{if(code==='Mouse0')buttons|=1;else if(code==='Mouse2')buttons|=2;else if(code)wanted.add(code);};
+    for(const p of this.pointers.values())for(const code of p.codes||[])accept(code);
+    for(const id of this.latched||[]){const b=this.bindings.find(b=>b.id===id);if(this.behaviorOf(b)==='toggle')for(const code of this.codesOf(b))accept(code);}
+    this.buttons=buttons;
+    if(this.active)try{this.send();this.syncKeys(wanted);}catch(error){this.stop();this.status.textContent=error.message;}
+    this.refreshInputVisuals();
+  }
+  refreshInputVisuals(){
+    for(const [id,node]of this.elements||[])node.dataset.latched=String(!!this.latched?.has(id));
+    if(this.diagnosticLabel){this.diagnosticLabel.hidden=!this.showTouchDiagnostics||!this.wanted;this.diagnosticLabel.textContent=`Toques recebidos: ${this.rawTouches?.size||0} · pico ${this.touchPeak||0} · controles ${this.pointers.size} · cancelados ${this.touchCancels||0} · ${this.lastTouchEvent||'—'}`;}
+  }
+  observeTouch(e){
+    if(!this.wanted||e.pointerType!=='touch')return;
+    if(e.type==='pointerdown'){this.rawTouches.add(e.pointerId);this.touchPeak=Math.max(this.touchPeak,this.rawTouches.size);}
+    else if(e.type==='pointerup'||e.type==='pointercancel'){const had=this.rawTouches.delete(e.pointerId);if(had&&e.type==='pointercancel')this.touchCancels++;}
+    this.lastTouchEvent=e.type.replace('pointer','');this.refreshInputVisuals();
+  }
+  refreshNativeSections(){
+    super.refreshNativeSections();for(const panel of this.nativeSections||[]){panel.toggle.textContent=this.wanted?'Desativar controles na tela':'Ativar controles na tela';if(this.wanted&&!this.active)panel.state.textContent='Pausado temporariamente. Os controles retomam ao voltar ao jogo; nenhum botão permanece pressionado.';}
+  }
+  
+  mount(){
+    if(this.root)return;super.mount();const style=document.createElement('style');style.textContent=`
+#nimbo-touch-root{touch-action:none;overscroll-behavior:contain}
+#nimbo-touch-root .hud-button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+#nimbo-touch-root .bx-control-symbol{display:block;width:40%;height:40%;pointer-events:none}
+#nimbo-touch-root .bx-control-symbol svg{display:block;width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.5}
+#nimbo-touch-root .bx-control-caption{font:10px system-ui;pointer-events:none}
+#nimbo-touch-root .bx-touch-diagnostic{position:absolute;top:4px;left:50%;transform:translateX(-50%);z-index:55;pointer-events:none;background:#101c20df;color:#dcf8e6;padding:5px 8px;border-radius:6px;font:11px system-ui;max-width:90vw}
+`;this.root.append(style);this.diagnosticLabel=document.createElement('div');this.diagnosticLabel.className='bx-touch-diagnostic';this.diagnosticLabel.hidden=true;this.root.append(this.diagnosticLabel);
+  }
+  destroy(){this.stop();super.destroy();this.diagnosticLabel=null;this.rawTouches?.clear();}
+}
+
+class BxTouchpadToolkit extends BxTouchpadSession {
+  constructor(){super();this.sprintLatched=false;this.hudHidden=false;this.retryAt=0;this.retryDelay=1000;}
+  handleInputFailure(error){
+    this.retryAt=performance.now()+this.retryDelay;this.retryDelay=Math.min(10000,this.retryDelay*2);
+    this.pause('Entrada temporariamente indisponível');
+    if(this.status)this.status.textContent='Controles ligados, aguardando a entrada: '+String(error?.message||error);
+    this.refreshNativeSections();
+  }
+  async start(automatic=false){
+    if(!automatic){this.wanted=true;this.retryAt=0;this.retryDelay=1000;if(STATES.isPlaying)this.desiredSession=api?.streamSession;}
+    if(!this.wanted)return;
+    if(!this.canResume()||performance.now()<this.retryAt||this.busy||this.active){this.refreshNativeSections();this.ensureResumeWatch();return;}
+    const epochBefore=this.epoch;
+    try{await BxTouchpadExclusive.prototype.start.call(this);}catch(error){this.handleInputFailure(error);}
+    if(this.active){this.retryDelay=1000;this.retryAt=0;}
+    else if(this.wanted&&this.root&&this.epoch>=epochBefore){this.retryAt=Math.max(this.retryAt,performance.now()+this.retryDelay);this.retryDelay=Math.min(10000,this.retryDelay*2);}
+    this.refreshNativeSections();this.ensureResumeWatch();
+  }
+  canResume(){
+ if(!this.root||this.editingHud||this.editor||document.hidden||touchPanel.isOpen||!STATES.isPlaying)return false;
+ if(!this.desiredSession||api.streamSession!==this.desiredSession)return false;
+ return !nativeDialogVisible();
+}
+  ensureResumeWatch(){if(!this.root||!this.wanted)return;super.ensureResumeWatch();}
+  checkResume(){
+    if(!this.wanted||!this.root)return;
+    const session=api?.streamSession;
+    if(!STATES.isPlaying||!session){if(this.active)this.pause('Aguardando a sessão');this.ensureResumeWatch();return;}
+    if(session!==this.desiredSession){this.pause('Reconectando à sessão');this.desiredSession=session;this.retryAt=0;}
+    if(this.canResume()){if(!this.active&&!this.busy&&performance.now()>=this.retryAt)this.start(true);}
+    else if(this.active)this.pause('Menu ou página temporariamente indisponível');
+    this.ensureResumeWatch();
+  }
+  pause(reason){this.sprintLatched=false;super.pause(reason);}
+  stop(){this.sprintLatched=false;super.stop();this.updateShortcut();}
+  destroy(){const wanted=this.wanted;super.destroy();this.wanted=wanted;this.desiredSession=null;this.hudHidden=false;this.sprintLatched=false;this.updateShortcut();}
+  switchProfile(id){const wanted=this.wanted,session=this.desiredSession;const result=super.switchProfile(id);this.wanted=wanted;this.desiredSession=session;this.hudHidden=false;this.refreshNativeSections();this.ensureResumeWatch();return result;}
+  duplicateProfile(name,empty=false){const wanted=this.wanted,session=this.desiredSession;const result=super.duplicateProfile(name,empty);this.wanted=wanted;this.desiredSession=session;this.refreshNativeSections();this.ensureResumeWatch();return result;}
+  combination(b){return Array.isArray(b?.combo)?[...new Set(b.combo.filter(c=>BxTouchpad.keyOptions().includes(c)))].slice(0,8):[];}
+  behaviorOf(b){if(b?.action==='hud-visibility')return 'hud-visibility';if(b?.behavior==='multi')return 'multi';return super.behaviorOf(b);}
+  codesOf(b){if(b?.action==='hud-visibility')return [];if(this.behaviorOf(b)==='multi')return this.combination(b);return super.codesOf(b);}
+  clearAimLatch(){for(const id of this.latched||[]){const b=this.bindings.find(b=>b.id===id);if(this.behaviorOf(b)==='toggle'&&b.code==='Mouse2')this.latched.delete(id);}}
+  bindSurface(element,kind,code=null){
+    element.addEventListener('pointerdown',e=>{
+      if(!this.active||this.editingHud||e.pointerType!=='touch'||this.pointers.has(e.pointerId))return;
+      e.preventDefault();e.stopPropagation();
+      if(kind==='pad'&&[...this.pointers.values()].some(p=>p.kind==='pad'))return;
+      const b=this.bindings.find(b=>b.id===element.dataset.hudId),behavior=this.behaviorOf(b);
+      if(behavior==='hud-visibility'){this.toggleHudVisibility();return;}
+      if(behavior==='toggle'&&[...this.pointers.values()].some(p=>p.controlId===b.id))return;
+      try{element.setPointerCapture(e.pointerId);}catch(error){NimboDiag.add('input','Não foi possível capturar o toque.',error.message);return;}
+      if(behavior==='aim-fire')this.clearAimLatch();
+      if(kind==='binding'&&behavior==='toggle'){
+        // A held combined-fire button owns aiming until its release.
+        if(![...this.pointers.values()].some(p=>p.combined))this.latched.has(b.id)?this.latched.delete(b.id):this.latched.add(b.id);
+        this.pointers.set(e.pointerId,{kind:'toggle',controlId:b.id,x:e.clientX,y:e.clientY});
+      }else this.pointers.set(e.pointerId,{kind,code,controlId:b?.id,combined:behavior==='aim-fire',codes:kind==='binding'?this.codesOf(b):[],x:e.clientX,y:e.clientY});
+      this.updateButtons();
+    });
+    element.addEventListener('pointermove',e=>{const p=this.pointers.get(e.pointerId);if(!p||!this.active)return;e.preventDefault();e.stopPropagation();try{if(p.kind==='pad')this.move(e.clientX-p.x,e.clientY-p.y);p.x=e.clientX;p.y=e.clientY;}catch(error){this.handleInputFailure(error);}});
+    const release=e=>{const p=this.pointers.get(e.pointerId);if(!p)return;this.pointers.delete(e.pointerId);if(p.combined)this.clearAimLatch();if(e.type!=='pointerup'&&p.kind==='toggle')this.latched.delete(p.controlId);e.stopPropagation();this.updateButtons();};
+    for(const type of ['pointerup','pointercancel','lostpointercapture'])element.addEventListener(type,release);
+    element.addEventListener('contextmenu',e=>e.preventDefault());
+  }
+  bindJoystick(element){
+    const update=e=>{
+      const p=this.pointers.get(e.pointerId);if(p?.kind!=='joystick')return;
+      const r=element.getBoundingClientRect(),g=this.geometry('joystick'),rx=r.width/2,ry=r.height/2;
+      let x=(e.clientX-r.left-rx)/rx,y=(e.clientY-r.top-ry)/ry;
+      p.sprintArmed=!!g.sprintEnabled&&y<=-1.3&&Math.abs(x)<.8;
+      const len=Math.hypot(x,y);if(len>1){x/=len;y/=len;}
+      p.codes=p.sprintArmed?this.sprintCodes():BxTouchpadHud.stickDirections(x,y).map(slot=>this.bindings.find(b=>b.slot===slot)?.code).filter(Boolean);
+      this.knob.style.transform=`translate(${x*rx*.5}px,${y*ry*.5}px)`;element.dataset.sprintArmed=String(p.sprintArmed);this.updateButtons();
+    };
+    element.addEventListener('pointerdown',e=>{
+      if(!this.active||this.editingHud||e.pointerType!=='touch')return;e.preventDefault();e.stopPropagation();
+      if([...this.pointers.values()].some(p=>p.kind==='joystick'))return;
+      this.sprintLatched=false;try{element.setPointerCapture(e.pointerId);}catch(error){NimboDiag.add('input','Não foi possível capturar o toque.',error.message);return;}this.pointers.set(e.pointerId,{kind:'joystick',codes:[],sprintArmed:false});update(e);
+    });
+    element.addEventListener('pointermove',e=>{if(this.pointers.get(e.pointerId)?.kind!=='joystick')return;e.preventDefault();e.stopPropagation();update(e);});
+    const release=e=>{const p=this.pointers.get(e.pointerId);if(p?.kind!=='joystick')return;
+      this.sprintLatched=e.type==='pointerup'&&p.sprintArmed&&!!this.geometry('joystick').sprintEnabled;
+      this.pointers.delete(e.pointerId);this.knob.style.transform='translate(0,0)';element.dataset.sprintArmed='false';e.stopPropagation();this.updateButtons();
+    };
+    for(const type of ['pointerup','pointercancel','lostpointercapture'])element.addEventListener(type,release);
+    element.addEventListener('contextmenu',e=>e.preventDefault());
+  }
+  sprintCodes(){const code=this.geometry('joystick').sprintCode;return [this.bindings.find(b=>b.slot==='w')?.code||'KeyW',BxTouchpad.keyOptions().includes(code)?code:'ShiftLeft'];}
+  updateButtons(){
+    let buttons=0;const wanted=new Set();const accept=code=>{if(code==='Mouse0')buttons|=1;else if(code==='Mouse2')buttons|=2;else if(code)wanted.add(code);};
+    for(const p of this.pointers.values())for(const code of p.codes||[])accept(code);
+    for(const id of this.latched||[]){const b=this.bindings.find(b=>b.id===id);if(this.behaviorOf(b)==='toggle')this.codesOf(b).forEach(accept);}
+    if(this.sprintLatched&&this.geometry('joystick').sprintEnabled)this.sprintCodes().forEach(accept);
+    const releasedMouse=(this.buttons&~buttons)!==0;this.buttons=buttons;
+    const modifiers=['ControlLeft','ShiftLeft','AltLeft'];
+    const ordered=new Set([...wanted].sort((a,b)=>Number(modifiers.includes(b))-Number(modifiers.includes(a))));
+    if(this.active)try{if(releasedMouse)this.send();this.syncKeys(ordered);if(!releasedMouse)this.send();}catch(error){this.handleInputFailure(error);}
+    this.refreshInputVisuals();
+  }
+  toggleHudVisibility(){this.hudHidden=!this.hudHidden;this.applyAllGeometry();this.refreshInputVisuals();}
+  applyGeometry(id,element){
+    super.applyGeometry(id,element);const b=this.bindings.find(b=>b.id===id);
+    if(b?.action==='hud-visibility'){element.hidden=!this.editingHud&&(!this.active||!this.geometry(id).visible);element.style.opacity=String(Math.max(.4,this.geometry(id).opacity));}
+    else if(this.hudHidden&&!this.editingHud)element.style.opacity='0';
+  }
+  renderMappedButtons(){
+    super.renderMappedButtons();if(!this.elements)return;
+    for(const b of this.bindings){const node=this.elements.get(b.id);if(!node)continue;
+      if(b.action==='hud-visibility'){
+        node.classList.remove('hud-unassigned');node.classList.add('bx-eye-control');node.textContent='';const glyph=document.createElement('span');glyph.className='bx-control-symbol';glyph.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="bx-eye-slash" d="m3 3 18 18"/></svg>';node.append(glyph);
+        if(b.code===null){node.addEventListener('pointerdown',e=>{if(!this.active||this.editingHud)return;e.preventDefault();e.stopPropagation();this.toggleHudVisibility();});}
+      }else if(this.behaviorOf(b)==='multi'){node.textContent=this.combination(b).map(BxTouchpadUnified.keyLabel).join(' + ')||'Combinação vazia';node.setAttribute('aria-label',node.textContent);}
+    }
+    if(this.stick&&this.geometry('joystick').sprintEnabled){const zone=document.createElement('span');zone.className='bx-sprint-zone';zone.setAttribute('aria-hidden','true');zone.innerHTML='<svg viewBox="0 0 24 24"><circle cx="15" cy="4" r="2"/><path d="m12 8 3 4 5 1M6 11l5-4 4 2-4 6-5 6m5-6 5 3-1 4"/></svg>';this.stick.append(zone);}
+    this.applyAllGeometry();this.refreshInputVisuals();
+  }
+  refreshInputVisuals(){
+    super.refreshInputVisuals();if(this.stick)this.stick.dataset.sprinting=String(!!this.sprintLatched);
+    for(const b of this.bindings||[])if(b.action==='hud-visibility'){const node=this.elements?.get(b.id);if(node){node.dataset.hiddenHud=String(!!this.hudHidden);node.setAttribute('aria-label',this.hudHidden?'Mostrar HUD':'Ocultar HUD');}}
+  }
+  itemLabel(id){const b=this.bindings.find(b=>b.id===id);return b?.action==='hud-visibility'?'Olho · mostrar/ocultar HUD':this.behaviorOf(b)==='multi'?'Combinação: '+(this.combination(b).map(BxTouchpadUnified.keyLabel).join(' + ')||'vazia'):super.itemLabel(id);}
+  editHud(){
+    this.hudHidden=false;this.sprintLatched=false;super.editHud();if(!this.editingHud)return;
+    const behavior=this.actionProperties.behavior,option=document.createElement('option');option.value='multi';option.textContent='Combinação: segurar múltiplas teclas';behavior.append(option);
+    const oldChange=behavior.onchange;behavior.onchange=()=>{if(behavior.value==='multi')this.editorChange(()=>{const b=this.bindings.find(b=>b.id===this.selectedId);if(b){b.behavior='multi';b.combo=this.combination(b);if(!b.combo.length&&b.code)b.combo=[b.code];this.renderMappedButtons();this.selectHud(b.id);}});else oldChange();};
+    const box=document.createElement('div');box.className='bx-combo-editor';const info=document.createElement('p');info.textContent='Até 8 comandos simultâneos. Todos soltam ao levantar o dedo.';
+    const command=document.createElement('select');command.setAttribute('aria-label','Comando para a combinação');for(const code of BxTouchpad.keyOptions()){const o=document.createElement('option');o.value=code;o.textContent=BxTouchpadUnified.keyLabel(code);command.append(o);}
+    const add=document.createElement('button');add.type='button';add.textContent='+ Comando';add.onclick=()=>this.editorChange(()=>{const b=this.bindings.find(b=>b.id===this.selectedId);if(!b)return;const combo=this.combination(b);if(combo.length<8&&!combo.includes(command.value))combo.push(command.value);b.combo=combo;b.code=combo[0]||null;this.renderMappedButtons();this.selectHud(b.id);});
+    const chips=document.createElement('div');box.append(info,command,add,chips);this.propertyBody.append(box);this.comboEditor={box,chips};
+    const sprintBox=document.createElement('div');const label=document.createElement('label'),enabled=document.createElement('input');enabled.type='checkbox';label.append(enabled,document.createTextNode(' Arrastar para travar corrida'));
+    const key=document.createElement('select');key.setAttribute('aria-label','Tecla para correr');for(const code of BxTouchpad.keyOptions().filter(c=>!c.startsWith('Mouse'))){const o=document.createElement('option');o.value=code;o.textContent=BxTouchpadUnified.keyLabel(code);key.append(o);}
+    const hint=document.createElement('p');hint.textContent='Arraste para o corredor acima do analógico e solte. Mantém a direção para frente e a tecla de corrida. Toque no analógico para parar.';
+    enabled.onchange=()=>this.editorChange(()=>{this.geometry('joystick').sprintEnabled=enabled.checked;this.renderMappedButtons();this.selectHud('joystick');});key.onchange=()=>this.editorChange(()=>{this.geometry('joystick').sprintCode=key.value;});sprintBox.append(label,key,hint);this.propertyBody.append(sprintBox);this.sprintEditor={box:sprintBox,enabled,key};
+    const library=this.propertyBody.querySelector('[aria-label="Biblioteca de controles"]');if(library){for(const [value,text]of [['visibility','Olho · mostrar/ocultar HUD'],['multi','Combinação de teclas']]){const o=document.createElement('option');o.value=value;o.textContent=text;library.append(o);}}
+    this.selectHud(this.selectedId);
+  }
+  addBlank(x,y){
+    const choice=this.libraryChoice;
+    if(!['visibility','multi'].includes(choice)){super.addBlank(x,y);return;}
+    this.editorChange(()=>{this.libraryChoice='blank';const count=this.bindings.length;super.addBlank(x,y);if(this.bindings.length===count)return;const b=this.bindings.find(b=>b.id===this.selectedId);if(choice==='visibility'){b.action='hud-visibility';b.code=null;}else{b.behavior='multi';b.combo=[];b.code=null;}this.renderMappedButtons();this.refreshEditorOptions();this.selectHud(b.id);});
+  }
+  selectHud(id){
+    super.selectHud(id);const b=this.bindings.find(b=>b.id===this.selectedId);
+    if(this.actionProperties&&b?.action==='hud-visibility'){this.actionProperties.box.hidden=true;this.properties.keyRow.hidden=true;}
+    if(this.comboEditor){const {box,chips}=this.comboEditor;box.hidden=this.behaviorOf(b)!=='multi';chips.replaceChildren();if(b)for(const code of this.combination(b)){const chip=document.createElement('button');chip.type='button';chip.textContent=BxTouchpadUnified.keyLabel(code)+' ×';chip.setAttribute('aria-label','Remover '+BxTouchpadUnified.keyLabel(code)+' da combinação');chip.onclick=()=>this.editorChange(()=>{b.combo=this.combination(b).filter(c=>c!==code);b.code=b.combo[0]||null;this.renderMappedButtons();this.selectHud(b.id);});chips.append(chip);}if(this.behaviorOf(b)==='multi')this.properties.keyRow.hidden=true;}
+    if(this.sprintEditor){const p=this.sprintEditor;p.box.hidden=this.selectedId!=='joystick';p.enabled.checked=!!this.geometry('joystick').sprintEnabled;p.key.value=this.geometry('joystick').sprintCode||'ShiftLeft';}
+  }
+  finishEditing(cancel,returnToSettings=true){this.comboEditor=null;this.sprintEditor=null;super.finishEditing(cancel,returnToSettings);}
+  refreshNativeSections(){super.refreshNativeSections();if(this.wanted&&!this.active)for(const panel of this.nativeSections||[])panel.state.textContent='Ligado · pausado enquanto houver menu, falta de foco ou indisponibilidade da sessão. Retoma automaticamente; Desativar desliga a escolha.';this.updateShortcut();}
+  updateShortcut(){touchPanel.refresh();}
+  
+  mount(){
+    const hadRoot=!!this.root;super.mount();if(!hadRoot&&this.root){const style=document.createElement('style');style.textContent=`
+#nimbo-touch-root .bx-eye-control .bx-control-symbol{width:65%;height:65%}
+#nimbo-touch-root .bx-eye-slash{display:none}
+#nimbo-touch-root .bx-eye-control[data-hidden-hud=true] .bx-eye-slash{display:block}
+#nimbo-touch-root .bx-sprint-zone{position:absolute;left:50%;top:-64px;transform:translateX(-50%);width:44px;height:44px;display:flex;align-items:center;justify-content:center;border:1px dashed #c9e4d2aa;border-radius:50%;background:#18312488;pointer-events:none;color:#e4f7eb}
+#nimbo-touch-root .bx-sprint-zone svg{width:27px;height:27px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#nimbo-touch-root .hud-stick[data-sprinting=true] .bx-sprint-zone,#nimbo-touch-root .hud-stick[data-sprint-armed=true] .bx-sprint-zone{background:#b8edcf;color:#143124;border-style:solid}
+#nimbo-touch-root .bx-combo-editor button{margin:3px;min-height:40px}
+#StreamHud .bx-touchpad-shortcut-on{box-shadow:inset 0 -3px 0 #b8edcf}
+`;this.root.append(style);}
+    if(this.wanted&&STATES.isPlaying){this.desiredSession=api?.streamSession;this.retryAt=0;this.ensureResumeWatch();}
+  }
+}
+
+class BxTouchpadSettings extends BxTouchpadToolkit {
+  openInputSettings(){
+    this.openTouchSettings();
+    
+  }
+  updateShortcut(){touchPanel.refresh();}
+  
+}
+
+class NimboPlayControls extends BxTouchpadSettings {
+  static actions={'hud-visibility':'Ocultar/mostrar HUD','scroll-up':'Scroll ↑ · um passo','scroll-down':'Scroll ↓ · um passo','scroll-drag':'Scroll ↕ · deslizar'};
+  special(b){return !!b&&!b.slot&&Object.hasOwn(NimboPlayControls.actions,b.action);}
+  itemLabel(id){const b=this.bindings.find(b=>b.id===id);return this.special(b)?NimboPlayControls.actions[b.action]:super.itemLabel(id);}
+  codesOf(b){return this.special(b)?[]:super.codesOf(b);}
+  setAction(id,action){
+    this.editorChange(()=>{const b=this.bindings.find(b=>b.id===id);if(!b||b.slot)return;
+      delete b.behavior;delete b.combo;delete b.icon;b.code=null;b.action=action;
+      this.renderMappedButtons();this.refreshEditorOptions();this.selectHud(id);
+    });
+  }
+  selectHud(id){
+    super.selectHud(id);const b=this.bindings.find(b=>b.id===this.selectedId);
+    if(this.properties&&b&&!b.slot){this.properties.keyRow.hidden=false;this.properties.key.value=this.special(b)?'action:'+b.action:(b.code||'');}
+    if(this.special(b)&&this.actionProperties)this.actionProperties.box.hidden=true;
+    if(this.scrollSettings){this.scrollSettings.row.hidden=b?.action!=='scroll-drag';this.scrollSettings.input.value=String(this.scrollStep(b));}
+  }
+  scrollStep(b){return Number.isFinite(b?.scrollStep)?Math.min(100,Math.max(4,b.scrollStep)):20;}
+  editHud(){
+    super.editHud();if(!this.properties)return;
+    const keys=this.properties.key;
+    for(const [action,label]of Object.entries(NimboPlayControls.actions)){const o=document.createElement('option');o.value='action:'+action;o.textContent=label;keys.append(o);}
+    const old=keys.onchange;
+    keys.onchange=()=>{const value=keys.value;if(value.startsWith('action:')){this.setAction(this.selectedId,value.slice(7));return;}
+      this.editorChange(()=>{const b=this.bindings.find(b=>b.id===this.selectedId);if(b)delete b.action;old();});};
+    const library=this.propertyBody.querySelector('[aria-label="Biblioteca de controles"]');
+    if(library){for(const [value,label]of Object.entries(NimboPlayControls.actions)){if(value==='hud-visibility')continue;const o=document.createElement('option');o.value=value;o.textContent=label;library.append(o);}
+      const original=library.onchange;library.onchange=()=>{const value=library.value;
+        if(value==='visibility'||Object.hasOwn(NimboPlayControls.actions,value)){
+          library.value='';this.libraryChoice=value;this.addBlank(window.innerWidth/2,window.innerHeight/2);this.setInspectorCollapsed(false);
+          this.properties.note.textContent='Controle adicionado. Arraste para posicionar; não é necessário vincular uma tecla.';
+        }else original();};
+    }
+    const row=document.createElement('label');row.textContent='Distância por passo do scroll (px) ';
+    const input=document.createElement('input');input.type='range';input.min='4';input.max='100';input.step='1';input.setAttribute('aria-label','Distância por passo do scroll');
+    input.oninput=()=>this.editorChange(()=>{const b=this.bindings.find(b=>b.id===this.selectedId);if(b)b.scrollStep=Number(input.value);});
+    row.append(input);this.propertyBody.append(row);this.scrollSettings={row,input};this.selectHud(this.selectedId);
+  }
+  addBlank(x,y){
+    const choice=this.libraryChoice,action=choice==='visibility'?'hud-visibility':choice;
+    if(!Object.hasOwn(NimboPlayControls.actions,action)){super.addBlank(x,y);return;}
+    this.editorChange(()=>{this.libraryChoice='blank';const count=this.bindings.length;super.addBlank(x,y);this.libraryChoice=null;
+      if(this.bindings.length>count)this.setAction(this.selectedId,action);
+    });
+  }
+  applyGeometry(id,element){
+    super.applyGeometry(id,element);const b=this.bindings.find(b=>b.id===id);
+    if(this.special(b)){element.hidden=!this.editingHud&&(!this.active||!this.geometry(id).visible);element.classList.remove('hud-unassigned');}
+  }
+  wheel(steps){
+    if(!this.active||this.editingHud||!steps)return;
+    try{const channel=api?.inputChannel;if(typeof channel?.queueMouseInput!=='function')throw Error('Canal de scroll indisponível');
+      // Same sign as WheelEvent.deltaY: negative up, positive down.
+      channel.queueMouseInput({Type:0,X:0,Y:0,Buttons:this.buttons,WheelX:0,WheelY:steps*120});
+    }catch(e){this.handleInputFailure(e);}
+  }
+  renderMappedButtons(){
+    super.renderMappedButtons();
+    for(const b of this.bindings||[]){if(!b.action?.startsWith('scroll-'))continue;const node=this.elements?.get(b.id);if(!node)continue;
+      node.textContent=b.action==='scroll-up'?'↟':b.action==='scroll-down'?'↡':'↕';node.setAttribute('aria-label',this.itemLabel(b.id));
+      let pointer=null,lastY=0,remainder=0,epoch=0;
+      node.addEventListener('pointerdown',e=>{if(!this.active||this.editingHud||pointer!==null)return;e.preventDefault();e.stopPropagation();pointer=e.pointerId;epoch=this.epoch;lastY=e.clientY;remainder=0;node.setPointerCapture(pointer);
+        if(b.action!=='scroll-drag')this.wheel(b.action==='scroll-up'?-1:1);
+      });
+      node.addEventListener('pointermove',e=>{if(e.pointerId!==pointer||!this.active||this.editingHud||epoch!==this.epoch||b.action!=='scroll-drag')return;e.preventDefault();e.stopPropagation();
+        const delta=e.clientY-lastY;lastY=e.clientY;if(!Number.isFinite(delta))return;
+        if(remainder&&Math.sign(delta)!==Math.sign(remainder))remainder=0;
+        remainder+=delta;const step=this.scrollStep(b),count=Math.trunc(remainder/step);if(count){remainder-=count*step;this.wheel(count);}
+      });
+      const end=e=>{if(e.pointerId!==pointer)return;e.stopPropagation();pointer=null;remainder=0;};
+      for(const type of ['pointerup','pointercancel','lostpointercapture'])node.addEventListener(type,end);
+    }
+    this.applyAllGeometry();
+  }
+  
+}
+
+
+
+function nimboFindReactSession(){
+  const root=document.getElementById('root')||document.body;if(!root)return;
+  const key=Object.keys(root).find(k=>k.startsWith('__reactFiber
+
+  const VER = '4.12.30';
+  const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
+  const LS_SRV = 'xcu.streamRegion'; // data center de streaming
+  const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
+  const LS_RES = 'xcu.resolution';   // faixa de qualidade
+  const LS_BITRATE = 'xcu.maxBitrateMbps'; // limite opcional de bitrate SDP
+  const LS_VOLUME = 'xcu.volume'; // volume local do elemento de video
+  const LS_AUTO_BEST = 'xcu.autoBestMeasured';
+  const LS_NX_DIAG = 'xcu.diagnostics';
+  const LS_DEVICE_PROFILE = 'xcu.deviceProfile';
+  const LS_CONSOLE_LAB = 'xcu.consoleLab.profile.v1';
+  const LS_CONSOLE_NOTES = 'xcu.consoleLab.notes.v1';
+  const LS_FORTNITE_CONSOLE = 'nx.fortnite.consoleExperience.v1';
+  const nxFortniteConsoleEnabled = (function () { try { return localStorage.getItem(LS_FORTNITE_CONSOLE) === '1'; } catch (_) { return false; } })();
+  const nxFortniteConsoleState = { enabled: nxFortniteConsoleEnabled, matched: false, inspected: 0, patched: 0, previousTouch: null, note: 'Experimental: sinalização de toque na configuração da sessão; não emula hardware Xbox.' };
+  function nxIsFortniteRoute() { return /(?:^|\/)(?:fortnite)(?:\/|$)/i.test(location.pathname); }
+
+  const LS_NX_SHORTCUT = 'xcu.nxShortcut';
+  const LS_RTT_HISTORY = 'xcu.rttHistory.v1';
+  const LS_VIBRATION = 'xcu.vibrationLevel';
+  const LS_MIC_ENABLED = 'xcu.microphoneDesired';
+  const LS_MIC_DEVICE = 'xcu.micDevice';
+  const LS_MIC_GAIN = 'xcu.micGain';
+  const LS_MIC_BASS = 'xcu.micBass';
+  const LS_MIC_TREBLE = 'xcu.micTreble';
+  const LS_MIC_NOISE = 'xcu.micNoise';
+  const LS_MIC_ECHO = 'xcu.micEcho';
+  const LS_MIC_AGC = 'xcu.micAgc';
+  const LS_MIC_MUTE = 'xcu.micMute';
+  const LS_MIC_PTT = 'xcu.micPtt';
+  const LS_MIC_GATE = 'xcu.micGate';
+  const LS_AUDIO_OUTPUT = 'xcu.audioOutput';
+  const LS_AUDIO_BASS = 'xcu.audioBass';
+  const LS_AUDIO_MID = 'xcu.audioMid';
+  const LS_AUDIO_TREBLE = 'xcu.audioTreble';
+  const LS_AUDIO_COMP = 'xcu.audioCompressor';
+  const LS_AUDIO_FX = 'xcu.audioFx';
+  const LS_AUDIO_BANDS = 'xcu.audioBands10';
+  const LS_AUDIO_PRESET = 'xcu.audioPreset';
+  const LS_AUDIO_LIMIT = 'xcu.audioLimit';
+  const LS_AUDIO_NORMAL = 'xcu.audioNormal';
+  const LS_AUDIO_DIALOG = 'xcu.audioDialog';
+  const LS_AUDIO_MONO = 'xcu.audioMono';
+  const LS_AUDIO_BALANCE = 'xcu.audioBalance';
+  const LS_SHARPNESS = 'xcu.sharpness';
+  const LS_VIDEO_COLOR = 'xcu.videoColor';
+  const LS_VIDEO_PROFILE = 'xcu.videoProfile.v1';
+  const LS_VIDEO_FIT = 'xcu.videoFit.v1';
+  const LS_VIDEO_ECO = 'xcu.videoEco.v1';
+  const LS_VIDEO_BRIGHTNESS='xcu.videoBrightness.v2';
+  const LS_VIDEO_CONTRAST='xcu.videoContrast.v2';
+  const LS_VIDEO_SATURATION='xcu.videoSaturation.v2';
+  const LS_VISUAL_LIBRARY='nx.visual.library.v1';
+  const LS_VISUAL_ACTIVE='nx.visual.active.v1';
+  const LS_NX_GPU='nx.visual.gpu.v1';
+  const LS_NX_SHADOWS='nx.visual.shadows.v1';
+  const LS_NX_HIGHLIGHTS='nx.visual.highlights.v1';
+
+  // Laboratório Xbox: experimental, desativado por padrão. Apenas identidade JS local;
+  // não altera cabeçalhos HTTP, autenticação, tokens, gamepad ou autorização do servidor.
+  const nxConsoleNativeUA = navigator.userAgent;
+  const nxConsoleLabProfile = (function () {
+    try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off';
+      // Xbox One / Series permanecem no código para pesquisa futura, mas estão suspensos.
+      // Sessões antigas migram para o perfil genérico sem expor seletores específicos.
+      if (p === 'xboxone' || p === 'xboxseries') { localStorage.setItem(LS_CONSOLE_LAB, 'xbox'); return 'xbox'; }
+      // Smart TV foi descontinuado: voltar à identificação nativa automática.
+      if (p === 'smarttv') { localStorage.setItem(LS_CONSOLE_LAB, 'off'); return 'off'; }
+      return ['off','android','xbox','windows'].includes(p) ? p : 'off'; }
+    catch (_) { return 'off'; }
+  })();
+  const nxConsoleLabState = { profile: nxConsoleLabProfile, applied: false, error: '', nativeUA: nxConsoleNativeUA, startedAt: new Date().toISOString() };
+  // Compatibilidade conservadora: perfis Xbox/TV não falsificam UA.
+  // A interface mantém o perfil escolhido, mas o navegador negocia como dispositivo real.
+  const nxCompatibilityProfiles = ['xbox', 'xboxone', 'xboxseries'];
+  const nxCompatibilityMode = nxCompatibilityProfiles.includes(nxConsoleLabProfile);
+  nxConsoleLabState.identityMode = nxCompatibilityMode ? 'native-compatible' : 'legacy-profile';
+  nxConsoleLabState.applied = false; // Seleção não comprova identidade Xbox.
+  if (nxCompatibilityMode) {
+    nxConsoleLabState.note = 'Perfil de experiência ativo; identidade nativa preservada para compatibilidade de sessão';
+  } else if (nxConsoleLabProfile !== 'off') {
+    try {
+      const ua = nxConsoleLabProfile === 'android'
+        ? (/Android/i.test(nxConsoleNativeUA) ? nxConsoleNativeUA : 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36 EdgA/140.0.0.0')
+        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0';
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, get: function () { return ua; } });
+      nxConsoleLabState.applied = navigator.userAgent === ua;
+    } catch (err) { nxConsoleLabState.error = String(err && err.message || err); }
+  }
+  // Perfil central de experiência: apenas ajustes suportados pelo userscript.
+  // A seleção não altera TLS, headers UA/CH nativos, hardware nem permissões do xCloud.
+  const nxPlatformProfile = Object.freeze({
+    off: { label: 'Automático', sessionOs: null, input: 'native' },
+    android: { label: 'Android Mobile', sessionOs: 'android', input: 'touch-preferred' },
+    windows: { label: 'Desktop', sessionOs: 'windows', input: 'keyboard-mouse-preferred' },
+    smarttv: { label: 'Smart TV compatível', sessionOs: null, input: 'gamepad-preferred' },
+    xbox: { label: 'Xbox compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' },
+    xboxone: { label: 'Xbox One compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' },
+    xboxseries: { label: 'Xbox Series X|S compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' }
+  }[nxConsoleLabProfile]);
+  const nxProfileSessionState = { attempted: 0, patched: 0, lastRequestedOs: null, lastOutcome: 'not-observed' };
+  // Diagnóstico passivo inspirado no XFly: não lê tokens, payloads ou identificadores.
+  const nxSessionTrace = [];
+  function nxSessionHealth() {
+    const attempts = nxSessionTrace.filter(function (x) { return x.stage === 'play'; });
+    const last = attempts.length ? attempts[attempts.length - 1] : null;
+    const lastAny = nxSessionTrace.length ? nxSessionTrace[nxSessionTrace.length - 1] : null;
+    const q = typeof S !== 'undefined' ? S.qos : null;
+    if (q && (q.decodedFps > 0 || q.fps > 0)) return { state: 'streaming', explanation: 'Quadros de vídeo observados no WebRTC' };
+    if (!last) return { state: 'not-observed', explanation: 'Nenhuma tentativa de criação de sessão capturada; verificar se o jogo foi iniciado' };
+    if (last.status === 0) return { state: 'network-error', explanation: 'Falha de rede ao criar a sessão' };
+    if (last.status === 401 || last.status === 403) return { state: 'access-rejected', explanation: 'Servidor rejeitou a requisição; causa não determinada' };
+    if (last.status === 429) return { state: 'rate-limited', explanation: 'Servidor limitou as requisições; evitar tentativas repetidas' };
+    if (last.status >= 500) return { state: 'server-error', explanation: 'Erro HTTP no servidor durante criação de sessão' };
+    if (last.status >= 400) return { state: 'request-rejected', explanation: 'Criação de sessão rejeitada com HTTP ' + last.status };
+    if (last.status >= 200 && last.status < 300) return { state: 'session-accepted', explanation: 'Criação de sessão aceita; última etapa: ' + (lastAny ? lastAny.stage : 'play') + '. Não comprova reprodução de vídeo' };
+    return { state: 'pending', explanation: 'Tentativa sem resultado conclusivo' };
+  }
+  function nxSessionRecord(item) {
+    nxSessionTrace.push(item);
+    if (nxSessionTrace.length > 35) nxSessionTrace.shift();
+  }
+  const nxClientHintsMode = (function () {
+    try { return localStorage.getItem('nx.consoleLab.hideClientHints.v1') === '1'; } catch (_) { return false; }
+  })();
+  let nxClientHintsApplied = false;
+  if (nxClientHintsMode && nxConsoleLabProfile !== 'off' && !nxCompatibilityMode) {
+    try {
+      Object.defineProperty(navigator, 'userAgentData', { configurable: true, get: function () { return undefined; } });
+      nxClientHintsApplied = typeof navigator.userAgentData === 'undefined';
+    } catch (err) { nxConsoleLabState.error += ' ClientHints: ' + String(err && err.message || err); }
+  }
+  const nxConsoleLabEvents = [];
+  function nxConsoleLabEvent(type, detail) {
+    const entry = { time: new Date().toISOString(), type: type, detail: String(detail || '').slice(0, 180) };
+    if (nxConsoleLabEvents.length && nxConsoleLabEvents[nxConsoleLabEvents.length - 1].type === type &&
+        nxConsoleLabEvents[nxConsoleLabEvents.length - 1].detail === entry.detail) return;
+    nxConsoleLabEvents.push(entry);
+    if (nxConsoleLabEvents.length > 35) nxConsoleLabEvents.shift();
+  }
+  const nxConsoleLabWarnings = [
+    'não há suporte para streaming nesse dispositivo',
+    'nao ha suporte para streaming nesse dispositivo',
+    'streaming is not supported on this device',
+    'device is not supported for streaming'
+  ];
+  function nxConsoleLabWarning() {
+    // Detecta avisos visíveis mesmo quando a interface não usa ARIA dialog.
+    const nodes = document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="alert"], dialog, h1, h2, h3, p');
+    for (const node of nodes) {
+      if (node.childElementCount > 4 || node.closest('[id^="nx-"]')) continue;
+      const rect = node.getBoundingClientRect();
+      if (!rect.width || !rect.height || rect.bottom < 0 || rect.top > innerHeight) continue;
+      const value = (node.textContent || '').toLowerCase().replace(/\s+/g, ' ').slice(0, 350);
+      if (nxConsoleLabWarnings.some(function (w) { return value.includes(w); })) return true;
+    }
+    return false;
+  }
+  function nxConsoleLabCapabilities() {
+    let codecs = null;
+    try { codecs = typeof RTCRtpReceiver !== 'undefined' && RTCRtpReceiver.getCapabilities ?
+      RTCRtpReceiver.getCapabilities('video').codecs.map(function (c) { return c.mimeType; }).filter(function (v,i,a) { return a.indexOf(v) === i; }) : null; } catch (_) {}
+    let mse = null;
+    try { mse = typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"'); } catch (_) {}
+    return {
+      secureContext: window.isSecureContext, webRTC: typeof RTCPeerConnection === 'function',
+      mediaSourceH264: mse, webCodecs: typeof VideoDecoder !== 'undefined',
+      videoCodecs: codecs, touchPoints: navigator.maxTouchPoints || 0,
+      pointerFine: !!(window.matchMedia && matchMedia('(any-pointer:fine)').matches),
+      fullscreenSupported: !!document.fullscreenEnabled,
+      userAgentDataPlatform: navigator.userAgentData ? navigator.userAgentData.platform : null,
+      identityConsistency: { uaContainsXboxOne: navigator.userAgent.includes('Xbox One'), uaContainsXbox: navigator.userAgent.includes('Xbox;'), platformReportsWindows: /Win/.test(navigator.platform || ''), clientHintsPlatform: navigator.userAgentData ? navigator.userAgentData.platform : null },
+      platform: navigator.platform || null, language: navigator.language || null,
+      hardwareConcurrency: navigator.hardwareConcurrency || null,
+      mediaDevices: !!navigator.mediaDevices, mediaCapabilities: !!navigator.mediaCapabilities,
+      h264Decode: document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"'),
+      screen: {width: screen.width, height: screen.height, dpr: devicePixelRatio},
+      gamepadAPI: typeof navigator.getGamepads === 'function'
+    };
+  }
+  function nxConsoleLabFullScreen() {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) Promise.resolve(exit.call(document)).catch(function (e) { nxConsoleLabEvent('fullscreen-error', e.message); });
+      return;
+    }
+    // A página inteira mantém controles e diálogos visíveis; não força orientação nem imita Xbox OS.
+    const target = document.documentElement;
+    const request = target.requestFullscreen || target.webkitRequestFullscreen;
+    if (!request) { nxConsoleLabEvent('fullscreen-unavailable', 'Fullscreen API indisponível'); toast('Tela cheia indisponível neste navegador'); return; }
+    try { Promise.resolve(request.call(target)).then(function () { nxConsoleLabEvent('fullscreen', 'ativado'); if (nxCompatibilityMode && screen.orientation && screen.orientation.lock) Promise.resolve(screen.orientation.lock('landscape')).catch(function (e) { nxConsoleLabEvent('orientation-lock-unavailable', String(e && e.message || e)); }); }).catch(function (e) { nxConsoleLabEvent('fullscreen-error', e.message); toast('Navegador bloqueou tela cheia'); }); }
+    catch (e) { nxConsoleLabEvent('fullscreen-error', e.message); toast('Navegador bloqueou tela cheia'); }
+  }
+  // Diagnóstico passivo: sem acesso a tokens, corpo ou headers.
+  const nxOfferingTrace = [];
+  function nxObserveOffering(u, method, promise) {
+    if (!u || !/^[a-z0-9-]+\.gssv-play-prod[z]?\.xboxlive\.com$/i.test(u.hostname) || !/^\/v2\/login\/user\/?$/i.test(u.pathname)) return promise;
+    const offering = u.hostname.split('.')[0].toLowerCase(), started = Date.now();
+    return promise.then(function (res) {
+      nxOfferingTrace.push({at:new Date().toISOString(),offering:offering,method:method,status:res.status,elapsedMs:Date.now()-started});
+      if (nxOfferingTrace.length > 24) nxOfferingTrace.shift();
+      return res;
+    }, function (err) {
+      nxOfferingTrace.push({at:new Date().toISOString(),offering:offering,method:method,status:0,reason:err && err.name === 'AbortError' ? 'cancelled' : 'network-error'});
+      if (nxOfferingTrace.length > 24) nxOfferingTrace.shift();
+      throw err;
+    });
+  }
+  function nxCompatibilityVerdict() {
+    const health = nxSessionHealth();
+    const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
+    const playing = !!(video && video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2 && !video.paused);
+    const offers = Array.from(new Set(nxOfferingTrace.map(function (e) { return e.offering; })));
+    let state = 'waiting', label = 'Aguardando teste', detail = 'Inicie um jogo para avaliar a conexão.';
+    if (playing || health.state === 'streaming') {
+      state = 'streaming'; label = 'Streaming observado';
+      detail = 'Vídeo detectado. Isso não comprova autorização como console.';
+    } else if (['access-rejected','request-rejected','network-error','rate-limited','server-error'].includes(health.state)) {
+      state = 'failed'; label = 'Falha detectada'; detail = health.explanation;
+    } else if (health.state === 'session-accepted') {
+      state = 'accepted'; label = 'Sessão aceita'; detail = 'Aguardando evidência de vídeo reproduzido.';
+    } else if (health.state === 'pending') {
+      state = 'pending'; label = 'Conexão iniciada'; detail = health.explanation;
+    }
+    return {state:state,label:label,detail:detail,consoleCompatibility:'não comprovada',offerings:offers,
+      sessionState:health.state,videoPlaying:playing,observedAt:new Date().toISOString()};
+  }
+  // Matriz de evidências: separa observação local, modificação e confirmação remota.
+  function nxProtocolEvidence() {
+    const nav = navigator, hints = nav.userAgentData || null;
+    const safeHints = hints ? {brands:Array.isArray(hints.brands) ? hints.brands.map(function(b){return {brand:String(b.brand).slice(0,60),version:String(b.version).slice(0,20)};}) : [],
+      mobile:typeof hints.mobile === 'boolean' ? hints.mobile : null,platform:hints.platform || null} : null;
+    const offer = nxOfferingTrace.length ? nxOfferingTrace[nxOfferingTrace.length-1] : null;
+    const play = nxSessionTrace.filter(function(x){return x.stage==='play';}).slice(-1)[0] || null;
+    const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
+    return {
+      schema:'nx-protocol-evidence-v1',
+      observed:{
+        javascriptIdentity:{userAgent:nav.userAgent,platform:nav.platform || null,vendor:nav.vendor || null,
+          clientHints:safeHints,maxTouchPoints:nav.maxTouchPoints || 0,language:nav.language || null},
+        capabilities:{webRTC:typeof RTCPeerConnection === 'function',gamepadAPI:typeof nav.getGamepads === 'function',
+          videoDecoder:typeof VideoDecoder !== 'undefined',secureContext:!!window.isSecureContext},
+        authOffering:offer ? {hostOffering:offer.offering,status:offer.status,at:offer.at} : null,
+        sessionPlay:play ? {status:play.status,method:play.method,at:play.time,elapsedMs:play.ms} : null,
+        video:video ? {readyState:video.readyState,width:video.videoWidth,height:video.videoHeight,paused:video.paused} : null
+      },
+      configured:{profile:nxConsoleLabProfile,identityMode:nxConsoleLabState.identityMode,
+        jsUserAgentChanged:nav.userAgent !== nxConsoleNativeUA,sessionOsRewriteDisabled:nxCompatibilityMode},
+      notObservableFromUserscript:[
+        'HTTP User-Agent e Sec-CH-UA realmente transmitidos pelo navegador',
+        'TLS ClientHello e fingerprint de rede',
+        'Identidade do hardware/firmware Xbox validada pelo servidor',
+        'Reconhecimento ou autorização de catálogo exclusivo de console'
+      ],
+      limitations:'Um nome de modelo ou User-Agent JavaScript nao equivale a identidade de hardware; verificar headers efetivos no DevTools.'
+    };
+  }
+  // Referências de hardware não verificadas; preserva autenticação e capacidades nativas.
+  const nxConsoleProfileManifest = Object.freeze({
+    xboxone: Object.freeze({id:'xboxone',label:'Xbox One',referenceVerified:false}),
+    xboxseries: Object.freeze({id:'xboxseries',label:'Xbox Series X|S',referenceVerified:false})
+  });
+  function nxConsoleProfileValidation() {
+    const manifest=nxConsoleProfileManifest[nxConsoleLabProfile] || null;
+    const evidence=nxProtocolEvidence();
+    const js=evidence.observed.javascriptIdentity;
+    const native=js.userAgent===nxConsoleNativeUA;
+    return {
+      selected:nxConsoleLabProfile,manifest:manifest,
+      state:manifest ? (native?'selected-native-preserved':'modified-unverified') : (nxConsoleLabProfile==='off'?'off':'other-profile'),
+      identity:{jsUserAgentChanged:!native,platform:js.platform,clientHintsPlatform:js.clientHints?js.clientHints.platform:null,touchPoints:js.maxTouchPoints},
+      layers:{javascript:native?'native-preserved':'modified-local',httpHeaders:'not-observable',
+        deviceCapabilities:'native-preserved',input:'native-preserved',session:nxSessionHealth().state,consoleAuthorization:'not-verified'},
+      warningsObserved:nxConsoleLabEvents.filter(function(e){return e.type==='unsupported-device-warning';}).length,
+      note:'Perfil nao comprova identidade Xbox. HTTP e TLS requerem verificacao externa.'
+    };
+  }
+  function nxConsoleLabReport() {
+    const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
+    const note = (function () { try { return localStorage.getItem(LS_CONSOLE_NOTES) || ''; } catch (_) { return ''; } })();
+    return {
+      version: VER, experiment: 'console-compatibility', profile: nxConsoleLabState.profile,
+      applied: nxConsoleLabState.applied, error: nxConsoleLabState.error,
+      nativeUserAgent: nxConsoleLabState.nativeUA, pageUserAgent: navigator.userAgent,
+      note: note.slice(0, 500), startedAt: nxConsoleLabState.startedAt,
+      unsupportedDeviceDialogDetected: nxConsoleLabWarning(),
+      unsupportedDeviceWarningsObserved: nxConsoleLabEvents.filter(function (e) { return e.type === 'unsupported-device-warning'; }).length,
+      platformExperience: nxPlatformProfile, profileSession: Object.assign({}, nxProfileSessionState),
+       compatibility: { enabled: nxCompatibilityMode, identityMode: nxConsoleLabState.identityMode, nativeUserAgentPreserved: navigator.userAgent === nxConsoleNativeUA, sessionOsRewriteDisabled: nxCompatibilityMode, clientHintsOverrideDisabled: nxCompatibilityMode },
+       clientHintsExperiment: { enabled: nxClientHintsMode, applied: nxClientHintsApplied, note: 'Somente navigator.userAgentData JS; nao altera cabecalhos HTTP' },
+      protocolEvidence: nxProtocolEvidence(), consoleProfileValidation: nxConsoleProfileValidation(),
+      fortniteConsoleExperience: Object.assign({}, nxFortniteConsoleState),
+      offeringTrace: nxOfferingTrace.slice(), offeringTraceNotice: 'Somente host, metodo, status e duracao; sem credenciais.',
+       sessionTrace: nxSessionTrace.slice(),
+      sessionHealth: nxSessionHealth(), compatibilityVerdict: nxCompatibilityVerdict(),
+      capabilities: nxConsoleLabCapabilities(),
+      events: nxConsoleLabEvents.slice(),
+      fullscreenActive: !!(document.fullscreenElement || document.webkitFullscreenElement),
+      capturedAt: new Date().toISOString(), page: location.origin + location.pathname,
+      touchPoints: navigator.maxTouchPoints || 0, controllerCount: navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean).length : null,
+      videoPresent: !!video, videoReadyState: video ? video.readyState : null,
+      videoWidth: video ? video.videoWidth : null, videoHeight: video ? video.videoHeight : null,
+      noteOnLimits: 'User-Agent JS nao altera headers de rede nem prova autorizacao de console.'
+    };
+  }
+  function nxConsoleLabSetProfile(profile) {
+    if (!['off','android','xbox','windows'].includes(profile)) return;
+    try { localStorage.setItem(LS_CONSOLE_LAB, profile); } catch (_) {}
+    // Reiniciar a página é necessário para negociar desde o document-start.
+    location.reload();
+  }
+
+  // Ícone da marca (caveira N em chamas, branco, fundo transparente). Usado pelo único botão do NX.
+  const BRAND_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACgCAYAAACLz2ctAAAnTUlEQVR42u1de5gkVXX/3erumWXZZR+4LAqKiCDyRkQQJCLGlaj4QI1EjagQJYooiSCiCGgkQUV5qUFAwAQF35oEoyEoDyWsD0AeBoGAAgossIvrujvT3XXyxznnm+P1VtWtR/fM7HR9X387O9NdXXXr3PP8nd9xRITRMTqm60hGSzA6RgI4Oubs0R4twYw+nPmZRgI4OgYpaPaVyotGGnB0DFLo1AXqZwjbmLyWAHgEwPqRAI6OJgSvBaAngqfPYScAewF4JoAdAWwJYBGA5QAuBfBBABs2NnPsRmmYoQZ8zgjdGIDnAzgEwAtE6EIK4b0AzhiZ4NFR19Sq4G0D4A0AXg9gZ++9qhXbANYBOAzAd+TztDH6hCMNONijZQTvaQCOBfBGAIuNwJG8zxkBWwfgZQCuAdAB0B1pwNFRVestAnAcgHd6gpeI4JHx60h+f/hcEL6RAA7O10tF+F4F4HQA28vfuiJ0LS/9QiKUHQAfBfCNuSB8IxM8OJO7AMAnALxdfj8pm936cs4IYV8+ewOA58nfR3nA0VF6LXsAdgXwBQB7GP+v46VPbIUjNcnn98k5WnNB+Ea14GY1X09SKleL8HVlfYvWuC/vuVI+ayPmkQCOjijN1wdwpPhuS0wqxT8o5xmcG9COIwEcHVFm990Azjf+XBIBLlDz2wJwL4CrzO9GAjg6ooXvbQDOlJ/LrCkZYfsfcO5vzvh+IwFsxud7NYDzROu5GvCpm+ei+R0JYPU16wPYDcDnjRZLPOErEiYrsPduzJi/kQCicYDoQgCXA9hMBLCs8Pnn+8MIkj86ylQ5zgSjV7qmqkEFwkc5v+uMBHB0xFY5XgngrSZhnBXhUkEEbNEty0Y+4OgoMpUEzvGdaTSd8wTN5QhcngnebaQBR0eM6T0OjOfrmbVzNftAAOA5c60CMgIjlBM+ArA1gFskAMnSdmUXkwxK5jly/lEpbnQEze97wNi+foE/V/bcfQDjAN5cMoIeacA5JHxLAfxCgoW0xsalDOF14K63XQCsMuiYkQacA6jllhfNhtbnVQC2KKjzljW7vhZcBuBkg4oemeCN9H5bpuaqyOV+gbC8LsPMUo3Aw2/T7AM4Ctwh18McwWrOBRPsTCBhzdo8AE8ENwttAYZSbQiY3y3F/C42n3clTCwifTtFxtwNYF8Aj86F8lwyB5LHJNolBbADgHcA+AoYAHATGAi6HAybTwJrs6cIXwzgwEXCsPJqzNsBuMCYYjeC5M/e1EkfXOZ6Bbh6cSCATbz3fhKcXE48DakPfg+joZIC8iBXsSZsr7sr13uq+IRtA/UqU1+mkQBOfy/uawC8H8Cz8KfN3x0AtwI4UT6TZvh3Ty8Z1cZqvazPKtTrQwBuBPBN755ig5zWbMgnJhup8O0A4Ntiap8lD7RrmsDb8vCPBzCRoTH0/0/IESjnBSdUkXrNfyaqjS8Cgx5iom893xYANjefSUYCOFzhex2A68ENQj1MgQY6pgmoBaa8+G6EphjPgdPbh6z+Wi8SCVMkTKn4nhfLNbgS9eVvAniToXlrjQRwOML3fgCXgRPHKnhJBlzq7MhzTwRMZt9o0i6A38gLGdAqVyFP2JJz7wPglAgtSHI9DwH4MYBLAHwJXLvuz1QhTDYi4TsJwGkmr9fKCBRaAG4D8H2PrSpLaFZ5PRypPOhfADhGouRdwVWMfeXBuxzOvyr39l4Az44QJO0xPh8Mcj0M3G/ycvPZmRVVE9FsfrXk3zcTH5NElJpX3/v/pLzvVPlcO+fc+rdjzbl78vMniGhBzmffIe/zv7/KqyvnukbuNylYEyevH8n1pvL5D3l/nxHPMNkIejN2BfDpDBPlMvKCV0b4ZhoVX238uhaY4eq9AH5v6DacqWi0AXwGwL95yBYqgZQORcUHADg0wqfTe7xBfp6Uz5wK7mFpzSTQw2w3wYn4cvNN4jarZKZ//w2An0f04Ko5uxnAT8W3+5jkDDsm4EjN+ftG8D/XYJJa3/N3GSmjkEDfaARSr/Ut4iOPzRQEdjKL/b4UwEvByWVbO82qt+pDuwPA40ZYY7TsRQDuAtPktgyvX5bgknzPhhxtVQbCpdexD4D9IwEL93ipItWGrxY/FTOh0jJbBVBNyHsDObiidMX9JXa/arQviiPfLSE4mgJyGe93JR4+GY386oJnp9/1KP4Yua0R+qQEJ2fPhOh4NgqgJml3AbCfV3qL6UB7tMJ3rpWotwxObwG47EcRDUuxxOYA8FwTZecJcNdsAHjVr0kAR4PRN73pFMLZKoD6INoBkABFPmhXEVETC7l6ukmjUE7zUtnjqeBqR9G1jBtfLwv+dQaA3adTEyazYJxB1rFzyXKX/rxlBS1EJRHKBMb1weugQ8VI2L5vkQhgkSAvCvSXkGcx5kvE3p4u8MJMFMDEg1FlPaynVASCbjdAyLuedz6YZBwRmoVK+oJjYCxj0TPdJnB+5wVyXXFj/nq6SnbJDBM8y6+8FYAjxOSEYEbzS2gQ+xB2MedMBoQ/PATAthF+Wqw5Jg+utSHivftFuiEk0f0CE+jMKQF0Jq2SSqrhPHC5bDGA+zL8r15gIfMeiObC5oMTuk33Xug1jAP4QI2hhEV/fxxTdWfKSAONATgo5xn7kK2ngaFrQ+9HmW4BtMDRPQF8FcCPwJx7nxYnmTKAousqJnQJXMNd0nBFQAOivwdXZ/oF6Gk/WKKMa/Xff4dE8qFNpyb0eciHcbmAVTl8OoCsyQxIJs8Dgwj+R3JcCXhGxgcLnOPfRTKKuoCP9hQAHzZUunWFUEcqHAhGrvQiqDpcBHeMC5QGryrwLQk8k8RF4BStxttPArt0mHKRTDOCZRdwrfX95iH2AJxgtEJW38VjNRqUepIHe5t8Z7viWjhz3buBy1xtbxImGmjdTI2G/XrGxtM1PQAM6e9H0oc4uf4xAC8Ztlwk00jq/SoA14EpKSbMoJarwYDSIoqKtd49UIn0hiZyzwNXU7rmISeRgqfauQvgzwH8F7i5qd9Aictl1KWvBDdS+f0r6sosAPDPJQEHVgu+GH9cAdroBNDyKn9dclU92X0qLN8u0CBlivpFsHcC8HEA/2JIh1IP2dIyP9thMxrQnAjgCtO43qrhS+VtmJ6Y91A6RV2Lz4LHvvYKgg9k+I57gBvkh4aWSaZB+I40vMr2gSmY4Bbk11t1cZaXrHxknasLHiD4M1MZ0MCoZ66zZwR0C/AUpJ+AR2u1TEmrTldayA9UoMXnxE+2aJiWub5PyX10c/xaV4D+2VwCqKHJRnvIpN6HykL2Azepi7M+ooGbJMpDiWpD0cZYCoY7vUuE8ccSca6S8y+U/OGzwYOll3mDZpIMp58K0ht52iYVt+Qu0bSJ0dDaDrBA1vSvDGMrRXyPP7VJg4+9JdBxG4sA6i7dS0ydP6TPdpa1RBBcgcZeLucL7VTyzp33oJ0XkasfuI+8UIB2QUDrOSMoPdMjkkZoJb/LLgFD698o+b8xo4VT8T3PkACoZ/xSqhh1QyzA0NIxyRCSzKloi8vEZ+oH8lC2NPYSI4yhiDMFsxsszjB7LnLBsyJk1WpdY3b9V+qRGvnaRLViBwxm/UygWy5LS1mNmYCrQTdgauhhKr7axRL47GbGgrnIfuQ88//0SLTNrBBANUsXyI11C5ioUkmI7i6LbQMASLR8ELift19ByGIRMokXgPgvV4AhbIEh+8dJlL+ZaK+0RP33D2JWL5Pr2QrcankFgJWyTlZr+xuBSjInqCw80ZBwzmoTrKb3WEyBOds5D0AFcIFEwm8H8J9esvcw8Ey1eYGHSQ0U/akm5W7XaL0jwHD+54sJjc3Lqfa7TgThQolsnwGu3lgXwOWkfFwJCg/noWiWgBP9btCmeFDsWCpMu0vk1gn4fUUsUQDwQwC/BNdXdwdn6sl7mBRxXqqo8csIpFZV/kM011r5vq+BmfXLAD8pww3pmv5fFzD9VIMWRAV/ElwWvT2Qb5wVAmh35bXgXtmYxQ+VjpIM81b1SI3pTio0jLuCTfNdcBViQv6/NRhUMb+AHRUGuJqYe0zNuiQRApsawXUVmVpTifRvGoYAtgfYLnl0CeFDADHcM0lqa9bXSqqmn1PrtB1yiZxjUzHdSYYZo4iSVZ7w3QKmBZmU75uUKHVTbwi1y9hUbe+cG7yOuyyB0eBsPOfeUILVa6jdcu0Bmd6twX2oaUmwpQtMD/o1mMXgOtEmD4p/4vfbUoZfk4jgbQYGIewNrpf+mcEU9kqaZz9dssGkSizXzIE5U5RSE+wAjAL6gfiP90gQ0s3QQORZm3mSaXiGbPoXyTOAl5imHE3ovJwgZiMzgjIVnJPBVJD36hsWACKi7xHR64ho0YC68rcXtoD7zHf2Mq6riLXgFI9NQZkHbsg4b9f8/hIi2rfhe1tKRO8korvM9/Qj1p+IaL2sDSJYGGq/mjxZIgu/AxGtkxvqRzzE1CwQyUNbERDstqGmSAzFROwrMeexC7uMiD5MRGu9TUMR15wS0b1EtKl3TSCi+UT0y4AAKr3HSiLaz6PU8O+xzKtlXnrOxUT0aUMT0su4L/u3B4loc28jzQpqDgv2nG/Mr4uMegnMCPo8AN/zcm5973xV4f4w51LztwpMBvlcMfMdk1+LcRkuAINjfdR2J0Dtpr7ghZKe+ZFh8CKvRJl465f1Ssza902Q1QawBowNPKoEh+GD8rlZZYJ1p2xORA95GiLrRd6uW+FpPBf4uUlXwXmaB0TUIaKz5Jq6OZpbf7+OiJ5mNKxdi3meBlSze1qAAMkVECWVsUKJd28d+fkNnjnuZ7gFXx2W+SWixoIQBRu8DIwU6RUgdp2J/u6Vz90mWqPnaQLd0fsBeCGAZ4rDnUQwl2py+GEAd4KR1td6EWJqrqUH4N3y3nNMFJqVM7sRwP95pUR9/wQYOr+9XMM8SaKfaDCRPa9u3BZN/BwwPGyhRzlCXqDQF411m+RM7/EAFmSS45fKtZzsFQX8wOYmL6CcFRpQd8u/md2U5/up5nuIiHYKUKVZX+rlRHQ9NXfcLPRpHS9w8jXRkZ7vZO9HtcXpGTRv+v8Ljba/0vhqzvvuNhEdTUQ/r3FfjxPRpUS0h/dMnOdfXudZn9RoRDKWqDUMDdik+V1GRI9E8OLpA91ARM83ps+eT2/+Y2aBNUqu8pqUf3vmfD80D8sXIL2etxpzbLn2VADfnPGw9P9/Ke9bRUTbeoLRMtH41ea6lMdwMnD9oZ8nDe+hRrF/G7gu/Xl/LyruewrhCd5zdYM0x02mXl4UGfLrwzs+IHz2fNYX63oCXIf4sU9EE3LutZLqCWlgva63eD6h1R5Z2kIf3qZEtJqIjvO+Qx/oTkR0v4m+uxXure9pZt0k7/auzQrSVd49TcjnvpWj/dxMjYLVJ9m1APdmm2tWgnFsLQ+mpEncN0g0PemVpuoAT0ONRAvAPMqvNT6YM75TG0zNdpTB2tn7W1vg564DI8AvMn5vYsiLviwol65B37iS9WK7Hm25vi54/skLAnTFTvxBv+TpwKSaflL6qaYG3zh6qskTbleAvrVpgA8FKhnqyG8qVZRQTbMM1q1orlvbpFv+Fdwk5c9o0/+fJ6ielnH+4bEzZAnh18CTMC3OTxlLd5ZN1i7JD4MM3KOdrpTIJh/zSnrKEPu4udc2gNVGAC3Ubb5slC0HIYRJQ1x98AhzQqPsVaC+b/J8/QB28GAR5pjZGBRBRpRVPrPv6QC4XKJxP0LUoTZngnGIbXPdT4rsOLNlwZ5EuEd5WD5XYQBOVnlNN8qekm8krxb9a0zRzXXlc98FM+z7LLOPSubh8xV4DYcqgOORwM8LCwrgB0eQQIZgSLF4wJDGUEG4HAx49c2x/v/j4IZ5xSNuF5lo99E9h3jJeuQwuqICkMN+7yGesKqA3eV9/oIcXu1VAP5CrEC/SS3YpA/Yy9mpWu1YLRow1Huq/39mRGN3SHirkAD5PSGbgIe8HOiZYzJ4v48C+Ae5vr1KUrelBqRAqE9aVLThnemd8XkU75N/x8ANWD8wgu88E7xQfn+KbLrG2BOatOerI97zUwC/DZStLLHP8grcea4BLa5J74UAvgVuSupmCOFJkqheAUYQp5EbQLvcntmQKcujJdZnu0zW1V/Hh81nzzGazbcmW8rG1LX5xyb7hpvUgPdHMBTcWvC9nQxWzyJib6rxACnAFrWZOOTPCmhCNdfHSIDx+pJruUCEtqmGdRT0e2wmgR0CFodE+30lg20BUj2xn3mNQNkaYVVt0ge8NUcbkcH21YXENwmW9MESljtmGYB/l0jVCqFFVR8J5qhplzDDSYUH5ypGyDDpndB1OMlITOT0f+wdKAWe1FTrZpMCeHNOSkEXZE2NhacSdGeoAdknU0t9Inio4Q4BTQgwaPTykmO5qIFrLWMF0oxJ708Cc/D8ZyAjoTnLcdF2duP0Jb+4TxOsqklDD82BR83fUsBo5WrsdldSOPMeEhVoRDJJ8ieLED7VA1lQRRqOKm4EVeDBCfmHNmBKwW0TeS2ae4i/mgYCyrfNpCBEd8ZXM1R56s3eLWtGYqK9Mr+LFRzVhE8Dd7s9qQECoti8ZV23o6iH5UIwBQlyYP+v9ehALJHRK8RNqdXA3pQA6g18CVPgzBCAdMcGHpxDcz5TTGVFOVh2EiF8Qk0HPI2YH4cGmbUoQyHcVZCDXCoBFgU2Sg9MZHRwJBH7UASwBeBXmOrkD7EA7GUQxyjZuY9pnMqkmnAPEcKlNRKyMWjrOoj0MqTtlEO0foT4wP2cwPJldZ9VMoDxWR8Fd61Zx7ZlNOB2kTXFsjQbVadRxjr3OmvtOZKiWVAxITsoAfRdDKpwr6o4tgQzhaU5s/ecrMWmdcxwkwKoD+MeMOdz4k2P1B7fFZHfTQ35UGU0gyvQyMpOtR+4YrKgQoE+jSQqalIYXcm22tNECNOMzIMmrJ8MbgXFTBBAa4rPAFPtjgVKbm8sGDlaJr1CNZAjVU2casIXStDVKSmEaWBNXIk1KOPrlbEm6mYcAh7r2jcNU6FMg/59t5kkgGSK94eDyz1t0/vQB9M+HFgih1QlOiQMrsOfDJ7wxWAoV6vE96U5E6AoosJRpUacRvb0bA/GLlLBWtpr3XEmCaAfkPwlmEYj8W7kGAyel7BqTi7WTOvUydeCiTfTSHb81AvQigAVRUMOCfVgUqoYlgP4hkS3aQQYRL9r2zpuxKD4AVU9X21CeavKXyIRcSiSdBXAp3VLcVWFV7v4DgNwfmTvctnBh67i1M8YwXSGG9qWHZMS67xsJgqgpSv7pvh9qQlG2gD+psD/oQEjYJrSsjr070hw22XRmAaqEAW7AWxAFcz5YFDFszPaNV0EuKIyn8ygGVJV2C4D8FbzYFJwJn1pgOuvySRsE/VViqyYdMEsBB8zFsBF+nrUoJsR6/9qxKssDZM5BOdFrghm8pgGTb98ATwRSR/WlmAWp7rajEqW7cqmYGLBruoTHoepcV1FYxuogoajCqMeskqnR4j70DMkolUs3YwTQBdg9mwD+Ccwsfa46f+oE8FShGNep4RVVpg14j8ZPDGzl6EJqQLWrwzNcN7vVPNtA24xKBqqWPQ9G2ZaFJwUoFM+IJrCgZtmWjV2kUN9/7AM+iZmJKziCf8BXE3waUpcTYg9appevY+TMDUxNInc0KHjsTqylAxoAubLMdUx5rzI+MfgDiyASRSf2CDKuQ5GkBoy9YnJq50B7n5TE5cEHHY3ABBqXqmtD4ZYvcGkW6jCtehn/m+maEDVZC8XH2hVTq7rS/L/JWCoU1X1j5LDWJpyKyjie1UTfhZTUzk7XhTs0DwsP68Up8/7b8Cdff0K0Df//DfOhDSM7qwnSbBxj4mqEEAcX48pFvnlDeXvBhGE1KkGJSbtdJ6kaSZKRppNVXXIBISbgpvwEUgXUYlIW0uSK2eCAOp0yQvADTe3FZiFB8CVEpjZF66GRqAh5wrLjEFVp/98TM0LaQ9gTESM70gA9geju9OaSXiAEfB3VuhjbpSkvGVY8f9CLm51wYV3jfO6SYMVDYocRUBDTGRbDsJL5LvX10xAuxob5iCvUFAn9fV1c57edAigLu5WYK4TTTz/LuIzaxtOKpOps7oMoEMTqJiyWstn7L8Y3MxUdaCMq+kz7l0zzaWafS0YiFGLVT9pCIV7PLiq0fUuKM8c/CHAqEA1H3xLHP02muk+q2L+XUF6qgXu1aWSbA5pRvddmYalBSboq9LaYBm+Pg9us23VEcB2A4HHUwC82UDXganm8rzwfcwTVleS4yW0K38IppjYEwx4SBuikWhizhxl0KpRJM9Ly6s+JBWgWkvAU0arWgG9jofBRYXas+TaDZjfI2RHd/HHA+9cAbJjqfy7LmIn541hVR/kiwD+2gj02wCcDa66dCPulSq2hLoa7FYxyWbNIf4B3MW2vWQO+l5EHSNQ8wPM/WU2oTKFHQvmpm5NVylO0wvjYMyf3+Syc0H/6yYm/bI6Ag1T1GJ4G3i6pkKkWuAp4ivAidJOBAx+UDnDquadjPD9DNwGcAAYxnZdiYfvGkLT6LV8RjZ7beGrK4CQxXiG8W1UyxwATnT6mkDTEjtiCsi4oUbXv577WPB8XoVGqVa8Rq7lKtONV7U6Uqc1oKypTw2T64VgBPnNck8PgAEED0WmP8jLPvQrXHdXXKYrALynSQb9pObnDjKOqZ2Zu63BAI6Z3oKWGUrdkc+tiYA+uQwURgIeu/BfpvIAbyjMb8Cgh7MCUyjL1F4dBsvO5Y+v6IKR40dKxNkyWugBMOAhTxBCpn6dlwJyJdBM/w4mJuo1GeAlNRvRn50T7f0TmF1qwkwnmpTgQM3lZANTec6PENKu7NyjjGD2K9RSm8IZugyiIE1j3QOetHmOIcrse4MVLwHPUu5EaGpngAMPl7g/9fkuAnCoCG+jQ6yTiuZXNci2gfOoY7y5mL4PSu5pX3DP8NfEPCuJ95octHAeSFTHbH2nIBdl84LnyYO91yRP3TQgrimjRNkRTbOfaHY7cMaP+Ddgimy8H9HQpKb0nsjcndLQnQoGE/fqVDwGkQfcxESyLmMS0iIAHwFwA7j+e6IIX88EIL8v2YRjQZA3gzmMXYSPpn7hteIXXm2CExogAttFaBn1jU8Bt0U+GJggENpU3/NSNDEBx00l0i0nyDW1SjyboQngvBwySWfyhF1PCOxNPCI7OSnha1lhuyOn6pHlz7TAZJorJKLrVMjmu4b7Zh4Co4hONcLYj/AZ7wgQi1NB598PPLYKymgoOx/A6Yb7cBB0eLUEMInsO2jngDofjeD9s79Lvev+VYWFUI0zCe7heIfZ8T0MjiQoTyPvD6b7aJdoWnJiQe4rCcq4QT6TBNJnms24EwymTUpyHw5VACcDu5RK7o5VNZtz1qMep2ELjNdbAS4rdRoQQhdJYdKWyPyFYG7FVgl3gHKG5VBOHrAtLs9VGcTyet5PyvuSQZNE1RHA9cZ/KwMHt++5v8TnQu9bWFNTqRb6PnhO8TUmPZTW0HRZaQp1AdaCy5fvERclqZDUJcOrjQKycv85X+aZYUs7shrcSuuaSDQPQgDtGNTf1vQHHqj4eX3/MxrwR1Qo7hNNeK5JfaQ52tmVrD5oDu8mMO3tJaZhKa0IAhkHtzTECqDez/cB3O4BCfT+rpcgyA2DIq9uIvqumgLwcEUYuJ1P10RqwPqF75I8ZdfLF7oMRz8WPNEBo8UPECFs1/CvnOF53hrFfSBtL002Acby+dUXf14wZqoA6gL8rKKZSjwBLNsLop/fCVMz6pKGWF61jvznohVdgOaiLPfMOhHsw03JsNdAALiXmeGRpalbnpnWv1/hTU6CCeyGdtSthFxvEpZUouFatc2jFcm9tew2D3/KPYMG/MJxcMH/wor+mY9RPFpMe6ch30rX4k0Rz9IfC2E13d3eVHqAhxgOjaE2aWA2yF0ZwwmLjscNEoYqjmwgcHltceS0orLd/rtHoHFiGtvvahAkq27B3uAadxrhjyaBTbEe3CLrX+vkbNCAWgqbwFSPb1k/bG2gClJ2tFYqTvgHvMmTqImR7IH5j1+ZwwWtucM8WJKuyTEFZb8q3YCnmTqwy0Ght3IIh25tmmpjmGkYvdFLzcOgEuZ7dQ4YNTYI0Wj878AlrK7n71QVvu0xNT0ylKdMTUXlTs8FIa9TsA/mEHx7g9d3rPiolgTJ5aBgkoxn99uMrMCsEED1G1aCofBlo9FHG7gGZxzyf5UIU9HPScl1sDNBrgADZtNAmVAf+rfFRO8CHuCXZFDv6u/PBncNVr0+hWi9CcAnvBJn1R7qxwK/m5gtAmihV+dUIM1Z0xAMSq9hMzCS5LUiSKmZk+Y/BGc0VMsQh68A10qfHiBqtAiRX4Lh/4/J+04EJ2+zZsYpe9ZX5XM9z4THXF8fnLi+2JjWJMKvzJtNNxGQhTWzSQDVP/omeBRrO8eHcIFSXhmi7bzcmx21+mWJXreXB93PaATSiLcPhpV9Bjw37ckFg2hSMae/MwlrB+BvweCKJBAYOIMg+oK4LTuY7y+6vl1EeD8VMKtlqk/+e8c8Tb3eAwjPeAG0ftgJJekl0hpM7y6jtqua4q2So/w8GAC7lSy2nn8eOIl7iAjrjSJACAQd5KFEPidasm0EvAWuHhyfo5VsNeL1AH4i16dETuPmc+Nyza8QgV0J4NWBFlZXk8p4qfeeR4xrNBQBbDfIB30luFnl9TmUZOR1aIXOtS6n8F7UbeYMsngBeNzAW2RXPyAmcwzcnvgE8wAs0jjJKHtpP8YHAv6ersFFYmJfEOjEI6+ha6G5vtVgWJWig5YB2MLQliCwprFVIwpEyPq3bbzf3yfpMTebBNAKxt+D+0SWR/TjbhGI1FJwD4dFjbic3U6B6gQZv0k142JM9cOGhjYXzfBVrXiWCHErB7l9GriJKMnZMP71LfGEzY9IE5NlcCVIOrUdYSJDcHcOcL1QUx1vw54Vl4gZeqcxh3n9CdtI4OBj/G4pOYo0z3y3PG6WnjGbqXmwLiLnmUp03DY+U8tEtPrgVkp6oxXhUhRdXyvi+oqo1X7vmVWN5OeDe3bs2l8zbAL4ZACs+F8HE3V3MnaRPqytzTh4q/K/EzHEJobPzgWYSxPz0F0F/OAyIyRWaFLz/83FvFLJqZ2JEbikxAjaoij4fq/kqefeXYIvbTxaBy4/YoCz7AbOkKq+0PvBCN+Ox5jgv+8Az/wmokF+klMzpZJcJmUpbvPYHM4V87pcItP3gWH0e8nv9pCgZqHJk7oBs/y7AsFcafxHmyx/hanJk2i/XzfZ8xt18UQ0KO68hWDk7V4eO6itJFwLHhEAz/d4JXhqTzdggpqmVovhdHGB9saFpqqhlHSLKhBQ1rnOvN/pGr8Y3Lxk/dYF4DLcU0QAx8B93JfWoVqbKSTlugC/k132C6MJbcDQB/BcEVArfJpXvDwDIu8aZhd1Jea29cwwZ72nSZPSaA1wEqaLvC9brbkRDD51Xrn0NSJ8qhjuBvCtYaGghzGmQW/2AXD5yQoheT7jCRnR29sluT2WsSPLzMOlhsxay5v31va66kK+6zAnOvkMY8cZyL9e4zi4lmyVxVnD6gEZ9qguHVr4IvHrrE+oVZNDwY05PtvT45JEvtaY736JB+sGxOmSBUp1Q+ikiyFrSmW9Tgbw38ayqAl+NxhJPiGb+3aDe0wx5GMQPmAWfm0xOKt/iPHtdBPcAp6+PemRfKfg8tWHZeE6psM/D53sGuRdpojIu8o4VWpwQpQVPEgW4n1G6NQEbydmeb6Jfg8CV3Zawza/w8L9q1+3RoKLT5mZGUpBtisY0JB6jTpanzwOTFfxJTCOsGOABokRxCTinlwD5pgyhKiJATl5WtzSEPuwrw6YduONInz+xPqWidCV7eqU6RS+YWnA0GIeDuBM0YoT8rcxMI/MRwOgBruY24pf+XxwJn9Lieo6Ofi3shuGAslsqqC5+gFBabLXOJUc3+2SNfiCROOJx6HTkw1+tGzoTcCtmX9ltCRt7ALo4+N2lLzaCzEFDRoHN++cG1iYJBCltcElvaXy2VR294fAsKxuhXKjy0lElzGfroFpTBqofUoEZoGpxEyKn/wAuI7suzzOROUngDGLKnzfEOHrDphLG8OqBVdpBv9fCU6OEYd5ifztLPn5I96CpgFKkB64dvwbhPuNUaHb7jIw3m9czv8mcNWGIul41X99BIx2URq6HWVTpJGlRXgcOCsjNjZ5aJ6eWJWPGH/6c+ByaW+YoIPslSearldCRE5+3o6ILiCi9TR1/AsRbSZ/b8n7/XM4eSXyGpN/Py3nmCSiNPLVl8/s633HtfL7bsFn9eeuvP927zwr5Pe9iHPoa1I+8y5Zg3H5t2XWxK4jiKhtfj7drOcaIjrGWzdM9yuZRtlPjY9yN5gJdB8wK9Nj4kzfAuClRgO6DACCrcVW7Y5TTbCZXNO4CXRQYqSpnQmyiQmYFlWY6uQ8y+G/Ui9roFpvKzC49nj52zfA/IxnNzAcfNZFwYigxtBC/M/B7PZ7geHnj4Bh9v8hUTCVbHxChbZPi0rpRTKcZrGz9gzcvz9Ael+95wWSZL5D0isXg7GJh4rLM60Bx0zwAYsERv27e8UXPAtc9D8YTObzZ7Kzby2gtUgzKgSugvA2lcNLC4AOVa9JaT/2B5c+F8km/m8TnCTT0XI5mwQQgaE1GsHdiqn+1cWSRKWK5bWybFZlKxGhsl1MJYZqjFJQF+QOMAppfeAaZpzgzVQBhDcjA97EyTWI69rq18xTNmEq8wC5sQlsF3k/PZMJaHmjvWb00cbMP9LAhPEiIVlbEr7uTPXl8YzUSAxeMC+hPVFDmNdEBj80G4RupgUhgyjc31lC+PyusF9laFMXOQPOh27BsE51SyJO9L13D3FYzkgAG/AhrwbDi0LUankm+0eSArLJ7ke9vt0YAnUC94WQSRLfKVE+IlNFWs34pfjAbrYK2VwTwBYYWn6+obNII9JAAHMj+8L6k4Imq6yy3c+8c3UBfDzSr+sbATwDU5MERgI4S4QwAXCSpGzGDc7Qdp31DcdyC5w/uzZQ+vsKuJQWo4FSU+v+shcMJGCU9ydNgptMvtAmlzURfi6YJKk123y72VCKG+RLy0wdIjqBiO6l8NEnoh8S0cGm5GfPo/8/2bx/Qsppfe/fSVOGOz1wPmfKiYcR0U2UfdxGREd697JRvoaNhsE0wNMBLq/tCSY1XyJa5kFwqe8mrzMvq4n8FMmzdQo04MflfVkDuJ0Zy7UnGFK2TL5nFXj07E9LaN3Z/ZA2YgH0E9qIQG0X5QefBabe2AeMkFHEzH3gATBflH+LBCfGpG68ZncOCWCIptYFgAwo0Vqgx6ZmGvvawCT5Mr0lLjCydm48mDkigE0GbVnjq9qBpPnoGAngwFsMMFe0FeZoKW42V2RGxxzMA46OkQCOjtERd/w/5zKwr5CST4wAAAAASUVORK5CYII=';
+
+  // IP de saída → região desejada. Os IPs abaixo são apenas exemplos comuns em projetos públicos;
+  // troque pelo endereço de saída que você realmente usa (também dá para escolher no painel,
+  // ou gravar direto em xcu.region no localStorage).
+  const REGIONS = {
+    jp: { ip: '138.199.21.239', territory: 'JP', name: 'Japão' },
+    us: { ip: '143.244.47.65', territory: 'US', name: 'EUA' },
+    kr: { ip: '121.125.60.151', territory: 'KR', name: 'Coreia' },
+    pl: { ip: '45.134.212.66', territory: 'PL', name: 'Polônia' },
+    br: { ip: '169.150.198.66', territory: 'BR', name: 'Brasil' }
+  };
+  const DEFAULT_REGION = 'jp';
+
+  // Data centers de streaming: name deve ser idêntico a offeringSettings.regions[].name do servidor.
+  // O /v2/login/user retorna na prática 19 regiões; na Ásia só Tóquio e Seul são opções reais.
+  const SERVERS = {
+    auto: { name: '', label: 'Auto' },
+    ejp: { name: 'JAPANEAST', label: 'Tóquio' },
+    ckr: { name: 'KOREACENTRAL', label: 'Seul' },
+    eus: { name: 'EASTUS', label: 'Leste EUA' },
+    weu: { name: 'WESTEUROPE', label: 'Europa Ocid.' }
+  };
+
+  // A qualidade e independente de viewport, DeX, tela cheia e perifericos.
+  // Perfis osName dizem respeito apenas a negociacao do streaming; nao sao um
+  // mecanismo de selecao de teclado/mouse, controle ou touchscreen.
+  // Auto usa perfil desktop Windows para nao anunciar uma Smart TV ao xCloud.
+  // HQ/Tizen permanece opcional: pode interferir na negociacao do controle virtual.
+  // O perfil solicitado NAO comprova resolucao/bitrate entregues; medir via WebRTC.
+  // O servidor ainda pode negociar uma resolucao inferior.
+  const RES_MODES = {
+    auto: { osName: 'windows', label: '1080p' },
+    hq: { osName: 'tizen', label: '1080p HQ' },
+    r720: { osName: 'android', label: '720p' }
+  };
+  const BITRATE_MODES = {
+    auto: { mbps: 0, label: 'Auto' },
+    b5: { mbps: 5, label: '5 Mbps' },
+    b8: { mbps: 8, label: '8 Mbps' },
+    b10: { mbps: 10, label: '10 Mbps' },
+    b12: { mbps: 12, label: '12 Mbps' },
+    b15: { mbps: 15, label: '15 Mbps' },
+    b20: { mbps: 20, label: '20 Mbps (limite)' },
+    b30: { mbps: 30, label: '30 Mbps (limite)' },
+    b40: { mbps: 40, label: '40 Mbps (limite)' },
+    b50: { mbps: 50, label: '50 Mbps (limite)' }
+  };
+  function bitrateCfg() {
+    return BITRATE_MODES[getPref(LS_BITRATE, 'auto')] || BITRATE_MODES.auto;
+  }
+
+  const GSSV_RE = /(^|\.)gssv-play-[a-z0-9-]*\.xboxlive\.com$/i;
+  const GEARS_RE = /^gears(-staging)?\.xboxservices\.com$/i;
+  const EXP_PATH_RE = /(\/Assignments\/experimentation|\/xboxcomfd\/experimentation)/i;
+  const CAP_RE = /contentaccess|storepages|catalog\.gamepass|titlehub|emerald|gssv-play|gears/i;
+  const MAX_CAP = 40;
+
+  const S = {
+    v: VER,
+    all: 0,
+    gssv: 0,
+    inj: 0,
+    caps: [],
+    logs: [],
+    env: {},
+    territoryBefore: '',
+    territoryNow: '',
+    expHits: 0,
+    expBefore: '(não passou)',
+    expAfter: '(não passou)',
+    cacheCleared: 0,
+    denied: 0,
+    // v2.2
+    serverPin: '',
+    serverActual: '',
+    v6dropped: 0,
+    resApplied: '',
+    playPatched: 0,
+    pcs: 0,
+    qos: null,
+    qosAt: 0,
+    latencyByServer: Object.create(null),
+    nxRecoveries: 0,
+    qosHistory: [],
+    lastDiagnosis: 'Aguardando amostras',
+    deviceDetected: '',
+    diagnosticsWarnings: [],
+    micStatus: 'Não verificado',
+    vibrationStatus: 'Não verificado',
+    remotePlayStatus: 'Sem integração de protocolo',
+    serverProbeStatus: 'Sem endpoints verificados para sondagem',
+    hist: [],
+    histMin: null,
+    startedAt: Date.now(),
+    lastErr: ''
+  };
+  window.__XCU__ = S;
+  // Amostras de sessões anteriores têm validade limitada e não equivalem a ping ativo.
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_RTT_HISTORY) || '{}');
+    const now = Date.now();
+    Object.keys(saved).forEach(function (name) {
+      const item = saved[name];
+      if (/^[A-Z][A-Z0-9]{2,30}$/.test(name) && item && Number.isFinite(item.avg) && item.avg >= 0 && item.avg < 5000 && Number.isInteger(item.samples) && item.samples >= 1 && item.samples <= 100000 && Number.isFinite(item.at) && now - item.at >= 0 && now - item.at < 24 * 3600 * 1000) {
+        S.latencyByServer[name] = { avg: item.avg, samples: item.samples, at: item.at };
+      }
+    });
+  } catch (e) { /* armazenamento indisponível */ }
+  let lastRttSave = 0;
+
+  // ---------- Configuração ----------
+  function cfg() {
+    let v = DEFAULT_REGION;
+    try { v = localStorage.getItem(LS_KEY) || DEFAULT_REGION; } catch (e) { }
+    if (v === 'off' || v === '0') return { key: 'off', ip: null, territory: null, name: 'Desligado' };
+    if (REGIONS[v]) return Object.assign({ key: v }, REGIONS[v]);
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(v)) {
+      return { key: 'custom', ip: v, territory: REGIONS[DEFAULT_REGION].territory, name: 'Personalizado' };
+    }
+    return Object.assign({ key: DEFAULT_REGION }, REGIONS[DEFAULT_REGION]);
+  }
+
+  function getPref(k, def) {
+    try { return localStorage.getItem(k) || def; } catch (e) { return def; }
+  }
+  function setPref(k, v) {
+    try { localStorage.setItem(k, v); } catch (e) { }
+  }
+
+  function srvCfg() {
+    const k = getPref(LS_SRV, 'auto');
+    if (k === 'auto' && getPref(LS_AUTO_BEST, '0') === '1') {
+      const entries = Object.keys(S.latencyByServer).filter(function (name) {
+        const sample = S.latencyByServer[name];
+        if (!sample.at || Date.now() - sample.at > 24 * 3600 * 1000) return false;
+        return S.latencyByServer[name].samples >= 5 && Object.keys(SERVERS).some(function (id) { return SERVERS[id].name === name; });
+      });
+      if (entries.length) {
+        entries.sort(function (a, b) { return S.latencyByServer[a].avg - S.latencyByServer[b].avg; });
+        return { name: entries[0], label: 'Medido: ' + entries[0] };
+      }
+    }
+    if (SERVERS[k]) return SERVERS[k];
+    if (/^[A-Z]{3,}$/.test(k)) return { name: k, label: k };
+    return SERVERS.auto;
+  }
+  function resCfg() {
+    const selected = getPref(LS_RES, 'auto');
+    // Migrar a antiga opcao 1080p duplicada para o perfil unico.
+    return RES_MODES[selected === 'r1080' ? 'auto' : selected] || RES_MODES.auto;
+  }
+  function v4on() { return getPref(LS_V4, '1') !== '0'; }
+
+  // Nos botões, não mostrar apenas "Auto" — exibir o valor realmente escolhido pelo automático
+  //   Data center: no modo automático, o servidor atribuído pelo backend (CKR/EJP…), só se sabe ao entrar numa partida
+  //   Qualidade: Auto solicita sempre HQ; a resolucao efetiva aparece nas estatisticas WebRTC
+  function srvBtnLabel() {
+    const c = srvCfg();
+    if (c.name) return c.label;
+    const a = S.serverActual;
+    if (!a) return 'Auto';
+    return 'Auto·' + a;
+  }
+
+  function resBtnLabel() {
+    const r = resCfg();
+    if (r.osName) return r.label;
+    const q = S.qos;
+    if (q && q.h) return 'Auto·' + q.h + 'p';
+    return 'Auto';
+  }
+
+  function getCookie(n) {
+    const m = document.cookie.match(new RegExp('(?:^|;\\s*)' + n + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  // ---------- 1. Limpar cache de experimentos (deve ocorrer antes de a página ler) ----------
+  (function clearExpCache() {
+    try {
+      const kill = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && /^experimentationInfo/i.test(k)) kill.push(k);
+      }
+      kill.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) { } });
+      S.cacheCleared = kill.length;
+    } catch (e) { }
+  })();
+
+  // ---------- 2. territory ----------
+  (function syncTerritory() {
+    const c = cfg();
+    S.territoryBefore = getCookie('territory') || '(nenhum)';
+    if (!c.territory) { S.territoryNow = S.territoryBefore; return; }
+    if (S.territoryBefore === c.territory) { S.territoryNow = c.territory; return; }
+    try {
+      document.cookie = 'territory=' + encodeURIComponent(c.territory) + '; path=/; max-age=31536000; SameSite=Lax';
+    } catch (e) { }
+    S.territoryNow = getCookie('territory') || '(falha ao gravar)';
+  })();
+
+  // ---------- 3. Ambiente ----------
+  try {
+    S.env = {
+      rtc: !!window.RTCPeerConnection,
+      audio: !!(window.AudioContext || window.webkitAudioContext),
+      online: navigator.onLine
+    };
+  } catch (e) { }
+
+  function injectable(path) {
+    return /\/v2\/login\/user$/i.test(path) || /\/sessions\//i.test(path);
+  }
+
+  function pushLog(kind, msg) {
+    const s = String(msg);
+    if (/Access to the streaming offering is denied/i.test(s)) S.denied++;
+    S.logs.push({ t: new Date().toISOString().slice(11, 19), kind: kind, msg: s.slice(0, 400) });
+    if (S.logs.length > 40) S.logs.shift();
+    schedule();
+  }
+
+  function addCap(rec) {
+    S.caps.push(rec);
+    if (S.caps.length > MAX_CAP) S.caps.shift();
+    schedule();
+  }
+
+  function nowStr() { return new Date().toISOString().slice(11, 19); }
+
+  // ---------- 4. Reescrita genérica de resposta JSON ----------
+  function rewriteJson(res, fn) {
+    let copy;
+    try { copy = res.clone(); } catch (e) { return Promise.resolve(res); }
+    return copy.text().then(function (txt) {
+      let j;
+      try { j = JSON.parse(txt); } catch (e) { return res; }
+      let changed = false;
+      try { changed = fn(j) === true; } catch (e) { S.lastErr = String(e && e.message || e); return res; }
+      if (!changed) return res;
+      const h = new Headers(res.headers);
+      h.delete('content-length');
+      h.delete('content-encoding');
+      h.set('content-type', 'application/json; charset=utf-8');
+      try {
+        return new Response(JSON.stringify(j), {
+          status: res.status, statusText: res.statusText, headers: h
+        });
+      } catch (e) { return res; }
+    }, function () { return res; });
+  }
+
+  // ---------- 5. Desbloqueio: reescrita da API de experimentos (physicalMarket) ----------
+  function rewriteExp(res, u) {
+    if (!res || !res.status || res.status < 200 || res.status >= 300) return Promise.resolve(res);
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (ct.indexOf('json') < 0) return Promise.resolve(res);
+    const c = cfg();
+    if (!c.territory) return Promise.resolve(res);
+
+    return rewriteJson(res, function (j) {
+      const holder = (j && typeof j === 'object' && j.exp && typeof j.exp === 'object') ? j.exp : j;
+      if (!holder || typeof holder !== 'object') return false;
+      const tf = holder.trafficFilters;
+      if (!tf || typeof tf !== 'object') return false;
+
+      const before = String(tf.territory == null ? '(vazio)' : tf.territory);
+      S.expHits++;
+      S.expBefore = before;
+      S.expAfter = c.territory;
+
+      tf.territory = c.territory;
+      if (Object.prototype.hasOwnProperty.call(tf, 'market')) tf.market = c.territory;
+
+      addCap({
+        at: nowStr(), method: 'REWRITE', host: u.host,
+        path: u.pathname + (u.search || ''), status: res.status,
+        type: 'patched', body: 'physicalMarket: ' + before + ' -> ' + c.territory
+      });
+      return true;
+    });
+  }
+
+  // ---------- 6. Fixar data center: reescrever offeringSettings.regions ----------
+  function rewriteRegions(res, u) {
+    const want = srvCfg();
+    if (!want.name) return Promise.resolve(res);
+
+    return rewriteJson(res, function (j) {
+      const os = j && j.offeringSettings;
+      if (!os || !Array.isArray(os.regions) || !os.regions.length) return false;
+
+      const hit = os.regions.filter(function (r) {
+        return String(r && r.name).toUpperCase() === want.name;
+      })[0];
+      if (!hit) {
+        // The server's original ordering remains authoritative on fallback.
+        S.serverPin = '';
+        S.serverActual = 'região indisponível';
+        addCap({
+          at: nowStr(), host: u.host, path: u.pathname, status: res.status,
+          type: 'patched', body: 'Região alvo ' + want.name + ' não está na lista (disponíveis: ' +
+            os.regions.map(function (r) { return r.name; }).join(',') + ')'
+        });
+        return false;
+      }
+
+      const rest = os.regions.filter(function (r) { return r !== hit; });
+      // Lógica do cliente: o que tem isDefault vai para o início com unshift, depois pega regions[0].
+      // Assim fixa a região sem perder as alternativas de reserva.
+      if (os.regions[0] === hit && hit.isDefault === true &&
+          rest.every(function (r) { return r.isDefault !== true; })) {
+        S.serverPin = want.name;
+        return false;
+      }
+      hit.isDefault = true;
+      rest.forEach(function (r) { r.isDefault = false; });
+      os.regions = [hit].concat(rest);
+
+      S.serverPin = want.name;
+      S.serverActual = want.name;
+      addCap({
+        at: nowStr(), host: u.host, path: u.pathname, status: res.status,
+        type: 'patched', body: 'streamRegion -> ' + want.name + ' (' + want.label + ')'
+      });
+      return true;
+    });
+  }
+
+  // ---------- 7. Forçar IPv4: remover candidatos ICE IPv6 ----------
+  function isV6Candidate(cand) {
+    // Formato "a=candidate:1 1 UDP 100 192.0.2.10 1040 typ host"; o 5º campo é o endereço
+    const parts = String(cand).trim().split(/\s+/);
+    const ip = parts[4] || '';
+    return ip.indexOf(':') >= 0;
+  }
+
+  function rewriteIce(res, u, isSdp) {
+    if (!res || !res.status || res.status < 200 || res.status >= 300) return Promise.resolve(res);
+    if (!v4on()) return Promise.resolve(res);
+
+    return rewriteJson(res, function (j) {
+      const raw = j && j.exchangeResponse;
+      if (typeof raw !== 'string' || !raw) return false;
+      let inner;
+      try { inner = JSON.parse(raw); } catch (e) { return false; }
+      let dropped = 0;
+
+      if (isSdp) {
+        const sdp = inner && inner.sdp;
+        if (typeof sdp !== 'string') return false;
+        const lines = sdp.split(/\r\n|\n/);
+        const keep = lines.filter(function (ln) {
+          if (/^a=candidate:/i.test(ln) && isV6Candidate(ln.replace(/^a=/, ''))) { dropped++; return false; }
+          return true;
+        });
+        if (!dropped) return false;
+        // Never strip every usable candidate: this would make the session impossible.
+        if (!keep.some(function (ln) { return /^a=candidate:/i.test(ln); })) return false;
+        inner.sdp = keep.join('\r\n');
+      } else {
+        if (!Array.isArray(inner)) return false;
+        const keep = inner.filter(function (c) {
+          const s = c && (c.candidate || '');
+          if (/end-of-candidates/i.test(s)) return true;
+          if (s && isV6Candidate(s)) { dropped++; return false; }
+          return true;
+        });
+        if (!dropped) return false;
+        // End-of-candidates is not a viable transport candidate.
+        if (!keep.some(function (item) { return item && typeof item.candidate === 'string' &&
+          /^candidate:/i.test(item.candidate.trim()); })) return false;
+        inner = keep;
+      }
+
+      S.v6dropped += dropped;
+      j.exchangeResponse = JSON.stringify(inner);
+      addCap({
+        at: nowStr(), host: u.host, path: u.pathname, status: res.status,
+        type: 'patched', body: 'Removidos ' + dropped + ' candidatos IPv6 (total ' + S.v6dropped + ')'
+      });
+      return true;
+    });
+  }
+
+  // ---------- 8. Faixa de qualidade: reescrever o corpo de /sessions/cloud/play ----------
+  // O perfil HQ usa tizen apenas na negociacao do stream. 1440p real nao e garantido.
+  // Diagnóstico sanitizado da negociação de entrada: somente nomes de campos e booleanos.
+  // Nunca registrar tokens, IDs de sessão ou corpo integral da requisição.
+  let lastInputNegotiation = null;
+  function inspectInputNegotiation(payload) {
+    try {
+      const settings = payload && payload.settings;
+      const input = (settings && settings.inputConfiguration) ||
+        (payload && payload.inputConfiguration);
+      const summary = {
+        settingsKeys: settings && typeof settings === 'object' ? Object.keys(settings).filter(k => /input|touch|mouse|keyboard|osName/i.test(k)) : [],
+        inputConfigurationPresent: !!input && typeof input === 'object',
+        inputConfigurationKeys: input && typeof input === 'object' ? Object.keys(input) : [],
+        enableTouchInput: input && typeof input.enableTouchInput === 'boolean' ? input.enableTouchInput : null,
+        enableMouseInput: input && typeof input.enableMouseInput === 'boolean' ? input.enableMouseInput : null,
+        enableKeyboardInput: input && typeof input.enableKeyboardInput === 'boolean' ? input.enableKeyboardInput : null,
+        maxTouchPoints: input && typeof input.maxTouchPoints === 'number' ? input.maxTouchPoints : null
+      };
+      lastInputNegotiation = summary;
+    } catch (e) {}
+  }
+
+  function patchPlayRequest(input, init) {
+    const r = resCfg();
+    const profileOs = nxPlatformProfile.sessionOs;
+    const effectiveOs = nxCompatibilityMode ? null : (profileOs || r.osName);
+    // Console: não enviar osName Windows/Tizen de qualidade como se fosse identidade Xbox.
+    if (!effectiveOs) return Promise.resolve({ input: input, init: init });
+    // An aborted request must not be parsed/rebuilt before reaching native fetch.
+    if ((init && init.signal && init.signal.aborted) ||
+        (input instanceof Request && input.signal.aborted)) {
+      return Promise.resolve({ input: input, init: init });
+    }
+    try {
+      const raw = typeof input === 'string' ? input
+        : (input instanceof URL ? input.href : (input && input.url) || '');
+      const abs = new URL(raw, location.href);
+      const req = new Request((input instanceof Request) ? input : abs.href, init);
+      if (!/^POST$/i.test(req.method)) return Promise.resolve({ input: input, init: init });
+      return req.clone().text().then(function (txt) {
+        let j;
+        try { j = JSON.parse(txt); } catch (e) { return { input: input, init: init }; }
+        if (!j || !j.settings || typeof j.settings !== 'object') {
+          return { input: input, init: init };
+        }
+        inspectInputNegotiation(j);
+        // Perfil de plataforma prevalece sobre o perfil de qualidade apenas quando explícito.
+        // Xbox mantém o osName existente: não existe valor de console validado aqui.
+        j.settings.osName = effectiveOs;
+        nxProfileSessionState.attempted++;
+        nxProfileSessionState.patched++;
+        nxProfileSessionState.lastRequestedOs = effectiveOs;
+        nxProfileSessionState.lastOutcome = 'request-rewritten';
+        const h = new Headers(req.headers);
+        h.delete('content-length');
+        // Preserve x-ms-device-info original: o dispositivo e suas capacidades
+        // (incluindo toque) nao podem ser mascarados como Tizen/Windows.
+        S.resApplied = r.label;
+        S.playPatched++;
+        addCap({
+          at: nowStr(), method: 'PATCH', host: abs.host, path: abs.pathname, status: 0,
+          type: 'patched', body: 'settings.osName -> ' + effectiveOs + ' (plataforma: ' + nxConsoleLabProfile + ', vídeo: ' + r.label + ')'
+        });
+        return {
+          input: abs.href,
+          init: {
+            method: req.method,
+            headers: h,
+            body: JSON.stringify(j),
+            mode: req.mode, credentials: req.credentials, cache: req.cache,
+            redirect: req.redirect, referrer: req.referrer, integrity: req.integrity,
+            signal: req.signal, referrerPolicy: req.referrerPolicy, keepalive: req.keepalive
+          }
+        };
+      }).catch(function () { return { input: input, init: init }; });
+    } catch (e) {
+      return Promise.resolve({ input: input, init: init });
+    }
+  }
+
+  // ---------- 9. Hook do fetch ----------
+  const nativeFetch = window.fetch;
+  if (typeof nativeFetch === 'function') {
+    window.fetch = function (input, init) {
+      let u = null;
+      try {
+        const raw = typeof input === 'string'
+          ? input
+          : (input instanceof URL ? input.href : (input && input.url) || '');
+        if (raw) {
+          u = new URL(raw, location.href);
+          S.all++;
+
+          if (GSSV_RE.test(u.host)) {
+            S.gssv++;
+            const c = cfg();
+            if (c.ip && injectable(u.pathname) && u.protocol === 'https:') {
+              if (input instanceof Request) {
+                const h = new Headers(input.headers);
+                if (!h.has('X-Forwarded-For')) {
+                  h.set('X-Forwarded-For', c.ip);
+                  input = new Request(input, { headers: h });
+                  S.inj++;
+                }
+              } else {
+                const h = new Headers((init && init.headers) || {});
+                if (!h.has('X-Forwarded-For')) {
+                  h.set('X-Forwarded-For', c.ip);
+                  init = Object.assign({}, init, { headers: h });
+                  S.inj++;
+                }
+              }
+            }
+          }
+          schedule();
+        }
+      } catch (e) { S.lastErr = String((e && e.message) || e); }
+
+      const isPlay = !!(u && GSSV_RE.test(u.host) && /\/v5\/sessions\/cloud\/play$/i.test(u.pathname));
+      if (isPlay) {
+        const m = /^([a-z0-9]+)\.core\./i.exec(u.host);
+        if (m) S.serverActual = m[1].toUpperCase();
+      }
+
+      const go = isPlay
+        ? patchPlayRequest(input, init).then(function (x) { return nativeFetch.call(this, x.input, x.init); }.bind(this))
+        : nativeFetch.call(this, input, init);
+
+      const offeringMethod = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+      let p = nxObserveOffering(u, offeringMethod, go);
+      // Monitoramento somente de status e etapa da sessão; nunca armazena headers ou corpo.
+      if (u && /xboxservices\.com$/i.test(u.hostname) &&
+          /\/sessions\/cloud\/(?:play|[^/]+\/(?:state|connect|configuration|sdp|ice|keepalive))\/?$/i.test(u.pathname)) {
+        const stage = /\/sessions\/cloud\/play\/?$/i.test(u.pathname) ? 'play' :
+          (u.pathname.match(/\/(state|connect|configuration|sdp|ice|keepalive)\/?$/i) || [,'other'])[1].toLowerCase();
+        const started = Date.now();
+        const method = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+        p = p.then(function (res) {
+          nxSessionRecord({ time: new Date().toISOString(), stage: stage, method: method,
+            status: res.status, ms: Date.now() - started, ok: res.ok });
+          return res;
+        }, function (err) {
+          nxSessionRecord({ time: new Date().toISOString(), stage: stage, method: method,
+            status: 0, ms: Date.now() - started,
+            error: err && err.name === 'AbortError' ? 'cancelled' : 'network-failure' });
+          throw err;
+        });
+      }
+
+      const isExp = !!(u && GEARS_RE.test(u.host) && EXP_PATH_RE.test(u.pathname));
+      const isExp2 = !!(u && EXP_PATH_RE.test(u.pathname) && /xboxservices\.com$/i.test(u.host));
+
+      if (isExp || isExp2) {
+        p = p.then(function (res) { return rewriteExp(res, u); }, function (err) { throw err; });
+      }
+
+      if (u && GSSV_RE.test(u.host) && /\/v2\/login\/user$/i.test(u.pathname)) {
+        p = p.then(function (res) {
+          if (res.status !== 200) return res;
+          return rewriteRegions(res, u);
+        }, function (err) { throw err; });
+      }
+
+      if (u && GSSV_RE.test(u.host) && u.pathname.includes('/sessions/cloud/') && u.pathname.endsWith('/configuration')) {
+        p = p.then(function (res) { return patchTouchSessionConfiguration(res); });
+      }
+
+      if (u && GSSV_RE.test(u.host) && /\/sdp$/i.test(u.pathname)) {
+        p = p.then(function (res) { return rewriteIce(res, u, true); }, function (err) { throw err; });
+      }
+      if (u && GSSV_RE.test(u.host) && /\/ice$/i.test(u.pathname)) {
+        p = p.then(function (res) { return rewriteIce(res, u, false); }, function (err) { throw err; });
+      }
+
+      if (u && CAP_RE.test(u.host) && !isExp && !isExp2) {
+        p.then(function (res) {
+          const rec = {
+            at: nowStr(),
+            method: (init && init.method) || (input instanceof Request ? input.method : 'GET'),
+            host: u.host,
+            path: u.pathname,
+            status: res.status,
+            type: res.type
+          };
+          addCap(rec);
+        }, function (err) {
+          addCap({
+            at: nowStr(), host: u.host, path: u.pathname,
+            status: 0, type: 'failed', note: 'network-failure'
+          });
+        });
+      }
+
+      return p;
+    };
+  }
+
+  // Limite máximo negociado por SDP; não aumenta o bitrate do servidor.
+  // A configuração é capturada ao criar a sessão WebRTC.
+  (function hookBitrate() {
+    try {
+      const original = RTCPeerConnection.prototype.setLocalDescription;
+      if (typeof original !== 'function') return;
+      RTCPeerConnection.prototype.setLocalDescription = function(description) {
+        const limit = bitrateCfg().mbps;
+        if (!limit || !description || typeof description.sdp !== 'string' ||
+            !/^(?:offer|answer)$/i.test(description.type || '')) {
+          return original.apply(this, arguments);
+        }
+        try {
+          const lines = description.sdp.split(/\r?\n/);
+          let video = false, inserted = false;
+          const out = [];
+          for (const line of lines) {
+            if (line.startsWith('m=')) {
+              if (video && !inserted) out.push('b=AS:' + Math.round(limit * 1000));
+              // Rejected (port 0) video sections must not be rewritten.
+              video = /^m=video\s+(?!0(?:\s|$))\d+/i.test(line);
+              inserted = false;
+            }
+            if (video && /^b=(AS|TIAS):/.test(line)) continue;
+            if (video && !inserted && /^a=/.test(line)) {
+              out.push('b=AS:' + Math.round(limit * 1000));
+              inserted = true;
+            }
+            out.push(line);
+          }
+          if (video && !inserted) out.push('b=AS:' + Math.round(limit * 1000));
+          const patchedSdp = out.join('\r\n');
+          // Keep original newline convention to avoid rewriting SDP unnecessarily.
+          const normalizedSdp = description.sdp.indexOf('\r\n') >= 0
+            ? patchedSdp : patchedSdp.replace(/\r\n/g, '\n');
+          if (normalizedSdp === description.sdp) return original.apply(this, arguments);
+          const patched = { type: description.type, sdp: normalizedSdp };
+          return original.call(this, patched);
+        } catch (e) { S.lastErr = 'Bitrate SDP: ' + String(e); }
+        return original.apply(this, arguments);
+      };
+    } catch (e) { S.lastErr = 'Bitrate hook: ' + String(e); }
+  })();
+
+  // ---------- 10. Amostragem de QoS (envolve o RTCPeerConnection) ----------
+  (function hookRtc() {
+    try {
+      const OPC = window.RTCPeerConnection;
+      if (typeof OPC !== 'function') return;
+
+      const W = function () {
+        const pc = new OPC(...arguments);
+        try {
+          S.pcs++; S.lastPc = pc;
+          // Nova sessão: zera a base de amostragem da partida anterior
+          if (S.pcs > 1) { prevSnap = null; S.hist = []; S.histMin = null; S.qos = null; }
+        } catch (e) { }
+        return pc;
+      };
+      W.prototype = OPC.prototype;
+      ['generateCertificate', 'getStats'].forEach(function (k) {
+        if (OPC[k]) W[k] = OPC[k];
+      });
+      window.RTCPeerConnection = W;
+      if (window.webkitRTCPeerConnection === OPC) window.webkitRTCPeerConnection = W;
+    } catch (e) { }
+  })();
+
+  let qosBusy = false, prevSnap = null;
+
+  function diagnoseQos(q) {
+    if (!q) return 'Aguardando amostras';
+    const loss = q.instLoss == null ? q.loss : q.instLoss;
+    if (Number.isFinite(loss) && loss >= 5) return 'Perda de pacotes elevada: verificar Wi-Fi, rede e servidor';
+    if (Number.isFinite(q.rtt) && q.rtt >= 160) return 'RTT WebRTC elevado: comparar data centers';
+    if (Number.isFinite(q.dropRate) && q.dropRate > 5) return 'Quadros descartados neste intervalo: investigar decodificação local';
+    if (Number.isFinite(q.jitter) && q.jitter > 40) return 'Jitter elevado: conexão instável';
+    return 'Sem alerta pelos limiares locais (não garante ausência de problemas)';
+  }
+
+  function pumpQos() {
+    const pc = S.lastPc;
+    if (!pc || pc.connectionState === 'closed' || pc.signalingState === 'closed') {
+      if (S.qos) { S.qos = null; S.lastDiagnosis = 'Sessão WebRTC encerrada'; schedule(); }
+      prevSnap = null;
+      return;
+    }
+    if (qosBusy || typeof pc.getStats !== 'function') return;
+    qosBusy = true;
+    PCQos(pc).then(function (q) {
+      if (q && S.lastPc === pc && pc.connectionState !== 'closed' && pc.signalingState !== 'closed') {
+        S.qos = q; S.qosAt = Date.now();
+        S.qosHistory.push({ at: Date.now(), fps: q.fps || q.decodedFps || 0, kbps: q.kbps || 0, rtt: q.rtt, loss: q.instLoss == null ? q.loss : q.instLoss, dropped: q.dropped || 0, dropRate: q.dropRate == null ? null : q.dropRate });
+        if (S.qosHistory.length > 90) S.qosHistory.shift();
+        S.lastDiagnosis = diagnoseQos(q);
+        // Comparacao somente entre data centers efetivamente usados em partidas.
+        // Nao confundir RTT WebRTC com ping do jogo nem sondar endpoints arbitrarios.
+        const server = S.serverActual;
+        if (server && Object.keys(SERVERS).some(function (id) { return SERVERS[id].name === server; }) && Number.isFinite(q.rtt) && q.rtt >= 0) {
+          const prev = S.latencyByServer[server] || { avg: q.rtt, samples: 0 };
+          prev.avg = prev.samples ? prev.avg * 0.8 + q.rtt * 0.2 : q.rtt;
+          prev.samples++;
+          prev.at = Date.now();
+          S.latencyByServer[server] = prev;
+          if (Date.now() - lastRttSave > 15000) {
+            lastRttSave = Date.now();
+            try { localStorage.setItem(LS_RTT_HISTORY, JSON.stringify(S.latencyByServer)); } catch (e) { }
+          }
+        }
+        schedule();
+      }
+    }).catch(function (err) {
+      S.lastErr = 'QoS: ' + String(err && err.message || err);
+      schedule();
+    }).then(function () { qosBusy = false; }, function () { qosBusy = false; });
+  }
+
+  function PCQos(pc) {
+    let stats;
+    try { stats = pc.getStats(); } catch (e) { return Promise.resolve(null); }
+    return Promise.resolve(stats).then(function (rep) {
+      const out = {};
+      let video = null, pair = null, pairId = null;
+
+      rep.forEach(function (r) {
+        if (r.type === 'inbound-rtp' && (r.kind === 'video' || r.mediaType === 'video') &&
+            !r.isRemote && (!video || (r.bytesReceived || 0) > (video.bytesReceived || 0))) video = r;
+        if (r.type === 'transport' && r.selectedCandidatePairId) pairId = r.selectedCandidatePairId;
+        if (r.type === 'candidate-pair' && (r.nominated || r.selected) && r.state === 'succeeded' &&
+            (!pair || (r.bytesReceived || 0) > (pair.bytesReceived || 0))) pair = r;
+      });
+      if (pairId && rep.get) {
+        const p2 = rep.get(pairId);
+        if (p2 && p2.type === 'candidate-pair' && p2.state === 'succeeded') pair = p2;
+      }
+      if (!video && !pair) return null;
+
+      if (video) {
+        const recv = video.packetsReceived || 0;
+        const lost = video.packetsLost || 0;
+        out.loss = (recv + lost) > 0 ? (lost / (recv + lost) * 100) : 0;
+        out.recv = recv;
+        out.lost = lost;
+        out.w = video.frameWidth || 0;
+        out.h = video.frameHeight || 0;
+        out.fps = Math.round(video.framesPerSecond || 0);
+        out.jitter = video.jitter != null ? Math.round(video.jitter * 1000) : null;
+        out.bytes = video.bytesReceived || 0;
+        out.ts = video.timestamp || Date.now();
+        // Métricas do lado do decodificador: distinguem "perda de pacotes na rede" de "decodificação/renderização local não acompanha"
+        out.dropped = video.framesDropped || 0;
+        out.freeze = video.freezeCount || 0;
+        out.freezeDur = Math.round(video.totalFreezesDuration || 0);
+        out.decoded = video.framesDecoded || 0;
+        out.decodeMs = video.totalDecodeTime != null && out.decoded > 0 ? Math.round(video.totalDecodeTime / out.decoded * 10000) / 10 : null;
+        out.keyFrames = video.keyFramesDecoded != null ? video.keyFramesDecoded : null;
+        out.pli = video.pliCount != null ? video.pliCount : null;
+        if (video.codecId && rep.get) {
+          const cc = rep.get(video.codecId);
+          if (cc && cc.mimeType) out.codec = String(cc.mimeType).replace(/^video\//i, '').toUpperCase();
+        }
+        if (video.jitterBufferDelay != null && video.jitterBufferEmittedCount) {
+          out.bufMs = Math.round(video.jitterBufferDelay / video.jitterBufferEmittedCount * 1000);
+        }
+
+        if (prevSnap && prevSnap.bytes != null && prevSnap.pc === pc && prevSnap.inboundId === video.id) {
+          const dB = out.bytes - prevSnap.bytes;
+          const dT = (out.ts - prevSnap.ts) / 1000;
+          if (dT > 0.5 && dB >= 0) out.kbps = Math.round(dB * 8 / dT / 1000);
+          if (dT > 0.5 && out.decoded >= (prevSnap.decoded || 0)) out.decodedFps = Math.round((out.decoded - (prevSnap.decoded || 0)) / dT);
+          const dDropped = out.dropped - (prevSnap.dropped || 0);
+          const dDecoded = out.decoded - (prevSnap.decoded || 0);
+          if (dT > 0.5 && dDropped >= 0 && dDecoded >= 0 && dDropped + dDecoded > 0) out.dropRate = dDropped / (dDropped + dDecoded) * 100;
+
+          // Perda instantânea: conta só este intervalo de amostragem; o valor acumulado esconderia melhorias
+          const dRecv = recv - prevSnap.recv;
+          const dLost = lost - prevSnap.lost;
+          if (dRecv + dLost > 20 && dRecv >= 0 && dLost >= 0) {
+            out.instLoss = dLost / (dRecv + dLost) * 100;
+            S.hist.push(Math.round(out.instLoss * 10) / 10);
+            if (S.hist.length > 12) S.hist.shift();
+            S.histMin = S.histMin == null ? out.instLoss : Math.min(S.histMin, out.instLoss);
+            out.hist = S.hist.slice(-6);
+            out.histMin = Math.round(S.histMin * 10) / 10;
+          }
+        }
+        prevSnap = { bytes: out.bytes, ts: out.ts, recv: recv, lost: lost, decoded: out.decoded, dropped: out.dropped, pc: pc, inboundId: video.id };
+      }
+
+      if (pair) {
+        out.rtt = pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : null;
+        out.lostReq = pair.requestsFailed || 0;
+        const rc = rep.get ? rep.get(pair.remoteCandidateId) : null;
+        if (rc) {
+          out.remote = rc.address || '';
+          out.port = rc.port || '';
+          out.family = (out.remote.indexOf(':') >= 0) ? 'IPv6' : 'IPv4';
+          out.ctype = rc.candidateType || rc.type || '';
+        }
+        // Candidato local: se for um IP público fora do lado do proxy de saída, o fluxo de mídia não passou pelo proxy (vazamento WebRTC / conexão direta)
+        const lc = rep.get ? rep.get(pair.localCandidateId) : null;
+        if (lc) {
+          out.local = lc.address || '';
+          out.ltype = lc.candidateType || lc.type || '';
+          out.lproto = lc.protocol || '';
+          out.lport = lc.port || '';
+        }
+        out.proto = pair.protocol || (lc && lc.protocol) || '';
+      }
+      return out;
+    }, function () { return null; });
+  }
+
+
+  // Configuracao independente de toque, inspirada no Better xCloud.
+  let touchSessionDiagnostics = { inspected: false, applied: false };
+  function patchTouchSessionConfiguration(response) {
+    if (!response || !response.ok) return Promise.resolve(response);
+    const caps = inputCapabilities();
+    const forceFortnite = nxFortniteConsoleEnabled && nxIsFortniteRoute();
+    if (!forceFortnite && (!caps.touch || caps.maxTouchPoints < 1)) return Promise.resolve(response);
+    if (forceFortnite) { nxFortniteConsoleState.matched = true; nxFortniteConsoleState.inspected++; }
+    return response.clone().text().then(function (body) {
+      let data;
+      try { data = JSON.parse(body); } catch (e) { return response; }
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return response;
+      let overrides;
+      try {
+        overrides = typeof data.clientStreamingConfigOverrides === 'string'
+          ? JSON.parse(data.clientStreamingConfigOverrides || '{}')
+          : (data.clientStreamingConfigOverrides || {});
+      } catch (e) { return response; }
+      if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return response;
+      const original = overrides.inputConfiguration;
+      if (original != null && (typeof original !== 'object' || Array.isArray(original))) return response;
+      const inputs = Object.assign({}, original || {});
+      const previous = typeof inputs.enableTouchInput === 'boolean' ? inputs.enableTouchInput : null;
+      inputs.enableTouchInput = !forceFortnite;
+      if (!forceFortnite) inputs.maxTouchPoints = Math.max(Number(inputs.maxTouchPoints) || 0, caps.maxTouchPoints);
+      if (forceFortnite) { nxFortniteConsoleState.patched++; nxFortniteConsoleState.previousTouch = previous; }
+      overrides.inputConfiguration = inputs;
+      data.clientStreamingConfigOverrides = JSON.stringify(overrides);
+      touchSessionDiagnostics = { inspected: true, applied: true, previousTouch: previous, maxTouchPoints: inputs.maxTouchPoints };
+      const headers = new Headers(response.headers);
+      headers.delete('content-length');
+      headers.delete('content-encoding');
+      return new Response(JSON.stringify(data), { status: response.status, statusText: response.statusText, headers: headers });
+    }).catch(function () { return response; });
+  }
+
+  // Pointer Lock pertence ao xCloud e ao navegador. Nao simular F9 nem
+  // substituir requestPointerLock: bloquear chamadas em fullscreen impedia
+  // o mouse fisico no Fortnite (41 tentativas suprimidas em 3.6.8).
+  // O suporte real depende do navegador e da sessao xCloud.
+  const touchFullscreenPolicy = {
+    enabled: false,
+    suppressed: 0,
+    lastReason: 'native pointer lock preserved',
+    mode: 'native',
+    f9Observed: 0,
+    requestsBlockedByNimbo: false
+  };
+  // O navegador e o xCloud gerenciam o Pointer Lock nativamente.
+  // Nao substituir requestPointerLock nem interceptar F9: isso provocava
+  // dialogos de recaptura repetidos e impedia restaurar o mouse.
+  touchFullscreenPolicy.mode='native-unmodified';
+  touchFullscreenPolicy.lastReason='NX does not override pointer lock or F9';
+  document.addEventListener('pointerlockchange',function(){
+    touchFullscreenPolicy.lastReason=document.pointerLockElement?'native pointer lock active':'native pointer lock released';
+  },true);
+
+  // Aviso F9: temporariamente desativado para preservar o DOM do xCloud.
+  // A versao anterior reconstruia elementos da pagina e podia afetar o boot.
+  // O atalho F9 e a protecao contra recaptura continuam independentes.
+
+  // ---------- 10b. Entradas nativas ----------
+  // Nao interceptar requestPointerLock, teclado/mouse/toque ou Gamepad API.
+  // Nao emular gamepad. O xCloud gerencia os perifericos nativamente.
+
+  // ---------- 11. XHR ----------
+  try {
+    const oSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function () {
+      const xhr = this;
+      xhr.addEventListener('loadend', function () {
+        try {
+          const u = new URL(xhr.responseURL || '', location.href);
+          if (!CAP_RE.test(u.host)) return;
+          addCap({
+            at: nowStr(), method: 'XHR', host: u.host,
+            path: u.pathname, status: xhr.status, type: 'xhr'
+          });
+        } catch (e) { }
+      });
+      return oSend.apply(xhr, arguments);
+    };
+  } catch (e) { }
+
+  // ---------- 12. Registro de exceções (só a mensagem, sem conteúdo da página) ----------
+  try {
+    window.addEventListener('error', function (e) {
+      pushLog('error', (e.message || '') + ' @ linha ' + (e.lineno || 0));
+    }, true);
+    window.addEventListener('unhandledrejection', function (e) {
+      const r = e.reason;
+      pushLog('reject', (r && (r.message || r)) || '');
+    });
+  } catch (e) { }
+
+  // ---------- 13. Interface: um único botão + cartão recolhível ----------
+  // Desde a v3.6.37 existe UM ponto de acesso por contexto:
+  //   · Biblioteca: só o ícone NX (branco, fundo transparente), logo à direita do ícone de
+  //     controle no topo da página, com um pontinho de status no canto. A pílula flutuante
+  //     fica oculta.
+  //   · Durante a partida (a barra do site não existe): só a pílula flutuante, no canto
+  //     superior direito, com ícone + perda de pacotes.
+  // O contêiner externo tem pointer-events:none; só o botão/cartão recebem cliques.
+  const LS_POS = 'xcu.pos';
+  const ZBASE = 2147483000;
+  const MONO = 'ui-monospace,Menlo,Consolas,monospace';
+
+  let wrap = null, pillEl = null, cardEl = null, dotEl = null, pillTxt = null, pickEl = null;
+  let openUI = false, userTouched = false, autoFolded = false, pending = false;
+  let nxLibraryButton = null, nxLibraryDot = null, nxLibraryAnchor = null, nxMode = '';
+  const el = {};
+
+  // Xbox Shell experimental: apresentação independente da identidade de rede.
+  const LS_NX_SHELL = 'nx.xboxShell.enabled.v1';
+  const nxShellEnabled = ['xbox','xboxone','xboxseries'].includes(nxConsoleLabProfile) && (function () { try { return localStorage.getItem(LS_NX_SHELL) !== '0'; } catch (_) { return true; } })();
+  let nxShellLastInput = 0, nxShellPrevButtons = [], nxShellPrevAxis = 0, nxShellHeldSince = 0, nxShellNeedsRelease = true;
+  const nxShellStats = { moves: 0, actions: 0, errors: 0, lastError: '' };
+  function nxShellError(e) { nxShellStats.errors++; nxShellStats.lastError = String(e && e.message || e); }
+  function nxShellInstall() {
+    if (!nxShellEnabled || document.getElementById('nx-console-shell-css')) return;
+    const css = document.createElement('style');
+    css.id = 'nx-console-shell-css';
+    css.textContent = [
+      '#__xcu_panel__.nx-console-shell.nx-shell-open{left:auto!important;right:12px!important;top:12px!important;transform:none!important;width:min(380px,calc(100vw - 24px))!important;max-width:calc(100vw - 24px)!important;align-items:stretch!important}',
+      '#__xcu_panel__.nx-console-shell.nx-shell-open [aria-label="Painel NimboXcloud"]{width:100%!important;max-height:calc(100dvh - 28px)!important;border-radius:18px!important;box-shadow:0 22px 90px #000b!important}',
+      '#__xcu_panel__.nx-console-shell button:focus-visible,#__xcu_panel__.nx-console-shell select:focus-visible,#__xcu_panel__.nx-console-shell input:focus-visible{outline:3px solid #80dfff!important;outline-offset:2px!important}',
+      '#__xcu_panel__.nx-console-shell button{min-height:34px}',
+      '@media (orientation:landscape) and (min-width:700px){#__xcu_panel__.nx-console-shell.nx-shell-open [aria-label="Painel NimboXcloud"]{max-height:calc(100dvh - 20px)!important}}'
+    ].join('');
+    // @run-at document-start: documentElement/head may not exist yet.
+    const host = document.head || document.documentElement;
+    if (host) host.appendChild(css);
+    else document.addEventListener('DOMContentLoaded', function () {
+      if (!document.getElementById('nx-console-shell-css')) {
+        const readyHost = document.head || document.documentElement;
+        if (readyHost) readyHost.appendChild(css);
+      }
+    }, { once: true });
+  }
+  function nxShellFocusable() {
+    if (!cardEl || !openUI) return [];
+    return Array.from(cardEl.querySelectorAll('button,select,input:not([type="hidden"]),textarea,[role="button"],[tabindex]'))
+      .filter(function (n) { return !n.disabled && n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden'; });
+  }
+  function nxShellMove(direction) {
+    const nodes = nxShellFocusable();
+    if (!nodes.length) return;
+    const active = document.activeElement;
+    const index = nodes.indexOf(active);
+    const next = nodes[(index < 0 ? (direction > 0 ? 0 : nodes.length - 1) : (index + direction + nodes.length) % nodes.length)];
+    if (next) { next.focus({preventScroll:true}); next.scrollIntoView({block:'nearest',behavior:'auto'}); nxShellStats.moves++; }
+  }
+  // Menu + View por 0,7s: abre o painel sem depender do toque.
+  let nxShellShortcutSince = 0, nxShellShortcutLatched = false;
+  let nxSticksShortcutSince = 0, nxSticksShortcutLatched = false;
+  const NX_STICKS_SHORTCUT_KEY = 'nx.access.sticksShortcut.v1';
+  function nxSticksShortcutEnabled() { try { return localStorage.getItem(NX_STICKS_SHORTCUT_KEY) !== '0'; } catch (_) { return true; } }
+  function nxShellGamepadPoll() {
+    if (!cardEl || !cardEl.isConnected || document.hidden || !navigator.getGamepads) {
+      nxShellPrevButtons = []; nxShellPrevAxis = 0; nxShellHeldSince = 0; nxShellNeedsRelease = true; return;
+    }
+    try {
+      const pad = Array.from(navigator.getGamepads()).filter(Boolean)[0];
+      if (!pad) { nxShellPrevButtons = []; nxShellPrevAxis = 0; nxShellNeedsRelease = true; return; }
+      const pressed = (pad.buttons || []).map(function (b) { return !!(b && b.pressed); });
+      const shortcut = pressed[8] && pressed[9];
+      const sticksShortcut = nxSticksShortcutEnabled() && pressed[10] && pressed[11];
+      if (sticksShortcut) {
+        if (!nxSticksShortcutSince) nxSticksShortcutSince = Date.now();
+        if (!nxSticksShortcutLatched && Date.now() - nxSticksShortcutSince >= 850) {
+          nxSticksShortcutLatched = true;
+          setOpen(!openUI, true);
+          nxShellNeedsRelease = true;
+        }
+      } else { nxSticksShortcutSince = 0; nxSticksShortcutLatched = false; }
+      if (shortcut) {
+        if (!nxShellShortcutSince) nxShellShortcutSince = Date.now();
+        if (!nxShellShortcutLatched && Date.now() - nxShellShortcutSince >= 700) {
+          nxShellShortcutLatched = true;
+          setOpen(!openUI, true);
+          nxShellNeedsRelease = true;
+        }
+      } else { nxShellShortcutSince = 0; nxShellShortcutLatched = false; }
+      if (!openUI || !nxShellEnabled) { nxShellPrevButtons = pressed; nxShellPrevAxis = 0; return; }
+      const axis = pad.axes && Math.abs(pad.axes[1] || 0) > .65 ? Math.sign(pad.axes[1]) : 0;
+      // Avoid a held gamepad button opening the panel and immediately activating a control.
+      const anyInput = pressed.some(Boolean) || (pad.axes || []).some(function (v) { return Math.abs(v || 0) > .65; });
+      if (nxShellNeedsRelease) {
+        nxShellPrevButtons = pressed; nxShellPrevAxis = 0;
+        if (!anyInput) nxShellNeedsRelease = false;
+        return;
+      }
+      const edge = function (i) { return pressed[i] && !nxShellPrevButtons[i]; };
+      const now = Date.now();
+      const direction = pressed[12] ? -1 : pressed[13] ? 1 : axis;
+      const previous = nxShellPrevButtons[12] ? -1 : nxShellPrevButtons[13] ? 1 : nxShellPrevAxis;
+      if (!direction) nxShellHeldSince = 0;
+      else if (direction !== previous) nxShellHeldSince = now;
+      const repeat = direction && direction === previous && nxShellHeldSince && now - nxShellHeldSince > 420 && now - nxShellLastInput > 160;
+      if (now - nxShellLastInput > 130) {
+        if (direction && (direction !== previous || repeat)) {
+          nxShellMove(direction); nxShellLastInput = now;
+        } else if (edge(0)) {
+          const active = document.activeElement;
+          if (cardEl.contains(active)) {
+            if (active.matches('button,[role="button"]')) { active.click(); nxShellStats.actions++; }
+            else if (active.matches('input[type="checkbox"],input[type="radio"]')) { active.click(); nxShellStats.actions++; }
+            else if (active.matches('select')) { active.focus(); }
+            else nxShellMove(1);
+          } else nxShellMove(1);
+          nxShellLastInput = now;
+        } else if (edge(1)) {
+          if (tabId !== 'overview') setTab('overview'); else setOpen(false,true);
+          nxShellLastInput = now;
+        } else if (edge(14) || edge(15)) {
+          const active = document.activeElement;
+          if (cardEl.contains(active) && active.matches('input[type="range"]')) {
+            const step = Number(active.step) || 1;
+            const min = Number(active.min) || 0;
+            const max = Number(active.max) || 100;
+            active.value = String(Math.min(max,Math.max(min,Number(active.value) + (edge(15) ? step : -step))));
+            active.dispatchEvent(new Event('input',{bubbles:true}));
+            active.dispatchEvent(new Event('change',{bubbles:true}));
+            nxShellLastInput = now;
+          }
+        }
+      }
+      nxShellPrevButtons = pressed;
+      nxShellPrevAxis = axis;
+    } catch (err) { nxShellError(err); }
+  }
+
+  if (nxShellEnabled) nxShellInstall();
+  // Atalhos disponíveis em todos os perfis, inclusive quando o Xbox Shell não está ativo.
+  setInterval(nxShellGamepadPoll, 90);
+
+  function readPos() {
+    try {
+      const p = JSON.parse(localStorage.getItem(LS_POS) || 'null');
+      if (p && typeof p.x === 'number' && typeof p.y === 'number') return p;
+    } catch (e) { }
+    return null;
+  }
+
+  function resetPos() {
+    try { localStorage.removeItem(LS_POS); } catch (e) { }
+    if (!wrap) return;
+    wrap.style.transform = 'none';
+    wrap.style.left = 'auto';
+    wrap.style.right = '12px';
+    wrap.style.top = '12px';
+  }
+
+  function mk(tag, css, text) {
+    const n = document.createElement(tag);
+    if (css) n.style.cssText = css;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function bindDrag(node, onTap) {
+    let lastTap = 0;
+    node.addEventListener('pointerdown', function (ev) {
+      if (ev.button !== 0) return;
+      // Deslocamento do ponto de pegada em relação ao canto superior esquerdo do "contêiner".
+      // O contêiner é centralizado por padrão com left:50% + translateX(-50%), então aqui é
+      // preciso usar o rect do contêiner e não o do próprio nó, senão ele "pula" ao arrastar.
+      const wr = wrap.getBoundingClientRect();
+      const offX = ev.clientX - wr.left;
+      const offY = ev.clientY - wr.top;
+      let moved = false;
+      function mv(e2) {
+        if (!moved && Math.abs(e2.clientX - ev.clientX) + Math.abs(e2.clientY - ev.clientY) < 3) return;
+        moved = true;
+        const w = wr.width, h = wr.height;
+        const x = Math.max(4, Math.min(Math.max(4, window.innerWidth - w - 4), e2.clientX - offX));
+        const y = Math.max(4, Math.min(Math.max(4, window.innerHeight - h - 4), e2.clientY - offY));
+        wrap.style.transform = 'none';
+        wrap.style.left = x + 'px';
+        wrap.style.top = y + 'px';
+      }
+      function up() {
+        window.removeEventListener('pointermove', mv, true);
+        window.removeEventListener('pointerup', up, true);
+        if (moved) {
+          try {
+            localStorage.setItem(LS_POS, JSON.stringify({
+              x: parseFloat(wrap.style.left), y: parseFloat(wrap.style.top)
+            }));
+          } catch (e) { }
+        } else if (onTap) {
+          const t = Date.now();
+          if (t - lastTap < 320) { lastTap = 0; resetPos(); }
+          else { lastTap = t; onTap(); }
+        }
+      }
+      window.addEventListener('pointermove', mv, true);
+      window.addEventListener('pointerup', up, true);
+      ev.stopPropagation();
+    });
+  }
+
+  function pillBtn(text, fn) {
+    const b = mk('button', [
+      'all:unset', 'cursor:pointer', 'padding:3px 8px', 'border-radius:6px',
+      'border:1px solid #30363d', 'background:#161b22', 'color:#c9d1d9',
+      'font:11px/1.2 ' + MONO, 'white-space:nowrap'
+    ].join(';'), text);
+    b.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    b.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); fn(); });
+    return b;
+  }
+
+  function isInGame() {
+    if (document.fullscreenElement || document.webkitFullscreenElement) return true;
+    if (S.pcs > 0 && S.qosAt && Date.now() - S.qosAt < 15000) return true;
+    // O video do stream nao e o mesmo que os trailers da biblioteca.
+    return !!document.querySelector('video[src^="blob:"][autoplay], video[data-testid*="stream"]');
+  }
+
+  function findProfileAnchor() {
+    // O novo xCloud pode usar header, banner ou uma barra sem semantica HTML.
+    // Priorizar o indicador de controle mostrado ao lado das notificacoes/perfil.
+    const selectors = [
+      'header button','header a','header [role="button"]',
+      '[role="banner"] button','[role="banner"] a','[role="banner"] [role="button"]',
+      '[data-testid*="header"] button','[data-testid*="header"] [role="button"]',
+      '[class*="header"] button','[class*="Header"] button'
+    ].join(',');
+    const nodes = Array.from(new Set(document.querySelectorAll(selectors)))
+      .filter(function (n) {
+        if (n.id === 'nimboxcloud-library-button' || n.closest('#__xcu_panel__')) return false;
+        const r = n.getBoundingClientRect();
+        return r.width > 8 && r.height > 8 && r.top >= 0 && r.top < Math.min(150, innerHeight * .20);
+      });
+    const desc = function (n) {
+      return [n.getAttribute('aria-label'),n.getAttribute('title'),
+        n.getAttribute('data-testid'),n.getAttribute('data-state'),
+        n.textContent && n.textContent.trim().slice(0,80)].filter(Boolean).join(' ').toLowerCase();
+    };
+    const controller = nodes.find(function (n) {
+      return /controller|gamepad|controle|joystick|disconnected|desconectado/.test(desc(n));
+    });
+    if (controller) return { node: controller, position: 'after' };
+    const profile = nodes.find(function (n) {
+      return /profile|perfil|account|conta|avatar|user|usuário|usuario/.test(desc(n));
+    });
+    if (profile) return { node: profile, position: 'before' };
+    // Fallback conservador: nao anexar em um elemento arbitrario da barra.
+    return null;
+  }
+
+  // Botão minimalista da biblioteca: só o ícone branco sobre fundo transparente + pontinho de status.
+  function buildLibraryButton() {
+    const b = document.createElement('button');
+    b.id = 'nimboxcloud-library-button';
+    b.type = 'button';
+    b.setAttribute('aria-label', 'Abrir painel NimboXcloud');
+    b.title = 'NimboXcloud — configurações antes de jogar';
+    b.style.cssText = [
+      'all:unset', 'position:relative', 'display:inline-flex', 'align-items:center',
+      'justify-content:center', 'box-sizing:border-box', 'width:40px', 'height:40px',
+      'min-width:40px', 'margin:0 2px', 'border-radius:50%', 'background:transparent',
+      'border:0', 'cursor:pointer', 'flex-shrink:0', 'opacity:1',
+      'transition:opacity .15s ease,transform .15s ease',
+      '-webkit-tap-highlight-color:transparent', 'z-index:' + ZBASE
+    ].join(';');
+
+    const icon = document.createElement('img');
+    icon.src = BRAND_ICON;
+    icon.alt = '';
+    icon.draggable = false;
+    icon.style.cssText = 'display:block;width:30px;height:30px;object-fit:contain;' +
+      'pointer-events:none;filter:drop-shadow(0 0 3px rgba(0,0,0,.7))';
+    b.appendChild(icon);
+
+    nxLibraryDot = document.createElement('span');
+    nxLibraryDot.style.cssText = 'position:absolute;right:3px;bottom:3px;width:8px;height:7px;' +
+      'border-radius:50%;background:#8b949e;box-shadow:0 0 0 1.5px rgba(0,0,0,.6);pointer-events:none';
+    b.appendChild(nxLibraryDot);
+
+    b.addEventListener('pointerenter', function () { b.style.opacity = '1'; b.style.transform = 'scale(1.08)'; });
+    b.addEventListener('pointerleave', function () { b.style.opacity = '1'; b.style.transform = 'none'; });
+    b.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation(); setOpen(!openUI, true);
+    });
+    return b;
+  }
+
+  // Encontra a faixa compacta de controles do xCloud no canto superior esquerdo.
+  // Não altera botões nativos: só acrescenta o acesso NX quando a estrutura é reconhecível.
+  function findInGameToolbar() {
+    const candidates = document.querySelectorAll('button,[role="button"]');
+    for (const node of candidates) {
+      if (node.id === 'nimboxcloud-library-button' || node.closest('#__xcu_panel__')) continue;
+      const r = node.getBoundingClientRect();
+      if (r.width < 22 || r.width > 90 || r.height < 22 || r.height > 90 ||
+          r.left < 0 || r.left > 170 || r.top < 0 || r.top > 105) continue;
+      let parent = node.parentElement;
+      for (let depth = 0; parent && depth < 3; depth++, parent = parent.parentElement) {
+        if (parent.id === '__xcu_panel__' || parent === document.body) break;
+        const pr = parent.getBoundingClientRect();
+        if (pr.left > 170 || pr.top > 110 || pr.width < 80 || pr.width > 360 ||
+            pr.height < 28 || pr.height > 125) continue;
+        const buttons = Array.from(parent.querySelectorAll('button,[role="button"]'))
+          .filter(function (b) {
+            if (b.id === 'nimboxcloud-library-button') return false;
+            const br = b.getBoundingClientRect();
+            return br.width >= 22 && br.height >= 22 && br.left >= pr.left - 2 &&
+              br.right <= pr.right + 2 && br.top >= pr.top - 2 && br.bottom <= pr.bottom + 2;
+          });
+        if (buttons.length < 2 || buttons.length > 5) continue;
+        // O grupo deve conter o controle Xbox/guia ou um botão de mais opções.
+        const labels = buttons.map(function (b) {
+          return [b.getAttribute('aria-label'), b.getAttribute('title'),
+            b.getAttribute('data-testid'), b.textContent].filter(Boolean).join(' ').toLowerCase();
+        }).join(' ');
+        const hasXbox = /xbox|guide|guia|menu|more|mais|options|opções|opcoes/.test(labels);
+        const hasIcons = buttons.filter(function (b) { return b.querySelector('svg,img'); }).length >= 2;
+        if (!hasXbox && !hasIcons) continue;
+        return buttons[buttons.length - 1];
+      }
+    }
+    return null;
+  }
+
+  function nxNativeToolbarOpen(anchor) {
+    if (!anchor || !anchor.parentElement) return false;
+    // O menu compacto pode manter um botão visível enquanto oculta o resto da barra.
+    // Exigir pelo menos dois controles NATIVOS visíveis no mesmo grupo.
+    const parent = anchor.parentElement;
+    const buttons = Array.from(parent.querySelectorAll('button,[role="button"]')).filter(function (b) {
+      if (b === nxLibraryButton || b.id === 'nimboxcloud-library-button' || b.closest('#__xcu_panel__')) return false;
+      const r = b.getBoundingClientRect();
+      if (r.width < 20 || r.height < 20 || r.left < 0 || r.right > innerWidth ||
+          r.top < 0 || r.bottom > innerHeight) return false;
+      const st = getComputedStyle(b);
+      return st.display !== 'none' && st.visibility !== 'hidden' && Number(st.opacity) >= 0.15;
+    });
+    return buttons.length >= 2;
+  }
+  function toolbarExpanded(anchor) {
+    if (!anchor || !anchor.isConnected) return false;
+    let n = anchor;
+    for (let i = 0; n && i < 5; i++, n = n.parentElement) {
+      const st = getComputedStyle(n);
+      if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) < 0.15) return false;
+      if (n !== anchor && st.pointerEvents === 'none') return false;
+    }
+    const r = anchor.getBoundingClientRect();
+    return r.width >= 20 && r.height >= 20 && r.top >= 0 && r.left >= 0 && r.right <= innerWidth;
+  }
+  function positionNXCard(anchor) {
+    if (!wrap || !anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const width = Math.min(380, Math.max(240, innerWidth - 16));
+    const left = Math.max(8, Math.min(innerWidth - width - 8, r.left));
+    const below = r.bottom + 10;
+    const above = r.top - 10;
+    const spaceBelow = innerHeight - below - 8;
+    const useBelow = spaceBelow >= 280 || spaceBelow >= above - 8;
+    wrap.style.width = width + 'px';
+    wrap.style.left = left + 'px';
+    wrap.style.right = 'auto';
+    wrap.style.top = (useBelow ? Math.max(8, below) : 8) + 'px';
+    wrap.style.bottom = 'auto';
+    wrap.style.alignItems = 'stretch';
+    if (cardEl) {
+      cardEl.style.marginTop = '0';
+      cardEl.style.maxHeight = Math.max(160, Math.min(640, useBelow ? spaceBelow : above - 16)) + 'px';
+    }
+  }
+
+  function syncNXPlacement() {
+    if (!wrap || !wrap.isConnected) return;
+    const playing = isInGame();
+    const mode = playing ? 'game' : 'library';
+    if (nxMode !== mode) {
+      nxMode = mode;
+      // A navegação do xCloud não deve cancelar uma abertura solicitada pelo jogador.
+      if (!userTouched) { openUI = false; if (cardEl) cardEl.style.display = 'none'; }
+      if (pickEl) pickEl.style.display = 'none';
+    }
+    if (playing) {
+      if (micTestStream) stopMicrophoneTest(); // Nunca manter a captura de diagnóstico durante a sessão.
+      const gameAnchor = findInGameToolbar();
+      if (gameAnchor && gameAnchor.parentElement) {
+        if (!nxLibraryButton) nxLibraryButton = buildLibraryButton();
+        if (nxLibraryButton.parentElement !== gameAnchor.parentElement ||
+            nxLibraryButton.previousElementSibling !== gameAnchor) gameAnchor.after(nxLibraryButton);
+        const expanded = toolbarExpanded(gameAnchor) && nxNativeToolbarOpen(gameAnchor);
+        nxLibraryButton.style.display = expanded ? 'inline-flex' : 'none';
+        nxLibraryButton.title = 'Abrir NimboXcloud durante a partida';
+        // O botão NX deve recolher junto com a barra nativa. Painel aberto permanece acessível.
+        // Barra nativa recolhida não implica fechar o painel aberto pelo atalho.
+        wrap.style.display = 'flex';
+        if (pillEl) pillEl.style.display = expanded ? 'none' : 'inline-flex';
+        if (openUI) {
+          if (expanded) positionNXCard(nxLibraryButton);
+          else { wrap.style.left='8px'; wrap.style.right='auto'; wrap.style.top='58px'; wrap.style.width=Math.min(380,innerWidth-16)+'px'; }
+        }
+      } else {
+        // Enquanto a barra nativa está recolhida, não deixar um ícone independente na tela.
+        if (nxLibraryButton) nxLibraryButton.style.display = 'none';
+        if (pillEl) pillEl.style.display = 'none';
+        wrap.style.display = 'flex';
+        if (pillEl) pillEl.style.display = 'inline-flex';
+        if (openUI) {
+          wrap.style.left = '8px'; wrap.style.right = 'auto'; wrap.style.top = '58px';
+          wrap.style.width = Math.min(380, innerWidth - 16) + 'px';
+          wrap.style.alignItems = 'stretch';
+          if (cardEl) cardEl.style.maxHeight = Math.max(160, innerHeight - 70) + 'px';
+        }
+      }
+      return;
+    }
+    const placement = findProfileAnchor();
+    const anchor = placement && placement.node;
+    if (anchor && anchor.parentElement) {
+      if (!nxLibraryButton) nxLibraryButton = buildLibraryButton();
+      if (placement.position === 'after') {
+        if (nxLibraryButton.parentElement !== anchor.parentElement || nxLibraryButton.previousElementSibling !== anchor) anchor.after(nxLibraryButton);
+      } else {
+        if (nxLibraryButton.parentElement !== anchor.parentElement || nxLibraryButton.nextElementSibling !== anchor) anchor.before(nxLibraryButton);
+      }
+      nxLibraryButton.style.display = 'inline-flex';
+      nxLibraryAnchor = anchor;
+      wrap.style.display = 'flex';
+      wrap.style.position = 'fixed';
+      wrap.style.transform = 'none';
+      wrap.style.left = 'auto';
+      wrap.style.right = '12px';
+      const ar = nxLibraryButton.getBoundingClientRect();
+      wrap.style.top = Math.min(innerHeight - 48, Math.max(44, ar.bottom + 8)) + 'px';
+      wrap.style.alignItems = 'flex-end';
+      // Um único acesso: o botão da barra substitui a pílula flutuante.
+      // Se o botão integrado estiver recortado/invisível, preservar o fallback.
+      const buttonRect = nxLibraryButton.getBoundingClientRect();
+      const buttonVisible = buttonRect.width >= 18 && buttonRect.height >= 18 &&
+        buttonRect.top >= 0 && buttonRect.bottom <= innerHeight &&
+        buttonRect.left >= 0 && buttonRect.right <= innerWidth;
+      if (pillEl) pillEl.style.display = buttonVisible ? 'none' : 'inline-flex';
+    } else {
+      // Barra do site ainda não carregou: fallback temporário com a pílula.
+      if (nxLibraryButton) nxLibraryButton.style.display = 'none';
+      wrap.style.display = 'flex';
+      wrap.style.position = 'fixed';
+      wrap.style.transform = 'none';
+      wrap.style.left = 'auto';
+      wrap.style.right = '12px';
+      wrap.style.top = '12px';
+      wrap.style.alignItems = 'flex-end';
+      if (pillEl) pillEl.style.display = 'inline-flex';
+    }
+  }
+
+  // ---------- 13b. Painel profissional: abas por categoria ----------
+  // Categorias: Geral · Streaming · Mídia · Controles · Região · Avançado.
+  // As abas são renderizadas sob demanda; os valores ao vivo são atualizados por liveFns,
+  // sem reconstruir o DOM (mantém rolagem, foco e slider durante a atualização).
+  const UI_FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
+  const C = {
+    bg: 'rgba(12,16,22,.97)', panel: 'rgba(255,255,255,.045)', line: 'rgba(255,255,255,.09)',
+    text: '#e8edf3', dim: '#8b96a5', accent: '#4ade80', good: '#3fb950', warn: '#d29922', bad: '#f85149'
+  };
+  const NS = 'http://www.w3.org/2000/svg';
+  const ICONS = {
+    overview: 'M22 12h-4l-3 9L9 3l-3 9H2',
+    stream: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+    media: 'M11 5L6 9H2v6h4l5 4V5z M15.5 8.5a5 5 0 0 1 0 7 M19 5a10 10 0 0 1 0 14',
+    audio: 'M11 5L6 9H2v6h4l5 4V5z M15.5 8.5a5 5 0 0 1 0 7 M19 5a10 10 0 0 1 0 14',
+    voice: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z M5 10v2a7 7 0 0 0 14 0v-2 M12 19v3 M8 22h8',
+    controls: 'M6 12h4 M8 10v4 M15 13h.01 M18 11h.01 M17.3 5H6.7a4 4 0 0 0-3.9 3.3L1.5 15a3 3 0 0 0 5.3 2L8 15h8l1.2 2a3 3 0 0 0 5.3-2l-1.3-6.7A4 4 0 0 0 17.3 5z',
+    region: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M2 12h20 M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20',
+    advanced: 'M9 2h6v4H9z M7 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2 M8 12h8 M8 16h5',
+    close: 'M18 6L6 18 M6 6l12 12'
+  };
+  const TABS = [
+    { id: 'overview', label: 'Início', desc: 'Resumo da sessão e acesso rápido' },
+    { id: 'stream', label: 'Streaming', desc: 'Qualidade, conexão e imagem' },
+    { id: 'audio', label: 'Áudio', desc: 'Volume, equalizador e reprodução' },
+    { id: 'voice', label: 'Voz e acessórios', desc: 'Microfone e vibração' },
+    { id: 'controls', label: 'Controles', desc: 'Entrada, gamepad e toque' },
+    { id: 'region', label: 'Rede e região', desc: 'Servidores e disponibilidade' },
+    { id: 'advanced', label: 'Sistema', desc: 'Diagnóstico e ferramentas' }
+  ];
+  const PRESETS = [
+    { name: 'Máximo', res: 'hq', br: 'auto', sub: 'Melhor imagem' },
+    { name: 'Equilibrado', res: 'auto', br: 'b10', sub: '1080p · 10 Mbps' },
+    { name: 'Economia', res: 'r720', br: 'b5', sub: '720p · 5 Mbps' }
+  ];
+
+  let tabId = 'overview';
+  let liveFns = [];
+  let toastTimer = 0;
+  let sliderDragging = false;
+  window.addEventListener('pointerup', function () { sliderDragging = false; }, true);
+  window.addEventListener('pointercancel', function () { sliderDragging = false; }, true);
+
+  function ico(d, size) {
+    const s = document.createElement('span');
+    s.style.cssText = 'display:inline-flex;width:' + (size || 18) + 'px;height:' + (size || 18) + 'px;flex:0 0 auto;pointer-events:none';
+    s.innerHTML = '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + d + '"/></svg>';
+    return s;
+  }
+
+  function stopEv(e) { e.stopPropagation(); }
+  function fmtN(v, unit, d) {
+    return v == null || !Number.isFinite(Number(v)) ? '—' : Number(v).toFixed(d || 0) + (unit || '');
+  }
+  function curLoss() {
+    const q = S.qos;
+    return q ? (q.instLoss != null ? q.instLoss : (q.loss || 0)) : null;
+  }
+  function lossColor(l) { return l == null ? C.dim : (l < 2 ? C.good : (l < 5 ? C.warn : C.bad)); }
+  function runLive() {
+    for (let i = 0; i < liveFns.length; i++) { try { liveFns[i](); } catch (e) { } }
+  }
+  function streaming() { return !!(S.qosAt && Date.now() - S.qosAt < 8000 && S.qos); }
+
+  function linkState() {
+    const q = S.qos;
+    if (!streaming()) return { text: 'Sem partida em andamento', sub: 'Os ajustes valem na próxima partida, sem recarregar.', color: C.dim };
+    const loss = curLoss();
+    const rtt = q.rtt;
+    if (loss >= 5 || (rtt != null && rtt >= 160)) return { text: 'Conexão instável', sub: S.lastDiagnosis, color: C.bad };
+    if (loss >= 2 || (rtt != null && rtt >= 100)) return { text: 'Conexão regular', sub: S.lastDiagnosis, color: C.warn };
+    return { text: 'Conexão estável', sub: S.lastDiagnosis, color: C.good };
+  }
+
+  function regionDiffs() {
+    const c = cfg();
+    const wantT = String(c.territory || '').toUpperCase();
+    const curT = String(getCookie('territory') || '').toUpperCase();
+    const expRaw = String(S.expAfter || '').toUpperCase();
+    const expT = /^[A-Z]{2}$/.test(expRaw) ? expRaw : '';
+    const d = [];
+    if (wantT) {
+      if (!curT) d.push('Cookie de território ausente');
+      else if (curT !== wantT) d.push('Território real ' + curT + ', configurado ' + wantT);
+      if (expT && expT !== wantT) d.push('IP detectado como ' + expT + ', não foi alterado para ' + wantT);
+    }
+    return d;
+  }
+
+  function hintOne(q, loss) {
+    if (!q) return '';
+    if (loss != null && loss > 5) {
+      if (!v4on()) return 'Perda alta: ative "Forçar IPv4" em Streaming';
+      if (srvCfg().name !== 'JAPANEAST') return 'Perda de ' + loss.toFixed(1) + '%: em Streaming, escolha Tóquio e compare outra partida';
+      return 'Tóquio também perde ' + loss.toFixed(1) + '% → problema de linha, não de qualidade nem de data center';
+    }
+    if (q.decoded || q.dropped) {
+      const dr = q.dropped / ((q.decoded + q.dropped) || 1) * 100;
+      if (dr > 5 && (loss == null || loss < 3)) return 'Quadros descartados ' + dr.toFixed(1) + '% mas perda baixa → a decodificação local não acompanha';
+    }
+    if (q.family === 'IPv6') return 'Usando IPv6; ative "Forçar IPv4" em Streaming para comparar';
+    return '';
+  }
+
+  // ----- Componentes -----
+  function group(title, hint) {
+    const root = mk('div', 'margin-top:14px');
+    root.appendChild(mk('div', 'color:' + C.dim + ';font-size:10.5px;font-weight:700;letter-spacing:.08em;' +
+      'text-transform:uppercase;margin:0 2px 6px', title));
+    const card = mk('div', 'background:' + C.panel + ';border:1px solid ' + C.line + ';border-radius:12px;padding:2px 12px');
+    root.appendChild(card);
+    if (hint) root.appendChild(mk('div', 'color:' + C.dim + ';font-size:11px;line-height:1.4;margin:6px 2px 0', hint));
+    return {
+      root: root, card: card,
+      add: function (n) {
+        if (card.children.length) n.style.borderTop = '1px solid ' + C.line;
+        card.appendChild(n);
+        return n;
+      }
+    };
+  }
+
+  function setRow(label, desc, ctrl, stacked) {
+    const r = mk('div', 'padding:11px 0;display:flex;flex-direction:' + (stacked ? 'column' : 'row') +
+      ';gap:' + (stacked ? '9px' : '12px') + ';align-items:' + (stacked ? 'stretch' : 'center') + ';justify-content:space-between');
+    const t = mk('div', 'min-width:0;flex:1');
+    t.appendChild(mk('div', 'font-size:13px;font-weight:600;color:' + C.text, label));
+    const d = mk('div', 'font-size:11px;color:' + C.dim + ';margin-top:2px;line-height:1.4;word-break:break-word', desc || '');
+    if (!desc) d.style.display = 'none';
+    t.appendChild(d);
+    r.appendChild(t);
+    if (ctrl) r.appendChild(ctrl);
+    r._desc = d;
+    return r;
+  }
+
+  function liveDesc(row, getter) {
+    liveFns.push(function () {
+      const v = getter();
+      row._desc.textContent = v;
+      row._desc.style.display = v ? 'block' : 'none';
+    });
+  }
+
+  function infoRow(label, getter, desc) {
+    const v = mk('div', 'font-size:12.5px;font-weight:600;color:' + C.text + ';text-align:right;max-width:58%;' +
+      'word-break:break-word;font-variant-numeric:tabular-nums', '—');
+    liveFns.push(function () { v.textContent = String(getter()); });
+    return setRow(label, desc, v);
+  }
+
+  function chips(opts, cur, pick) {
+    const w = mk('div', 'display:flex;flex-wrap:wrap;gap:6px');
+    w.setAttribute('role', 'radiogroup');
+    opts.forEach(function (o) {
+      const on = o.k === cur;
+      const b = mk('button', 'all:unset;box-sizing:border-box;display:inline-flex;align-items:center;cursor:pointer;' +
+        'padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;line-height:1.2;white-space:nowrap;' +
+        'border:1px solid ' + (on ? C.accent : C.line) + ';background:' + (on ? 'rgba(74,222,128,.14)' : 'transparent') +
+        ';color:' + (on ? C.accent : C.text) + ';-webkit-tap-highlight-color:transparent', o.label);
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+      b.addEventListener('pointerdown', stopEv);
+      b.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); pick(o.k); });
+      w.appendChild(b);
+    });
+    return w;
+  }
+
+  function toggle(on, fn, label) {
+    const b = mk('button', 'all:unset;position:relative;display:block;box-sizing:border-box;cursor:pointer;width:44px;height:26px;' +
+      'border-radius:13px;flex:0 0 auto;background:' + (on ? C.accent : 'rgba(255,255,255,.18)') +
+      ';transition:background .15s;-webkit-tap-highlight-color:transparent');
+    b.appendChild(mk('span', 'position:absolute;top:3px;left:' + (on ? '21px' : '3px') +
+      ';width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.45)'));
+    b.setAttribute('role', 'switch');
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+    if (label) b.setAttribute('aria-label', label);
+    b.addEventListener('pointerdown', stopEv);
+    b.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); fn(); });
+    return b;
+  }
+
+  function actBtn(label, fn, kind) {
+    const styles = {
+      primary: 'background:' + C.accent + ';color:#06210f;border:1px solid ' + C.accent,
+      danger: 'background:rgba(248,81,73,.12);color:#ff7b72;border:1px solid rgba(248,81,73,.4)',
+      ghost: 'background:transparent;color:' + C.text + ';border:1px solid ' + C.line
+    };
+    const b = mk('button', 'all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;' +
+      'cursor:pointer;padding:8px 14px;border-radius:9px;font-size:12px;font-weight:700;line-height:1.2;text-align:center;' +
+      '-webkit-tap-highlight-color:transparent;' + styles[kind || 'ghost'], label);
+    b.setAttribute('role', 'button');
+    b.addEventListener('pointerdown', stopEv);
+    b.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); fn(); });
+    return b;
+  }
+
+  function note(text, tone) {
+    const warn = tone === 'warn';
+    return mk('div', 'margin-bottom:2px;padding:9px 11px;border-radius:10px;font-size:11.5px;line-height:1.45;border:1px solid ' +
+      (warn ? 'rgba(210,153,34,.35)' : C.line) + ';background:' + (warn ? 'rgba(210,153,34,.1)' : C.panel) +
+      ';color:' + (warn ? '#e3b341' : C.dim), text);
+  }
+
+  function statTile(label, getter) {
+    const box = mk('div', 'background:' + C.panel + ';border:1px solid ' + C.line + ';border-radius:10px;padding:8px 10px;min-width:0');
+    box.appendChild(mk('div', 'color:' + C.dim + ';font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase', label));
+    const val = mk('div', 'font-size:17px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;' +
+      'white-space:nowrap;overflow:hidden;text-overflow:ellipsis', '—');
+    box.appendChild(val);
+    liveFns.push(function () { const r = getter(); val.textContent = r.text; val.style.color = r.color || C.text; });
+    return box;
+  }
+
+  function spark(label, key, color, unit, floorMax) {
+    const box = mk('div', 'padding:11px 0');
+    const head = mk('div', 'display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px');
+    head.appendChild(mk('span', 'font-size:13px;font-weight:600', label));
+    const val = mk('span', 'font-size:12px;color:' + C.dim + ';font-variant-numeric:tabular-nums', '—');
+    head.appendChild(val);
+    box.appendChild(head);
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 300 46');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '46');
+    svg.style.cssText = 'display:block;background:rgba(255,255,255,.03);border-radius:8px';
+    const base = document.createElementNS(NS, 'line');
+    base.setAttribute('x1', '0'); base.setAttribute('x2', '300'); base.setAttribute('y1', '45'); base.setAttribute('y2', '45');
+    base.setAttribute('stroke', 'rgba(255,255,255,.12)'); base.setAttribute('stroke-width', '1');
+    const line = document.createElementNS(NS, 'polyline');
+    line.setAttribute('fill', 'none'); line.setAttribute('stroke', color); line.setAttribute('stroke-width', '2');
+    line.setAttribute('stroke-linejoin', 'round'); line.setAttribute('stroke-linecap', 'round');
+    line.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.appendChild(base); svg.appendChild(line);
+    box.appendChild(svg);
+    liveFns.push(function () {
+      const vals = S.qosHistory.slice(-45).map(function (p) { return Number(p[key]); }).filter(Number.isFinite);
+      if (vals.length < 2) { line.setAttribute('points', ''); val.textContent = '—'; return; }
+      const max = Math.max(floorMax, Math.max.apply(null, vals));
+      line.setAttribute('points', vals.map(function (v, i) {
+        return (i * 300 / (vals.length - 1)).toFixed(1) + ',' + (42 - Math.max(0, v) / max * 38).toFixed(1);
+      }).join(' '));
+      val.textContent = vals[vals.length - 1].toFixed(0) + unit;
+    });
+    return box;
+  }
+
+  function toast(msg) {
+    if (!el.toast) return;
+    el.toast.textContent = msg;
+    el.toast.style.opacity = '1';
+    el.toast.style.transform = 'translate(-50%,0)';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      el.toast.style.opacity = '0';
+      el.toast.style.transform = 'translate(-50%,6px)';
+    }, 2300);
+  }
+
+  function copyText(text, tag, okMsg) {
+    const fail = function () { toast('Cópia bloqueada; diagnóstico não exibido no console por privacidade'); };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { toast(okMsg); }, fail);
+        return;
+      }
+    } catch (e) { }
+    fail();
+  }
+  function nxUnifiedReport() {
+    let general = {};
+    try { general = JSON.parse(buildReport()); } catch (e) { general = { error: String(e) }; }
+    const full = {
+      schema: 'nimboxcloud-unified-v1', version: VER, capturedAt: new Date().toISOString(),
+      consoleLab: nxConsoleLabReport(), gameAndInput: general,
+      sessionHealth: nxSessionHealth(),
+      system: { server: srvCfg().name || 'auto', quality: resCfg().label,
+        bitrate: bitrateCfg().mbps || 'auto', qos: S.qos, latencyByServer: S.latencyByServer,
+        recoveries: S.nxRecoveries, warnings: S.diagnosticsWarnings,
+        micStatus: S.micStatus, vibrationStatus: S.vibrationStatus,
+        remotePlayStatus: S.remotePlayStatus, lastError: S.lastErr },
+      history: { samples: S.qosHistory, diagnosis: S.lastDiagnosis }
+    };
+    function sanitize(v, key, depth) {
+      if (depth > 15) return '[limit]';
+      if (/token|authorization|cookie|secret|credential|xuid|user.?id|account|email|session.?id|subscriptionContext/i.test(key)) return '[redacted]';
+      if (typeof v === 'string') {
+        let value = v.replace(/xuid\(\d+\)/gi, 'xuid([redacted])')
+          .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[ip]')
+          .replace(/([?&](?:token|sig|auth|code|key|id)=)[^&\s]+/gi, '$1[redacted]');
+        if (value.includes('?')) value = value.split('?')[0] + '?[query-redacted]';
+        return value.slice(0, 1000);
+      }
+      if (Array.isArray(v)) return v.slice(0, 110).map(function (x) { return sanitize(x, key, depth + 1); });
+      if (v && typeof v === 'object') {
+        const out = {};
+        Object.keys(v).slice(0, 90).forEach(function (k) { out[k] = sanitize(v[k], k, depth + 1); });
+        return out;
+      }
+      return v;
+    }
+    return sanitize(full, '', 0);
+  }
+  function copyUnifiedReport() {
+    copyText(JSON.stringify(nxUnifiedReport(), null, 2), '[NX unified]', 'Diagnóstico completo copiado');
+  }
+  function copyReport() { copyUnifiedReport(); }
+  function copyHistory() {
+    copyText(JSON.stringify(nxUnifiedReport().history, null, 2), '[NX history]', 'Histórico copiado');
+  }
+  function copyDiag() {
+    // Compartilha a sanitização do relatório unificado, sem caminhos alternativos não filtrados.
+    copyText(JSON.stringify(nxUnifiedReport(), null, 2), '[NX diagnostic]', 'Diagnóstico copiado');
+  }
+
+  // ----- Abas -----
+  // Editor de layout local: não cria botões de gameplay nem modifica o HUD nativo.
+  const NX_HUD_LAYOUT_KEY = 'nx.hud.editor.layout.v1';
+  const NX_HUD_DEFAULT = Object.freeze({
+    stickL: [17, 65], stickR: [80, 65], a: [88, 42], b: [74, 45],
+    x: [78, 28], y: [91, 25], lt: [12, 16], rt: [88, 16]
+  });
+  function nxHudValidateLayout(value) {
+    const result = {};
+    Object.keys(NX_HUD_DEFAULT).forEach(function (id) {
+      const pos = value && Object.prototype.hasOwnProperty.call(value, id) ? value[id] : null;
+      result[id] = Array.isArray(pos) && pos.length === 2 && pos.every(Number.isFinite) ?
+        pos.map(function (n) { return Math.max(5, Math.min(95, Math.round(n))); }) :
+        NX_HUD_DEFAULT[id].slice();
+    });
+    return result;
+  }
+  const NX_HUD_PROFILES_KEY = 'nx.hud.editor.profiles.v1';
+  function nxHudProfileName(name) {
+    if (typeof name !== 'string') return '';
+    const clean = name.trim();
+    if (['__proto__', 'constructor', 'prototype'].includes(clean.toLowerCase())) return '';
+    return /^[A-Za-zÀ-ÿ0-9 _-]{1,32}$/u.test(clean) ? clean : '';
+  }
+  function nxHudProfilesRead() {
+    try {
+      const parsed = JSON.parse(getPref(NX_HUD_PROFILES_KEY, '{}'));
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      const result = {};
+      Object.keys(parsed).slice(0, 20).forEach(function (name) {
+        const clean = nxHudProfileName(name);
+        if (clean && parsed[name] && typeof parsed[name] === 'object' && !Array.isArray(parsed[name]))
+          result[clean] = nxHudValidateLayout(parsed[name]);
+      });
+      return result;
+    } catch (_) { return {}; }
+  }
+  function nxHudProfileSave(name) {
+    const clean = nxHudProfileName(name);
+    if (!clean) return false;
+    const profiles = nxHudProfilesRead();
+    if (!Object.prototype.hasOwnProperty.call(profiles, clean) && Object.keys(profiles).length >= 20) return false;
+    profiles[clean] = nxHudReadLayout();
+    const value = JSON.stringify(profiles);
+    try {
+      localStorage.setItem(NX_HUD_PROFILES_KEY, value);
+      return localStorage.getItem(NX_HUD_PROFILES_KEY) === value;
+    } catch (_) { return false; }
+  }
+  function nxHudProfileLoad(name) {
+    const profiles = nxHudProfilesRead();
+    if (!Object.prototype.hasOwnProperty.call(profiles, name)) return false;
+    const value = JSON.stringify(nxHudValidateLayout(profiles[name]));
+    try {
+      localStorage.setItem(NX_HUD_LAYOUT_KEY, value);
+      return localStorage.getItem(NX_HUD_LAYOUT_KEY) === value;
+    } catch (_) { return false; }
+  }
+  function nxHudProfileDelete(name) {
+    // Remoção transacional de melhor esforço: perfis e associações devem permanecer coerentes.
+    const profiles = nxHudProfilesRead();
+    if (!Object.prototype.hasOwnProperty.call(profiles, name)) return false;
+    const bindings = nxHudGameBindings();
+    delete profiles[name];
+    Object.keys(bindings).forEach(function (id) {
+      if (bindings[id] === name) delete bindings[id];
+    });
+    const writes = [
+      [NX_HUD_PROFILES_KEY, JSON.stringify(profiles)],
+      [NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(bindings)]
+    ];
+    const previous = [];
+    try {
+      writes.forEach(function (pair) { previous.push([pair[0], localStorage.getItem(pair[0])]); });
+      writes.forEach(function (pair) {
+        localStorage.setItem(pair[0], pair[1]);
+        if (localStorage.getItem(pair[0]) !== pair[1])
+          throw new Error('HUD storage write verification failed');
+      });
+    } catch (_) {
+      previous.forEach(function (pair) {
+        try {
+          if (pair[1] === null) localStorage.removeItem(pair[0]);
+          else localStorage.setItem(pair[0], pair[1]);
+        } catch (_) {}
+      });
+      return false;
+    }
+    nxHudLastRoute = null;
+    nxHudLastAppliedProfile = '';
+    return true;
+  }
+  const NX_HUD_GAME_BINDINGS_KEY = 'nx.hud.editor.gameBindings.v1';
+  function nxHudGameId(raw) {
+    if (typeof raw !== 'string') return '';
+    const value = raw.trim().toLowerCase();
+    return /^[a-z0-9_-]{2,64}$/.test(value) ? value : '';
+  }
+  function nxHudCurrentGameId() {
+    try {
+      const parts = new URL(location.href).pathname.split('/').filter(Boolean);
+      const index = parts.indexOf('play');
+      if (index < 0) return '';
+      const candidates = parts.slice(index + 1);
+      if (candidates[0] === 'games') candidates.shift();
+      if (!candidates.length) return '';
+      const candidate = candidates[candidates.length - 1];
+      if (['home', 'search', 'library', 'settings', 'social', 'friends', 'profile', 'games',
+        'all', 'recent', 'categories', 'collections', 'cloud', 'browse'].includes(candidate.toLowerCase())) return '';
+      // Apenas caminhos que indicam uma página de jogo, nunca páginas genéricas do catálogo.
+      if (candidates.length === 1 && !/^[0-9a-f]{8,}$/i.test(candidate) &&
+          !/^9[a-z0-9]{10,}$/i.test(candidate)) return '';
+      return nxHudGameId(candidate);
+    } catch (_) { return ''; }
+  }
+  function nxHudGameBindings() {
+    try {
+      const value = JSON.parse(getPref(NX_HUD_GAME_BINDINGS_KEY, '{}'));
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+      const result = {}, profiles = nxHudProfilesRead();
+      Object.keys(value).slice(0, 100).forEach(function (key) {
+        const id = nxHudGameId(key), profile = nxHudProfileName(value[key]);
+        if (id && profile && Object.prototype.hasOwnProperty.call(profiles, profile))
+          result[id] = profile;
+      });
+      return result;
+    } catch (_) { return {}; }
+  }
+  function nxHudBindGame(gameId, profileName) {
+    const id = nxHudGameId(gameId);
+    if (!id || !Object.prototype.hasOwnProperty.call(nxHudProfilesRead(), profileName)) return false;
+    const bindings = nxHudGameBindings();
+    if (!Object.prototype.hasOwnProperty.call(bindings, id) && Object.keys(bindings).length >= 100) return false;
+    bindings[id] = profileName;
+    const value = JSON.stringify(bindings);
+    try {
+      localStorage.setItem(NX_HUD_GAME_BINDINGS_KEY, value);
+      const saved = localStorage.getItem(NX_HUD_GAME_BINDINGS_KEY) === value;
+      if (saved) { nxHudLastRoute = null; nxHudLastAppliedProfile = ''; }
+      return saved;
+    } catch (_) { return false; }
+  }
+  function nxHudUnbindGame(gameId) {
+    const id = nxHudGameId(gameId), bindings = nxHudGameBindings();
+    if (!id || !Object.prototype.hasOwnProperty.call(bindings, id)) return false;
+    delete bindings[id];
+    const value = JSON.stringify(bindings);
+    try {
+      localStorage.setItem(NX_HUD_GAME_BINDINGS_KEY, value);
+      const saved = localStorage.getItem(NX_HUD_GAME_BINDINGS_KEY) === value;
+      if (saved) { nxHudLastRoute = null; nxHudLastAppliedProfile = ''; }
+      return saved;
+    } catch (_) { return false; }
+  }
+  const NX_HUD_AUTO_KEY = 'nx.hud.editor.autoLoad.v1';
+  function nxHudAutoEnabled() { return getPref(NX_HUD_AUTO_KEY, '0') === '1'; }
+  function nxHudSetAutoEnabled(enabled) {
+    setPref(NX_HUD_AUTO_KEY, enabled ? '1' : '0');
+    nxHudLastRoute = null;
+    nxHudLastAppliedProfile = '';
+    if (enabled) nxHudAutoLoadGame();
+  }
+  let nxHudLastRoute = null;
+  let nxHudLastAppliedProfile = '';
+  function nxHudAutoLoadGame() {
+    if (!nxHudAutoEnabled()) return false;
+    const id = nxHudCurrentGameId();
+    if (id === nxHudLastRoute && nxHudLastAppliedProfile) return false;
+    nxHudLastRoute = id;
+    nxHudLastAppliedProfile = '';
+    if (!id) return false;
+    const name = nxHudGameBindings()[id];
+    if (!name || !nxHudProfileLoad(name)) return false;
+    nxHudLastAppliedProfile = name;
+    return true;
+  }
+  function nxHudRouteMonitor() {
+    // SPA: observa a URL sem substituir history.pushState, replaceState ou hooks de terceiros.
+    if (document.visibilityState === 'hidden') return;
+    nxHudAutoLoadGame();
+    nxHudNativeSync();
+  }
+  window.addEventListener('popstate', nxHudRouteMonitor, { passive: true });
+  window.addEventListener('hashchange', nxHudRouteMonitor, { passive: true });
+  window.setInterval(nxHudRouteMonitor, 1500);
+  function nxHudExportBackup() {
+    return JSON.stringify({ format: 'nimboxcloud-hud-backup-v1',
+      layout: nxHudReadLayout(), profiles: nxHudProfilesRead(),
+      gameBindings: nxHudGameBindings() }, null, 2);
+  }
+  function nxHudImportBackup(raw) {
+    if (typeof raw !== 'string' || raw.length > 65536) return false;
+    let data;
+    try { data = JSON.parse(raw); } catch (_) { return false; }
+    if (!data || data.format !== 'nimboxcloud-hud-backup-v1' ||
+        !data.layout || typeof data.layout !== 'object' || Array.isArray(data.layout) ||
+        !data.profiles || typeof data.profiles !== 'object' || Array.isArray(data.profiles) ||
+        !data.gameBindings || typeof data.gameBindings !== 'object' || Array.isArray(data.gameBindings)) return false;
+    const ids = Object.keys(NX_HUD_DEFAULT);
+    function validLayout(layout) {
+      return layout && typeof layout === 'object' && !Array.isArray(layout) &&
+        Object.keys(layout).length === ids.length && ids.every(function (id) {
+          const p = layout[id];
+          return Array.isArray(p) && p.length === 2 && p.every(function (v) {
+            return Number.isFinite(v) && v >= 5 && v <= 95;
+          });
+        });
+    }
+    const names = Object.keys(data.profiles), gameIds = Object.keys(data.gameBindings);
+    // Não aceitar chaves especiais que possam interferir em objetos comuns.
+    const safeKey = function (key) { return key !== '__proto__' && key !== 'constructor' && key !== 'prototype'; };
+    if (!validLayout(data.layout) || names.length > 20 || gameIds.length > 100 ||
+        !names.every(safeKey) || !gameIds.every(safeKey) ||
+        !names.every(function (name) {
+          return nxHudProfileName(name) === name && validLayout(data.profiles[name]);
+        }) || !gameIds.every(function (id) {
+          return nxHudGameId(id) === id && typeof data.gameBindings[id] === 'string' &&
+            Object.prototype.hasOwnProperty.call(data.profiles, data.gameBindings[id]);
+        })) return false;
+    // A validação ocorre antes de qualquer escrita. Se o armazenamento falhar,
+    // restauramos os valores anteriores, inclusive quando a quota estiver esgotada.
+    const writes = [
+      [NX_HUD_PROFILES_KEY, JSON.stringify(data.profiles)],
+      [NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(data.gameBindings)],
+      [NX_HUD_LAYOUT_KEY, JSON.stringify(data.layout)]
+    ];
+    const previous = [];
+    try {
+      writes.forEach(function (pair) {
+        previous.push([pair[0], localStorage.getItem(pair[0])]);
+      });
+      writes.forEach(function (pair) {
+        localStorage.setItem(pair[0], pair[1]);
+        if (localStorage.getItem(pair[0]) !== pair[1])
+          throw new Error('HUD storage write verification failed');
+      });
+    } catch (_) {
+      previous.forEach(function (pair) {
+        try {
+          if (pair[1] === null) localStorage.removeItem(pair[0]);
+          else localStorage.setItem(pair[0], pair[1]);
+        } catch (_) {}
+      });
+      return false;
+    }
+    nxHudLastRoute = null;
+    nxHudLastAppliedProfile = '';
+    return true;
+  }
+  function nxHudReadLayout() {
+    try { return nxHudValidateLayout(JSON.parse(getPref(NX_HUD_LAYOUT_KEY, '{}'))); }
+    catch (_) { return nxHudValidateLayout(null); }
+  }
+  function nxHudExportLayout() {
+    return JSON.stringify({ format: 'nimboxcloud-hud-v1', layout: nxHudReadLayout() }, null, 2);
+  }
+  function nxHudImportLayout(raw) {
+    if (typeof raw !== 'string' || raw.length > 4096) return false;
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch (_) { return false; }
+    if (!parsed || parsed.format !== 'nimboxcloud-hud-v1' ||
+        !parsed.layout || typeof parsed.layout !== 'object' || Array.isArray(parsed.layout)) return false;
+    const ids = Object.keys(NX_HUD_DEFAULT);
+    if (Object.keys(parsed.layout).length !== ids.length ||
+        !ids.every(function (id) {
+          const pos = parsed.layout[id];
+          return Array.isArray(pos) && pos.length === 2 && pos.every(function (n) {
+            return Number.isFinite(n) && n >= 0 && n <= 100;
+          });
+        })) return false;
+    // Importação deve informar falha se o armazenamento recusar ou descartar a gravação.
+    const value = JSON.stringify(nxHudValidateLayout(parsed.layout));
+    try {
+      localStorage.setItem(NX_HUD_LAYOUT_KEY, value);
+      return localStorage.getItem(NX_HUD_LAYOUT_KEY) === value;
+    } catch (_) { return false; }
+  }
+  function nxHudSaveLayout(layout) {
+    const clean = nxHudValidateLayout(layout);
+    const value = JSON.stringify(clean);
+    try {
+      localStorage.setItem(NX_HUD_LAYOUT_KEY, value);
+      return localStorage.getItem(NX_HUD_LAYOUT_KEY) === value;
+    } catch (_) { return false; }
+  }
+  function nxHudNudge(layout, id, dx, dy) {
+    if (!layout || !Object.prototype.hasOwnProperty.call(NX_HUD_DEFAULT, id) ||
+        !Array.isArray(layout[id]) || !Number.isFinite(dx) || !Number.isFinite(dy)) return false;
+    const x = Math.max(5, Math.min(95, layout[id][0] + dx));
+    const y = Math.max(5, Math.min(95, layout[id][1] + dy));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    layout[id] = [x, y];
+    return true;
+  }
+  // Read-only discovery: accessibility labels are hints, not verified gameplay controls.
+  // Never reposition, intercept events, or retain DOM references from this probe.
+  function nxHudDomProbe() {
+    const result = { scanned: 0, candidates: 0, interactive: 0, visible: 0,
+      shadowRoots: 0, inaccessibleFrames: 0, truncated: false };
+    const pending = [document];
+    const pattern = /\b(?:left stick|right stick|joystick|thumbstick|d[\s-]?pad|trigger|bumper|touch control|virtual controller)\b/i;
+    // Walk incrementally: avoid querySelectorAll('*') allocating a full DOM snapshot.
+    while (pending.length && result.scanned < 1500) {
+      const root = pending.shift();
+      let walker;
+      try { walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT); }
+      catch (_) { continue; }
+      let el;
+      while (result.scanned < 1500 && (el = walker.nextNode())) {
+        result.scanned++;
+        if (el.shadowRoot) { result.shadowRoots++; pending.push(el.shadowRoot); }
+        if (el.tagName === 'IFRAME') {
+          try { if (el.contentDocument) pending.push(el.contentDocument); else result.inaccessibleFrames++; }
+          catch (_) { result.inaccessibleFrames++; }
+        }
+        // Ignore NimboXcloud's own controls; these are not native xCloud HUD elements.
+        if (el.closest && el.closest('#__xcu_panel__')) continue;
+        const label = (el.getAttribute('aria-label') || el.getAttribute('data-testid') || '').slice(0, 100);
+        if (!pattern.test(label)) continue;
+        result.candidates++;
+        const role = (el.getAttribute('role') || '').toLowerCase();
+        if (/^(?:button|slider|application|joystick)$/.test(role) ||
+            /^(?:BUTTON|INPUT)$/.test(el.tagName) || el.hasAttribute('tabindex'))
+          result.interactive++;
+        try {
+          const box = el.getBoundingClientRect();
+          if (box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== 'hidden')
+            result.visible++;
+        } catch (_) { /* Cross-document layout may be unavailable. */ }
+      }
+    }
+    result.truncated = result.scanned >= 1500;
+    return result;
+  }
+  // HUD nativo: aplicação conservadora, reversível e estritamente opt-in.
+  // Elementos sem rótulo inequívoco não são alterados.
+  const NX_HUD_NATIVE_KEY = 'nx.hud.native.enabled.v1';
+  const nxHudNativeOriginal = new Map();
+  const NX_HUD_NATIVE_LABELS = Object.freeze({
+    stickL: /^(?:left stick|left joystick|left thumbstick)$/i,
+    stickR: /^(?:right stick|right joystick|right thumbstick)$/i,
+    a: /^(?:a button|button a)$/i,
+    b: /^(?:b button|button b)$/i,
+    x: /^(?:x button|button x)$/i,
+    y: /^(?:y button|button y)$/i,
+    lt: /^(?:left trigger|lt button|button lt)$/i,
+    rt: /^(?:right trigger|rt button|button rt)$/i
+  });
+  function nxHudNativeEnabled() { return getPref(NX_HUD_NATIVE_KEY, '0') === '1'; }
+  function nxHudNativeRestore() {
+    nxHudNativeOriginal.forEach(function (style, node) {
+      try {
+        if (node && node.style) {
+          // Preserve changes made by the game or other scripts after our transform.
+          if (node.style.transform === style.appliedTransform &&
+              node.style.transformOrigin === style.appliedTransformOrigin) {
+            node.style.transform = style.transform;
+            node.style.transformOrigin = style.transformOrigin;
+          }
+        }
+      } catch (_) {}
+    });
+    nxHudNativeOriginal.clear();
+  }
+  function nxHudNativeCandidates() {
+    const found = Object.create(null);
+    const duplicates = new Set();
+    const roots = [document];
+    let scanned = 0;
+    while (roots.length && scanned < 1800) {
+      const root = roots.shift();
+      let walker;
+      try { walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT); }
+      catch (_) { continue; }
+      let node;
+      while ((node = walker.nextNode()) && scanned++ < 1800) {
+        if (node.shadowRoot) roots.push(node.shadowRoot);
+        if (node.closest && node.closest('#__xcu_panel__')) continue;
+        const label = (node.getAttribute('aria-label') || '').trim();
+        if (!label || label.length > 60) continue;
+        Object.keys(NX_HUD_NATIVE_LABELS).forEach(function (id) {
+          if (!NX_HUD_NATIVE_LABELS[id].test(label)) return;
+          // Rejeitar identificadores duplicados; não há destino inequívoco.
+          if (duplicates.has(id)) return;
+          if (Object.prototype.hasOwnProperty.call(found, id)) {
+            found[id] = null;
+            duplicates.add(id);
+          } else found[id] = node;
+        });
+      }
+    }
+    return found;
+  }
+  function nxHudNativeApply() {
+    nxHudNativeRestore();
+    if (!nxHudNativeEnabled() || !isInGame()) return { applied: 0, reason: 'inactive' };
+    const candidates = nxHudNativeCandidates();
+    const layout = nxHudReadLayout();
+    const scale = nxHudPreviewScale() / 100;
+    let applied = 0;
+    Object.keys(layout).forEach(function (id) {
+      const node = candidates[id];
+      if (!node || !node.style || !node.isConnected) return;
+      try {
+        const rect = node.getBoundingClientRect();
+        const viewportW = Math.max(1, window.innerWidth);
+        const viewportH = Math.max(1, window.innerHeight);
+        if (!rect.width || !rect.height) return;
+        // CSS transform desloca também a área de hit-test; não sintetiza eventos.
+        const dx = viewportW * layout[id][0] / 100 - (rect.left + rect.width / 2);
+        const dy = viewportH * layout[id][1] / 100 - (rect.top + rect.height / 2);
+        nxHudNativeOriginal.set(node, {
+          transform: node.style.transform, transformOrigin: node.style.transformOrigin
+        });
+        node.style.transformOrigin = 'center center';
+        node.style.transform = 'translate(' + Math.round(dx) + 'px,' + Math.round(dy) +
+          'px) scale(' + scale + ') ' + (nxHudNativeOriginal.get(node).transform || '');
+        const owned = nxHudNativeOriginal.get(node);
+        owned.appliedTransform = node.style.transform;
+        owned.appliedTransformOrigin = node.style.transformOrigin;
+        applied++;
+      } catch (_) {}
+    });
+    return { applied: applied, reason: applied ? 'mapped' : 'no-safe-match' };
+  }
+  // Reutiliza o monitor de rota existente (1,5 s): sem MutationObserver global.
+  // Reaplica apenas quando o perfil, a escala ou os elementos nativos mudam.
+  let nxHudNativeSignature = '';
+  let nxHudNativeNodes = Object.create(null);
+  function nxHudNativeSync() {
+    if (!nxHudNativeEnabled() || !isInGame()) {
+      if (nxHudNativeOriginal.size) nxHudNativeRestore();
+      nxHudNativeSignature = '';
+      nxHudNativeNodes = Object.create(null);
+      return;
+    }
+    const candidates = nxHudNativeCandidates();
+    const layout = nxHudReadLayout();
+    const signature = JSON.stringify([layout, nxHudPreviewScale(), nxHudCurrentGameId()]);
+    const ids = Object.keys(layout);
+    const changed = signature !== nxHudNativeSignature || ids.some(function (id) {
+      return (nxHudNativeNodes[id] || null) !== (candidates[id] || null);
+    });
+    if (!changed) return;
+    nxHudNativeSignature = signature;
+    nxHudNativeNodes = candidates;
+    nxHudNativeApply();
+  }
+  function nxHudNativeSetEnabled(enabled) {
+    try {
+      setPref(NX_HUD_NATIVE_KEY, enabled ? '1' : '0');
+      nxHudNativeSignature = '';
+      if (!enabled) {
+        nxHudNativeRestore();
+        nxHudNativeNodes = Object.create(null);
+      } else nxHudNativeSync();
+      return nxHudNativeEnabled() === !!enabled;
+    } catch (_) { nxHudNativeRestore(); return false; }
+  }
+  const NX_HUD_PREVIEW_SCALE_KEY = 'nx.hud.editor.previewScale.v1';
+  function nxHudPreviewScale() {
+    const value = Number(getPref(NX_HUD_PREVIEW_SCALE_KEY, '100'));
+    return Number.isFinite(value) ? Math.max(60, Math.min(160, Math.round(value))) : 100;
+  }
+  function nxHudSavePreviewScale(value) {
+    const scale = Number(value);
+    if (!Number.isFinite(scale) || scale < 60 || scale > 160) return false;
+    const stored = String(Math.round(scale));
+    try {
+      localStorage.setItem(NX_HUD_PREVIEW_SCALE_KEY, stored);
+      return localStorage.getItem(NX_HUD_PREVIEW_SCALE_KEY) === stored;
+    } catch (_) { return false; }
+  }
+  function nxHudEditor() {
+    const layout = nxHudReadLayout();
+    const outer = mk('div', 'display:flex;flex-direction:column;gap:8px;width:100%');
+    const stage = mk('div', 'position:relative;width:100%;aspect-ratio:16/9;min-height:175px;touch-action:none;user-select:none;overflow:hidden;border-radius:10px;border:1px solid ' + C.line + ';background:rgba(80,120,130,.12)');
+    const scaleRow = mk('div', 'display:flex;align-items:center;gap:10px;flex-wrap:wrap');
+    const scaleLabel = mk('label', 'font-size:12px;color:' + C.dim, 'Tamanho da prévia: ' + nxHudPreviewScale() + '%');
+    const scaleInput = document.createElement('input');
+    scaleInput.type = 'range';
+    scaleInput.min = '60';
+    scaleInput.max = '160';
+    scaleInput.step = '5';
+    scaleInput.value = String(nxHudPreviewScale());
+    scaleInput.setAttribute('aria-label', 'Tamanho dos botões na prévia');
+    scaleRow.appendChild(scaleLabel);
+    scaleRow.appendChild(scaleInput);
+    outer.appendChild(scaleRow);
+    const previewNodes = [];
+    scaleInput.addEventListener('change', function () {
+      if (!nxHudSavePreviewScale(scaleInput.value)) {
+        scaleInput.value = String(nxHudPreviewScale());
+        toast('Não foi possível salvar o tamanho da prévia');
+      }
+      const scale = nxHudPreviewScale();
+      scaleLabel.textContent = 'Tamanho da prévia: ' + scale + '%';
+      previewNodes.forEach(function (node) {
+        node.style.width = Math.round(35 * scale / 100) + 'px';
+        node.style.height = Math.round(35 * scale / 100) + 'px';
+      });
+    });
+    const labels = { stickL:'L', stickR:'R', a:'A', b:'B', x:'X', y:'Y', lt:'LT', rt:'RT' };
+    Object.keys(layout).forEach(function (id) {
+      const node = mk('button', 'position:absolute;transform:translate(-50%,-50%);min-width:35px;height:35px;border-radius:50%;border:1px solid ' + C.accent + ';background:rgba(15,28,30,.85);color:' + C.text + ';font-size:11px;font-weight:700;touch-action:none;cursor:grab', labels[id]);
+      node.type = 'button';
+      node.style.width = Math.round(35 * nxHudPreviewScale() / 100) + 'px';
+      node.style.height = Math.round(35 * nxHudPreviewScale() / 100) + 'px';
+      previewNodes.push(node);
+      node.style.left = layout[id][0] + '%';
+      node.style.top = layout[id][1] + '%';
+      node.setAttribute('aria-label', 'Mover ' + labels[id] + ' com as setas do teclado');
+      node.setAttribute('title', 'Setas: 1% | Shift + setas: 5%');
+      let dragStart = null;
+      let pointerStart = null;
+      let activePointerId = null;
+      node.addEventListener('keydown', function (e) {
+        const moves = { ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+          ArrowUp: [0, -1], ArrowDown: [0, 1] };
+        if (!Object.prototype.hasOwnProperty.call(moves, e.key)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const step = e.shiftKey ? 5 : 1;
+        const delta = moves[e.key];
+        const previousPosition = layout[id].slice();
+        if (nxHudNudge(layout, id, delta[0] * step, delta[1] * step)) {
+          node.style.left = layout[id][0] + '%';
+          node.style.top = layout[id][1] + '%';
+          if (!nxHudSaveLayout(layout)) {
+            layout[id] = previousPosition;
+            node.style.left = previousPosition[0] + '%';
+            node.style.top = previousPosition[1] + '%';
+            toast('Não foi possível salvar a posição do HUD');
+          }
+        }
+      });
+      node.addEventListener('pointerdown', function (e) {
+        if (!e.isPrimary || activePointerId !== null) return;
+        e.stopPropagation();
+        e.preventDefault();
+        dragStart = layout[id].slice();
+        pointerStart = [e.clientX, e.clientY];
+        try { node.setPointerCapture(e.pointerId); }
+        catch (_) {
+          // A captura pode falhar quando o navegador cancela o gesto.
+          dragStart = null;
+          pointerStart = null;
+          return;
+        }
+        activePointerId = e.pointerId;
+        node.style.cursor = 'grabbing';
+      });
+      node.addEventListener('pointermove', function (e) {
+        if (activePointerId !== e.pointerId || !node.hasPointerCapture(e.pointerId)) return;
+        const bounds = stage.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return;
+        // Move relative to the initial pointer position, preserving the button's grab offset.
+        if (!dragStart || !pointerStart) return;
+        const x = Math.max(5, Math.min(95, Math.round(dragStart[0] + (e.clientX - pointerStart[0]) / bounds.width * 100)));
+        const y = Math.max(5, Math.min(95, Math.round(dragStart[1] + (e.clientY - pointerStart[1]) / bounds.height * 100)));
+        layout[id] = [x, y];
+        node.style.left = x + '%';
+        node.style.top = y + '%';
+      });
+      function finish(e) {
+        if (activePointerId !== e.pointerId) return;
+        // Finaliza o estado antes de liberar a captura: lostpointercapture pode disparar logo depois.
+        activePointerId = null;
+        if (node.hasPointerCapture(e.pointerId)) node.releasePointerCapture(e.pointerId);
+        node.style.cursor = 'grab';
+        if (e.type === 'pointercancel' && dragStart) {
+          layout[id] = dragStart;
+          node.style.left = dragStart[0] + '%';
+          node.style.top = dragStart[1] + '%';
+        } else if (!nxHudSaveLayout(layout)) {
+          // Do not leave an unsaved position visible or available for profile export.
+          const saved = nxHudReadLayout()[id];
+          layout[id] = saved.slice();
+          node.style.left = saved[0] + '%';
+          node.style.top = saved[1] + '%';
+          toast('Não foi possível salvar a posição do HUD');
+        }
+        dragStart = null;
+        pointerStart = null;
+      }
+      node.addEventListener('pointerup', finish);
+      node.addEventListener('pointercancel', finish);
+      node.addEventListener('lostpointercapture', function () {
+        // Perda inesperada de captura não deve persistir um arrasto incompleto.
+        if (!dragStart || activePointerId === null) return;
+        activePointerId = null;
+        layout[id] = dragStart.slice();
+        node.style.left = dragStart[0] + '%';
+        node.style.top = dragStart[1] + '%';
+        node.style.cursor = 'grab';
+        dragStart = null;
+        pointerStart = null;
+      });
+      stage.appendChild(node);
+    });
+    outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
+      'EDITOR DE PRÉVIA — as posições abaixo ainda não movem os botões reais do Xbox Cloud Gaming.'));
+    outer.appendChild(stage);
+    const nativeStatus = mk('div', 'font-size:11px;color:' + C.dim,
+      'HUD nativo: integração experimental por rótulos de acessibilidade. Sem correspondência segura, nenhum botão será alterado.');
+    outer.appendChild(nativeStatus);
+    outer.appendChild(actBtn(nxHudNativeEnabled() ? 'Desativar integração nativa' : 'Ativar integração nativa (experimental)', function () {
+      const next = !nxHudNativeEnabled();
+      if (next && !window.confirm('Ativar reposicionamento experimental dos botões nativos identificados? A opção pode ser desativada para restaurar o layout original.')) return;
+      if (!nxHudNativeSetEnabled(next)) { toast('Falha ao alterar integração nativa'); return; }
+      const status = next ? nxHudNativeApply() : { applied: 0, reason: 'inactive' };
+      toast(next ? 'HUD nativo: ' + status.applied + ' controles identificados' : 'HUD nativo restaurado');
+      renderBody();
+    }, 'ghost'));
+    if (nxHudNativeEnabled()) outer.appendChild(actBtn('Aplicar posições ao HUD nativo', function () {
+      const status = nxHudNativeApply();
+      toast(status.applied ? status.applied + ' controles reposicionados' : 'Nenhum controle nativo identificado com segurança');
+    }, 'ghost'));
+    outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
+      'Acessibilidade: selecione um botão e use as setas para mover 1%; Shift + setas move 5%. Arrastos cancelados são revertidos.'));
+    const reset = actBtn('Restaurar posições', function () {
+      if (!nxHudSaveLayout(NX_HUD_DEFAULT)) { toast('Não foi possível restaurar o layout'); return; }
+      renderBody();
+      toast('Layout de prévia restaurado');
+    }, 'ghost');
+    outer.appendChild(reset);
+    outer.appendChild(actBtn('Salvar perfil', function () {
+      const name = window.prompt('Nome do perfil de HUD (até 32 caracteres):');
+      if (name === null) return;
+      toast(nxHudProfileSave(name) ? 'Perfil salvo' : 'Nome inválido ou limite de 20 perfis atingido');
+      renderBody();
+    }));
+    const profiles = nxHudProfilesRead();
+    const names = Object.keys(profiles).sort();
+    const gameId = nxHudCurrentGameId();
+    outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
+      gameId ? 'Jogo identificado na URL: ' + gameId :
+        'Jogo não identificado na URL. Associação automática indisponível nesta página.'));
+    if (names.length) {
+      const selection = mk('select', 'width:100%;padding:9px;border-radius:8px;background:' + C.panel + ';color:' + C.text + ';border:1px solid ' + C.line);
+      names.forEach(function (name) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        selection.appendChild(option);
+      });
+      outer.appendChild(selection);
+      if (gameId) {
+        outer.appendChild(actBtn('Associar ao jogo atual', function () {
+          toast(nxHudBindGame(gameId, selection.value) ?
+            'Perfil associado a este jogo (prévia)' : 'Não foi possível associar o perfil');
+        }));
+        outer.appendChild(actBtn('Remover associação do jogo', function () {
+          toast(nxHudUnbindGame(gameId) ? 'Associação removida' : 'Sem associação para este jogo');
+        }));
+      }
+      outer.appendChild(actBtn('Carregar perfil', function () {
+        if (nxHudProfileLoad(selection.value)) { renderBody(); toast('Perfil carregado'); }
+      }));
+      outer.appendChild(actBtn('Excluir perfil', function () {
+        if (!window.confirm('Excluir o perfil "' + selection.value + '"?')) return;
+        if (nxHudProfileDelete(selection.value)) { renderBody(); toast('Perfil excluído'); }
+      }, 'danger'));
+    }
+    outer.appendChild(actBtn('Exportar backup completo', function () {
+      const value = nxHudExportBackup();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(function () {
+          toast('Backup de HUD copiado');
+        }).catch(function () { window.prompt('Copie o backup JSON:', value); });
+      } else window.prompt('Copie o backup JSON:', value);
+    }));
+    outer.appendChild(actBtn('Restaurar backup completo', function () {
+      const value = window.prompt('Cole o backup JSON de HUD (substitui layout, perfis e associações):');
+      if (value === null) return;
+      if (!window.confirm('Substituir todos os perfis, associações e posições atuais de HUD?')) return;
+      if (!nxHudImportBackup(value)) { toast('Backup inválido; nenhuma alteração realizada'); return; }
+      renderBody();
+      toast('Backup de HUD restaurado');
+    }, 'danger'));
+    const exportButton = actBtn('Exportar layout', function () {
+      const value = nxHudExportLayout();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(function () {
+          toast('Layout copiado para a área de transferência');
+        }).catch(function () { window.prompt('Copie o layout JSON:', value); });
+      } else window.prompt('Copie o layout JSON:', value);
+    });
+    outer.appendChild(exportButton);
+    outer.appendChild(actBtn('Importar layout', function () {
+      const value = window.prompt('Cole o layout JSON exportado:');
+      if (value === null) return;
+      if (!nxHudImportLayout(value)) { toast('Layout inválido; nenhuma alteração realizada'); return; }
+      renderBody();
+      toast('Layout importado');
+    }));
+    return outer;
+  }
+  // Aplica somente a prévia local, nunca os botões reais do xCloud.
+  nxHudAutoLoadGame();
+  // Descoberta xHome: utiliza somente credenciais locais da sessão Xbox autenticada.
+  // Não substitui a negociação WebRTC/ICE nem cria uma sessão Remote Play.
+  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:'', peer:null, mediaStream:null, videoElement:null, iceTimer:null};
+  function nxRemoteGssvToken() {
+    try { const v=JSON.parse(localStorage.getItem('xboxcom_xbl_user_info')||'null');
+      const t=v && v.tokens && v.tokens['http://gssv.xboxlive.com/'];
+      if(t && typeof t.token==='string' && t.token && (!t.expiration || Date.parse(t.expiration)>Date.now())) return t.token; } catch (_) {}
+    try { for(let i=0;i<localStorage.length;i++) { const k=localStorage.key(i);
+      if(!k || !k.startsWith('Auth.User.')) continue;
+      const u=JSON.parse(localStorage.getItem(k)||'null');
+      for(const t of (u && Array.isArray(u.tokens)?u.tokens:[])) {
+        if(!/^https?:\/\/gssv\.xboxlive\.com\/?$/i.test(String(t.relyingParty||''))) continue;
+        if(t.tokenData && t.tokenData.token && new Date(t.tokenData.expiration)>new Date()) return t.tokenData.token;
+      }
+    }} catch (_) {} return '';
+  }
+  function nxRemoteStop() {
+    nxRemotePlay.requestId++;
+    if(nxRemotePlay.abortController)nxRemotePlay.abortController.abort();
+    nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
+    if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
+    if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
+    if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){}}
+    if(nxRemotePlay.mediaStream){try{nxRemotePlay.mediaStream.getTracks().forEach(function(t){t.stop();});}catch(_){}nxRemotePlay.mediaStream=null;}
+    nxRemotePlay.sessionStatus='stopped';nxRemotePlay.sessionId='';nxRemotePlay.status='Reprodução local encerrada';nxRemotePlay.error='';
+    if(tabId==='remote')renderBody();
+  }
+  function nxRemoteCancel() {
+    if(!nxRemotePlay.busy)return;
+    nxRemotePlay.requestId++;
+    if(nxRemotePlay.abortController) nxRemotePlay.abortController.abort();
+    nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
+    nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';nxRemotePlay.regionShortName='';nxRemotePlay.checkedAt=0;nxRemotePlay.attempts=[];
+    if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
+    if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
+    if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){}}
+    if(nxRemotePlay.mediaStream){try{nxRemotePlay.mediaStream.getTracks().forEach(function(t){t.stop();});}catch(_){}nxRemotePlay.mediaStream=null;}
+    nxRemotePlay.status=nxRemotePlay.sessionStatus==='authenticating'||nxRemotePlay.sessionStatus==='requesting'?'Operação cancelada':'Consulta cancelada';nxRemotePlay.error='';nxRemotePlay.sessionStatus='cancelled';nxRemotePlay.sessionId='';
+    if(tabId==='remote') renderBody();
+  }
+  async function nxRemoteDiscover() {
+    if(nxRemotePlay.busy) return;
+    const requestId=++nxRemotePlay.requestId;
+    const controller=new AbortController();
+    nxRemotePlay.abortController=controller;
+    const timeout=setTimeout(function(){controller.abort();},15000);
+    nxRemotePlay.busy=true;nxRemotePlay.error='';nxRemotePlay.attempts=[];nxRemotePlay.region='';nxRemotePlay.regionShortName='';
+    // Invalidate stale consoles before any authentication/network request.
+    nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.checkedAt=0;
+    nxRemotePlay.status='Consultando consoles vinculados…';
+    if(tabId==='remote') renderBody();
+    try {
+      const token=nxRemoteGssvToken();
+      if(!token) throw new Error('Credencial Xbox GSSV não encontrada. Entre na sua conta Xbox e recarregue.');
+      const auth=await fetch('https://xhome.gssv-play-prod.xboxlive.com/v2/login/user',{
+        method:'POST',headers:{'Content-Type':'application/json; charset=utf-8'},
+        body:JSON.stringify({offeringId:'xhome',token:token}),signal:controller.signal,redirect:'error'});
+      if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+      if(!auth.ok) throw new Error('Login xHome recusado (HTTP '+auth.status+').');
+      const login=await auth.json();
+      if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+      if(!login || typeof login.gsToken!=='string' || !login.gsToken || !login.offeringSettings || !Array.isArray(login.offeringSettings.regions))
+        throw new Error('Resposta xHome incompleta.');
+      const regions=login.offeringSettings.regions.slice().sort(function(a,b){return Number(!!(b && b.isDefault))-Number(!!(a && a.isDefault));});
+      let found=[];
+      let successfulRegions=0;
+      for(const region of regions) {
+        if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+        if(!region || typeof region.baseUri!=='string') {nxRemotePlay.attempts.push('Região ignorada: configuração inválida');continue;}
+        // Do not send the xHome bearer token to an untrusted origin from a malformed region response.
+        let regionOrigin;
+        try { const u=new URL(region.baseUri);if(u.protocol!=='https:' || u.username || u.password || !/(^|\.)xboxlive\.com$/i.test(u.hostname)) {nxRemotePlay.attempts.push('Região ignorada: origem não autorizada');continue;}regionOrigin=u.origin; }
+        catch (_) {nxRemotePlay.attempts.push('Região ignorada: endereço inválido');continue;}
+        try { const res=await fetch(regionOrigin+'/v6/servers/home?mr=50',{
+          headers:{Authorization:'Bearer '+login.gsToken},signal:controller.signal,redirect:'error'});
+          if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+          if(res.status===401 || res.status===403) throw new Error('Acesso xHome negado (HTTP '+res.status+'). Faça login novamente na conta Xbox.');
+          if(!res.ok) {nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': HTTP '+res.status);continue;}
+          const json=await res.json();
+          if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+          if(!json || !Array.isArray(json.results)) {nxRemotePlay.attempts.push('Resposta sem lista de consoles');continue;}
+          successfulRegions++;
+          nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': '+json.results.length+' console(s)');
+          if(json.results.length){found=json.results;nxRemotePlay.region=String(region.name||region.shortName||region.baseUri);nxRemotePlay.regionShortName=String(region.shortName||'').toLowerCase();break;}
+        } catch (e) {if(requestId!==nxRemotePlay.requestId || controller.signal.aborted || (e && /^Acesso xHome negado/.test(String(e.message)))) throw e;nxRemotePlay.attempts.push('Região indisponível: '+String(e && e.name||'erro'));}
+      }
+      if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+      if(!successfulRegions) throw new Error('Não foi possível consultar nenhuma região xHome. Verifique conexão, CORS e autenticação.');
+      nxRemotePlay.consoles=found.filter(function(c){return c && typeof c.serverId==='string' && c.serverId.length>0;}).map(function(c){return {id:c.serverId,name:String(c.deviceName||c.name||c.serverName||'Xbox'),type:String(c.consoleType||'Xbox'),state:String(c.powerState||c.state||'Unknown')};});
+      nxRemotePlay.status=nxRemotePlay.consoles.length?nxRemotePlay.consoles.length+' console(s) encontrado(s)':'Nenhum console vinculado encontrado';
+      if(!nxRemotePlay.consoles.some(function(c){return c.id===nxRemotePlay.selectedId;})) nxRemotePlay.selectedId='';
+      nxRemotePlay.checkedAt=Date.now();
+    } catch(e) {
+      if(requestId!==nxRemotePlay.requestId) return;
+      // Never retain a previously discovered console after an auth or network failure.
+      nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';
+      nxRemotePlay.error=controller.signal.aborted?'Tempo limite de 15 segundos excedido.':String(e && e.message||e);nxRemotePlay.status='Falha na consulta';
+    }
+    finally {clearTimeout(timeout);if(requestId===nxRemotePlay.requestId){nxRemotePlay.busy=false;nxRemotePlay.abortController=null;if(tabId==='remote')renderBody();}}
+  }
+  // xHome session bootstrap: explicit user action, no persistent tokens or SDP logging.
+  async function nxRemoteStartSession() {
+    if(nxRemotePlay.busy || !nxRemotePlay.selectedId) return;
+    const serverId=nxRemotePlay.selectedId;
+    if(!nxRemotePlay.consoles.some(function(c){return c.id===serverId;})) return;
+    const region=nxRemotePlay.regionShortName;
+    if(!/^[a-z0-9]{2,12}$/.test(region)) {
+      nxRemotePlay.error='Região xHome sem identificador confiável. Atualize a lista de consoles.';
+      if(tabId==='remote')renderBody();
+      return;
+    }
+    const controller=new AbortController(), requestId=++nxRemotePlay.requestId;
+    nxRemotePlay.busy=true;nxRemotePlay.abortController=controller;
+    nxRemotePlay.error='';nxRemotePlay.sessionStatus='authenticating';nxRemotePlay.sessionId='';
+    nxRemotePlay.status='Autenticando sessão xHome…';
+    const timeout=setTimeout(function(){controller.abort();},20000);
+    const check=function(){if(requestId!==nxRemotePlay.requestId || controller.signal.aborted)throw new Error('Operação cancelada');};
+    try {
+      const token=nxRemoteGssvToken();
+      if(!token)throw new Error('Credencial GSSV ausente ou expirada.');
+      const auth=await fetch('https://xhome.gssv-play-prod.xboxlive.com/v2/login/user',{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({offeringId:'xhome',token:token}),signal:controller.signal,redirect:'error'
+      });
+      check();
+      if(!auth.ok)throw new Error('Login xHome HTTP '+auth.status);
+      const login=await auth.json();check();
+      if(!login || typeof login.gsToken!=='string' || !login.gsToken)throw new Error('Credencial de sessão xHome inválida.');
+      const base='https://'+region+'.core.gssv-play-prodxhome.xboxlive.com';
+      const deviceInfo=JSON.stringify({
+        appInfo:{env:{clientAppId:'Microsoft.GamingApp',clientAppType:'native',clientAppVersion:'2203.1001.4.0',clientSdkVersion:'8.5.2',httpEnvironment:'prod',sdkInstallId:''}},
+        dev:{hw:{make:'Microsoft',model:'Surface Pro',sdktype:'native'},os:{name:'Windows 11',ver:'22631.2715',platform:'desktop'},displayInfo:{dimensions:{widthInPixels:1920,heightInPixels:1080},pixelDensity:{dpiX:1,dpiY:1}}}
+      });
+      nxRemotePlay.sessionStatus='requesting';nxRemotePlay.status='Solicitando sessão ao console…';
+      if(tabId==='remote')renderBody();
+      const play=await fetch(base+'/v5/sessions/home/play',{
+        method:'POST',redirect:'error',signal:controller.signal,
+        headers:{'Content-Type':'application/json','X-MS-Device-Info':deviceInfo,Authorization:'Bearer '+login.gsToken},
+        body:JSON.stringify({clientSessionId:'',titleId:'',systemUpdateGroup:'',settings:{nanoVersion:'V3;WebrtcTransport.dll',enableTextToSpeech:false,highContrast:0,locale:navigator.language||'pt-BR',useIceConnection:false,timezoneOffsetMinutes:new Date().getTimezoneOffset(),sdkType:'web',osName:'windows'},serverId:serverId,fallbackRegionNames:[]})
+      });
+      check();
+      if(!play.ok)throw new Error('Criação de sessão recusada (HTTP '+play.status+').');
+      const response=await play.json();check();
+      if(!response || typeof response.sessionId!=='string' || !/^[a-z0-9-]{8,80}$/i.test(response.sessionId))throw new Error('Resposta de sessão inválida.');
+      nxRemotePlay.sessionId=response.sessionId;
+      nxRemotePlay.sessionStatus='provisioning';
+      nxRemotePlay.status='Aguardando provisionamento do Xbox…';
+      if(tabId==='remote')renderBody();
+      const sessionUrl=base+'/v5/sessions/home/'+encodeURIComponent(response.sessionId);
+      let ready=false;
+      for(let attempt=0;attempt<12;attempt++){
+        check();
+        const stateResponse=await fetch(sessionUrl+'/state',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});
+        check();
+        if(!stateResponse.ok)throw new Error('Consulta de estado xHome recusada (HTTP '+stateResponse.status+').');
+        const state=await stateResponse.json();check();
+        if(state && state.state==='Provisioned'){ready=true;break;}
+        if(!state || state.state!=='Provisioning')throw new Error('Sessão xHome não provisionada: '+String(state && state.state||'resposta inválida').slice(0,80));
+        await new Promise(function(resolve,reject){
+          const timer=setTimeout(function(){controller.signal.removeEventListener('abort',onAbort);resolve();},1000);
+          function onAbort(){clearTimeout(timer);reject(new Error('Operação cancelada'));}
+          controller.signal.addEventListener('abort',onAbort,{once:true});
+          if(controller.signal.aborted)onAbort();
+        });
+      }
+      check();
+      if(!ready)throw new Error('Xbox não ficou pronto após 12 consultas de estado.');
+      nxRemotePlay.sessionStatus='provisioned';
+      nxRemotePlay.status='Xbox provisionado. Preparando negociação WebRTC…';
+      if(typeof RTCPeerConnection==='function'){
+        const peer=new RTCPeerConnection();
+        nxRemotePlay.peer=peer;
+        if(typeof MediaStream==='function'){
+          const stream=new MediaStream();
+          nxRemotePlay.mediaStream=stream;
+          peer.ontrack=function(event){
+            if(requestId!==nxRemotePlay.requestId)return;
+            const tracks=event.streams&&event.streams[0]?event.streams[0].getTracks():[event.track];
+            for(const track of tracks)if(track && !stream.getTracks().some(function(t){return t.id===track.id;}))stream.addTrack(track);
+            if(nxRemotePlay.videoElement){
+              nxRemotePlay.videoElement.srcObject=stream;
+              nxRemotePlay.videoElement.play().catch(function(){});
+            }
+            if(tabId==='remote')renderBody();
+          };
+        }
+        const localIceCandidates=[];
+        let iceSend=null;
+        let iceSendChain=Promise.resolve();
+        peer.onicecandidate=function(event){
+          if(!event || !event.candidate || requestId!==nxRemotePlay.requestId || controller.signal.aborted)return;
+          const c=event.candidate;
+          const candidate={candidate:c.candidate,sdpMid:c.sdpMid,sdpMLineIndex:c.sdpMLineIndex};
+          if(iceSend){
+            iceSendChain=iceSendChain.then(function(){return iceSend(candidate);}).catch(function(){
+              if(requestId===nxRemotePlay.requestId){nxRemotePlay.status='Falha no envio de candidato ICE';if(tabId==='remote')renderBody();}
+            });
+          }else localIceCandidates.push(candidate);
+        };
+        peer.addTransceiver('audio',{direction:'recvonly'});
+        peer.addTransceiver('video',{direction:'recvonly'});
+        peer.createDataChannel('input',{ordered:false,maxRetransmits:0});
+        const offer=await peer.createOffer();check();
+        await peer.setLocalDescription(offer);check();
+        const exchange=await fetch(sessionUrl+'/sdp',{
+          method:'POST',redirect:'error',signal:controller.signal,
+          headers:{'Accept':'application/json','Content-Type':'application/json',Authorization:'Bearer '+login.gsToken},
+          body:JSON.stringify({messageType:'offer',sdp:peer.localDescription.sdp,configuration:{
+            chatConfiguration:{bytesPerSample:2,expectedClipDurationMs:20,format:{codec:'opus',container:'webm'},numChannels:1,sampleFrequencyHz:24000},
+            chat:{minVersion:1,maxVersion:1},control:{minVersion:1,maxVersion:3},input:{minVersion:1,maxVersion:8},message:{minVersion:1,maxVersion:1}
+          }})
+        });check();
+        if(!exchange.ok)throw new Error('Envio SDP xHome recusado (HTTP '+exchange.status+').');
+        nxRemotePlay.sessionStatus='negotiating';
+        nxRemotePlay.status='Aguardando resposta SDP do Xbox…';
+        if(tabId==='remote')renderBody();
+        let answer=null;
+        for(let attempt=0;attempt<8;attempt++){
+          check();
+          const res=await fetch(sessionUrl+'/sdp',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});check();
+          if(!res.ok)throw new Error('Consulta SDP recusada (HTTP '+res.status+').');
+          const payload=await res.json();check();
+          if(payload && typeof payload.exchangeResponse==='string' && payload.exchangeResponse){
+            let parsed;
+            try{parsed=JSON.parse(payload.exchangeResponse);}catch(_){throw new Error('Resposta SDP inválida.');}
+            if(parsed && parsed.sdpType==='answer' && typeof parsed.sdp==='string' && parsed.sdp){answer=parsed.sdp;break;}
+            if(parsed && parsed.status==='failed')throw new Error('Negociação SDP recusada pelo Xbox.');
+          }
+          await new Promise(function(resolve,reject){
+            const timer=setTimeout(function(){controller.signal.removeEventListener('abort',onAbort);resolve();},500);
+            function onAbort(){clearTimeout(timer);reject(new Error('Operação cancelada'));}
+            controller.signal.addEventListener('abort',onAbort,{once:true});
+            if(controller.signal.aborted)onAbort();
+          });
+        }
+        check();
+        if(!answer)throw new Error('Resposta SDP não recebida.');
+        await peer.setRemoteDescription({type:'answer',sdp:answer});check();
+        nxRemotePlay.sessionStatus='sdp-ready';
+        nxRemotePlay.status='SDP negociado. Preparando candidatos ICE…';
+        // ICE candidates may arrive before or after the SDP answer.
+        iceSend=async function(candidate){
+          check();
+          const res=await fetch(sessionUrl+'/ice',{
+            method:'POST',redirect:'error',signal:controller.signal,
+            headers:{'Content-Type':'application/json',Authorization:'Bearer '+login.gsToken},
+            body:JSON.stringify({candidate:JSON.stringify(candidate)})
+          });check();
+          if(!res.ok)throw new Error('Envio ICE recusado (HTTP '+res.status+').');
+        };
+        // Remote candidates are accepted only as valid candidate objects.
+        const iceRes=await fetch(sessionUrl+'/ice',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});check();
+        if(!iceRes.ok)throw new Error('Consulta ICE recusada (HTTP '+iceRes.status+').');
+        const iceData=await iceRes.json();check();
+        const remoteList=Array.isArray(iceData)?iceData:Array.isArray(iceData&&iceData.candidates)?iceData.candidates:[];
+        for(const entry of remoteList){
+          check();
+          let candidate=entry;
+          if(typeof candidate==='string'){try{candidate=JSON.parse(candidate);}catch(_){continue;}}
+          if(candidate && typeof candidate.candidate==='string' && candidate.candidate.length<8192){
+            await peer.addIceCandidate(candidate);check();
+          }
+        }
+        for(const candidate of localIceCandidates){await iceSend(candidate);}
+        localIceCandidates.length=0;
+        const remoteSeen=new Set(remoteList.map(function(c){return JSON.stringify(c);}));
+        let icePollCount=0;
+        const pollIce=async function(){
+          if(requestId!==nxRemotePlay.requestId || !nxRemotePlay.peer || peer.connectionState==='closed' || peer.connectionState==='failed' || peer.connectionState==='connected' || icePollCount++>=30)return;
+          try{
+            const res=await fetch(sessionUrl+'/ice',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});
+            if(requestId!==nxRemotePlay.requestId)return;
+            if(!res.ok)throw new Error('HTTP '+res.status);
+            const payload=await res.json();
+            if(requestId!==nxRemotePlay.requestId)return;
+            const entries=Array.isArray(payload)?payload:Array.isArray(payload&&payload.candidates)?payload.candidates:[];
+            for(const entry of entries){
+              const key=JSON.stringify(entry);
+              if(remoteSeen.has(key))continue;
+              remoteSeen.add(key);
+              let c=entry;
+              if(typeof c==='string'){try{c=JSON.parse(c);}catch(_){continue;}}
+              if(c && typeof c.candidate==='string' && c.candidate.length<8192)await peer.addIceCandidate(c);
+            }
+          }catch(e){
+            if(requestId===nxRemotePlay.requestId){nxRemotePlay.status='ICE: '+String(e&&e.message||e);if(tabId==='remote')renderBody();}
+          }
+          if(requestId===nxRemotePlay.requestId && !controller.signal.aborted && (peer.connectionState==='new'||peer.connectionState==='connecting'))nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
+        };
+        if(peer.connectionState==='new'||peer.connectionState==='connecting')nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
+        nxRemotePlay.sessionStatus='ice-pending';
+        nxRemotePlay.status='Candidatos ICE processados; aguardando conexão WebRTC.';
+        peer.onconnectionstatechange=function(){
+          if(requestId!==nxRemotePlay.requestId)return;
+          if(peer.connectionState==='connected'){
+            nxRemotePlay.sessionStatus='connected';
+            nxRemotePlay.status='WebRTC conectado; aguardando trilhas de mídia e integração de controles.';
+            if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
+          }else if(peer.connectionState==='failed'||peer.connectionState==='closed'){
+            nxRemotePlay.sessionStatus='disconnected';
+            nxRemotePlay.status='Conexão WebRTC '+peer.connectionState+'.';
+          }
+          if(tabId==='remote')renderBody();
+        };
+      }else{
+        nxRemotePlay.status='Xbox provisionado; WebRTC indisponível neste navegador.';
+      }
+    }catch(e){
+      if(requestId!==nxRemotePlay.requestId)return;
+      if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
+    if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
+      if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){} }
+      nxRemotePlay.mediaStream=null;
+      nxRemotePlay.sessionStatus='failed';
+      nxRemotePlay.error=controller.signal.aborted?'Tempo limite da sessão (20 s).':String(e && e.message||e);
+      nxRemotePlay.status='Falha ao criar sessão';
+    }finally{
+      clearTimeout(timeout);
+      if(requestId===nxRemotePlay.requestId){nxRemotePlay.busy=false;nxRemotePlay.abortController=null;if(tabId==='remote')renderBody();}
+    }
+  }
+  const TAB_BUILDERS = {
+    remote: function(root) {
+      root.appendChild(mk('div','font-size:19px;font-weight:750;margin-bottom:6px','Remote Play · Xbox em casa'));
+      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:14px','Consulta seus consoles vinculados usando a autenticação Xbox atual. A transmissão Remote Play ainda não está implementada.'));
+      const btn=mk('button','cursor:pointer;padding:10px 14px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.busy?'Consultando…':'Buscar meus consoles');
+      btn.disabled=nxRemotePlay.busy;btn.addEventListener('click',function(e){e.stopPropagation();nxRemoteDiscover();});root.appendChild(btn);
+      if(nxRemotePlay.busy){const cancel=mk('button','cursor:pointer;padding:10px 14px;margin-left:8px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,'Cancelar');cancel.addEventListener('click',function(e){e.stopPropagation();nxRemoteCancel();});root.appendChild(cancel);}
+      root.appendChild(mk('div','font-size:12px;margin:12px 0;color:'+(nxRemotePlay.error?C.bad:C.dim),nxRemotePlay.error||nxRemotePlay.status));
+      if(nxRemotePlay.region) root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:5px','Região xHome: '+nxRemotePlay.region));
+      if(nxRemotePlay.checkedAt) root.appendChild(mk('div','font-size:10px;color:'+C.dim+';margin-bottom:8px','Última consulta: '+new Date(nxRemotePlay.checkedAt).toLocaleTimeString()));
+      if(nxRemotePlay.attempts.length) {const details=mk('details','font-size:11px;color:'+C.dim+';margin-bottom:10px');details.appendChild(mk('summary','cursor:pointer','Diagnóstico da descoberta'));nxRemotePlay.attempts.forEach(function(a){details.appendChild(mk('div','padding:3px 0',a));});root.appendChild(details);}
+      if(nxRemotePlay.consoles.length){
+        const quality=mk('select','padding:8px;border-radius:8px;background:'+C.panel+';color:'+C.text+';border:1px solid '+C.line+';margin-bottom:9px');
+        ['720p','1080p','1080p-hq'].forEach(function(q){const o=document.createElement('option');o.value=q;o.textContent=q==='1080p-hq'?'1080p (HQ)':q;quality.appendChild(o);});
+        quality.value=nxRemotePlay.resolution;quality.addEventListener('change',function(){nxRemotePlay.resolution=quality.value;});
+        root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:5px','Qualidade desejada (para futura sessão)'));root.appendChild(quality);
+      }
+      nxRemotePlay.consoles.forEach(function(c){const box=mk('div','padding:10px;margin-bottom:7px;border-radius:9px;border:1px solid '+C.line);
+        box.appendChild(mk('div','font-weight:700',c.name));box.appendChild(mk('div','font-size:11px;color:'+C.dim,'Modelo: '+c.type+' · Estado: '+c.state));
+        const select=mk('button','cursor:pointer;padding:8px 12px;margin-top:7px;border-radius:8px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.selectedId===c.id?'Selecionado':'Selecionar console');
+        select.addEventListener('click',function(e){e.stopPropagation();nxRemotePlay.selectedId=c.id;renderBody();});box.appendChild(select);root.appendChild(box);});
+      if(nxRemotePlay.mediaStream){
+        if(!nxRemotePlay.videoElement){
+          const video=document.createElement('video');
+          video.autoplay=true;video.playsInline=true;video.controls=true;video.style.cssText='display:block;width:100%;max-height:48vh;margin-top:12px;background:#000;border-radius:10px';
+          nxRemotePlay.videoElement=video;
+        }
+        nxRemotePlay.videoElement.srcObject=nxRemotePlay.mediaStream;
+        root.appendChild(nxRemotePlay.videoElement);
+        const stop=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,'Encerrar reprodução local');
+        stop.addEventListener('click',function(e){e.stopPropagation();nxRemoteStop();});root.appendChild(stop);
+      }
+      if(nxRemotePlay.selectedId) {
+        const start=mk('button','cursor:pointer;padding:10px 14px;margin-top:10px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,'Iniciar sessão xHome (experimental)');
+        start.disabled=nxRemotePlay.busy;
+        start.addEventListener('click',function(e){e.stopPropagation();nxRemoteStartSession();});
+        root.appendChild(start);
+        root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-top:8px','A criação da sessão não inicia vídeo nem controles. WebRTC está pendente.'));
+        if(nxRemotePlay.sessionStatus==='provisioned')root.appendChild(mk('div','font-size:11px;color:'+C.dim,'Xbox provisionado; aguardando integração WebRTC.'));
+      }
+    },
+    overview: function (root) {
+      const intro = mk('div','font-size:19px;font-weight:750;letter-spacing:-.025em;margin:0 0 3px','Central de controle');
+      root.appendChild(intro);
+      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:12px','Status e ajustes rápidos primeiro. Todas as configurações continuam acessíveis abaixo.'));
+      // Navegação compacta: opções existentes, sem duplicar gerenciadores ou controles.
+      const touchQuick = mk('button','cursor:pointer;width:100%;text-align:left;padding:12px;margin:4px 0 12px;border-radius:10px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,
+        'HUD de teclado e mouse por toque  ›');
+      touchQuick.addEventListener('click',function (e) {
+        e.stopPropagation();
+        if (!window.NimboTouch || typeof window.NimboTouch.open !== 'function') {
+          toast('HUD indisponível; verifique a instalação'); return;
+        }
+        setOpen(false,true);
+        window.NimboTouch.open();
+      });
+      root.appendChild(touchQuick);
+      const nav = mk('div','display:flex;flex-direction:column;gap:5px;margin:12px 0');
+      const navGroups = [
+        { title: 'Jogo e controles', ids: ['stream','controls'] },
+        { title: 'Áudio e acessórios', ids: ['audio','voice'] },
+        { title: 'Conexão e sistema', ids: ['region','remote','advanced'] }
+      ];
+      navGroups.forEach(function (g) {
+        nav.appendChild(mk('div','font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:'+C.dim+';margin:8px 0 2px',g.title));
+        g.ids.forEach(function (id) {
+          const t = TABS.find(function (item) { return item.id === id; });
+          if (!t) return;
+          const btn = mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 11px;min-height:44px;border-radius:9px;background:rgba(255,255,255,.035);border:1px solid '+C.line+';color:'+C.text);
+          btn.setAttribute('aria-label','Abrir '+t.label);
+          btn.appendChild(ico(ICONS[t.id] || ICONS.advanced,17));
+          const labels = mk('span','flex:1;min-width:0;display:flex;flex-direction:column');
+          labels.appendChild(mk('span','font-size:12px;font-weight:650',t.label));
+          labels.appendChild(mk('span','font-size:10px;color:'+C.dim,t.desc));
+          btn.appendChild(labels);
+          btn.appendChild(mk('span','font-size:16px;color:'+C.dim,'›'));
+          btn.addEventListener('click',function (e) { e.stopPropagation(); setTab(t.id); });
+          nav.appendChild(btn);
+        });
+      });
+      const ban = mk('div', 'display:flex;align-items:center;gap:11px;padding:12px;border-radius:12px;border:1px solid ' + C.line + ';background:' + C.panel);
+      const bdot = mk('span', 'width:10px;height:10px;border-radius:50%;flex:0 0 auto');
+      const btxt = mk('div', 'min-width:0;flex:1');
+      const bt = mk('div', 'font-size:14px;font-weight:700');
+      const bs = mk('div', 'font-size:11px;color:' + C.dim + ';margin-top:2px;line-height:1.4');
+      btxt.appendChild(bt); btxt.appendChild(bs);
+      ban.appendChild(bdot); ban.appendChild(btxt);
+      root.appendChild(ban);
+      liveFns.push(function () {
+        const s = linkState();
+        bdot.style.background = s.color;
+        bdot.style.boxShadow = '0 0 0 4px ' + (s.color.charAt(0) === '#' ? s.color + '33' : 'transparent');
+        bt.textContent = s.text;
+        bs.textContent = s.sub;
+      });
+
+      const grid = mk('div', 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px');
+      grid.appendChild(statTile('Perda', function () {
+        const l = curLoss();
+        return { text: fmtN(l, '%', 1), color: lossColor(l) };
+      }));
+      grid.appendChild(statTile('RTT', function () {
+        const r = S.qos && S.qos.rtt;
+        return { text: fmtN(r, ' ms'), color: r == null ? C.dim : (r < 100 ? C.text : (r < 160 ? C.warn : C.bad)) };
+      }));
+      grid.appendChild(statTile('FPS', function () {
+        const q = S.qos;
+        return { text: fmtN(q && (q.fps > 0 ? q.fps : q.decodedFps)), color: q ? C.text : C.dim };
+      }));
+      grid.appendChild(statTile('Bitrate', function () {
+        const q = S.qos;
+        return { text: q && q.kbps != null ? fmtN(q.kbps / 1000, ' Mb', 1) : '—', color: q ? C.text : C.dim };
+      }));
+      grid.appendChild(statTile('Resolução', function () {
+        const q = S.qos;
+        return { text: q && q.h ? q.h + 'p' : '—', color: q ? C.text : C.dim };
+      }));
+      grid.appendChild(statTile('Jitter', function () {
+        const q = S.qos;
+        return { text: fmtN(q && q.jitter, ' ms'), color: q ? C.text : C.dim };
+      }));
+      root.appendChild(grid);
+
+      const al = mk('div', 'display:none;margin-top:10px;white-space:pre-line;padding:9px 11px;border-radius:10px;font-size:11.5px;' +
+        'line-height:1.5;border:1px solid rgba(210,153,34,.35);background:rgba(210,153,34,.1);color:#e3b341');
+      root.appendChild(al);
+      liveFns.push(function () {
+        const msgs = regionDiffs();
+        const h = hintOne(S.qos, curLoss());
+        if (h) msgs.push(h);
+        al.textContent = msgs.map(function (m) { return '⚠ ' + m; }).join('\n');
+        al.style.display = msgs.length ? 'block' : 'none';
+      });
+
+      const pg = group('Perfis rápidos', 'Aplicam qualidade e limite de bitrate de uma vez. Valem na próxima partida.');
+      const row = mk('div', 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 0');
+      PRESETS.forEach(function (p) {
+        const on = getPref(LS_RES, 'auto') === p.res && getPref(LS_BITRATE, 'auto') === p.br;
+        const b = mk('button', 'all:unset;box-sizing:border-box;cursor:pointer;text-align:center;padding:9px 4px;border-radius:10px;' +
+          'border:1px solid ' + (on ? C.accent : C.line) + ';background:' + (on ? 'rgba(74,222,128,.12)' : 'transparent') +
+          ';-webkit-tap-highlight-color:transparent');
+        b.appendChild(mk('div', 'font-size:12.5px;font-weight:700;color:' + (on ? C.accent : C.text), p.name));
+        b.appendChild(mk('div', 'font-size:10px;color:' + C.dim + ';margin-top:2px', p.sub));
+        b.setAttribute('role', 'button');
+        b.addEventListener('pointerdown', stopEv);
+        b.addEventListener('click', function (e) {
+          e.stopPropagation(); e.preventDefault();
+          setPref(LS_RES, p.res); setPref(LS_BITRATE, p.br);
+          S.lastPreset = p.name;
+          pushLog('quality', 'Perfil ' + p.name + ' selecionado; aplicar na próxima partida');
+          renderBody();
+          toast('Perfil ' + p.name + ' · vale na próxima partida');
+        });
+        row.appendChild(b);
+      });
+      pg.card.appendChild(row);
+      root.appendChild(pg.root);
+
+      const cg = group('Configuração atual');
+      cg.add(infoRow('Data center', function () { return srvBtnLabel(); }));
+      cg.add(infoRow('Qualidade', function () { return resCfg().label; }));
+      cg.add(infoRow('Limite de bitrate', function () { return bitrateCfg().label; }));
+      cg.add(infoRow('Rede', function () { return v4on() ? 'IPv4 forçado' : 'IPv4 + IPv6'; }));
+      cg.add(infoRow('Região da loja', function () { return cfg().name; }));
+      root.appendChild(cg.root);
+      root.appendChild(nav);
+    },
+
+    stream: function (root) {
+      const healthGroup = group('Monitor de transmissão', 'Métricas reais do WebRTC e etapa de criação da sessão. Atualiza enquanto o painel estiver aberto.');
+      healthGroup.add(infoRow('Estado da sessão', function () {
+        const h = nxSessionHealth();
+        const labels = { streaming:'Recebendo vídeo', 'not-observed':'Sem tentativa capturada',
+          'network-error':'Falha de rede', 'access-rejected':'Acesso rejeitado',
+          'rate-limited':'Limite de requisições', 'server-error':'Erro do servidor',
+          'request-rejected':'Requisição rejeitada', 'session-accepted':'Sessão aceita', pending:'Aguardando' };
+        return labels[h.state] || h.state;
+      }));
+      const healthDetail = setRow('Diagnóstico', '', null, true);
+      healthGroup.add(healthDetail);
+      liveDesc(healthDetail, function () { return nxSessionHealth().explanation; });
+      healthGroup.add(infoRow('FPS recebido', function () {
+        const q = S.qos;
+        return q && (q.decodedFps != null || q.fps != null) ? String(q.decodedFps || q.fps || 0) : '—';
+      }));
+      healthGroup.add(infoRow('Bitrate recebido', function () {
+        const q = S.qos;
+        return q && Number.isFinite(q.kbps) ? (q.kbps / 1000).toFixed(2) + ' Mbps' : '—';
+      }));
+      healthGroup.add(infoRow('RTT WebRTC', function () {
+        return S.qos && Number.isFinite(S.qos.rtt) ? S.qos.rtt + ' ms' : '—';
+      }, 'Não equivale ao ping interno do jogo.'));
+      healthGroup.add(infoRow('Jitter', function () {
+        return S.qos && Number.isFinite(S.qos.jitter) ? S.qos.jitter + ' ms' : '—';
+      }));
+      healthGroup.add(infoRow('Perda de pacotes', function () {
+        const q = S.qos;
+        const n = q && (Number.isFinite(q.instLoss) ? q.instLoss : q.loss);
+        return Number.isFinite(n) ? n.toFixed(1) + '%' : '—';
+      }));
+      healthGroup.add(infoRow('Decodificação', function () {
+        return S.qos && Number.isFinite(S.qos.decodeMs) ? S.qos.decodeMs + ' ms/quadro' : '—';
+      }));
+      healthGroup.add(infoRow('Quadros descartados', function () {
+        return S.qos && Number.isFinite(S.qos.dropped) ? String(S.qos.dropped) : '—';
+      }));
+      healthGroup.add(infoRow('Codec', function () { return S.qos && S.qos.codec || '—'; }));
+      root.appendChild(healthGroup.root);
+      root.appendChild(note('Alterações valem na próxima partida — não é preciso recarregar a página.'));
+
+      const g1 = group('Data center');
+      const srvOpts = Object.keys(SERVERS).map(function (k) {
+        return { k: k, label: SERVERS[k].label + (k === 'auto' && S.serverActual ? ' · ' + S.serverActual : '') };
+      });
+      const rs = setRow('Servidor de streaming', 'Fixa o data center usado ao iniciar o jogo.',
+        chips(srvOpts, getPref(LS_SRV, 'auto'), function (k) {
+          setPref(LS_SRV, k);
+          S.serverActual = '';
+          S.serverPin = SERVERS[k].name;
+          renderBody();
+        }), true);
+      g1.add(rs);
+      g1.add(setRow('Escolher o mais rápido', 'No modo Auto, usa o data center com menor RTT medido nas últimas 24 h (mínimo 5 amostras).',
+        toggle(getPref(LS_AUTO_BEST, '0') === '1', function () {
+          const enabled = getPref(LS_AUTO_BEST, '0') === '1';
+          setPref(LS_AUTO_BEST, enabled ? '0' : '1');
+          pushLog('region', 'Auto RTT ' + (enabled ? 'desativado' : 'ativado'));
+          renderBody();
+        }, 'Escolher o data center mais rápido')));
+      root.appendChild(g1.root);
+
+      const g2 = group('Qualidade de vídeo');
+      g2.add(setRow('Perfil de qualidade', 'O perfil HQ usa a negociação Tizen e pode interferir no controle virtual (toque). A resolução entregue aparece em Geral.',
+        chips(Object.keys(RES_MODES).map(function (k) { return { k: k, label: RES_MODES[k].label }; }),
+          getPref(LS_RES, 'auto') === 'r1080' ? 'auto' : getPref(LS_RES, 'auto'), function (k) {
+            setPref(LS_RES, k); renderBody();
+          }), true));
+      g2.add(setRow('Limite de bitrate', 'Teto solicitado via SDP (experimental). Não aumenta o bitrate entregue pelo servidor.',
+        chips(Object.keys(BITRATE_MODES).map(function (k) {
+          return { k: k, label: BITRATE_MODES[k].label.replace(' (limite)', '') };
+        }), getPref(LS_BITRATE, 'auto'), function (k) { setPref(LS_BITRATE, k); renderBody(); }), true));
+      root.appendChild(g2.root);
+
+      const g3 = group('Rede');
+      g3.add(setRow('Forçar IPv4', 'Remove candidatos IPv6 do ICE. Útil quando há perda alta ou rota instável.',
+        toggle(v4on(), function () { toggleV4(); renderBody(); }, 'Forçar IPv4')));
+      root.appendChild(g3.root);
+    },
+
+    media: function (root) {
+      const g1 = group('Áudio');
+      const sl = document.createElement('input');
+      sl.type = 'range'; sl.min = '0'; sl.max = '100'; sl.step = '5'; sl.value = '100';
+      sl.setAttribute('aria-label', 'Volume do streaming');
+      sl.style.cssText = 'width:100%;accent-color:' + C.accent + ';margin:0;height:28px';
+      sl.addEventListener('pointerdown', function (e) { e.stopPropagation(); sliderDragging = true; });
+      sl.addEventListener('input', function () {
+        const v = activeStreamAudio();
+        if (!v) return;
+        const n = Number(sl.value) / 100;
+        v.volume = n; v.muted = false;
+        setPref(LS_VOLUME, String(n));
+        pct.textContent = sl.value + '%';
+      });
+      const pct = mk('span', 'font-size:12px;font-weight:600;min-width:38px;text-align:right;font-variant-numeric:tabular-nums', '—');
+      const ctl = mk('div', 'display:flex;align-items:center;gap:10px');
+      ctl.appendChild(sl); ctl.appendChild(pct);
+      const volRow = setRow('Volume do jogo', '', ctl, true);
+      g1.add(volRow);
+      liveDesc(volRow, function () { return activeStreamAudio() ? '' : 'Saída de áudio do streaming não encontrada; confira volume do sistema e do xCloud.'; });
+      liveFns.push(function () {
+        const v = activeStreamAudio();
+        sl.disabled = !v;
+        sl.style.opacity = v ? '1' : '.45';
+        if (v && !sliderDragging) {
+          sl.value = String(v.muted ? 0 : Math.round(v.volume * 100));
+          pct.textContent = sl.value + '%';
+        } else if (!v) pct.textContent = '—';
+      });
+      const muteLbl = mk('span', '', 'Silenciar');
+      const muteBtn = actBtn('Silenciar', function () { toggleMute(); }, 'ghost');
+      g1.add(setRow('Mudo', 'Silencia ou reativa o áudio do streaming.', muteBtn));
+      liveFns.push(function () {
+        const v = activeStreamAudio();
+        muteBtn.textContent = v && v.muted ? 'Reativar som' : 'Silenciar';
+        muteBtn.style.opacity = v ? '1' : '.45';
+      });
+      const audioOutputs=document.createElement('select');
+      audioOutputs.setAttribute('aria-label','Dispositivo de saida');
+      audioOutputs.style.cssText='width:100%;background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:7px';
+      const outputStatus=mk('span','font-size:11px','');
+      const refreshOutputs=async function(){
+        audioOutputs.replaceChildren();
+        const def=document.createElement('option');def.value='';def.textContent='Padrao do sistema (inclui Bluetooth)';audioOutputs.appendChild(def);
+        const status=nxAudioOutputSupport();
+        audioOutputs.disabled=!status.canRoute;
+        outputStatus.textContent=status.canRoute
+          ? 'Selecao manual disponivel. O fone Bluetooth pode aparecer apenas como saida padrao.'
+          : 'Saida controlada pelo sistema operacional. No Android, selecione o fone Bluetooth nas configuracoes do celular.';
+        if(status.canRoute && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices){
+          try{
+            const devices=await navigator.mediaDevices.enumerateDevices();
+            devices.filter(function(d){return d.kind==='audiooutput'&&d.deviceId;}).forEach(function(d,i){
+              const opt=document.createElement('option');opt.value=d.deviceId;opt.textContent=d.label||('Saida '+(i+1));audioOutputs.appendChild(opt);
+            });
+          }catch(e){S.lastErr='Listar saidas: '+String(e&&e.name||e);}
+        }
+        const stored=getPref(LS_AUDIO_OUTPUT,'');
+        audioOutputs.value=Array.from(audioOutputs.options).some(function(o){return o.value===stored;})?stored:'';
+      };
+      audioOutputs.addEventListener('change',function(){setPref(LS_AUDIO_OUTPUT,audioOutputs.value);applyAudioOutput();});
+      g1.add(setRow('Saida de audio','No Android, fones Bluetooth normalmente usam a saida padrao do sistema.',audioOutputs,true));
+      g1.add(setRow('Roteamento', 'Status de selecao de dispositivo.',outputStatus,true));
+      g1.add(setRow('Dispositivos','Atualiza saidas disponibilizadas pelo navegador.',actBtn('Atualizar saidas',refreshOutputs,'ghost')));
+      refreshOutputs();
+            const presets = {
+        original: [0,0,0,0,0,0,0,0,0,0], fps: [-3,-2,-1,0,1,2,3,3,1,0],
+        corrida: [3,2,1,0,0,0,1,1,1,0], cinema: [3,2,1,0,0,1,2,2,1,1],
+        musica: [2,1,0,0,0,0,0,1,1,2], dialogos: [-3,-2,-1,0,2,3,3,2,0,-1]
+      };
+      const fx = document.createElement('input'); fx.type = 'checkbox'; fx.checked = getPref(LS_AUDIO_FX, '0') === '1';
+      fx.addEventListener('change', function () { setPref(LS_AUDIO_FX, fx.checked ? '1' : '0'); applyAudioProcessing(); });
+      g1.add(setRow('Processamento', 'Desligado por padrão. Habilita os efeitos locais.', fx));
+      const profile = document.createElement('select'); profile.style.cssText = 'width:100%;background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:7px';
+      Object.keys(presets).concat(['personalizado']).forEach(function (k) { const o = document.createElement('option'); o.value = k; o.textContent = k[0].toUpperCase() + k.slice(1); profile.appendChild(o); });
+      profile.value = getPref(LS_AUDIO_PRESET, 'original');
+      profile.addEventListener('change', function () {
+        setPref(LS_AUDIO_PRESET, profile.value);
+        if (presets[profile.value]) setPref(LS_AUDIO_BANDS, JSON.stringify(presets[profile.value]));
+        setPref(LS_AUDIO_FX, profile.value === 'original' ? '0' : '1'); applyAudioProcessing(); renderBody();
+      });
+      g1.add(setRow('Perfil de áudio', 'FPS, corrida, cinema, música, diálogos e personalizado.', profile, true));
+      g1.add(setRow('Ativar audio','Executa AudioContext.resume por clique direto. Necessario em navegadores com bloqueio de reproducao automatica.',
+        actBtn('Ativar processamento',function(){
+          setPref(LS_AUDIO_FX,'1');
+          applyAudioProcessing();
+          if(nxAudioGraph){
+            Promise.resolve(nxAudioGraph.ctx.resume()).then(function(){
+              toast(nxAudioGraph.ctx.state==='running'?'Audio ativo':'Audio ainda suspenso');
+              renderBody();
+            }).catch(function(e){S.lastErr='Audio: '+String(e&&e.message||e);renderBody();});
+          }else{toast('Fluxo de audio indisponivel');renderBody();}
+        },'ghost')));
+
+      const eq = mk('div', 'display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;width:100%');
+      const values = getAudioBands();
+      [32,64,125,250,500,1000,2000,4000,8000,16000].forEach(function (hz,i) {
+        const label = mk('label', 'display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px');
+        label.appendChild(mk('span','',hz >= 1000 ? hz / 1000 + 'k' : String(hz)));
+        const range = document.createElement('input'); range.type = 'range'; range.min = '-12'; range.max = '12'; range.step = '1'; range.value = String(values[i]); range.style.width = '100%';
+        const value = mk('span','',range.value + 'dB');
+        range.addEventListener('input',function () { values[i] = Number(range.value); value.textContent = range.value + 'dB'; setPref(LS_AUDIO_BANDS,JSON.stringify(values)); setPref(LS_AUDIO_PRESET,'personalizado'); setPref(LS_AUDIO_FX,'1'); applyAudioProcessing(); });
+        label.appendChild(range); label.appendChild(value); eq.appendChild(label);
+      });
+      g1.add(setRow('Equalizador 10 bandas','32 Hz a 16 kHz; -12 a +12 dB.',eq,true));
+      [['Compressor',LS_AUDIO_COMP,'Reduz a dinâmica de volume.'],['Normalização',LS_AUDIO_NORMAL,'Compressão leve para suavizar diferenças de volume.'],
+       ['Limitador',LS_AUDIO_LIMIT,'Reduz picos, sem garantir um limite absoluto.'],['Destacar diálogos',LS_AUDIO_DIALOG,'Realça frequências de voz, sem isolar falas.'],
+       ['Mono',LS_AUDIO_MONO,'Combina os canais esquerdo e direito.']].forEach(function (cfg) {
+        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = getPref(cfg[1],'0') === '1';
+        check.addEventListener('change',function () { setPref(cfg[1],check.checked ? '1' : '0'); setPref(LS_AUDIO_FX,'1'); applyAudioProcessing(); });
+        g1.add(setRow(cfg[0],cfg[2],check));
+      });
+      const balance = document.createElement('input'); balance.type = 'range'; balance.min = '-100'; balance.max = '100'; balance.step = '5'; balance.value = getPref(LS_AUDIO_BALANCE,'0'); balance.style.width = '100%';
+      balance.addEventListener('input',function () { setPref(LS_AUDIO_BALANCE,balance.value); setPref(LS_AUDIO_FX,'1'); applyAudioProcessing(); });
+      g1.add(setRow('Balanço L/R','Esquerda (-100), centro (0), direita (+100).',balance,true));
+      g1.add(setRow('Áudio original','Desativa os efeitos e mantém a reprodução sem equalização.',actBtn('Restaurar áudio original',function () { setPref(LS_AUDIO_FX,'0'); setPref(LS_AUDIO_PRESET,'original'); applyAudioProcessing(); renderBody(); },'ghost')));
+      const diagnosis = setRow('Diagnóstico','Estado da reprodução e do processamento.',mk('span','font-size:11px','Áudio local'));
+      g1.add(diagnosis); liveDesc(diagnosis,function () { const m = activeStreamAudio(); return !m ? 'Fluxo não detectado' : (m.paused ? 'Pausado' : 'Reproduzindo') + ' · ' + (m.muted ? 'Mudo' : Math.round(m.volume*100)+'%') + ' · ' + (nxAudioGraph && nxAudioGraph.media === m ? 'Web Audio: '+nxAudioGraph.ctx.state+(getPref(LS_AUDIO_FX,'0')==='1'?' · EQ ligado':' · bypass') : 'Web Audio desconectado'); });
+      const signalRow=setRow('Sinal do equalizador','Mede o audio recebido pelo Web Audio, sem depender do nome do fone Bluetooth.',mk('span','font-size:11px','Monitoramento local'));
+      g1.add(signalRow);
+      liveDesc(signalRow,function(){return nxAudioSignalStatus();});
+      g1.add(setRow('Áudio espacial','Depende do jogo, sistema e dispositivo; sem controle universal.',mk('span','font-size:11px','Sistema / jogo')));
+      g1.add(setRow('Chat x jogo','Controle independente exige fluxos separados do xCloud.',mk('span','font-size:11px','Não disponível em fluxo misto')));
+      root.appendChild(g1.root);
+
+      const g2 = group('Imagem', 'Calibracao local por filtro CSS unico. Ajustes moderados para preservar sombras e realces.');
+      g2.add(setRow('Perfil visual', 'Original restaura o video; os demais perfis substituem o filtro, sem acumular efeitos.',
+        chips([{k:'original',label:'Original'},{k:'balanced',label:'Equilibrado'},{k:'vivid',label:'Vivido'},{k:'custom',label:'Manual'}],
+          getPref(LS_VIDEO_PROFILE,'original'),function(k){
+            setPref(LS_VIDEO_PROFILE,k);applyVideoAdjustments(activeStreamVideo());renderBody();
+          }),true));
+      const cal=nxVideoCalibration();
+      function calibrationSlider(label,key,value,min,max,help){
+        const control=mk('div','display:flex;align-items:center;gap:10px;min-width:150px');
+        const slider=mk('input','flex:1;min-width:90px;accent-color:'+C.accent);
+        slider.type='range';slider.min=String(min);slider.max=String(max);slider.step='1';slider.value=String(value);
+        const readout=mk('span','font-variant-numeric:tabular-nums;min-width:40px;text-align:right',String(value)+'%');
+        slider.addEventListener('input',function(){
+          readout.textContent=slider.value+'%';
+          if(getPref(LS_VIDEO_PROFILE,'original')!=='custom'){
+            const base=nxVideoCalibration();
+            setPref(LS_VIDEO_BRIGHTNESS,String(base.brightness));
+            setPref(LS_VIDEO_CONTRAST,String(base.contrast));
+            setPref(LS_VIDEO_SATURATION,String(base.saturation));
+          }
+          setPref(LS_VIDEO_PROFILE,'custom');
+          setPref(key,slider.value);
+          applyVideoAdjustments(activeStreamVideo());
+        });
+        slider.addEventListener('change',function(){renderBody();});
+        control.appendChild(slider);control.appendChild(readout);
+        g2.add(setRow(label,help,control,true));
+      }
+      calibrationSlider('Brilho',LS_VIDEO_BRIGHTNESS,cal.brightness,85,115,'Controla a luminosidade geral. Nao recupera detalhes ja perdidos no stream.');
+      calibrationSlider('Contraste',LS_VIDEO_CONTRAST,cal.contrast,85,115,'Ajusta a separacao de claros e escuros. Evite extremos para nao estourar brancos ou fechar pretos.');
+      calibrationSlider('Saturacao',LS_VIDEO_SATURATION,cal.saturation,75,125,'Ajusta a intensidade das cores sem alterar a resolucao.');
+      g2.add(setRow('Restaurar imagem','Remove apenas o filtro NX e volta a configuracao original.',
+        actBtn('Restaurar original',function(){
+          setPref(LS_VIDEO_PROFILE,'original');applyVideoAdjustments(activeStreamVideo());renderBody();
+        },'ghost')));
+      const gpuGroup=group('Clarity Boost experimental','WebGL2: curvas simples de sombras e realces. Pode aumentar consumo e latencia; se falhar, retorna ao video nativo.');
+      gpuGroup.add(setRow('Processamento GPU','Desativado por padrao. Ative somente durante uma partida.',
+        chips([{k:'0',label:'Desligado'},{k:'1',label:'WebGL2'}],getPref(LS_NX_GPU,'0'),function(k){
+          setPref(LS_NX_GPU,k);nxGpuSync();renderBody();
+        }),true));
+      gpuGroup.add(setRow('Nitidez','Ative WebGL2. Escolha o filtro de nitidez local.',
+        chips([{k:'off',label:'Original'},{k:'usm',label:'Unsharp'},{k:'cas',label:'CAS'}],getPref('nx.gpu.clarity.mode.v1','off'),function(k){setPref('nx.gpu.clarity.mode.v1',k);renderBody();}),true));
+      const clarityRow=mk('div','display:flex;align-items:center;gap:8px');
+      const claritySlider=mk('input','flex:1;accent-color:'+C.accent);claritySlider.type='range';claritySlider.min='0';claritySlider.max='100';claritySlider.step='5';
+      claritySlider.value=getPref('nx.gpu.clarity.strength.v1','35');
+      const clarityLabel=mk('span','min-width:38px;text-align:right',claritySlider.value+'%');
+      claritySlider.addEventListener('input',function(){clarityLabel.textContent=claritySlider.value+'%';setPref('nx.gpu.clarity.strength.v1',claritySlider.value);});
+      clarityRow.appendChild(claritySlider);clarityRow.appendChild(clarityLabel);
+      gpuGroup.add(setRow('Intensidade','Comece em 20–40%; excesso pode criar halos.',clarityRow,true));
+      function gpuToneSlider(label,key){
+        const row=mk('div','display:flex;align-items:center;gap:8px');
+        const slider=mk('input','flex:1;accent-color:'+C.accent);slider.type='range';slider.min='-100';slider.max='100';slider.step='1';
+        slider.value=String(Math.round((Number(getPref(key,'0'))||0)*100));
+        const value=mk('span','min-width:35px;text-align:right',slider.value);
+        slider.addEventListener('input',function(){value.textContent=slider.value;setPref(key,String(Number(slider.value)/100));});
+        row.appendChild(slider);row.appendChild(value);
+        gpuGroup.add(setRow(label,'Curva tonal local, sem alterar o stream original.',row,true));
+      }
+      gpuToneSlider('Sombras',LS_NX_SHADOWS);
+      gpuToneSlider('Realces',LS_NX_HIGHLIGHTS);
+      gpuGroup.add(setRow('Restaurar GPU','Desativa shader e remove a camada de apresentacao.',
+        actBtn('Desativar GPU',function(){setPref(LS_NX_GPU,'0');nxGpuSync();renderBody();},'ghost')));
+      root.appendChild(gpuGroup.root);
+      const gVisual=group('Biblioteca de perfis', 'Compartilhe ajustes NX em JSON. Importacao validada e limitada a 16 KB; nenhuma instrucao de codigo e executada.');
+      gVisual.add(setRow('Salvar configuracao','Armazena ate 24 perfis neste navegador.',
+        actBtn('Salvar perfil',function(){
+          const name=prompt('Nome do perfil visual (ate 64 caracteres):','Meu perfil NX');
+          if(name===null)return;
+          try{nxVisualSave(name);toast('Perfil salvo');renderBody();}
+          catch(e){toast(String(e.message||e));}
+        },'ghost')));
+      gVisual.add(setRow('Exportar configuracao','Gera um arquivo JSON portatil.',
+        actBtn('Exportar JSON',function(){
+          const cal=nxVideoCalibration();
+          nxVisualExport({format:NX_VISUAL_FORMAT,version:1,name:getPref(LS_VISUAL_ACTIVE,'Meu perfil NX'),
+            author:'Local',settings:{brightness:cal.brightness,contrast:cal.contrast,saturation:cal.saturation}});
+        },'ghost')));
+      const importInput=mk('input','max-width:100%;font-size:11px');
+      importInput.type='file';importInput.accept='.json,application/json';
+      importInput.addEventListener('change',function(){if(importInput.files&&importInput.files[0])nxVisualImport(importInput.files[0]);});
+      gVisual.add(setRow('Importar JSON','Aceita apenas perfis NX v1, sem scripts nem URLs externas.',importInput,true));
+      const saved=nxVisualLibrary();
+      if(saved.length){
+        const options=saved.map(function(p,i){return {k:String(i),label:p.name};});
+        gVisual.add(setRow('Perfis salvos','Selecione um perfil local para aplicar.',
+          chips(options,'',function(k){nxVisualApply(saved[Number(k)]);renderBody();}),true));
+      }
+      root.appendChild(gVisual.root);
+      g2.add(setRow('Enquadramento', 'Original preserva o site; Conter evita cortes; Preencher ocupa a tela, podendo cortar bordas.',
+        chips([{ k: 'original', label: 'Original' }, { k: 'contain', label: 'Conter' }, { k: 'cover', label: 'Preencher' }], getPref(LS_VIDEO_FIT, 'original'), function (k) {
+          setPref(LS_VIDEO_FIT, k); applyVideoFit(activeStreamVideo()); renderBody();
+        }), true));
+      g2.add(setRow('Tela cheia', 'Solicita a Fullscreen API apenas por ação do usuário.',
+        actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'ghost')));
+      g2.add(setRow('Economia de recursos', 'Desativa filtros visuais locais enquanto a aba estiver oculta; não altera o stream ou FPS do servidor.',
+        chips([{ k: '1', label: 'Ativa' }, { k: '0', label: 'Desativada' }], getPref(LS_VIDEO_ECO, '1'), function (k) {
+          setPref(LS_VIDEO_ECO, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
+        }), true));
+      root.appendChild(g2.root);
+
+      const g3 = group('Captura');
+      g3.add(setRow('Capturar quadro', 'Salva o quadro atual do jogo como imagem PNG.',
+        actBtn('Capturar', function () { captureStreamFrame(); }, 'primary')));
+      root.appendChild(g3.root);
+    },
+
+    controls: function (root) {
+      const g1 = group('Dispositivo');
+      const r1 = setRow('Perfil do dispositivo', '', chips([
+        { k: 'auto', label: 'Auto' }, { k: 'desktop', label: 'Desktop' }, { k: 'mobile', label: 'Celular' }, { k: 'dex', label: 'DeX' }
+      ], getPref(LS_DEVICE_PROFILE, 'auto'), function (k) {
+        setPref(LS_DEVICE_PROFILE, k);
+        pushLog('device', 'Perfil local ' + k + ' (não altera User-Agent nem controles)');
+        renderBody();
+      }), true);
+      g1.add(r1);
+      liveDesc(r1, function () { return 'Detectado: ' + S.deviceDetected + '. Não altera o User-Agent nem os controles.'; });
+      g1.add(setRow('Aplicar perfil', 'Ajusta qualidade e limite de bitrate conforme o perfil (próxima sessão).',
+        actBtn('Aplicar', function () { applyDeviceProfile(); renderBody(); toast('Perfil aplicado · próxima partida'); }, 'primary')));
+      root.appendChild(g1.root);
+
+      const g2 = group('Entradas detectadas');
+      g2.add(infoRow('Tela de toque', function () {
+        const c = inputCapabilities();
+        return (c.touch ? 'Sim' : 'Não') + ' · ' + c.maxTouchPoints + ' pontos';
+      }));
+      g2.add(infoRow('Controles conectados', function () { return inputCapabilities().gamepadsConnected; }));
+      g2.add(infoRow('Mouse capturado', function () { return document.pointerLockElement ? 'Sim' : 'Não'; },
+        'Com teclado físico, F9 libera ou recaptura o mouse durante a partida.'));
+      g2.add(infoRow('Controles com atividade', function () {
+        return nxGamepadMonitor.active + ' / ' + nxGamepadMonitor.connected;
+      }, 'Leitura de botões e eixos sem alterar entradas enviadas ao jogo.'));
+      g2.add(infoRow('Última alteração de conexão', function () {
+        return nxGamepadMonitor.lastChange ? new Date(nxGamepadMonitor.lastChange).toLocaleTimeString() : '—';
+      }));
+      g2.add(infoRow('Falhas de leitura', function () { return String(nxGamepadMonitor.errors); }));
+      g2.add(infoRow('Fontes ativas (2 s)', function () {
+        const r = nxInputSourcesReport();
+        return r.recent.length ? r.recent.join(', ') : 'Nenhuma';
+      }, 'Observação passiva de toque, mouse, teclado e controle.'));
+      g2.add(infoRow('Sobreposições toque/mouse', function () {
+        return String(nxInputSources.simultaneous);
+      }, 'Toques podem gerar eventos de mouse sintéticos; não indica necessariamente um problema.'));
+      root.appendChild(g2.root);
+
+      const coordination = group('Coordenação de entradas — diagnóstico',
+        'Prioridade visual das fontes. Não bloqueia toque, mouse, teclado ou controle.');
+      coordination.add(setRow('Preferência de fonte', 'Automático sugere a fonte com atividade mais recente nos últimos 2 segundos.',
+        chips(Object.keys(nxCoordModes).map(function (k) {
+          return { k: k, label: nxCoordModes[k] };
+        }), nxCoordMode(), function (k) {
+          setPref(NX_INPUT_COORD_KEY, k);
+          renderBody();
+        }), true));
+      coordination.add(infoRow('Fonte sugerida', function () {
+        const state = nxCoordState();
+        return nxCoordModes[state.suggested] || 'Nenhuma';
+      }));
+      coordination.add(infoRow('Fontes simultâneas', function () {
+        return nxCoordState().mixed ? nxCoordState().activeSources.join(' + ') : 'Não detectadas';
+      }, 'Janela de observação de 2 segundos; uso simultâneo pode ser intencional.'));
+      coordination.add(infoRow('Fontes virtuais registradas', function () {
+        const v = nxVirtualInputState();
+        return v.count ? v.kinds.join(', ') : 'Nenhuma';
+      }, 'Registro interno preparado para HUD, giroscópio e teclado/mouse virtuais. Ainda não controla o jogo.'));
+      coordination.add(infoRow('Interferência no jogo', function () { return 'Nenhuma (somente diagnóstico)'; }));
+      coordination.add(infoRow('Autoteste de entradas', function () {
+        const result = nxInputSelfCheck();
+        return result.passed + '/' + result.total + ' verificações';
+      }, 'Testes matemáticos e estruturais locais; não valida uma partida real.'));
+      coordination.add(infoRow('Eventos recentes', function () { return String(nxInputEvents.length); },
+        'Histórico limitado aos 30 eventos mais recentes, sem registrar teclas ou coordenadas.'));
+      coordination.add(setRow('Limpar diagnóstico de entradas', 'Zera contadores e histórico desta sessão.',
+        actBtn('Limpar', function () {
+          nxResetInputDiagnostics();
+          nxSampleGamepads();
+          renderBody();
+          toast('Diagnóstico de entradas limpo');
+        }, 'ghost')));
+      root.appendChild(coordination.root);
+
+      // Touch HUD é carregado pelo @require oficial: um único módulo e nenhuma instalação separada.
+      const nxTouchGroup = group('HUD de teclado e mouse por toque',
+        'Mouse relativo pelo dedo, joystick WASD, botões configuráveis e editor próprio. Requer suporte de teclado/mouse no jogo e na sessão.');
+      nxTouchGroup.add(infoRow('Módulo', function () {
+        return window.NimboTouch ? 'Carregado · v' + window.NimboTouch.version : 'Indisponível';
+      }, 'Integração experimental: não converte mouse em analógico e não garante compatibilidade com todos os jogos.'));
+      nxTouchGroup.add(setRow('Configurar teclado e mouse',
+        'Abre o editor e a ativação do touchpad. Ao abrir, o painel NX é recolhido.',
+        actBtn('Abrir Touch HUD', function () {
+          if (!window.NimboTouch || typeof window.NimboTouch.open !== 'function') {
+            toast('Touch HUD indisponível; atualize o userscript'); return;
+          }
+          setOpen(false, true);
+          window.NimboTouch.open();
+        }, 'primary')));
+      root.appendChild(nxTouchGroup.root);
+
+      const hudEditorGroup = group('Editor de HUD — prévia arrastável',
+        'Arraste os botões para montar um layout e salve perfis locais por jogo. Ainda não altera o HUD do xCloud.');
+      hudEditorGroup.add(infoRow('Sinais de controles na página', function () {
+        const probe = nxHudDomProbe();
+        return probe.candidates + ' candidatos (' + probe.interactive + ' interativos, ' +
+          probe.visible + ' visíveis) / ' + probe.scanned + ' examinados' +
+          (probe.truncated ? ' [limite atingido]' : '');
+      }, 'Inspeção somente leitura de rótulos de acessibilidade; não confirma controles reais nem altera o HUD. Limite de 1500 elementos.'));
+      hudEditorGroup.add(setRow('Carregar perfil automaticamente',
+        'Desativado por padrão: evita substituir posições editadas quando você navega entre jogos. Afeta apenas a prévia.',
+        toggle(nxHudAutoEnabled(), function () {
+          nxHudSetAutoEnabled(!nxHudAutoEnabled());
+          renderBody();
+        }, 'Carregar perfil de HUD automaticamente')));
+      hudEditorGroup.add(setRow('Posições dos botões', 'Toque ou use o mouse para arrastar os elementos da prévia.',
+        nxHudEditor(), true));
+      root.appendChild(hudEditorGroup.root);
+
+      const gyroGroup = group('Giroscópio — calibração experimental',
+        'Leitura e calibração dos sensores. A integração com a câmera é experimental e precisa ser ativada separadamente.');
+      gyroGroup.add(infoRow('Orientação da tela', function () {
+        const g = nxGyroPreviewState();
+        return g.screenAngle === null ? 'Aguardando sensor' : g.screenAngle + '°';
+      }, 'Ao girar o aparelho, o centro é redefinido e precisa ser calibrado novamente.'));
+      gyroGroup.add(infoRow('Mudanças de orientação', function () {
+        return String(nxGyroPreviewState().orientationChanges);
+      }));
+      gyroGroup.add(infoRow('Amostras recebidas', function () {
+        return String(nxGyroPreviewState().samples);
+      }));
+      gyroGroup.add(infoRow('Sensor', function () {
+        const g = nxGyroPreviewState();
+        return g.enabled ? (g.receiving ? 'Recebendo dados' : 'Aguardando movimento') : g.permission;
+      }));
+      gyroGroup.add(infoRow('Inclinação horizontal', function () {
+        const x = nxGyroPreviewState().tiltX;
+        return x === null ? 'Calibre após ativar' : x + '°';
+      }));
+      gyroGroup.add(infoRow('Inclinação vertical', function () {
+        const y = nxGyroPreviewState().tiltY;
+        return y === null ? 'Calibre após ativar' : y + '°';
+      }));
+      gyroGroup.add(setRow('Inverter eixo horizontal', 'Apenas visualização; não afeta o jogo.',
+        toggle(nxGyroInvertX(), function () {
+          setPref(NX_GYRO_INVERT_X_KEY, nxGyroInvertX() ? '0' : '1');
+          renderBody();
+        }, 'Inverter eixo horizontal')));
+      gyroGroup.add(setRow('Inverter eixo vertical', 'Apenas visualização; não afeta o jogo.',
+        toggle(nxGyroInvertY(), function () {
+          setPref(NX_GYRO_INVERT_Y_KEY, nxGyroInvertY() ? '0' : '1');
+          renderBody();
+        }, 'Inverter eixo vertical')));
+      gyroGroup.add(setRow('Enviar giroscópio ao jogo (experimental)',
+        'Desativado por padrão. Exige controle físico padrão e sensor calibrado. Recarrega a página; ative novamente a leitura do sensor após recarregar.',
+        toggle(nxGyroGameEnabled(), function () {
+          setPref(NX_GYRO_GAME_KEY, nxGyroGameEnabled() ? '0' : '1');
+          location.reload();
+        }, 'Ativar giroscópio experimental no jogo')));
+      gyroGroup.add(setRow('Controle que recebe o giroscópio',
+        'Evita movimentar todos os controles conectados. Índice 0 é o padrão.',
+        chips([{ k: '0', label: 'Controle 1' }, { k: '1', label: 'Controle 2' },
+          { k: '2', label: 'Controle 3' }, { k: '3', label: 'Controle 4' }],
+          String(nxGyroTargetIndex()), function (k) {
+            setPref(NX_GYRO_TARGET_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(setRow('Intensidade da contribuição no jogo',
+        'Limita a força adicionada ao analógico direito. Comece em 25% para evitar movimentos bruscos.',
+        chips([{ k: '0.25', label: '25%' }, { k: '0.5', label: '50%' }, { k: '1', label: '100%' }],
+          getPref(NX_GYRO_BLEND_KEY, '0.5'), function (k) {
+            setPref(NX_GYRO_BLEND_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(setRow('Ativação da mira por giroscópio',
+        'LT (gatilho esquerdo) é o padrão; Sempre ativo exige controle físico conectado.',
+        chips([{ k: 'lt', label: 'Segurar LT' }, { k: 'always', label: 'Sempre ativo' }],
+          nxGyroActivationMode(), function (k) {
+            setPref(NX_GYRO_TRIGGER_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(infoRow('Saída ao jogo', function () {
+        if (!nxGyroGameEnabled()) return 'Desativada';
+        if (!nxInputBridge.installed) return 'Aguardando ponte experimental';
+        const g = nxGyroPreviewState();
+        return g.enabled && g.calibrated && g.receiving ? 'Pronta (controle padrão)' : 'Aguardando sensor e calibração';
+      }));
+      gyroGroup.add(infoRow('Eixos virtuais simulados', function () {
+        const g = nxGyroPreviewState();
+        return g.axisX.toFixed(2) + ' / ' + g.axisY.toFixed(2);
+      }, 'Valores normalizados entre -1 e 1; não enviados ao jogo.'));
+      gyroGroup.add(setRow('Sensibilidade da prévia', 'Somente simulação dos eixos; não modifica o controle físico.',
+        chips([{ k: '0.5', label: 'Baixa' }, { k: '1', label: 'Normal' }, { k: '2', label: 'Alta' }],
+          getPref(NX_GYRO_SENS_KEY, '1'), function (k) {
+            setPref(NX_GYRO_SENS_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(setRow('Zona morta da prévia', 'Ignora pequenas inclinações para reduzir tremores.',
+        chips([{ k: '0', label: 'Nenhuma' }, { k: '0.04', label: 'Normal' }, { k: '0.1', label: 'Alta' }],
+          getPref(NX_GYRO_DEADZONE_KEY, '0.04'), function (k) {
+            setPref(NX_GYRO_DEADZONE_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(setRow('Suavização da leitura', 'Afeta apenas a prévia local. Não modifica a mira.',
+        chips([{ k: '0.1', label: 'Suave' }, { k: '0.25', label: 'Equilibrada' }, { k: '0.7', label: 'Rápida' }],
+          getPref(NX_GYRO_SMOOTH_KEY, '0.25'), function (k) {
+            setPref(NX_GYRO_SMOOTH_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(setRow('Leitura de sensores', 'Solicita permissão apenas após toque no botão.',
+        actBtn(nxGyroPreview.enabled ? 'Desativar' : 'Ativar', function () {
+          if (nxGyroPreview.enabled) {
+            nxStopGyroPreview();
+            renderBody();
+            return;
+          }
+          nxStartGyroPreview().then(function (ok) {
+            renderBody();
+            toast(ok ? 'Sensor ativado; mova o aparelho e calibre' : 'Sensor indisponível ou permissão negada');
+          });
+        }, 'primary')));
+      gyroGroup.add(setRow('Reiniciar calibração', 'Apaga o centro atual, sem alterar configurações salvas.',
+        actBtn('Reiniciar', function () {
+          nxResetGyroCalibration();
+          renderBody();
+          toast('Calibração reiniciada');
+        })));
+      gyroGroup.add(setRow('Definir posição central', 'Mantenha o aparelho na posição de jogo antes de calibrar.',
+        actBtn('Calibrar', function () {
+          const ok = nxCalibrateGyroPreview();
+          renderBody();
+          toast(ok ? 'Centro do sensor definido' : 'Ative o sensor e aguarde uma leitura');
+        })));
+      root.appendChild(gyroGroup.root);
+
+      /* NX_FROZEN_ANALOG_UI_START
+      const inputPreview = group('Perfis de analógico',
+        'Simulação por padrão. Aplicação experimental opcional com recarregamento e retorno imediato ao modo nativo.');
+      inputPreview.add(setRow('Aplicar curvas ao jogo (experimental)',
+        'Desativado por padrão. Altera somente os eixos lidos pela Gamepad API; não altera botões. Requer recarregar a página.',
+        toggle(nxInputEnabled(), function () {
+          setPref(NX_INPUT_APPLY_KEY, nxInputEnabled() ? '0' : '1');
+          location.reload();
+        }, 'Ativar processamento experimental de eixos')));
+      inputPreview.add(setRow('Restaurar controle nativo',
+        'Desativa o processamento experimental imediatamente, sem precisar recarregar.',
+        actBtn('Restaurar', function () {
+          nxRestoreNativeGamepads('Restauração solicitada pelo usuário');
+          nxSampleGamepads();
+          renderBody();
+          toast('Leitura nativa restaurada');
+        }, 'ghost')));
+      inputPreview.add(infoRow('Integridade da Gamepad API', function () {
+        nxInputBridgeStatus();
+        if (nxInputBridge.foreignOverride) return 'Outro script assumiu o controle';
+        if (nxInputBridge.installed && navigator.getGamepads !== nxInputBridge.wrapper) return 'Alterada por outro script';
+        return nxInputBridge.installed ? 'Ponte experimental ativa' : 'API nativa';
+      }));
+      inputPreview.add(infoRow('Recuperações automáticas', function () {
+        return String(nxInputBridge.fallbacks);
+      }));
+      inputPreview.add(infoRow('Processamento de entradas', function () {
+        return nxInputBridgeStatus();
+      }));
+      inputPreview.add(setRow('Analógico esquerdo', 'Curva dos eixos 0 e 1 (movimentação, conforme o jogo).',
+        chips(Object.keys(nxInputProfiles).map(function (k) { return { k: k, label: nxInputProfiles[k].label }; }),
+          nxInputProfileName(), function (k) {
+            setPref(NX_INPUT_PROFILE_KEY, k);
+            nxSampleGamepads();
+            renderBody();
+          }), true));
+      inputPreview.add(setRow('Analógico direito', 'Curva dos eixos 2 e 3 (câmera, conforme o jogo).',
+        chips(Object.keys(nxInputProfiles).map(function (k) { return { k: k, label: nxInputProfiles[k].label }; }),
+          nxRightStickProfileName(), function (k) {
+            setPref(NX_RIGHT_STICK_PROFILE_KEY, k);
+            nxSampleGamepads();
+            renderBody();
+          }), true));
+      inputPreview.add(infoRow('Zona morta', function () {
+        return Math.round(nxInputProfiles[nxInputProfileName()].deadzone * 100) + '%';
+      }));
+      inputPreview.add(infoRow('Curva', function () {
+        return String(nxInputProfiles[nxInputProfileName()].curve);
+      }));
+      inputPreview.add(infoRow('Eixos simulados (até 4)', function () {
+        return nxGamepadMonitor.snapshots.length ?
+          nxGamepadMonitor.snapshots.map(function (p) {
+            return '#' + p.index + ': ' + p.axisPreview.map(function (v) { return v.toFixed(2); }).join(', ');
+          }).join(' | ') : 'Conecte e mova um controle';
+      }, 'Valores normalizados de -1 a 1. Não afeta o jogo.'));
+      root.appendChild(inputPreview.root);
+      NX_FROZEN_ANALOG_UI_END */
+
+      const g3 = group('Acessórios');
+      const micButtons = mk('div', 'display:flex;gap:6px;flex-wrap:wrap');
+      const micToggle = actBtn(getPref(LS_MIC_ENABLED, '0') === '1' ? 'Microfone: ativado' : 'Microfone: desativado', function () {
+        const enabled = getPref(LS_MIC_ENABLED, '0') !== '1';
+        setPref(LS_MIC_ENABLED, enabled ? '1' : '0');
+        if (!enabled) stopMicrophoneTest();
+        S.micStatus = enabled ? 'Preferência ativa. Teste a entrada; a voz no jogo depende do xCloud.' : 'Microfone desativado nas preferências NX.';
+        renderBody(); update();
+      }, 'ghost');
+      micButtons.appendChild(micToggle);
+      micButtons.appendChild(actBtn('Testar microfone', function () { inspectMicrophone(); }, 'ghost'));
+      micButtons.appendChild(actBtn('Parar teste', function () { stopMicrophoneTest(); }, 'ghost'));
+      micButtons.appendChild(actBtn('Atualizar dispositivos', function () { refreshMicDevices(); }, 'ghost'));
+      const micDevice = document.createElement('select');
+      micDevice.setAttribute('aria-label', 'Dispositivo de entrada de voz');
+      micDevice.style.cssText = 'width:100%;max-width:100%;background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:7px';
+      const defaultMic = document.createElement('option'); defaultMic.value = ''; defaultMic.textContent = 'Microfone padrão do sistema'; micDevice.appendChild(defaultMic);
+      micDevice.value = getPref(LS_MIC_DEVICE, '');
+      micDevice.addEventListener('change', function () { setPref(LS_MIC_DEVICE, micDevice.value); if (micTestStream) inspectMicrophone(); });
+      micDeviceControl = micDevice;
+      micButtons.appendChild(micDevice);
+      [['Redução de ruído', LS_MIC_NOISE], ['Cancelamento de eco', LS_MIC_ECHO],
+        ['Ganho automático', LS_MIC_AGC], ['Silenciar voz enviada', LS_MIC_MUTE],
+        ['Apertar V para falar (teclado)', LS_MIC_PTT]].forEach(function (cfg) {
+        const label = document.createElement('label'); label.style.cssText = 'display:flex;gap:7px;align-items:center;width:100%;font-size:12px';
+        const check = document.createElement('input'); check.type = 'checkbox';
+        check.checked = getPref(cfg[1], cfg[1] === LS_MIC_MUTE || cfg[1] === LS_MIC_PTT ? '0' : '1') === '1';
+        check.addEventListener('change', function () { setPref(cfg[1], check.checked ? '1' : '0'); applyVoiceMute(); });
+        label.appendChild(check); label.appendChild(document.createTextNode(cfg[0])); micButtons.appendChild(label);
+      });
+      const micMeter = document.createElement('progress'); micMeter.max = 100; micMeter.value = 0;
+      micMeter.style.cssText = 'width:100%;height:12px'; micMeter.setAttribute('aria-label', 'Nível de entrada do microfone');
+      micLevelControl = micMeter; micButtons.appendChild(micMeter);
+      refreshMicDevices();
+      const mic = setRow('Microfone', 'Escolha o microfone para as próximas solicitações de captura do xCloud. O jogo precisa oferecer chat de voz.', micButtons);
+      g3.add(mic);
+      liveDesc(mic, function () { return S.micStatus; });
+      const vibControls = mk('div', 'display:flex;gap:6px;flex-wrap:wrap;align-items:center');
+      const vibLevel = document.createElement('select');
+      vibLevel.setAttribute('aria-label', 'Intensidade do teste de vibração');
+      vibLevel.style.cssText = 'background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:6px';
+      [0,25,50,75,100].forEach(function (v) {
+        const opt = document.createElement('option'); opt.value = String(v); opt.textContent = v + '%';
+        vibLevel.appendChild(opt);
+      });
+      vibLevel.value = String(Math.round(Number(getPref(LS_VIBRATION, '0.5')) * 100));
+      vibLevel.addEventListener('change', function () { setPref(LS_VIBRATION, String(Number(vibLevel.value) / 100)); S.vibrationStatus = 'Intensidade salva para testes: ' + vibLevel.value + '%. Ajuste automático durante a partida ainda não integrado.'; update(); });
+      vibControls.appendChild(vibLevel);
+      vibControls.appendChild(actBtn('Testar controle', function () { testVibration(); }, 'ghost'));
+      vibControls.appendChild(actBtn('Testar celular', function () { testPhoneVibration(); }, 'ghost'));
+      const vib = setRow('Vibração', 'Teste local do motor do controle ou do celular. Não altera automaticamente a vibração enviada pelo xCloud.', vibControls);
+      g3.add(vib);
+      liveDesc(vib, function () { return S.vibrationStatus; });
+      root.appendChild(g3.root);
+
+      const g4 = group('Atalho do painel');
+      g4.add(setRow('Abrir/fechar o painel', 'Combinação de teclado (Ctrl+Shift+N recentraliza o painel).',
+        chips([{ k: 'KeyH', label: 'Ctrl+Shift+H' }, { k: 'KeyJ', label: 'Ctrl+Shift+J' }, { k: 'KeyK', label: 'Ctrl+Shift+K' }],
+          getPref(LS_NX_SHORTCUT, 'KeyH'), function (k) { setPref(LS_NX_SHORTCUT, k); renderBody(); }), true));
+      root.appendChild(g4.root);
+    },
+
+    region: function (root) {
+      root.appendChild(note('Ao trocar a região da loja, a página recarrega uma vez para aplicar.'));
+      const g1 = group('Região da loja');
+      const opts = Object.keys(REGIONS).map(function (k) { return { k: k, label: REGIONS[k].name }; });
+      opts.push({ k: 'off', label: 'Desligado' });
+      g1.add(setRow('Desbloqueio de região', 'Reescreve a verificação de mercado para a região escolhida.',
+        chips(opts, cfg().key, function (k) {
+          pickApply('region', k);
+          location.reload();
+        }), true));
+      root.appendChild(g1.root);
+
+      const al = mk('div', 'display:none;margin-top:12px;white-space:pre-line;padding:9px 11px;border-radius:10px;font-size:11.5px;' +
+        'line-height:1.5;border:1px solid rgba(210,153,34,.35);background:rgba(210,153,34,.1);color:#e3b341');
+      root.appendChild(al);
+      liveFns.push(function () {
+        const d = regionDiffs();
+        al.textContent = d.map(function (m) { return '⚠ ' + m; }).join('\n');
+        al.style.display = d.length ? 'block' : 'none';
+      });
+
+      const g2 = group('Estado');
+      g2.add(infoRow('Região configurada', function () { return cfg().name + (cfg().territory ? ' (' + cfg().territory + ')' : ''); }));
+      g2.add(infoRow('Cookie de território', function () { return getCookie('territory') || '(nenhum)'; }));
+      g2.add(infoRow('Experimentos reescritos', function () {
+        return S.expHits ? S.expHits + '× · ' + S.expBefore + ' → ' + S.expAfter : 'Nenhum ainda';
+      }));
+      g2.add(infoRow('Requisições com cabeçalho', function () { return S.inj; }));
+      g2.add(infoRow('Acesso negado (erros)', function () { return S.denied; }));
+      root.appendChild(g2.root);
+    },
+
+    advanced: function (root) {
+      inspectRemotePlay();
+      inspectServerMeasurements();
+
+      const g1 = group('Desempenho');
+      g1.add(spark('FPS recebidos', 'fps', C.accent, ' FPS', 60));
+      g1.add(spark('RTT WebRTC', 'rtt', '#58a6ff', ' ms', 100));
+      g1.add(spark('Perda de pacotes', 'loss', '#f0883e', '%', 5));
+      root.appendChild(g1.root);
+
+      const g2 = group('Detalhes do link', 'Métricas do navegador; o RTT não representa a latência interna do jogo. Valores ausentes não são estimados.');
+      g2.add(infoRow('Codec', function () { return (S.qos && S.qos.codec) || 'Indisponível'; }));
+      g2.add(infoRow('Transporte', function () {
+        const q = S.qos;
+        return q ? ([q.family, q.proto].filter(Boolean).join(' / ') || 'Indisponível') : 'Indisponível';
+      }));
+      g2.add(infoRow('Servidor', function () { return S.serverActual || 'Automático / não identificado'; }));
+      g2.add(infoRow('Buffer de jitter', function () { return fmtN(S.qos && S.qos.bufMs, ' ms'); }));
+      g2.add(infoRow('Decodificação média', function () { return fmtN(S.qos && S.qos.decodeMs, ' ms', 1); }));
+      g2.add(infoRow('Quadros descartados', function () {
+        const q = S.qos;
+        if (!q || !(q.decoded || q.dropped)) return '—';
+        return fmtN(q.dropped / ((q.decoded + q.dropped) || 1) * 100, '%', 1) + ' (' + q.dropped + ')';
+      }));
+      g2.add(infoRow('Congelamentos', function () {
+        const q = S.qos;
+        return q ? fmtN(q.freeze) + ' · ' + fmtN(q.freezeDur, ' s') : '—';
+      }));
+      g2.add(infoRow('Diagnóstico automático', function () { return S.lastDiagnosis; }));
+      root.appendChild(g2.root);
+
+      const g3 = group('Servidores medidos');
+      g3.add(infoRow('RTT por data center', function () {
+        const keys = Object.keys(S.latencyByServer);
+        return keys.length ? keys.map(function (k) { return k + ': ' + Math.round(S.latencyByServer[k].avg) + ' ms'; }).join('\n') : 'Aguardando amostras';
+      }, 'Medido apenas em partidas reais (não é sondagem ativa).'));
+      g3.add(setRow('Limpar medições', 'Apaga o histórico de RTT salvo neste navegador.',
+        actBtn('Limpar', function () {
+          S.latencyByServer = Object.create(null);
+          try { localStorage.removeItem(LS_RTT_HISTORY); } catch (e) { }
+          pushLog('region', 'Histórico RTT local apagado');
+          renderBody();
+          toast('Medições apagadas');
+        }, 'ghost')));
+      root.appendChild(g3.root);
+
+      const lab = group('Plataforma e modo console', 'Perfis Xbox e TV preservam a identidade nativa para iniciar jogos. Tela cheia e orientação horizontal dependem de permissão do navegador e de uma ação do usuário.');
+      lab.add(infoRow('Identidade observada', function () { const e=nxProtocolEvidence(); return e.observed.javascriptIdentity.platform+' · '+(e.configured.jsUserAgentChanged?'UA JS alterado':'UA JS nativo'); }));
+      lab.add(infoRow('Client Hints', function () { const h=nxProtocolEvidence().observed.javascriptIdentity.clientHints; return h ? (h.platform || 'sem plataforma')+' · '+(h.mobile?'mobile':'desktop') : 'Não disponível via JavaScript'; }));
+      lab.add(infoRow('Modelo de hardware Xbox', function () { return 'Não verificável por userscript'; }));
+      lab.add(setRow('Copiar diagnóstico de protocolo', 'Relatório estruturado de identidade, autenticação e sessão. Revise os dados antes de compartilhar.',
+        actBtn('Copiar', function(){copyText(JSON.stringify(nxProtocolEvidence(),null,2),'[NX protocol]','Diagnóstico de protocolo copiado');},'ghost')));
+      lab.add(infoRow('Resultado do teste', function () { return nxCompatibilityVerdict().label; }));
+      lab.add(infoRow('Detalhes do teste', function () { return nxCompatibilityVerdict().detail; }));
+      lab.add(infoRow('Compatibilidade de console', function () { return nxCompatibilityVerdict().consoleCompatibility; }));
+      lab.add(setRow('Verificar conexão agora', 'Avalia os eventos de sessão e o vídeo disponíveis. Não envia requisições extras nem altera autenticação.',
+        actBtn('Verificar', function () {
+          const v = nxCompatibilityVerdict();
+          nxConsoleLabEvent('compatibility-check', v.state + ': ' + v.detail);
+          toast(v.label);
+          renderBody();
+        }, 'primary')));
+      lab.add(setRow('Telemetria sobre o jogo', 'Exibe FPS, RTT, perda, servidor e etapas de carregamento fora do painel. Tempo exibido é decorrido, não estimativa.',
+        chips([{k:'on',label:'Ativar'},{k:'off',label:'Desativar'}], nxTelemetryEnabled?'on':'off', function(k){nxTelemetryToggle(k==='on');renderBody();}),true));
+      lab.add(infoRow('Atalho do controle', function(){return nxShellEnabled?'View + Menu (segurar 0,7 s)':'Disponível no perfil Xbox';}));
+      lab.add(infoRow('Entrada preferencial', function () { return nxPlatformProfile.input; }));
+      lab.add(infoRow('Oferta xCloud observada', function () { const e = nxOfferingTrace[nxOfferingTrace.length-1]; return e ? e.offering + ' · HTTP ' + e.status : 'Aguardando autenticação'; }));
+      lab.add(infoRow('Ofertas observadas', function () { return nxOfferingTrace.length ? Array.from(new Set(nxOfferingTrace.map(function(e){return e.offering;}))).join(', ') : 'Nenhuma'; }));
+       lab.add(infoRow('Xbox Shell', function () { return nxShellEnabled ? 'Ativo · ' + nxShellStats.moves + ' movimentos · ' + nxShellStats.errors + ' erros' : 'Desativado'; }));
+       if (nxConsoleLabProfile === 'xbox') lab.add(setRow('Interface Xbox Shell', 'Desative para recuperar imediatamente a interface original do painel. A alteração não modifica o streaming.', chips([{k:'on',label:'Ativar'},{k:'off',label:'Desativar'}],nxShellEnabled ? 'on' : 'off',function(k){try{localStorage.setItem(LS_NX_SHELL,k === 'on' ? '1' : '0');}catch(_){} location.reload();}),true));
+       if (nxShellEnabled) lab.add(infoRow('Último erro Xbox Shell', function () { return nxShellStats.lastError || 'Nenhum'; }));
+       lab.add(infoRow('SO da sessão solicitado', function () { return nxProfileSessionState.lastRequestedOs || 'Original / não observado'; }));
+       lab.add(infoRow('Perfil desta sessão', function () { return nxConsoleLabState.profile + ' · ' + nxConsoleProfileValidation().state; }));
+      lab.add(infoRow('Identidade contém Xbox;', function () { return navigator.userAgent.includes('Xbox;') ? 'Sim' : 'Não'; }));
+      lab.add(infoRow('Erro de identidade', function () { return nxConsoleLabState.error || 'Nenhum'; }));
+      lab.add(infoRow('Aviso de incompatibilidade', function () { return nxConsoleLabWarning() ? 'Detectado' : 'Não detectado'; }));
+      lab.add(infoRow('WebRTC / H.264 MSE', function () { const c = nxConsoleLabCapabilities(); return (c.webRTC ? 'Sim' : 'Não') + ' / ' + (c.mediaSourceH264 === null ? 'Indefinido' : c.mediaSourceH264 ? 'Sim' : 'Não'); }));
+      lab.add(infoRow('Tela cheia', function () { return document.fullscreenElement || document.webkitFullscreenElement ? 'Ativa' : 'Desativada'; }));
+      lab.add(setRow('Tela cheia e horizontal', 'O navegador exige um toque ou clique para entrar em tela cheia; a orientação horizontal é solicitada quando suportada.',
+        actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'primary')));
+      lab.add(setRow('Perfil de plataforma', 'Automático preserva a identidade nativa do dispositivo. Android e Desktop solicitam experiências específicas quando o cliente permite; Console permanece experimental. A escolha não garante reconhecimento pelo servidor.',
+        chips([{k:'off',label:'Automático'},{k:'android',label:'Android'},{k:'windows',label:'Desktop'},{k:'xbox',label:'Console'}],
+          nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
+      lab.add(setRow('Fortnite: experiência de console (experimental)',
+        'Inspirado no Better xCloud: desativa a sinalização de toque na configuração da sessão do Fortnite. Não muda User-Agent, não emula Xbox e pode não alterar a experiência no cliente novo. Requer reiniciar a sessão.',
+        chips([{k:'off',label:'Desligado'},{k:'on',label:'Ativar'}],
+          nxFortniteConsoleEnabled ? 'on' : 'off', function (k) {
+            try { localStorage.setItem(LS_FORTNITE_CONSOLE, k === 'on' ? '1' : '0'); } catch (_) {}
+            location.reload();
+          }), true));
+      lab.add(infoRow('Fortnite: aplicação', function () { return nxFortniteConsoleState.patched ? 'Configuração de toque modificada' : (nxFortniteConsoleEnabled ? 'Aguardando configuração da sessão' : 'Desligado'); }));
+      lab.add(setRow('Client Hints (avançado)',
+        'Ocultar navigator.userAgentData apenas no JavaScript, conforme Xperience XCloud. Não altera headers e pode prejudicar compatibilidade.',
+        chips([{k:'off',label:'Normal'},{k:'on',label:'Ocultar JS'}],
+          nxClientHintsMode ? 'on' : 'off', function (k) {
+            try { localStorage.setItem('nx.consoleLab.hideClientHints.v1', k === 'on' ? '1' : '0'); } catch (_) {}
+            location.reload();
+          }), true));
+      lab.add(setRow('Registrar observação', 'Anote o jogo, se apareceu no catálogo, se iniciou e eventuais mensagens de erro.',
+        actBtn('Anotar', function () {
+          let old = ''; try { old = localStorage.getItem(LS_CONSOLE_NOTES) || ''; } catch (_) {}
+          const value = window.prompt('Resultado do teste (sem dados pessoais ou tokens):', old);
+          if (value === null) return;
+          try { localStorage.setItem(LS_CONSOLE_NOTES, value.slice(0, 500)); } catch (_) {}
+          toast('Observação salva');
+        }, 'ghost')));
+      lab.add(setRow('Diagnóstico completo', 'Copia todos os registros em um JSON, ocultando identificadores sensíveis.',
+        actBtn('Copiar tudo', copyUnifiedReport, 'primary')));
+      root.appendChild(lab.root);
+
+      const g4 = group('Sistema');
+      g4.add(infoRow('Remote Play', function () { return S.remotePlayStatus; }));
+      g4.add(infoRow('Recuperações do painel', function () { return S.nxRecoveries; }));
+      g4.add(infoRow('Histórico de QoS', function () { return S.qosHistory.length + ' amostras'; }));
+      g4.add(infoRow('Último erro', function () { return S.lastErr || 'Nenhum'; }));
+      root.appendChild(g4.root);
+
+      const g5 = group('Ferramentas');
+      const tools = mk('div', 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px 0');
+      tools.appendChild(actBtn('Copiar tudo', copyUnifiedReport, 'primary'));
+      tools.appendChild(actBtn('Limpar cache', hardReload, 'danger'));
+      g5.card.appendChild(tools);
+      root.appendChild(g5.root);
+
+      root.appendChild(mk('div', 'text-align:center;color:' + C.dim + ';font-size:10.5px;margin:14px 0 2px', 'NimboXcloud v' + VER + ' · por KReight'));
+    }
+  };
+
+  // Páginas temáticas reutilizam os controles originais sem duplicar suas rotinas.
+  const buildLegacyMedia = TAB_BUILDERS.media;
+  const buildLegacyControls = TAB_BUILDERS.controls;
+  TAB_BUILDERS.audio = function (root) {
+    const temp = document.createElement('div'); buildLegacyMedia(temp);
+    if (temp.firstElementChild) root.appendChild(temp.firstElementChild);
+  };
+  TAB_BUILDERS.voice = function (root) {
+    const temp = document.createElement('div'); buildLegacyControls(temp);
+    if (temp.children[2]) root.appendChild(temp.children[2]);
+  };
+  TAB_BUILDERS.stream = (function (original) { return function (root) {
+    original(root);
+    const temp = document.createElement('div'); buildLegacyMedia(temp);
+    Array.from(temp.children).slice(1).forEach(function (node) { root.appendChild(node); });
+  }; })(TAB_BUILDERS.stream);
+  TAB_BUILDERS.controls = function (root) {
+    const temp = document.createElement('div'); buildLegacyControls(temp);
+    Array.from(temp.children).slice(0,2).forEach(function (node) { root.appendChild(node); });
+  };
+
+  function setTab(id) {
+    if (!TAB_BUILDERS[id]) id = 'overview';
+    tabId = id;
+    renderBody(true);
+  }
+
+  function renderTabs() {
+    if (!el.navTitle) return;
+    const current = TABS.find(function (t) { return t.id === tabId; }) || TABS[0];
+    el.navTitle.textContent = current.label;
+    if (el.navBack) el.navBack.style.visibility = tabId === 'overview' ? 'hidden' : 'visible';
+  }
+
+  function renderBody(resetScroll) {
+    if (!el.body) return;
+    const keep = el.body.scrollTop;
+    liveFns = [];
+    el.body.textContent = '';
+    try { TAB_BUILDERS[tabId](el.body); }
+    catch (err) {
+      S.lastErr = 'Painel: ' + String(err && err.message || err);
+      el.body.appendChild(mk('div', 'color:' + C.bad + ';font-size:12px;padding:8px', 'Erro ao montar esta aba: ' + S.lastErr));
+    }
+    renderTabs();
+    runLive();
+    el.body.scrollTop = resetScroll ? 0 : keep;
+  }
+
+  function fitCard() {
+    if (!wrap || !cardEl) return;
+    const wr = wrap.getBoundingClientRect();
+    const used = pillEl && pillEl.offsetHeight ? pillEl.offsetHeight + 6 : 0;
+    cardEl.style.maxHeight = Math.max(260, Math.min(640, innerHeight - (wr.top + used) - 14)) + 'px';
+  }
+
+  function buildUI() {
+    if (wrap && wrap.isConnected) return wrap;
+    if (wrap && !wrap.isConnected) {
+      const target = mountTarget();
+      if (target) { target.appendChild(wrap); return wrap; }
+    }
+    const host = mountTarget() || document.documentElement;
+    if (!host) return null;
+
+    wrap = mk('div', [
+      'position:fixed', 'right:12px', 'top:12px',
+      'z-index:' + ZBASE, 'pointer-events:none',
+      'width:360px', 'max-width:calc(100vw - 16px)',
+      'display:flex', 'flex-direction:column', 'align-items:flex-end',
+      'font:12px/1.5 ' + UI_FONT, 'color:' + C.text, 'text-align:left'
+    ].join(';'));
+    wrap.id = '__xcu_panel__';
+    if (nxShellEnabled) wrap.classList.add('nx-console-shell');
+
+    // Pílula flutuante (usada só durante a partida): ícone + pontinho + perda de pacotes
+    pillEl = mk('div', [
+      'pointer-events:auto', 'display:inline-flex', 'align-items:center', 'gap:6px',
+      'padding:3px 10px 3px 7px', 'height:28px', 'box-sizing:border-box', 'border-radius:14px',
+      'background:rgba(0,0,0,.38)', 'border:1px solid rgba(255,255,255,.14)', 'cursor:pointer',
+      '-webkit-backdrop-filter:blur(6px)', 'backdrop-filter:blur(6px)',
+      'user-select:none', 'white-space:nowrap'
+    ].join(';'));
+    dotEl = mk('span', 'width:7px;height:7px;border-radius:50%;background:#8b949e;flex:0 0 auto');
+    pillTxt = mk('span', 'color:#e6edf3;font-weight:600;font-size:11px', '');
+    pillEl.title = 'NimboXcloud — toque para abrir o painel';
+    const brandIcon = mk('img', 'width:20px;height:20px;display:block;flex:0 0 auto;object-fit:contain');
+    brandIcon.src = BRAND_ICON;
+    brandIcon.alt = 'NimboXcloud';
+    brandIcon.draggable = false;
+    pillEl.appendChild(brandIcon);
+    pillEl.appendChild(dotEl);
+    pillEl.appendChild(pillTxt);
+    wrap.appendChild(pillEl);
+    pillEl.addEventListener('click', function (e) { e.stopPropagation(); setOpen(!openUI, true); });
+
+    // Cartão do painel
+    cardEl = mk('div', [
+      'pointer-events:auto', 'display:none', 'flex-direction:column', 'position:relative', 'margin-top:6px',
+      'width:100%', 'box-sizing:border-box', 'overflow:hidden',
+      'background:' + C.bg, 'border:1px solid rgba(255,255,255,.10)', 'border-radius:16px',
+      'box-shadow:0 20px 56px rgba(0,0,0,.65)',
+      '-webkit-backdrop-filter:blur(14px)', 'backdrop-filter:blur(14px)'
+    ].join(';'));
+    cardEl.style.maxWidth='min(360px,calc(100vw - 16px))';
+    cardEl.setAttribute('role', 'dialog');
+    cardEl.setAttribute('aria-label', 'Painel NimboXcloud');
+    cardEl.addEventListener('pointerdown', stopEv);
+
+    // Cabeçalho
+    const head = mk('div', 'display:flex;align-items:center;gap:10px;padding:12px 12px 11px 14px;border-bottom:1px solid ' + C.line + ';flex:0 0 auto');
+    const logo = mk('img', 'width:28px;height:28px;object-fit:contain;flex:0 0 auto');
+    logo.src = BRAND_ICON; logo.alt = ''; logo.draggable = false;
+    head.appendChild(logo);
+    const ttl = mk('div', 'min-width:0;flex:1');
+    ttl.appendChild(mk('div', 'font-size:14px;font-weight:700;letter-spacing:.01em', 'NimboXcloud'));
+    ttl.appendChild(mk('div', 'font-size:10.5px;color:' + C.dim, 'Xbox Cloud · v' + VER));
+    head.appendChild(ttl);
+    el.hdrChip = mk('div', 'display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;' +
+      'background:' + C.panel + ';border:1px solid ' + C.line + ';font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums');
+    el.hdrDot = mk('span', 'width:7px;height:7px;border-radius:50%;background:' + C.dim);
+    el.hdrTxt = mk('span', '', 'Offline');
+    el.hdrChip.appendChild(el.hdrDot); el.hdrChip.appendChild(el.hdrTxt);
+    head.appendChild(el.hdrChip);
+    const closeBtn = mk('button', 'all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
+      'width:30px;height:30px;border-radius:8px;color:' + C.dim + ';-webkit-tap-highlight-color:transparent');
+    closeBtn.appendChild(ico(ICONS.close, 18));
+    closeBtn.setAttribute('aria-label', 'Fechar painel');
+    closeBtn.title = 'Fechar';
+    closeBtn.addEventListener('click', function (e) { e.stopPropagation(); setOpen(false, true); });
+    head.appendChild(closeBtn);
+    cardEl.appendChild(head);
+
+    // Corpo (rolável)
+    el.body = mk('div', 'flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:12px 14px 16px;' +
+      'overscroll-behavior:contain;-webkit-overflow-scrolling:touch');
+    cardEl.appendChild(el.body);
+
+    // Aviso temporário
+    el.toast = mk('div', 'position:absolute;left:50%;bottom:66px;transform:translate(-50%,6px);opacity:0;pointer-events:none;' +
+      'background:#e8edf3;color:#0d1117;font-size:12px;font-weight:600;padding:7px 13px;border-radius:999px;white-space:nowrap;' +
+      'max-width:90%;overflow:hidden;text-overflow:ellipsis;transition:opacity .18s,transform .18s;box-shadow:0 6px 18px rgba(0,0,0,.5)');
+    cardEl.appendChild(el.toast);
+
+    // Navegação contextual: título e retorno ao início, sem seis abas comprimidas.
+    const navBar = mk('div','display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid '+C.line+';background:rgba(255,255,255,.025);flex:0 0 auto');
+    el.navBack = mk('button','all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.055);color:'+C.text);
+    el.navBack.setAttribute('aria-label','Voltar ao início'); el.navBack.appendChild(ico('M15 18l-6-6 6-6',18));
+    el.navBack.addEventListener('click',function (e) { e.stopPropagation(); setTab('overview'); });
+    el.navTitle = mk('span','font-size:13px;font-weight:700;flex:1','Início');
+    navBar.appendChild(el.navBack); navBar.appendChild(el.navTitle);
+    const home = mk('button','all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;width:34px;height:34px;color:'+C.dim);
+    home.title = 'Central de controle'; home.setAttribute('aria-label','Central de controle'); home.appendChild(ico('M3 10l9-7 9 7 M5 9v12h14V9 M9 21v-8h6v8',18));
+    home.addEventListener('click',function (e) { e.stopPropagation(); setTab('overview'); }); navBar.appendChild(home);
+    cardEl.insertBefore(navBar,el.body);
+
+    wrap.appendChild(cardEl);
+    host.appendChild(wrap);
+    return wrap;
+  }
+
+  // HUD independente do painel, sem interferir com o fluxo do jogo.
+  const NX_TELEMETRY_KEY = 'nx.telemetry.overlay.v1';
+  let nxTelemetryEnabled = (function(){try{return localStorage.getItem(NX_TELEMETRY_KEY)==='1';}catch(_){return false;}})();
+  let nxTelemetryEl = null, nxLoadingStarted = 0, nxLoadingLastStage = '';
+  function nxTelemetryEnsure() {
+    if (nxTelemetryEl && nxTelemetryEl.isConnected) return nxTelemetryEl;
+    const host = mountTarget();
+    if (!host) return null;
+    nxTelemetryEl = document.createElement('div');
+    nxTelemetryEl.id = 'nx-telemetry-overlay';
+    nxTelemetryEl.setAttribute('aria-label','Telemetria NimboXcloud');
+    nxTelemetryEl.style.cssText = 'position:fixed;left:12px;top:12px;z-index:2147483000;pointer-events:none;background:rgba(9,14,23,.83);color:#eaf4ff;border:1px solid rgba(130,177,230,.3);border-radius:10px;padding:9px 12px;font:12px/1.6 system-ui,sans-serif;white-space:pre-line;max-width:min(390px,calc(100vw - 24px));box-shadow:0 4px 22px #0007';
+    host.appendChild(nxTelemetryEl);
+    nxTelemetryEl.setAttribute('title','Arraste para mover o NX Stream Monitor');
+    nxTelemetryEl.addEventListener('pointerdown',nxMonitorDrag);
+    return nxTelemetryEl;
+  }
+  // NX Stream Monitor: métricas WebRTC existentes, sem sondagens paralelas.
+  const NX_MONITOR_SETTINGS='nx.monitor.settings.v1';
+  const nxMonitorDefaults={layout:'auto',opacity:45,color:'white',scale:100,position:'top-left',x:null,y:null,fields:['server','fps','rtt','bitrate','loss']};
+  function nxMonitorLoad(){try{const p=JSON.parse(localStorage.getItem(NX_MONITOR_SETTINGS)||'{}');return Object.assign({},nxMonitorDefaults,p,{fields:Array.isArray(p.fields)?p.fields:nxMonitorDefaults.fields});}catch(_){return Object.assign({},nxMonitorDefaults);}}
+  let nxMonitor=nxMonitorLoad();
+  function nxMonitorSave(){try{localStorage.setItem(NX_MONITOR_SETTINGS,JSON.stringify(nxMonitor));}catch(_){}nxTelemetryTick();}
+  function nxMonitorPlace(){
+    if(!nxTelemetryEl)return;
+    const n=nxTelemetryEl,p=nxMonitor;
+    const x=Number.isFinite(p.x)?p.x:(p.position.endsWith('right')?innerWidth-n.offsetWidth-12:12);
+    const y=Number.isFinite(p.y)?p.y:(p.position.startsWith('bottom')?innerHeight-n.offsetHeight-12:12);
+    n.style.left=Math.max(0,Math.min(innerWidth-n.offsetWidth,x))+'px';
+    n.style.top=Math.max(0,Math.min(innerHeight-n.offsetHeight,y))+'px';
+    n.style.right='auto';n.style.bottom='auto';
+  }
+  function nxMonitorDrag(e){
+    if(e.button!=null&&e.button!==0)return;
+    const n=nxTelemetryEl,r=n.getBoundingClientRect(),dx=e.clientX-r.left,dy=e.clientY-r.top;
+    try{n.setPointerCapture(e.pointerId);}catch(_){}
+    const move=function(v){if(v.pointerId!==e.pointerId)return;nxMonitor.x=v.clientX-dx;nxMonitor.y=v.clientY-dy;nxMonitorPlace();};
+    const stop=function(v){if(v.pointerId!==e.pointerId)return;n.removeEventListener('pointermove',move);n.removeEventListener('pointerup',stop);n.removeEventListener('pointercancel',stop);nxMonitorSave();};
+    n.addEventListener('pointermove',move);n.addEventListener('pointerup',stop);n.addEventListener('pointercancel',stop);e.stopPropagation();
+  }
+  function nxTelemetryTick(){
+    if(!nxTelemetryEnabled||document.hidden||!streaming()){if(nxTelemetryEl)nxTelemetryEl.style.display='none';return;}
+    const n=nxTelemetryEnsure();if(!n)return;
+    const host=mountTarget();if(host&&n.parentNode!==host)host.appendChild(n);
+    const q=S.qos||{},p=nxMonitor;
+    const flags={JAPANEAST:'🇯🇵',KOREACENTRAL:'🇰🇷',EASTUS:'🇺🇸',WESTEUROPE:'🇪🇺',BRAZILSOUTH:'🇧🇷'};
+    const srv=String(S.serverActual||'').toUpperCase();
+    const vals={server:(flags[srv]||'◈')+' '+(srv||'Servidor não identificado'),fps:'FPS '+fmtN(q.decodedFps||q.fps),rtt:'RTT '+fmtN(q.rtt,' ms'),bitrate:'BR '+(Number.isFinite(q.kbps)?fmtN(q.kbps/1000,' Mbps',1):'—'),loss:'Perda '+fmtN(curLoss(),'% ',1),resolution:'Res '+(q.h?q.h+'p':'—'),jitter:'Jitter '+fmtN(q.jitter,' ms')};
+    const keys=p.layout==='compact'?['server','fps','rtt']:p.fields;
+    const layout=p.layout==='auto'?(innerWidth<700?'vertical':'horizontal'):p.layout;
+    n.textContent=keys.filter(function(k){return Object.prototype.hasOwnProperty.call(vals,k);}).map(function(k){return vals[k];}).join(layout==='vertical'?'\\n':'  ·  ');
+    n.style.cssText='position:fixed;z-index:2147483000;display:block;pointer-events:auto;touch-action:none;user-select:none;cursor:move;box-sizing:border-box;border-radius:7px;padding:5px 8px;max-width:calc(100vw - 24px);white-space:pre-line;font-family:ui-monospace,Consolas,monospace;font-weight:600;line-height:1.5';
+    n.style.fontSize=(11*Math.max(60,Math.min(140,Number(p.scale)||100))/100)+'px';
+    n.style.background='rgba(0,0,0,'+(Math.max(0,Math.min(100,Number(p.opacity)||0))/100)+')';
+    n.style.color=({white:'#fff',black:'#000',blue:'#65b8ff',green:'#80e5a4'})[p.color]||'#fff';
+    nxMonitorPlace();
+  }
+  setInterval(nxTelemetryTick, 1000);
+  function nxTelemetryToggle(enabled) {
+    nxTelemetryEnabled = !!enabled;
+    try { localStorage.setItem(NX_TELEMETRY_KEY,enabled?'1':'0'); } catch (_) {}
+    nxTelemetryTick();
+  }
+  // Configurações no início: o monitor funciona mesmo com o painel recolhido.
+  const nxOverviewOriginal=TAB_BUILDERS.overview;
+  TAB_BUILDERS.overview=function(root){
+    const section=mk('div','border:1px solid '+C.line+';border-radius:12px;padding:12px;margin-bottom:12px');
+    section.appendChild(mk('div','font-weight:700;font-size:14px;margin-bottom:5px','NX Stream Monitor'));
+    section.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:10px','Informações mínimas durante a partida; arraste o monitor para reposicionar.'));
+    section.appendChild(actBtn(nxTelemetryEnabled?'Ocultar monitor':'Ativar monitor',function(){nxTelemetryToggle(!nxTelemetryEnabled);renderBody();},'ghost'));
+    function option(label,key,choices){
+      const row=mk('label','display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:9px;font-size:12px');
+      row.appendChild(mk('span','',label));
+      const sel=mk('select','background:#18212b;color:white;border:1px solid '+C.line+';border-radius:7px;padding:6px;max-width:60%');
+      choices.forEach(function(o){const opt=document.createElement('option');opt.value=o[0];opt.textContent=o[1];sel.appendChild(opt);});
+      sel.value=String(nxMonitor[key]);sel.addEventListener('change',function(){nxMonitor[key]=['opacity','scale'].includes(key)?Number(sel.value):sel.value;if(key==='position'){nxMonitor.x=null;nxMonitor.y=null;}nxMonitorSave();});
+      row.appendChild(sel);section.appendChild(row);
+    }
+    option('Layout','layout',[['auto','Automático'],['horizontal','Horizontal'],['vertical','Vertical'],['compact','Compacto']]);
+    option('Posição','position',[['top-left','Superior esquerdo'],['top-right','Superior direito'],['bottom-left','Inferior esquerdo'],['bottom-right','Inferior direito']]);
+    option('Fundo','opacity',[['0','Transparente'],['25','25%'],['45','45%'],['65','65%'],['85','85%'],['100','Preto']]);
+    option('Texto','color',[['white','Branco'],['black','Preto'],['blue','Azul'],['green','Verde']]);
+    option('Escala','scale',[['60','60%'],['80','80%'],['100','100%'],['120','120%'],['140','140%']]);
+    const fields=mk('div','display:flex;flex-wrap:wrap;gap:8px;margin-top:10px');
+    [['server','Servidor'],['fps','FPS'],['rtt','RTT'],['bitrate','Bitrate'],['loss','Perda'],['resolution','Resolução'],['jitter','Jitter']].forEach(function(item){
+      const label=mk('label','display:inline-flex;align-items:center;gap:4px;font-size:11px');
+      const check=document.createElement('input');check.type='checkbox';check.checked=nxMonitor.fields.includes(item[0]);
+      check.addEventListener('change',function(){nxMonitor.fields=check.checked?Array.from(new Set(nxMonitor.fields.concat(item[0]))):nxMonitor.fields.filter(function(k){return k!==item[0];});nxMonitorSave();});
+      label.appendChild(check);label.appendChild(mk('span','',item[1]));fields.appendChild(label);
+    });
+    section.appendChild(fields);root.appendChild(section);nxOverviewOriginal(root);
+  };
+    // NX UI v2: início minimalista com quatro grupos; páginas legadas preservadas.
+  const nxMonitorSettingsPage=TAB_BUILDERS.overview;
+  TABS.push({id:'personalize',label:'Personalização',desc:'Monitor, aparência e posição'});
+  TABS.push({id:'dashboard',label:'Dashboard',desc:'Gráficos e indicadores detalhados'});
+  TAB_BUILDERS.personalize=function(root){
+    const temp=document.createElement('div');
+    nxMonitorSettingsPage(temp);
+    if(temp.firstElementChild)root.appendChild(temp.firstElementChild);
+    root.appendChild(mk('div','font-size:11px;color:'+C.dim+';line-height:1.5;margin-top:12px','As opções de monitor são independentes do painel. A posição também pode ser alterada arrastando o monitor durante uma transmissão.'));
+  };
+  TAB_BUILDERS.dashboard=function(root){
+    nxOverviewOriginal(root);
+  };
+  TAB_BUILDERS.overview=function(root){
+    root.appendChild(mk('div','font-size:18px;font-weight:750;letter-spacing:-.02em;margin-bottom:4px','NX · Central'));
+    root.appendChild(mk('div','font-size:11px;color:'+C.dim+';line-height:1.5;margin-bottom:12px','Ajustes organizados. O painel pode ser fechado a qualquer momento.'));
+    const status=mk('div','padding:10px 12px;border-radius:10px;background:'+C.panel+';border:1px solid '+C.line+';margin-bottom:10px');
+    const state=mk('div','font-size:12px;font-weight:700');
+    const metrics=mk('div','font-size:11px;color:'+C.dim+';margin-top:4px;line-height:1.5');
+    status.appendChild(state);status.appendChild(metrics);root.appendChild(status);
+    liveFns.push(function(){
+      state.textContent=linkState().text;
+      const q=S.qos||{};
+      metrics.textContent='FPS '+fmtN(q.decodedFps||q.fps)+'  ·  RTT '+fmtN(q.rtt,' ms')+'  ·  '+(S.serverActual||'Servidor automático');
+    });
+    const groups=[
+      {title:'Transmissão',sub:'Qualidade, servidores e estatísticas',icon:ICONS.stream,links:[['stream','Imagem e transmissão'],['region','Rede e servidores'],['dashboard','Dashboard e gráficos']]},
+      {title:'Controles',sub:'Gamepad, toque, áudio e acessórios',icon:ICONS.controls,links:[['controls','Controle e HUD'],['audio','Áudio'],['voice','Voz e acessórios']]},
+      {title:'Personalização',sub:'Monitor, transparência e layout',icon:ICONS.overview,links:[['personalize','Configurar NX Stream Monitor']]},
+      {title:'Avançado',sub:'Ferramentas e diagnóstico',icon:ICONS.advanced,links:[['advanced','Sistema e laboratório']]}
+    ];
+    groups.forEach(function(g){
+      const section=mk('div','margin-bottom:8px;border:1px solid '+C.line+';border-radius:11px;overflow:hidden;background:'+C.panel);
+      const button=mk('button','all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:11px;padding:12px;color:'+C.text+';text-align:left');
+      button.setAttribute('aria-expanded','false');
+      button.appendChild(ico(g.icon,19));
+      const titles=mk('span','display:flex;flex-direction:column;gap:3px;min-width:0;flex:1');
+      titles.appendChild(mk('span','font-size:13px;font-weight:700',g.title));
+      titles.appendChild(mk('span','font-size:10.5px;color:'+C.dim,g.sub));
+      button.appendChild(titles);
+      button.appendChild(ico('M6 9l6 6 6-6',15));
+      const details=mk('div','display:none;padding:0 8px 8px');
+      g.links.forEach(function(link){
+        const entry=mk('button','all:unset;box-sizing:border-box;display:block;cursor:pointer;width:100%;text-align:left;font-size:12px;color:'+C.text+';padding:11px 12px;border-top:1px solid '+C.line,link[1]);
+        entry.addEventListener('click',function(e){e.stopPropagation();setTab(link[0]);});
+        details.appendChild(entry);
+      });
+      button.addEventListener('click',function(e){
+        e.stopPropagation();
+        const open=details.style.display==='none';
+        details.style.display=open?'block':'none';
+        button.setAttribute('aria-expanded',String(open));
+      });
+      section.appendChild(button);section.appendChild(details);root.appendChild(section);
+    });
+    const monitor=actBtn(nxTelemetryEnabled?'Ocultar monitor de desempenho':'Ativar monitor de desempenho',function(){nxTelemetryToggle(!nxTelemetryEnabled);renderBody();},'ghost');
+    monitor.style.width='100%';monitor.style.marginTop='4px';root.appendChild(monitor);
+  };
+    // Painel como inventario: solta o ponteiro uma unica vez ao abrir.
+  // Ao fechar, nao recaptura sem gesto do usuario; F9 continua nativo.
+  document.addEventListener('keydown',function(e){
+    if(!openUI)return;
+    const isShortcut=e.ctrlKey&&e.shiftKey&&(e.code===getPref(LS_NX_SHORTCUT,'KeyH')||e.code==='KeyN');
+    if(isShortcut)return;
+    if(e.code==='Escape'){e.preventDefault();e.stopImmediatePropagation();setOpen(false,true);return;}
+    if(wrap && e.target && wrap.contains(e.target))return;
+    e.preventDefault();e.stopImmediatePropagation();
+  },true);
+  document.addEventListener('keyup',function(e){
+    if(!openUI || (wrap&&e.target&&wrap.contains(e.target)))return;
+    e.preventDefault();e.stopImmediatePropagation();
+  },true);
+  // Gerenciamento de foco independente do Pointer Lock: nunca recapturar automaticamente.
+  let nxFocusBeforePanel = null;
+  function setOpen(v, byUser) {
+    const wasOpen = openUI;
+    openUI = !!v;
+    if (byUser) userTouched = true;
+    if (!cardEl) buildUI();
+    if (!cardEl) return;
+    cardEl.style.display = openUI ? 'flex' : 'none';
+    if (nxShellEnabled && wrap) { wrap.classList.toggle('nx-shell-open', openUI); if (openUI) nxShellNeedsRelease = true; }
+    if(openUI && !wasOpen){
+      nxFocusBeforePanel = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+      if(document.pointerLockElement){
+        try{document.exitPointerLock();}catch(_){}
+      }
+    }
+    if (openUI) {
+      syncNXPlacement(); fitCard(); renderBody(); update();
+      if(!wasOpen){
+        // Teclado e controle podem operar o menu sem enviar comandos ao jogo.
+        if(!cardEl.hasAttribute('tabindex'))cardEl.setAttribute('tabindex','-1');
+        try{cardEl.focus({preventScroll:true});}catch(_){}
+      }
+    }else if(wasOpen){
+      const previous=nxFocusBeforePanel;
+      nxFocusBeforePanel=null;
+      // Restaurar foco nao significa restaurar Pointer Lock; o jogador decide quando retomar.
+      if(previous && previous.isConnected && typeof previous.focus==='function'){
+        try{previous.focus({preventScroll:true});}catch(_){}
+      }else if(document.activeElement && wrap && wrap.contains(document.activeElement)){
+        try{document.activeElement.blur();}catch(_){}
+      }
+    }
+    if (wrap) wrap.style.display = 'flex';
+  }
+
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    setTimeout(function () { pending = false; update(); }, 150);
+  }
+
+  // Tocar fora do painel o fecha (o botão da barra e o próprio painel não contam como "fora")
+  document.addEventListener('pointerdown', function (e) {
+    if (!openUI) return;
+    const t = e.target;
+    if (t && wrap && wrap.contains(t)) return;
+    if (t && nxLibraryButton && nxLibraryButton.contains(t)) return;
+    // Fechar sem encaminhar o clique ao jogo.
+    e.preventDefault();e.stopImmediatePropagation();
+    setOpen(false,true);
+  }, true);
+  ['pointerup','mousedown','mouseup','click','wheel','touchstart','touchmove','touchend'].forEach(function(type){
+    document.addEventListener(type,function(e){
+      if(!openUI || (wrap&&e.target&&wrap.contains(e.target)))return;
+      e.preventDefault();e.stopImmediatePropagation();
+    },{capture:true,passive:false});
+  });
+
+  function update() {
+    if (!buildUI()) return;
+
+    const loss = curLoss();
+    const col = lossColor(loss);
+    // O pontinho (na pílula, no botão da biblioteca e no cabeçalho) indica o estado do link
+    dotEl.style.background = col;
+    if (nxLibraryDot) nxLibraryDot.style.background = col;
+    pillTxt.textContent = loss == null ? '' : loss.toFixed(1) + '%';
+    pillTxt.style.display = loss == null ? 'none' : 'inline';
+    if (el.hdrDot) {
+      el.hdrDot.style.background = col;
+      el.hdrTxt.textContent = loss == null ? 'Sem partida' : loss.toFixed(1) + '% perda';
+    }
+
+    if (!openUI) return;
+    fitCard();
+    runLive();
+  }
+
+  // ---------- 14. Aplicação de configurações ----------
+  function pickApply(kind, k) {
+    if (kind === 'srv') {
+      setPref(LS_SRV, k);
+      S.serverActual = '';
+      S.serverPin = SERVERS[k].name;
+      return false;
+    }
+    if (kind === 'bitrate') { setPref(LS_BITRATE, k); return false; }
+    if (kind === 'res') { setPref(LS_RES, k); return false; }
+    if (kind === 'region') { setPref(LS_KEY, k); return true; }
+    return false;
+  }
+
+  function toggleV4() {
+    setPref(LS_V4, v4on() ? '0' : '1');
+    S.v6dropped = 0;
+    update();
+  }
+
+  function hardReload() {
+    try {
+      const kill = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && /^experimentationInfo|^HydrationCache/i.test(k)) kill.push(k);
+      }
+      kill.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) { } });
+    } catch (e) { }
+    location.reload();
+  }
+
+  // Diagnóstico somente leitura; não modifica navigator, eventos nem a sessão.
+  function inputCapabilities() {
+    let touchPoints = 0, coarse = false, anyCoarse = false, hover = false;
+    try { touchPoints = Number(navigator.maxTouchPoints) || 0; } catch (e) {}
+    try { coarse = !!window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
+    try { anyCoarse = !!window.matchMedia('(any-pointer: coarse)').matches; } catch (e) {}
+    try { hover = !!window.matchMedia('(any-hover: hover)').matches; } catch (e) {}
+    let gamepads = 0;
+    try { gamepads = Array.from(navigator.getGamepads ? navigator.getGamepads() : []).filter(Boolean).length; } catch (e) {}
+    return {
+      touch: touchPoints > 0 || ('ontouchstart' in window) || coarse || anyCoarse,
+      maxTouchPoints: touchPoints, pointerCoarse: coarse,
+      anyPointerCoarse: anyCoarse, anyHover: hover, gamepadsConnected: gamepads,
+      note: 'Capacidades locais; não confirmam liberação do controle virtual pelo xCloud'
+    };
+  }
+
+  // Diagnóstico multimodal de eventos (somente leitura, buffer circular, sem dados digitados).
+  const DIAG_MAX = 100;
+  const diagEvents = [];
+  const diagStart = Date.now();
+  let diagLastTouch = 0;
+  let diagLastPointer = 0;
+  let diagLastKey = 0;
+  function diagState() {
+    let lock = false, focus = false, visibility = 'unknown';
+    try { lock = !!(document.pointerLockElement || document.webkitPointerLockElement); } catch (e) {}
+    try { focus = document.hasFocus(); } catch (e) {}
+    try { visibility = document.visibilityState; } catch (e) {}
+    return { pointerLocked: lock, focused: focus, visibility: visibility,
+      fullscreen: !!(document.fullscreenElement || document.webkitFullscreenElement),
+      screen: { width: window.innerWidth, height: window.innerHeight } };
+  }
+  function diagLog(type, detail) {
+    try {
+      diagEvents.push({ ms: Date.now() - diagStart, type: type, detail: detail || null, state: diagState() });
+      if (diagEvents.length > DIAG_MAX) diagEvents.shift();
+    } catch (e) {}
+  }
+  function diagZone(x, y) {
+    const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
+    const col = Math.min(3, Math.max(0, Math.floor(x / w * 4)));
+    const row = Math.min(3, Math.max(0, Math.floor(y / h * 4)));
+    return 'r' + row + 'c' + col;
+  }
+  // Camada única de observação de controles: somente leitura, sem interceptar getGamepads.
+  const NX_INPUT_PROFILE_KEY = 'nx.input.previewProfile.v1';
+  const nxInputProfiles = {
+    default: { label: 'Padrão', deadzone: 0.12, curve: 1 },
+    precision: { label: 'Precisão', deadzone: 0.08, curve: 1.6 },
+    racing: { label: 'Corrida', deadzone: 0.05, curve: 1.2 },
+    accessible: { label: 'Acessibilidade', deadzone: 0.18, curve: 0.75 }
+  };
+  function nxInputProfileName() {
+    const name = getPref(NX_INPUT_PROFILE_KEY, 'default');
+    return Object.prototype.hasOwnProperty.call(nxInputProfiles, name) ? name : 'default';
+  }
+  const NX_RIGHT_STICK_PROFILE_KEY = 'nx.input.rightStickProfile.v1';
+  function nxRightStickProfileName() {
+    const name = getPref(NX_RIGHT_STICK_PROFILE_KEY, 'default');
+    return Object.prototype.hasOwnProperty.call(nxInputProfiles, name) ? name : 'default';
+  }
+  function nxTransformStickAxis(value, index) {
+    const name = index < 2 ? nxInputProfileName() : nxRightStickProfileName();
+    return nxPreviewAxis(value, nxInputProfiles[name]);
+  }
+  function nxPreviewAxis(value, profile) {
+    if (!Number.isFinite(value)) return 0;
+    const x = Math.max(-1, Math.min(1, value));
+    const magnitude = Math.abs(x);
+    if (magnitude <= profile.deadzone) return 0;
+    const normalized = (magnitude - profile.deadzone) / (1 - profile.deadzone);
+    return Math.sign(x) * Math.pow(normalized, profile.curve);
+  }
+  const NX_INPUT_APPLY_KEY = 'nx.input.applyAxes.v1';
+  const nxInputBridge = { enabled: false, installed: false, error: '', transformedReads: 0, nativeReads: 0, fallbacks: 0, lastFallback: '', foreignOverride: false, restored: false };
+  const nxOriginalGamepadDescriptor = Object.getOwnPropertyDescriptor(navigator, 'getGamepads');
+  const nxNativeGetGamepads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads.bind(navigator) : null;
+  const NX_GYRO_GAME_KEY = 'nx.gyro.gameInput.v1';
+  const NX_GYRO_TRIGGER_KEY = 'nx.gyro.activation.v1';
+  function nxGyroGameEnabled() { return getPref(NX_GYRO_GAME_KEY, '0') === '1'; }
+  function nxGyroActivationMode() { return getPref(NX_GYRO_TRIGGER_KEY, 'lt') === 'always' ? 'always' : 'lt'; }
+  function nxInputEnabled() { return getPref(NX_INPUT_APPLY_KEY, '0') === '1'; }
+  function nxGameBridgeRequested() { return nxInputEnabled() || nxGyroGameEnabled(); }
+  const NX_GYRO_BLEND_KEY = 'nx.gyro.blend.v1';
+  const NX_GYRO_MAX_AGE_MS = 250;
+  function nxGyroBlend() {
+    const value = Number(getPref(NX_GYRO_BLEND_KEY, '0.5'));
+    return Number.isFinite(value) ? Math.max(0.1, Math.min(1, value)) : 0.5;
+  }
+  const NX_GYRO_TARGET_KEY = 'nx.gyro.gamepadIndex.v1';
+  function nxGyroTargetIndex() {
+    const raw = getPref(NX_GYRO_TARGET_KEY, '0');
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 0 && n <= 3 ? n : 0;
+  }
+  function nxGyroGameAxes(buttons) {
+    if (!nxGyroGameEnabled() || !nxGyroPreview.enabled || !nxGyroPreviewState().calibrated ||
+        Date.now() - nxGyroPreview.lastAt > NX_GYRO_MAX_AGE_MS ||
+        document.visibilityState === 'hidden') return null;
+    if (nxGyroActivationMode() === 'lt') {
+      const lt = buttons && buttons[6];
+      if (!lt || !(lt.pressed || Number(lt.value) > 0.5)) return null;
+    }
+    const g = nxGyroPreviewState();
+    return [g.axisX, g.axisY];
+  }
+  function nxMergeGyroAxes(axes, buttons, padIndex) {
+    const target = nxGyroTargetIndex();
+    if (padIndex !== undefined && padIndex !== target) return axes;
+    const gyro = nxGyroGameAxes(buttons);
+    if (!gyro || axes.length < 4) return axes;
+    const merged = axes.slice();
+    const blend = nxGyroBlend();
+    merged[2] = Math.max(-1, Math.min(1, merged[2] + gyro[0] * blend));
+    merged[3] = Math.max(-1, Math.min(1, merged[3] + gyro[1] * blend));
+    return merged;
+  }
+  function nxInputBridgeStatus() {
+    // Consulta somente leitura: abrir o painel nunca deve apagar preferencias.
+    // Se outro script substituiu a API, a ponte NimboXcloud deixa de ser chamada.
+    if (nxInputBridge.installed && navigator.getGamepads !== nxInputBridge.wrapper) {
+      return 'Outro script controla a Gamepad API; ponte NimboXcloud inativa';
+    }
+    return nxInputBridge.installed ? 'Ativo' : (nxInputBridge.error || 'Nativo / simulação');
+  }
+  function nxRestoreNativeGamepads(reason) {
+    nxInputBridge.fallbacks++;
+    nxInputBridge.lastFallback = String(reason || 'Recuperação manual').slice(0, 160);
+    nxInputBridge.error = nxInputBridge.lastFallback;
+    nxInputBridge.enabled = false;
+    setPref(NX_INPUT_APPLY_KEY, '0');
+    setPref(NX_GYRO_GAME_KEY, '0');
+    if (nxNativeGetGamepads) {
+      try {
+        if (!nxInputBridge.wrapper || navigator.getGamepads !== nxInputBridge.wrapper) {
+          if (nxInputBridge.wrapper) nxInputBridge.foreignOverride = true;
+          nxInputBridge.error += '; API não pertence à ponte NimboXcloud; não sobrescrita';
+          nxInputBridge.installed = false;
+          return;
+        }
+        if (nxOriginalGamepadDescriptor) {
+          Object.defineProperty(navigator, 'getGamepads', nxOriginalGamepadDescriptor);
+        } else {
+          delete navigator.getGamepads;
+        }
+        nxInputBridge.installed = false;
+        nxInputBridge.restored = true;
+      } catch (err) { nxInputBridge.error += '; restauração: ' + String(err && err.message || err); }
+    }
+  }
+  function nxInstallInputBridge() {
+    nxInputBridge.enabled = nxGameBridgeRequested();
+    if (!nxInputBridge.enabled || !nxNativeGetGamepads) return;
+    // Não instalar por cima de outro wrapper que assumiu a API após o boot.
+    // O descriptor original é capturado uma única vez; ownership deve ser conferido.
+    if (nxInputBridge.wrapper && navigator.getGamepads === nxInputBridge.wrapper) {
+      nxInputBridge.installed = true;
+      return;
+    }
+    if (nxInputBridge.wrapper && navigator.getGamepads !== nxInputBridge.wrapper) {
+      nxInputBridge.foreignOverride = true;
+    }
+    if (nxInputBridge.foreignOverride) {
+      nxInputBridge.enabled = false;
+      nxInputBridge.error = 'Outro script controla a Gamepad API';
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(navigator, 'getGamepads') && nxOriginalGamepadDescriptor && !nxOriginalGamepadDescriptor.configurable) {
+      nxInputBridge.error = 'Gamepad API não configurável; processamento ignorado';
+      return;
+    }
+    try {
+      const bridge = function () {
+        let pads;
+        try {
+          pads = nxNativeGetGamepads();
+          nxInputBridge.nativeReads++;
+          if (!pads) return pads;
+          const result = Array.from(pads, function (pad) {
+            if (!pad || !pad.connected || !pad.axes || !pad.axes.length || pad.mapping !== 'standard') return pad;
+            // Apenas eixos padrão dos sticks. Eixos adicionais ficam intactos.
+            const nativeAxes = Array.from(pad.axes);
+            const profiledAxes = nxInputEnabled() ? nativeAxes.map(function (v, i) {
+              return i < 4 ? nxTransformStickAxis(v, i) : v;
+            }) : nativeAxes;
+            const axes = nxMergeGyroAxes(profiledAxes, pad.buttons, pad.index);
+            // Evita criar um novo objeto se não houver diferença perceptível.
+            if (axes.every(function (v, i) { return Object.is(v, pad.axes[i]); })) return pad;
+            const output = { id: pad.id, index: pad.index, connected: pad.connected,
+              mapping: pad.mapping, timestamp: pad.timestamp, axes: axes, buttons: pad.buttons };
+            try { if ('vibrationActuator' in pad) output.vibrationActuator = pad.vibrationActuator; } catch (_) {}
+            try { if ('hapticActuators' in pad) output.hapticActuators = pad.hapticActuators; } catch (_) {}
+            nxInputBridge.transformedReads++;
+            return output;
+          });
+          return result;
+        } catch (err) {
+          nxRestoreNativeGamepads('Falha no processamento: ' + String(err && err.message || err));
+          if (pads) return pads;
+          try { return nxNativeGetGamepads(); } catch (_) { return []; }
+        }
+      };
+      Object.defineProperty(navigator, 'getGamepads', { configurable: true, writable: true, value: bridge });
+      nxInputBridge.wrapper = bridge;
+      nxInputBridge.installed = navigator.getGamepads === bridge;
+      if (!nxInputBridge.installed) nxInputBridge.error = 'Não foi possível instalar o processamento';
+    } catch (err) { nxInputBridge.error = String(err && err.message || err); }
+  }
+  // Instala no início do userscript, antes de a interface do site inicializar.
+  nxInstallInputBridge();
+  // Telemetria agregada de fontes de entrada; nunca envia ou injeta comandos.
+  const nxInputEvents = [];
+  const NX_INPUT_EVENTS_MAX = 30;
+  function nxInputEvent(kind, detail) {
+    nxInputEvents.push({ at: new Date().toISOString(), kind: kind, detail: String(detail || '').slice(0, 90) });
+    if (nxInputEvents.length > NX_INPUT_EVENTS_MAX) nxInputEvents.shift();
+  }
+  // Registro de entradas virtuais interno: não injeta Gamepad nem intercepta eventos do jogo.
+  const nxVirtualInputs = Object.create(null);
+  const NX_VIRTUAL_INPUT_TTL = 2000;
+  const NX_VIRTUAL_INPUT_LIMIT = 8;
+  function nxPruneVirtualInputs() {
+    const now = Date.now();
+    Object.keys(nxVirtualInputs).forEach(function (id) {
+      if (now - nxVirtualInputs[id].at > NX_VIRTUAL_INPUT_TTL) delete nxVirtualInputs[id];
+    });
+  }
+  function nxRegisterVirtualInput(id, kind, active) {
+    if (typeof id !== 'string' || !/^[a-z0-9_-]{1,32}$/i.test(id)) return false;
+    if (kind !== 'touch-hud' && kind !== 'gyro' && kind !== 'virtual-keyboard' && kind !== 'virtual-mouse') return false;
+    if (active === false) {
+      delete nxVirtualInputs[id];
+      return true;
+    }
+    nxPruneVirtualInputs();
+    if (!Object.prototype.hasOwnProperty.call(nxVirtualInputs, id) && Object.keys(nxVirtualInputs).length >= NX_VIRTUAL_INPUT_LIMIT) return false;
+    nxVirtualInputs[id] = { kind: kind, at: Date.now() };
+    return true;
+  }
+  function nxVirtualInputState() {
+    nxPruneVirtualInputs();
+    const kinds = Object.keys(nxVirtualInputs).map(function (id) { return nxVirtualInputs[id].kind; });
+    return { count: kinds.length, kinds: Array.from(new Set(kinds)), injectionEnabled: false,
+      note: 'Registro interno de atividade virtual; nenhuma entrada é enviada ao xCloud.' };
+  }
+  // Giroscópio em modo de observação: exige ativação explícita e nunca move o jogo.
+  const NX_GYRO_INVERT_X_KEY = 'nx.gyro.previewInvertX.v1';
+  const NX_GYRO_INVERT_Y_KEY = 'nx.gyro.previewInvertY.v1';
+  function nxGyroInvertX() { return getPref(NX_GYRO_INVERT_X_KEY, '0') === '1'; }
+  function nxGyroInvertY() { return getPref(NX_GYRO_INVERT_Y_KEY, '0') === '1'; }
+  const NX_GYRO_SENS_KEY = 'nx.gyro.previewSensitivity.v1';
+  const NX_GYRO_DEADZONE_KEY = 'nx.gyro.previewDeadzone.v1';
+  function nxGyroSensitivity() {
+    const value = Number(getPref(NX_GYRO_SENS_KEY, '1'));
+    return Number.isFinite(value) ? Math.max(0.25, Math.min(3, value)) : 1;
+  }
+  function nxGyroDeadzone() {
+    const value = Number(getPref(NX_GYRO_DEADZONE_KEY, '0.04'));
+    return Number.isFinite(value) ? Math.max(0, Math.min(0.2, value)) : 0.04;
+  }
+  function nxGyroAxisPreview(degrees, range) {
+    if (!Number.isFinite(degrees)) return 0;
+    const normalized = Math.max(-1, Math.min(1, degrees / range * nxGyroSensitivity()));
+    const deadzone = nxGyroDeadzone();
+    if (Math.abs(normalized) <= deadzone) return 0;
+    return Math.sign(normalized) * (Math.abs(normalized) - deadzone) / (1 - deadzone);
+  }
+  const NX_GYRO_SMOOTH_KEY = 'nx.gyro.previewSmoothing.v1';
+  function nxGyroSmoothFactor() {
+    const raw = Number(getPref(NX_GYRO_SMOOTH_KEY, '0.25'));
+    return Number.isFinite(raw) ? Math.max(0.05, Math.min(1, raw)) : 0.25;
+  }
+  function nxScreenAngle() {
+    try {
+      const angle = screen.orientation && Number(screen.orientation.angle);
+      return Number.isFinite(angle) ? ((angle % 360) + 360) % 360 : 0;
+    } catch (_) { return 0; }
+  }
+  let nxGyroRequestGeneration = 0;
+  const nxGyroPreview = { enabled: false, permission: 'não solicitada', samples: 0, lastAt: 0,
+    alpha: null, beta: null, gamma: null, originBeta: null, originGamma: null,
+    filteredX: null, filteredY: null, screenAngle: null, orientationChanges: 0, error: '' };
+  function nxGyroOnOrientation(e) {
+    if (!nxGyroPreview.enabled) return;
+    if (!Number.isFinite(e.beta) || !Number.isFinite(e.gamma)) return;
+    nxGyroPreview.samples++;
+    nxGyroPreview.lastAt = Date.now();
+    nxGyroPreview.alpha = Number.isFinite(e.alpha) ? e.alpha : null;
+    nxGyroPreview.beta = e.beta;
+    nxGyroPreview.gamma = e.gamma;
+    const angle = nxScreenAngle();
+    if (nxGyroPreview.screenAngle !== null && angle !== nxGyroPreview.screenAngle) {
+      nxGyroPreview.orientationChanges++;
+      nxResetGyroCalibration();
+    }
+    nxGyroPreview.screenAngle = angle;
+    if (nxGyroPreview.originBeta !== null && nxGyroPreview.originGamma !== null) {
+      const x = Math.max(-90, Math.min(90, e.gamma - nxGyroPreview.originGamma));
+      const y = Math.max(-180, Math.min(180, e.beta - nxGyroPreview.originBeta));
+      const factor = nxGyroSmoothFactor();
+      nxGyroPreview.filteredX = nxGyroPreview.filteredX === null ? x : nxGyroPreview.filteredX + factor * (x - nxGyroPreview.filteredX);
+      nxGyroPreview.filteredY = nxGyroPreview.filteredY === null ? y : nxGyroPreview.filteredY + factor * (y - nxGyroPreview.filteredY);
+    }
+    nxRegisterVirtualInput('nx-gyro-preview', 'gyro', true);
+  }
+  async function nxStartGyroPreview() {
+    if (nxGyroPreview.enabled) return true;
+    const generation = ++nxGyroRequestGeneration;
+    if (typeof DeviceOrientationEvent === 'undefined') {
+      nxGyroPreview.permission = 'indisponível';
+      nxGyroPreview.error = 'DeviceOrientationEvent não disponível';
+      return false;
+    }
+    try {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if (generation !== nxGyroRequestGeneration || document.visibilityState === 'hidden') return false;
+        nxGyroPreview.permission = permission;
+        if (permission !== 'granted') return false;
+      } else nxGyroPreview.permission = 'API disponível';
+      if (generation !== nxGyroRequestGeneration || document.visibilityState === 'hidden') return false;
+      nxGyroPreview.enabled = true;
+      nxGyroPreview.error = '';
+      window.addEventListener('deviceorientation', nxGyroOnOrientation, { passive: true });
+      return true;
+    } catch (err) {
+      if (generation !== nxGyroRequestGeneration) return false;
+      nxGyroPreview.permission = 'erro';
+      nxGyroPreview.error = String(err && err.message || err).slice(0, 120);
+      return false;
+    }
+  }
+  function nxStopGyroPreview() {
+    ++nxGyroRequestGeneration;
+    nxGyroPreview.enabled = false;
+    window.removeEventListener('deviceorientation', nxGyroOnOrientation);
+    nxRegisterVirtualInput('nx-gyro-preview', 'gyro', false);
+    nxGyroPreview.lastAt = 0;
+    nxGyroPreview.beta = null;
+    nxGyroPreview.gamma = null;
+    nxGyroPreview.screenAngle = null;
+    nxResetGyroCalibration();
+  }
+  function nxResetGyroCalibration() {
+    nxGyroPreview.originBeta = null;
+    nxGyroPreview.originGamma = null;
+    nxGyroPreview.filteredX = null;
+    nxGyroPreview.filteredY = null;
+  }
+  function nxCalibrateGyroPreview() {
+    if (!nxGyroPreview.enabled || Date.now() - nxGyroPreview.lastAt > 2000 ||
+      !Number.isFinite(nxGyroPreview.beta) || !Number.isFinite(nxGyroPreview.gamma)) return false;
+    nxGyroPreview.originBeta = nxGyroPreview.beta;
+    nxGyroPreview.originGamma = nxGyroPreview.gamma;
+    nxGyroPreview.filteredX = 0;
+    nxGyroPreview.filteredY = 0;
+    return true;
+  }
+  function nxGyroPreviewState() {
+    const g = nxGyroPreview;
+    return { enabled: g.enabled, permission: g.permission, samples: g.samples,
+      receiving: g.enabled && Date.now() - g.lastAt < 2000,
+      calibrated: g.originBeta !== null && g.originGamma !== null,
+      tiltX: g.filteredX === null ? null : Math.round((nxGyroInvertX() ? -1 : 1) * g.filteredX * 10) / 10,
+      tiltY: g.filteredY === null ? null : Math.round((nxGyroInvertY() ? -1 : 1) * g.filteredY * 10) / 10,
+      invertX: nxGyroInvertX(), invertY: nxGyroInvertY(),
+      smoothing: nxGyroSmoothFactor(),
+      sensitivity: nxGyroSensitivity(), deadzone: nxGyroDeadzone(),
+      axisX: !g.enabled || Date.now() - g.lastAt > 2000 || g.filteredX === null ? 0 :
+        Math.round(nxGyroAxisPreview((nxGyroInvertX() ? -1 : 1) * g.filteredX, 45) * 1000) / 1000,
+      axisY: !g.enabled || Date.now() - g.lastAt > 2000 || g.filteredY === null ? 0 :
+        Math.round(nxGyroAxisPreview((nxGyroInvertY() ? -1 : 1) * g.filteredY, 60) * 1000) / 1000,
+      screenAngle: g.screenAngle, orientationChanges: g.orientationChanges,
+      autoPauseOnHidden: true,
+      error: g.error, gameplayInput: nxGyroGameEnabled() && nxInputBridge.installed &&
+        g.enabled && g.originBeta !== null && g.originGamma !== null &&
+        Date.now() - g.lastAt <= NX_GYRO_MAX_AGE_MS };
+  }
+  const nxInputSources = {
+    touch: { count: 0, lastAt: 0 }, mouse: { count: 0, lastAt: 0 },
+    keyboard: { count: 0, lastAt: 0 }, gamepad: { count: 0, lastAt: 0 },
+    simultaneous: 0, lastConflictAt: 0
+  };
+  const nxInputEventLastAt = Object.create(null);
+  // Observação de movimento relativo: não injeta mouse nem guarda coordenadas.
+  const nxRelativeMouse = { samples: 0, lastAt: 0, distance: 0, maxStep: 0, invalid: 0 };
+  function nxObserveRelativeMouse(e) {
+    if (!e.isTrusted || e.pointerType !== 'mouse') return;
+    // Campos ausentes não devem virar zero ou gerar estatísticas falsas.
+    if (typeof e.movementX !== 'number' || typeof e.movementY !== 'number') {
+      nxRelativeMouse.invalid++;
+      return;
+    }
+    const dx = e.movementX, dy = e.movementY;
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) { nxRelativeMouse.invalid++; return; }
+    const step = Math.hypot(dx, dy);
+    if (step === 0) return;
+    nxRelativeMouse.samples++;
+    nxRelativeMouse.lastAt = Date.now();
+    nxRelativeMouse.distance = Math.min(1000000, nxRelativeMouse.distance + Math.min(step, 10000));
+    nxRelativeMouse.maxStep = Math.max(nxRelativeMouse.maxStep, Math.min(step, 10000));
+  }
+  function nxRecordInputSource(name) {
+    const source = nxInputSources[name];
+    if (!source) return;
+    const now = Date.now();
+    if (now - source.lastAt < 100) return;
+    source.count++;
+    source.lastAt = now;
+    if (now - (nxInputEventLastAt[name] || 0) >= 1500) {
+      nxInputEvent('source', name);
+      nxInputEventLastAt[name] = now;
+    }
+    // Apenas pares touch/mouse indicam possível duplicação de evento.
+    // Teclado + toque ou teclado + mouse são combinações legítimas.
+    if (name === 'touch' || name === 'mouse') {
+      const other = name === 'touch' ? 'mouse' : 'touch';
+      const lastOther = nxInputSources[other].lastAt;
+      if (lastOther > 0 && now - lastOther >= 0 && now - lastOther < 300 &&
+          now - nxInputSources.lastConflictAt > 500) {
+        nxInputSources.simultaneous++;
+        nxInputSources.lastConflictAt = now;
+        nxInputEvent('overlap', name + '/' + other);
+      }
+    }
+  }
+  const NX_INPUT_COORD_KEY = 'nx.input.coordination.v1';
+  const nxCoordModes = {
+    auto: 'Automático', gamepad: 'Controle físico', touch: 'Toque',
+    mouse: 'Mouse', keyboard: 'Teclado'
+  };
+  function nxCoordMode() {
+    const mode = getPref(NX_INPUT_COORD_KEY, 'auto');
+    return Object.prototype.hasOwnProperty.call(nxCoordModes, mode) ? mode : 'auto';
+  }
+  function nxCoordState() {
+    const now = Date.now(), recent = {};
+    ['touch', 'mouse', 'keyboard', 'gamepad'].forEach(function (k) {
+      recent[k] = nxInputSources[k].lastAt > 0 && now - nxInputSources[k].lastAt < 2000;
+    });
+    const configured = nxCoordMode();
+    const priority = ['gamepad', 'touch', 'mouse', 'keyboard'];
+    const active = configured !== 'auto' ? configured : (priority.filter(function (k) { return recent[k]; })
+      .sort(function (a, b) { return nxInputSources[b].lastAt - nxInputSources[a].lastAt; })[0] || 'none');
+    const simultaneous = priority.filter(function (k) { return recent[k]; });
+    const virtual = nxVirtualInputState();
+    return {
+      configured: configured, suggested: active,
+      activeSources: simultaneous, mixed: simultaneous.length > 1,
+      virtualSources: virtual.kinds, virtualCount: virtual.count,
+      outputModified: false,
+      note: 'Arbitragem apenas diagnóstica. Não bloqueia eventos, não emula controles e não interfere no HUD nativo.'
+    };
+  }
+  function nxInputSourcesReport() {
+    return {
+      touch: nxInputSources.touch.count, mouse: nxInputSources.mouse.count,
+      keyboard: nxInputSources.keyboard.count, gamepad: nxInputSources.gamepad.count,
+      recent: ['touch', 'mouse', 'keyboard', 'gamepad'].filter(function (k) {
+        return nxInputSources[k].lastAt > 0 && Date.now() - nxInputSources[k].lastAt < 2000;
+      }),
+      touchMouseOverlap: nxInputSources.simultaneous,
+      note: 'Observação passiva; toque pode gerar eventos de mouse sintéticos. Sobreposição não comprova conflito.'
+    };
+  }
+  function nxInputSelfCheck() {
+    const tests = [];
+    function check(name, pass) { tests.push({ name: name, pass: !!pass }); }
+    const neutral = nxInputProfiles.default;
+    check('eixo neutro', nxPreviewAxis(0, neutral) === 0);
+    check('zona morta', nxPreviewAxis(0.05, neutral) === 0);
+    check('limite positivo', nxPreviewAxis(1, neutral) === 1);
+    check('limite negativo', nxPreviewAxis(-1, neutral) === -1);
+    check('valor inválido', nxPreviewAxis(NaN, neutral) === 0);
+    check('curva direita finita', Number.isFinite(nxTransformStickAxis(0.6, 2)));
+    check('perfil esquerdo existente', !!nxInputProfiles[nxInputProfileName()]);
+    check('perfil direito existente', !!nxInputProfiles[nxRightStickProfileName()]);
+    const state = nxCoordState();
+    check('coordenação não invasiva', state.outputModified === false);
+    check('histórico limitado', nxInputEvents.length <= NX_INPUT_EVENTS_MAX);
+    check('registro virtual rejeita identificador inválido', !nxRegisterVirtualInput('../bad', 'gyro', true));
+    check('registro virtual rejeita tipo inválido', !nxRegisterVirtualInput('test', 'unknown', true));
+    check('registro virtual não injeta comandos', nxVirtualInputState().injectionEnabled === false);
+    check('giroscópio desativado por padrão', !nxGyroGameEnabled() || nxGyroPreviewState().gameplayInput === nxInputBridge.installed &&
+      nxGyroPreview.enabled && nxGyroPreview.originBeta !== null &&
+      nxGyroPreview.originGamma !== null && Date.now() - nxGyroPreview.lastAt <= NX_GYRO_MAX_AGE_MS);
+    check('suavização do sensor válida', nxGyroSmoothFactor() > 0 && nxGyroSmoothFactor() <= 1);
+    check('pausa automática do sensor configurada', nxGyroPreviewState().autoPauseOnHidden === true);
+    check('prévia informa status de entrada', typeof nxGyroPreviewState().gameplayInput === 'boolean');
+    check('limite de entradas virtuais', NX_VIRTUAL_INPUT_LIMIT === 8);
+    check('janela de expiração virtual', NX_VIRTUAL_INPUT_TTL === 2000);
+    check('ângulo de tela normalizado', nxScreenAngle() >= 0 && nxScreenAngle() < 360);
+    check('inversão horizontal booleana', typeof nxGyroInvertX() === 'boolean');
+    check('inversão vertical booleana', typeof nxGyroInvertY() === 'boolean');
+    check('eixo virtual neutro', nxGyroAxisPreview(0, 45) === 0);
+    check('eixo virtual positivo limitado', nxGyroAxisPreview(999, 45) === 1);
+    check('eixo virtual negativo limitado', nxGyroAxisPreview(-999, 45) === -1);
+    check('eixo virtual inválido neutro', nxGyroAxisPreview(NaN, 45) === 0);
+    check('fusão de eixos sem sensor mantém original', nxMergeGyroAxes([0, 0, 0.2, -0.3], []).join(',') === '0,0,0.2,-0.3');
+    check('modo de ativação válido', ['lt', 'always'].includes(nxGyroActivationMode()));
+    check('intensidade de fusão limitada', nxGyroBlend() >= 0.1 && nxGyroBlend() <= 1);
+    check('idade máxima do sensor limitada', NX_GYRO_MAX_AGE_MS <= 250);
+    check('controle alvo válido', nxGyroTargetIndex() >= 0 && nxGyroTargetIndex() <= 3);
+    check('linha do tempo com limite de eventos', NX_INPUT_EVENTS_MAX === 30);
+    check('rota de jogo não assume página genérica', nxHudGameId('../bad') === '');
+    const nudgeLayout = nxHudValidateLayout(null);
+    check('HUD auto-carregamento booleano', typeof nxHudAutoEnabled() === 'boolean');
+    check('HUD teclado move posição', nxHudNudge(nudgeLayout, 'a', 1, 0) === true);
+    check('HUD teclado rejeita botão desconhecido', nxHudNudge(nudgeLayout, 'invalid', 1, 0) === false);
+    check('HUD teclado rejeita movimento inválido', nxHudNudge(nudgeLayout, 'a', NaN, 0) === false);
+    check('backup HUD rejeita JSON inválido', !nxHudImportBackup('{'));
+    check('backup HUD rejeita JSON excessivo', !nxHudImportBackup(' '.repeat(65537)));
+    check('backup HUD rejeita formato desconhecido', !nxHudImportBackup('{"format":"outro"}'));
+    check('backup HUD exportado tem formato correto',
+      JSON.parse(nxHudExportBackup()).format === 'nimboxcloud-hud-backup-v1');
+    check('identificador de jogo rejeita caminho', nxHudGameId('../bad') === '');
+    check('identificador de jogo normalizado', nxHudGameId('GAME_123') === 'game_123');
+    check('nome de perfil de HUD válido', nxHudProfileName('Corrida 1') === 'Corrida 1');
+    check('nome de perfil de HUD inválido rejeitado', nxHudProfileName('../bad') === '');
+    check('layout de HUD tem oito elementos', Object.keys(nxHudReadLayout()).length === 8);
+    check('layout de HUD limita coordenadas', nxHudValidateLayout({ a: [999, -5] }).a.join(',') === '95,5');
+    check('layout de HUD exportado tem versão', nxHudExportLayout().includes('nimboxcloud-hud-v1'));
+    check('layout de HUD rejeita importação inválida', nxHudImportLayout('{"format":"unknown"}') === false);
+    check('layout de HUD recupera dados inválidos', nxHudValidateLayout({ a: [NaN, 5] }).a.join(',') === NX_HUD_DEFAULT.a.join(','));
+    check('controle secundário preservado',
+      nxMergeGyroAxes([0, 0, 0.2, 0.1], [], nxGyroTargetIndex() === 0 ? 1 : 0).join(',') === '0,0,0.2,0.1');
+    check('zona morta válida', nxGyroDeadzone() >= 0 && nxGyroDeadzone() <= 0.2);
+    check('sensibilidade válida', nxGyroSensitivity() >= 0.25 && nxGyroSensitivity() <= 3);
+    return { passed: tests.filter(function (t) { return t.pass; }).length,
+      total: tests.length, tests: tests, note: 'Autoteste matemático e estrutural; não substitui teste de streaming.' };
+  }
+  function nxResetInputDiagnostics() {
+    ['touch', 'mouse', 'keyboard', 'gamepad'].forEach(function (k) {
+      nxInputSources[k].count = 0;
+      nxInputSources[k].lastAt = 0;
+    });
+    nxInputSources.simultaneous = 0;
+    nxInputSources.lastConflictAt = 0;
+    nxInputEvents.length = 0;
+    nxRelativeMouse.samples = 0;
+    nxRelativeMouse.lastAt = 0;
+    nxRelativeMouse.distance = 0;
+    nxRelativeMouse.maxStep = 0;
+    nxRelativeMouse.invalid = 0;
+    Object.keys(nxInputEventLastAt).forEach(function (k) { delete nxInputEventLastAt[k]; });
+    Object.keys(nxVirtualInputs).forEach(function (id) { delete nxVirtualInputs[id]; });
+    nxGamepadMonitor.errors = 0;
+    nxGamepadMonitor.lastChange = null;
+    nxGamepadMonitor.lastSignature = undefined;
+  }
+  const nxGamepadMonitor = { connected: 0, active: 0, snapshots: [], lastChange: null, errors: 0 };
+  function nxSampleGamepads() {
+    let pads;
+    try { pads = nxNativeGetGamepads ? nxNativeGetGamepads() : []; }
+    catch (err) {
+      nxGamepadMonitor.errors++;
+      nxGamepadMonitor.connected = 0;
+      nxGamepadMonitor.active = 0;
+      nxGamepadMonitor.snapshots = [];
+      nxGamepadMonitor.lastSignature = undefined;
+      nxInputEvent('gamepad-error', err && err.name || 'read');
+      return;
+    }
+    const next = [];
+    try {
+      for (let i = 0; i < (pads ? pads.length : 0); i++) {
+        const pad = pads[i];
+        if (!pad || !pad.connected) continue;
+        const buttons = Array.from(pad.buttons || []);
+        const axes = Array.from(pad.axes || []);
+        next.push({
+          index: pad.index, mapping: pad.mapping || 'unknown',
+          buttons: buttons.length, axes: axes.length,
+          pressed: buttons.reduce(function (n, b) { return n + (b && b.pressed ? 1 : 0); }, 0),
+          movingAxes: axes.filter(function (v) { return Number.isFinite(v) && Math.abs(v) > 0.18; }).length,
+          axisPreview: axes.slice(0, 4).map(function (v, i) { return Math.round(nxTransformStickAxis(v, i) * 100) / 100; })
+        });
+      }
+    } catch (err) {
+      nxGamepadMonitor.errors++;
+      nxGamepadMonitor.connected = 0;
+      nxGamepadMonitor.active = 0;
+      nxGamepadMonitor.snapshots = [];
+      nxGamepadMonitor.lastSignature = undefined;
+      nxInputEvent('gamepad-error', err && err.name || 'snapshot');
+      return;
+    }
+    const signature = next.map(function (p) { return p.index + ':' + p.mapping + ':' + p.buttons + ':' + p.axes; }).join('|');
+    if (nxGamepadMonitor.lastSignature !== undefined && signature !== nxGamepadMonitor.lastSignature) {
+      nxGamepadMonitor.lastChange = new Date().toISOString();
+      nxInputEvent('gamepad-connection', next.length + ' connected');
+    }
+    nxGamepadMonitor.lastSignature = signature;
+    nxGamepadMonitor.connected = next.length;
+    nxGamepadMonitor.active = next.filter(function (p) { return p.pressed || p.movingAxes; }).length;
+    if (nxGamepadMonitor.active) nxRecordInputSource('gamepad');
+    nxGamepadMonitor.snapshots = next;
+  }
+  let nxInputDiagnosticsStarted = false;
+  function startInputDiagnostics() {
+    // A navegação SPA pode reabrir painéis; nunca duplicar observadores globais.
+    if (nxInputDiagnosticsStarted) return;
+    nxInputDiagnosticsStarted = true;
+    document.addEventListener('touchstart', function (e) {
+      if (e.isTrusted) nxRecordInputSource('touch');
+    }, { passive: true, capture: true });
+    document.addEventListener('pointerdown', function (e) {
+      if (e.pointerType === 'mouse' && e.isTrusted) nxRecordInputSource('mouse');
+    }, true);
+    document.addEventListener('pointermove', nxObserveRelativeMouse, { capture: true, passive: true });
+    document.addEventListener('keydown', function (e) {
+      if (e.isTrusted && !e.repeat) nxRecordInputSource('keyboard');
+    }, true);
+    diagLog('diagnostics-start', { capabilities: inputCapabilities() });
+    document.addEventListener('pointerlockchange', function () { diagLog('pointerlockchange'); }, true);
+    document.addEventListener('webkitpointerlockchange', function () { diagLog('webkitpointerlockchange'); }, true);
+    document.addEventListener('pointerlockerror', function () { diagLog('pointerlockerror'); }, true);
+    document.addEventListener('visibilitychange', function () {
+      diagLog('visibilitychange');
+      if (document.visibilityState === 'hidden') nxStopGyroPreview();
+    }, true);
+    document.addEventListener('fullscreenchange', function () { diagLog('fullscreenchange'); }, true);
+    document.addEventListener('webkitfullscreenchange', function () { diagLog('webkitfullscreenchange'); }, true);
+    window.addEventListener('blur', function () { diagLog('window-blur'); }, true);
+    window.addEventListener('focus', function () { diagLog('window-focus'); }, true);
+    document.addEventListener('focusin', function () { diagLog('focusin', { target: 'element' }); }, true);
+    document.addEventListener('touchstart', function (e) {
+      const now = Date.now();
+      if (now - diagLastTouch < 180) return;
+      diagLastTouch = now;
+      const t = e.changedTouches && e.changedTouches[0];
+      diagLog('touchstart', { zone: t ? diagZone(t.clientX, t.clientY) : null, touches: e.touches ? e.touches.length : null });
+    }, { capture: true, passive: true });
+    document.addEventListener('pointerdown', function (e) {
+      const now = Date.now();
+      if (now - diagLastPointer < 180) return;
+      diagLastPointer = now;
+      diagLog('pointerdown', { pointerType: e.pointerType || 'unknown', zone: diagZone(e.clientX, e.clientY), button: e.button });
+    }, { capture: true, passive: true });
+    document.addEventListener('keydown', function (e) {
+      const now = Date.now();
+      if (now - diagLastKey < 250) return;
+      diagLastKey = now;
+      // Nunca registra tecla, texto, código ou combinações digitadas.
+      diagLog('keydown', { trusted: e.isTrusted, repeat: e.repeat });
+    }, true);
+    window.addEventListener('gamepadconnected', function () { diagLog('gamepadconnected'); }, true);
+    window.addEventListener('gamepaddisconnected', function () { diagLog('gamepaddisconnected'); }, true);
+    window.addEventListener('resize', function () { diagLog('resize'); }, true);
+    window.addEventListener('pageshow', function () { diagLog('pageshow'); }, true);
+    window.addEventListener('pagehide', function () { diagLog('pagehide'); }, true);
+  }
+
+  function compactInteractionEvents() {
+    const important = new Set(['diagnostics-start','pageshow','pagehide','gamepadconnected','gamepaddisconnected','fullscreenchange','pointerlockchange','pointerlockerror','visibilitychange','resize']);
+    const counts = {};
+    const timeline = [];
+    for (const e of diagEvents) {
+      counts[e.type] = (counts[e.type] || 0) + 1;
+      if (important.has(e.type)) timeline.push(e);
+    }
+    return { state: diagState(), counts: counts, timeline: timeline.slice(-30),
+      retained: DIAG_MAX, note: 'Eventos de foco e toque agregados por tipo para reduzir o relatório; sem coordenadas ou teclas.' };
+  }
+  function buildReport() {
+    return JSON.stringify({
+      v: VER,
+      url: location.href,
+      inputCapabilities: inputCapabilities(),
+      inputSources: nxInputSourcesReport(),
+      relativeMouse: { samples: nxRelativeMouse.samples, lastAt: nxRelativeMouse.lastAt,
+        distance: Math.round(nxRelativeMouse.distance), maxStep: Math.round(nxRelativeMouse.maxStep),
+        invalid: nxRelativeMouse.invalid, pointerLocked: !!document.pointerLockElement,
+        note: 'Movimento relativo passivo; não mede precisão no jogo nem altera sensibilidade.' },
+      inputEventHistory: nxInputEvents.slice(),
+      inputBridgeHealth: nxInputBridgeStatus(),
+      inputSelfCheck: nxInputSelfCheck(),
+      inputCoordination: nxCoordState(),
+      virtualInputs: nxVirtualInputState(),
+      gyroPreview: nxGyroPreviewState(),
+      hudEditor: { layout: nxHudReadLayout(), savedProfileNames: Object.keys(nxHudProfilesRead()),
+        currentGameId: nxHudCurrentGameId(), autoLoadEnabled: nxHudAutoEnabled(), lastRoute: nxHudLastRoute,
+        lastAppliedProfile: nxHudLastAppliedProfile, gameBindings: nxHudGameBindings(), gameplayApplied: false },
+      gyroGame: { enabled: nxGyroGameEnabled(), activation: nxGyroActivationMode(),
+        blend: nxGyroBlend(), targetGamepadIndex: nxGyroTargetIndex(),
+        maxSensorAgeMs: NX_GYRO_MAX_AGE_MS,
+        bridgeInstalled: nxInputBridge.installed },
+      gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), rightStickProfile: nxRightStickProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback, foreignOverride: nxInputBridge.foreignOverride, restored: nxInputBridge.restored } },
+      inputNegotiation: lastInputNegotiation,
+      touchSession: touchSessionDiagnostics,
+      touchFullscreenPolicy: touchFullscreenPolicy,
+      interactionDiagnostics: compactInteractionEvents(),
+      region: cfg(),
+      stream: { pin: S.serverPin, actual: S.serverActual, label: srvBtnLabel(), ipv4Only: v4on(), resolution: resBtnLabel(), bitrateLimit: bitrateCfg().label, playPatched: S.playPatched },
+      territory: { before: S.territoryBefore, now: S.territoryNow, cookie: getCookie('territory') },
+      experiment: { hits: S.expHits, before: S.expBefore, after: S.expAfter, cacheCleared: S.cacheCleared },
+      media: { peerConnections: S.pcs, ipv6CandidatesDropped: S.v6dropped },
+      qos: S.qos,
+      qosHistory: { samples: S.hist, min: S.histMin },
+      env: S.env,
+      counts: {
+        hookAll: S.all, gssv: S.gssv, injected: S.inj,
+        captured: S.caps.length, deniedErrors: S.denied
+      },
+      logs: S.logs,
+      captures: S.caps,
+      lastErr: S.lastErr,
+      elapsedSec: Math.round((Date.now() - S.startedAt) / 1000)
+    }, null, 2);
+  }
+
+  function copyAll() {
+    const t = buildReport();
+    console.log(t);
+    try {
+      navigator.clipboard.writeText(t).then(
+        function () { alert('Relatório copiado'); },
+        function () { alert('Falha ao copiar; o relatório foi impresso no console'); }
+      );
+    } catch (e) { alert('Falha ao copiar; o relatório foi impresso no console'); }
+  }
+
+  // Quando o streaming começa, a página chama a Fullscreen API e entra em tela cheia. Nesse estado
+  // o navegador só renderiza o elemento em tela cheia e seus descendentes, então um painel preso
+  // ao body some por completo (no Steam Deck / Game Mode: "ao entrar no jogo a pílula some e só
+  // reaparece ao abrir o guia do Steam, que interrompe a tela cheia"). Por isso o painel
+  // precisa acompanhar o elemento em tela cheia.
+  function fullscreenHost() {
+    let fs = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!fs) return null;
+    try {
+      if (fs.tagName === 'VIDEO') fs = fs.parentElement || fs.parentNode;
+      if (fs && fs.nodeType === 1 && fs.appendChild) return fs;
+    } catch (e) { }
+    return null;
+  }
+
+  function mountTarget() {
+    return fullscreenHost() || document.body || document.documentElement;
+  }
+
+  // Verifica se um diálogo do site realmente está sobre o painel: usa apenas "visível + intersecta
+  // o retângulo do painel", evitando falsos positivos de nós ocultos permanentes do framework
+  // (um falso positivo deixaria o painel invisível o tempo todo).
+  function modalHit() {
+    if (!wrap) return false;
+    let wr;
+    try { wr = wrap.getBoundingClientRect(); } catch (e) { return false; }
+    if (!wr.width) return false;
+    try {
+      const list = document.querySelectorAll('[aria-modal="true"],[role="dialog"]');
+      for (let i = 0; i < list.length; i++) {
+        const n = list[i];
+        if (wrap.contains(n)) continue;
+        const r = n.getBoundingClientRect();
+        if (r.width < 60 || r.height < 60) continue;
+        // Contêiner que cobre a maior parte da viewport é a própria imagem do streaming, não um diálogo; não pode esconder o painel
+        if (r.width > window.innerWidth * 0.7 && r.height > window.innerHeight * 0.7) continue;
+        if (r.right > wr.left - 8 && r.left < wr.right + 8 &&
+            r.bottom > wr.top - 8 && r.top < wr.bottom + 8) return true;
+      }
+    } catch (e) { }
+    return false;
+  }
+
+  // ---------- 15. Loop principal ----------
+  function tick() {
+    try {
+      if (wrap && wrap.isConnected) {
+        const r = wrap.getBoundingClientRect();
+        if (r.right < 28 || r.left > innerWidth - 28 || r.bottom < 24 || r.top > innerHeight - 24) resetPos();
+      }
+      const host = mountTarget();
+      if (!wrap || !wrap.isConnected) buildUI();
+      if (wrap && host && wrap.parentNode !== host) host.appendChild(wrap);
+      // O botão integrado permanece na barra original; o painel segue o host fullscreen.
+      syncNXPlacement();
+    } catch (e) { S.lastErr = 'NX tick: ' + String(e && e.message || e); }
+
+    // Não reabrir o painel quando a barra nativa do xCloud estiver recolhida.
+    if (cardEl) cardEl.style.display = openUI ? 'flex' : 'none';
+    if (pillEl) {
+      pillEl.style.opacity = '1';
+      pillEl.style.pointerEvents = 'auto';
+    }
+
+    // Na primeira entrada no streaming, recolhe automaticamente para não atrapalhar os controles do jogo
+    if (!autoFolded && isInGame()) {
+      autoFolded = true;
+      if (!userTouched) setOpen(false);
+    }
+    update();
+  }
+
+  function detectedDeviceProfile() {
+    const mobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+    const desktopPointer = window.matchMedia && window.matchMedia('(any-pointer:fine)').matches;
+    return mobile ? (desktopPointer && innerWidth >= 900 ? 'dex' : 'mobile') : 'desktop';
+  }
+  function applyDeviceProfile() {
+    const pref = getPref(LS_DEVICE_PROFILE, 'auto');
+    const mode = pref === 'auto' ? detectedDeviceProfile() : pref;
+    // Configuração explícita, sem modificar User-Agent, pointer lock, gamepads ou touch.
+    const bitrate = mode === 'mobile' ? 'b8' : (mode === 'dex' ? 'b12' : 'auto');
+    setPref(LS_BITRATE, bitrate);
+    setPref(LS_RES, mode === 'mobile' ? 'r720' : 'auto');
+    pushLog('device', 'Perfil ' + mode + ' aplicado (qualidade/limite SDP; próxima sessão)');
+    update();
+  }
+  function cycleDeviceProfile() {
+    const modes = ['auto', 'desktop', 'mobile', 'dex'];
+    const next = modes[(modes.indexOf(getPref(LS_DEVICE_PROFILE, 'auto')) + 1) % modes.length];
+    setPref(LS_DEVICE_PROFILE, next);
+    pushLog('device', 'Perfil local ' + next + ' (não altera User-Agent nem controles)');
+  }
+  function cycleNxShortcut() {
+    const modes = ['KeyH', 'KeyJ', 'KeyK'];
+    const next = modes[(modes.indexOf(getPref(LS_NX_SHORTCUT, 'KeyH')) + 1) % modes.length];
+    setPref(LS_NX_SHORTCUT, next);
+    pushLog('shortcut', 'Atalho NX: Ctrl+Shift+' + next.slice(3));
+  }
+  // Respeita o pedido de áudio feito pelo próprio xCloud. Não inicia chat nem cria conexão.
+  const nxVoiceTracks = new Set();
+  let nxNativeGetUserMedia = null;
+  let nxPttHeld = false;
+  function applyVoiceMute() {
+    const allowed = getPref(LS_MIC_MUTE, '0') !== '1' && (getPref(LS_MIC_PTT, '0') !== '1' || nxPttHeld);
+    nxVoiceTracks.forEach(function (track) { if (track.readyState === 'live') track.enabled = allowed; });
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.code !== 'KeyV' || e.repeat || e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    nxPttHeld = true; applyVoiceMute();
+  }, true);
+  document.addEventListener('keyup', function (e) { if (e.code === 'KeyV') { nxPttHeld = false; applyVoiceMute(); } }, true);
+  window.addEventListener('blur', function () { nxPttHeld = false; applyVoiceMute(); });
+  function installMicDeviceRouting() {
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') return;
+    const media = navigator.mediaDevices;
+    const original = media.getUserMedia.bind(media);
+    nxNativeGetUserMedia = original;
+    if (media.getUserMedia.__nxMicRouter) return;
+    const routed = function (constraints) {
+      const selected = getPref(LS_MIC_DEVICE, '');
+      const enabled = getPref(LS_MIC_ENABLED, '0') === '1';
+      if (!enabled || !constraints || !constraints.audio) return original(constraints);
+      const audio = constraints.audio === true ? {} : Object.assign({}, constraints.audio);
+      // A escolha do usuário substitui somente o dispositivo, mantendo demais opções do site.
+      if (selected) audio.deviceId = { ideal: selected };
+      audio.noiseSuppression = getPref(LS_MIC_NOISE, '1') === '1';
+      audio.echoCancellation = getPref(LS_MIC_ECHO, '1') === '1';
+      audio.autoGainControl = getPref(LS_MIC_AGC, '1') === '1';
+      const requested = Object.assign({}, constraints, { audio: audio });
+      return original(requested).then(function (stream) {
+        const track = stream.getAudioTracks()[0];
+        if (track) { nxVoiceTracks.add(track); track.addEventListener('ended', function () { nxVoiceTracks.delete(track); }); applyVoiceMute(); }
+        const settings = track && typeof track.getSettings === 'function' ? track.getSettings() : {};
+        if (selected && settings.deviceId && settings.deviceId !== selected) {
+          S.micStatus = 'O navegador escolheu outro microfone; dispositivo solicitado indisponível.';
+        } else {
+          S.micStatus = 'Captura de áudio iniciada com as preferências NX. Chat de voz não confirmado.';
+        }
+        return stream;
+      });
+    };
+    try {
+      Object.defineProperty(routed, '__nxMicRouter', { value: true });
+      media.getUserMedia = routed;
+    } catch (err) { S.micStatus = 'Roteamento indisponível: ' + String(err && err.name || err); }
+  }
+  installMicDeviceRouting();
+
+  let micTestStream = null, micTestContext = null, micTestTimer = null;
+  let micDeviceControl = null, micLevelControl = null, micGainNode = null, micBassNode = null;
+  let micTrebleNode = null, micMonitorNode = null, micMonitorEnabled = false, micRequestId = 0;
+  function applyMicEffects() {
+    if (micGainNode) micGainNode.gain.value = Math.max(0, Math.min(2, Number(getPref(LS_MIC_GAIN, '100')) / 100));
+    if (micBassNode) micBassNode.gain.value = Math.max(-12, Math.min(12, Number(getPref(LS_MIC_BASS, '0'))));
+    if (micTrebleNode) micTrebleNode.gain.value = Math.max(-12, Math.min(12, Number(getPref(LS_MIC_TREBLE, '0'))));
+  }
+  function setMicMonitor(enabled) {
+    micMonitorEnabled = !!enabled;
+    if (micMonitorNode) micMonitorNode.gain.value = micMonitorEnabled ? 1 : 0;
+    if (micMonitorEnabled && micTestContext) Promise.resolve(micTestContext.resume()).catch(function () {});
+  }
+  async function refreshMicDevices() {
+    if (!micDeviceControl || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const devices = (await navigator.mediaDevices.enumerateDevices()).filter(function (d) { return d.kind === 'audioinput'; });
+      const selected = getPref(LS_MIC_DEVICE, '');
+      micDeviceControl.replaceChildren();
+      const base = document.createElement('option'); base.value = ''; base.textContent = 'Microfone padrão do sistema'; micDeviceControl.appendChild(base);
+      devices.forEach(function (d, i) {
+        if (!d.deviceId) return;
+        const opt = document.createElement('option'); opt.value = d.deviceId;
+        opt.textContent = d.label || ('Entrada de áudio ' + (i + 1)); micDeviceControl.appendChild(opt);
+      });
+      micDeviceControl.value = Array.from(micDeviceControl.options).some(function (o) { return o.value === selected; }) ? selected : '';
+    } catch (err) { S.micStatus = 'Não foi possível listar dispositivos: ' + String(err && err.name || err); update(); }
+  }
+  function stopMicrophoneTest() {
+    micRequestId++;
+    if (micTestTimer) { clearInterval(micTestTimer); micTestTimer = null; }
+    if (micTestStream) { micTestStream.getTracks().forEach(function (t) { t.stop(); }); micTestStream = null; }
+    if (micTestContext) { Promise.resolve(micTestContext.close()).catch(function () {}); micTestContext = null; }
+    micGainNode = micBassNode = micTrebleNode = micMonitorNode = null;
+    micMonitorEnabled = false;
+    if (micLevelControl) micLevelControl.value = 0;
+    S.micStatus = 'Teste encerrado. Nenhum áudio de teste é enviado ao jogo.';
+    update();
+  }
+  async function inspectMicrophone() {
+    if (getPref(LS_MIC_ENABLED, '0') !== '1') { S.micStatus = 'Ative o microfone antes do teste.'; update(); return; }
+    stopMicrophoneTest();
+    const request = micRequestId;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      S.micStatus = 'Captura indisponível: confira HTTPS e permissões'; update(); return;
+    }
+    S.micStatus = 'Solicitando permissão do microfone…'; update();
+    try {
+      const deviceId = getPref(LS_MIC_DEVICE, '');
+      const constraints = {
+        echoCancellation: getPref(LS_MIC_ECHO, '1') === '1',
+        noiseSuppression: getPref(LS_MIC_NOISE, '1') === '1',
+        autoGainControl: getPref(LS_MIC_AGC, '1') === '1'
+      };
+      if (deviceId) constraints.deviceId = { ideal: deviceId };
+      const capture = nxNativeGetUserMedia || navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      const stream = await capture({ audio: constraints, video: false });
+      if (request !== micRequestId || isInGame()) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+      micTestStream = stream;
+      await refreshMicDevices();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) { S.micStatus = 'Microfone autorizado; processamento de áudio indisponível'; update(); return; }
+      const ctx = new AudioCtx(); micTestContext = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      micBassNode = ctx.createBiquadFilter(); micBassNode.type = 'lowshelf'; micBassNode.frequency.value = 180;
+      micTrebleNode = ctx.createBiquadFilter(); micTrebleNode.type = 'highshelf'; micTrebleNode.frequency.value = 3000;
+      micGainNode = ctx.createGain();
+      const analyser = ctx.createAnalyser(); analyser.fftSize = 1024;
+      micMonitorNode = ctx.createGain(); micMonitorNode.gain.value = 0;
+      source.connect(micBassNode); micBassNode.connect(micTrebleNode);
+      micTrebleNode.connect(micGainNode); micGainNode.connect(analyser);
+      analyser.connect(micMonitorNode); micMonitorNode.connect(ctx.destination);
+      applyMicEffects(); setMicMonitor(false); // Monitor desligado por padrão para evitar realimentação.
+      const samples = new Uint8Array(analyser.fftSize);
+      const refresh = function () {
+        if (micTestStream !== stream) return;
+        analyser.getByteTimeDomainData(samples);
+        let power = 0;
+        for (let i = 0; i < samples.length; i++) { const v = (samples[i] - 128) / 128; power += v * v; }
+        const level = Math.min(100, Math.round(Math.sqrt(power / samples.length) * 250));
+        if (micLevelControl) micLevelControl.value = level;
+        S.micStatus = 'Teste local ativo · nível ' + level + '% · processamento apenas na prévia';
+        update();
+      };
+      refresh(); micTestTimer = setInterval(refresh, 350);
+      stream.getAudioTracks().forEach(function (track) {
+        track.addEventListener('ended', function () { if (micTestStream === stream) stopMicrophoneTest(); });
+      });
+    } catch (err) {
+      if (request !== micRequestId) return;
+      stopMicrophoneTest();
+      S.micStatus = 'Falha ao acessar microfone: ' + String(err && (err.name || err.message) || err);
+      update();
+    }
+  }
+  function testPhoneVibration() {
+    if (typeof navigator.vibrate !== 'function') {
+      S.vibrationStatus = 'Vibração do celular indisponível neste navegador'; update(); return;
+    }
+    const strength = Math.max(0, Math.min(1, Number(getPref(LS_VIBRATION, '0.5')) || 0));
+    // Vibration API permite duração, não intensidade física.
+    const ok = navigator.vibrate(strength > 0 ? [Math.round(80 + 170 * strength), 70, Math.round(80 + 170 * strength)] : 0);
+    S.vibrationStatus = ok ? 'Comando enviado ao celular (intensidade física não configurável)' : 'Navegador recusou vibração do celular';
+    update();
+  }
+  async function testVibration() {
+    let pads;
+    try { pads = typeof navigator.getGamepads === 'function' ? Array.from(navigator.getGamepads() || []).filter(Boolean) : []; }
+    catch (err) { S.vibrationStatus = 'Acesso aos controles bloqueado: ' + String(err && err.name || err); update(); return; }
+    if (!pads.length) { S.vibrationStatus = 'Nenhum controle detectado. Pressione um botão do controle e tente novamente.'; update(); return; }
+    const pad = pads.find(function (p) {
+      return (p.vibrationActuator && (typeof p.vibrationActuator.playEffect === 'function' || typeof p.vibrationActuator.pulse === 'function')) ||
+        (p.hapticActuators && p.hapticActuators[0] && typeof p.hapticActuators[0].pulse === 'function');
+    });
+    if (!pad) { S.vibrationStatus = 'Controle conectado, mas sem API de vibração exposta pelo navegador'; update(); return; }
+    const strength = Math.max(0, Math.min(1, Number(getPref(LS_VIBRATION, '0.5')) || 0));
+    if (!strength) { S.vibrationStatus = 'Intensidade 0%: selecione um valor acima de zero'; update(); return; }
+    S.vibrationStatus = 'Enviando teste para ' + (pad.id || 'controle') + '…'; update();
+    try {
+      let result;
+      if (pad.vibrationActuator && typeof pad.vibrationActuator.playEffect === 'function') {
+        result = await pad.vibrationActuator.playEffect('dual-rumble', {
+          startDelay: 0, duration: 400, strongMagnitude: strength, weakMagnitude: strength
+        });
+      } else if (pad.vibrationActuator && typeof pad.vibrationActuator.pulse === 'function') {
+        result = await pad.vibrationActuator.pulse(strength, 400);
+      } else {
+        result = await pad.hapticActuators[0].pulse(strength, 400);
+      }
+      const accepted = result === true || result === 'complete' || result === undefined;
+      S.vibrationStatus = accepted
+        ? 'Teste solicitado ao controle (' + Math.round(strength * 100) + '%). Confirme se vibrou fisicamente.'
+        : 'Teste não executado pelo navegador: ' + String(result);
+    } catch (err) {
+      S.vibrationStatus = 'Falha na vibração do controle: ' + String(err && (err.name || err.message) || err);
+    }
+    update();
+  }
+  // P04: preserve the host's original inline filter and restore it on bypass.
+  // This is presentation-only CSS; no decoding, capture or frame copying.
+  const nxVideoFilters = new WeakMap();
+  function restoreVideoAdjustments(video) {
+    if (!video) return;
+    const state = nxVideoFilters.get(video);
+    if (!state) return;
+    if (video.style.filter === state.applied) {
+      if (state.original) video.style.setProperty('filter', state.original, state.priority);
+      else video.style.removeProperty('filter');
+    }
+    nxVideoFilters.delete(video);
+  }
+  const nxVideoFits = new WeakMap();
+  function restoreVideoFit(video) {
+    if (!video) return;
+    const state = nxVideoFits.get(video);
+    if (!state) return;
+    if (video.style.objectFit === state.applied) {
+      if (state.original) video.style.setProperty('object-fit', state.original, state.priority);
+      else video.style.removeProperty('object-fit');
+    }
+    nxVideoFits.delete(video);
+  }
+  function applyVideoFit(video) {
+    if (!video) return;
+    const fit = getPref(LS_VIDEO_FIT, 'original');
+    if (fit !== 'contain' && fit !== 'cover') { restoreVideoFit(video); return; }
+    let state = nxVideoFits.get(video);
+    if (state && video.style.objectFit !== state.applied) { nxVideoFits.delete(video); return; }
+    if (!state) {
+      state = { original: video.style.getPropertyValue('object-fit'),
+        priority: video.style.getPropertyPriority('object-fit'), applied: fit };
+      nxVideoFits.set(video, state);
+    }
+    state.applied = fit;
+    video.style.setProperty('object-fit', fit, state.priority);
+  }
+  // Uma unica cadeia de filtros substituida a cada ajuste; nunca empilhar camadas.
+  // Brilho/contraste/saturacao sao controles CSS, nao equalizacao independente de
+  // brancos/pretos nem sharpening real.
+  // Perfis portateis: somente dados numericos e metadados, nunca codigo executavel.
+  const NX_VISUAL_FORMAT='nx-visual-preset';
+  const NX_VISUAL_DEFAULT={brightness:100,contrast:100,saturation:100};
+  function nxVisualSanitize(input){
+    if(!input || typeof input!=='object' || Array.isArray(input))throw new Error('Perfil invalido');
+    if(input.format!==NX_VISUAL_FORMAT || input.version!==1)throw new Error('Formato de perfil incompativel');
+    const name=String(input.name||'').trim();
+    if(!name || name.length>64)throw new Error('Nome deve ter entre 1 e 64 caracteres');
+    const author=String(input.author||'Comunidade').trim().slice(0,48);
+    const values=input.settings;
+    if(!values || typeof values!=='object' || Array.isArray(values))throw new Error('Ajustes ausentes');
+    const limits={brightness:[85,115],contrast:[85,115],saturation:[75,125]};
+    const clean={};
+    for(const key of Object.keys(limits)){
+      const n=values[key];
+      if(typeof n!=='number' || !Number.isFinite(n) || n<limits[key][0] || n>limits[key][1])
+        throw new Error('Valor invalido: '+key);
+      clean[key]=Math.round(n);
+    }
+    return {format:NX_VISUAL_FORMAT,version:1,name,author,settings:clean};
+  }
+  function nxVisualLibrary(){
+    try{
+      const parsed=JSON.parse(getPref(LS_VISUAL_LIBRARY,'[]'));
+      if(!Array.isArray(parsed))return [];
+      return parsed.slice(0,24).map(function(x){try{return nxVisualSanitize(x);}catch(_){return null;}}).filter(Boolean);
+    }catch(_){return [];}
+  }
+  function nxVisualApply(preset){
+    const safe=nxVisualSanitize(preset);
+    setPref(LS_VIDEO_BRIGHTNESS,String(safe.settings.brightness));
+    setPref(LS_VIDEO_CONTRAST,String(safe.settings.contrast));
+    setPref(LS_VIDEO_SATURATION,String(safe.settings.saturation));
+    setPref(LS_VIDEO_PROFILE,'custom');
+    setPref(LS_VISUAL_ACTIVE,safe.name);
+    applyVideoAdjustments(activeStreamVideo());
+    return safe;
+  }
+  function nxVisualSave(name){
+    const cal=nxVideoCalibration();
+    const safe=nxVisualSanitize({format:NX_VISUAL_FORMAT,version:1,name,
+      author:'Local',settings:{brightness:cal.brightness,contrast:cal.contrast,saturation:cal.saturation}});
+    const library=nxVisualLibrary().filter(function(x){return x.name!==safe.name;});
+    library.unshift(safe);
+    setPref(LS_VISUAL_LIBRARY,JSON.stringify(library.slice(0,24)));
+    setPref(LS_VISUAL_ACTIVE,safe.name);
+    return safe;
+  }
+  function nxVisualExport(preset){
+    const safe=nxVisualSanitize(preset);
+    const blob=new Blob([JSON.stringify(safe,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download='nx-visual-'+safe.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.json';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+  }
+  function nxVisualImport(file){
+    if(!file || file.size>16384){toast('Arquivo invalido ou maior que 16 KB');return;}
+    const reader=new FileReader();
+    reader.onload=function(){
+      try{
+        const parsed=JSON.parse(String(reader.result||''));
+        const safe=nxVisualSanitize(parsed);
+        const library=nxVisualLibrary().filter(function(x){return x.name!==safe.name;});
+        library.unshift(safe);
+        setPref(LS_VISUAL_LIBRARY,JSON.stringify(library.slice(0,24)));
+        nxVisualApply(safe);
+        toast('Perfil importado: '+safe.name);
+        renderBody();
+      }catch(e){toast('Importacao rejeitada: '+String(e.message||e));}
+    };
+    reader.onerror=function(){toast('Falha ao ler arquivo');};
+    reader.readAsText(file);
+  }
+  function nxVideoCalibration(){
+    const profile=getPref(LS_VIDEO_PROFILE,'original');
+    const presets={
+      original:{brightness:100,contrast:100,saturation:100},
+      balanced:{brightness:100,contrast:102,saturation:104},
+      vivid:{brightness:100,contrast:105,saturation:108}
+    };
+    if(presets[profile])return presets[profile];
+    const clamp=function(key,min,max,def){
+      const value=Number(getPref(key,String(def)));
+      return Number.isFinite(value)?Math.max(min,Math.min(max,value)):def;
+    };
+    return {
+      brightness:clamp(LS_VIDEO_BRIGHTNESS,85,115,100),
+      contrast:clamp(LS_VIDEO_CONTRAST,85,115,100),
+      saturation:clamp(LS_VIDEO_SATURATION,75,125,100)
+    };
+  }
+  // GPU opt-in: canvas WebGL2 de apresentacao, sem modificar o stream original.
+  // Falhas de CORS, DRM ou contexto grafico restauram o video nativo.
+  let nxGpu=null;
+  function nxGpuStop(){
+    const state=nxGpu;nxGpu=null;
+    if(!state)return;
+    state.running=false;
+    if(state.raf)cancelAnimationFrame(state.raf);
+    if(state.video && state.video.style.opacity===state.appliedOpacity){
+      if(state.originalOpacity)state.video.style.setProperty('opacity',state.originalOpacity,state.opacityPriority);
+      else state.video.style.removeProperty('opacity');
+    }
+    if(state.canvas)state.canvas.remove();
+    if(state.video && state.video.isConnected && getPref(LS_NX_GPU,'0')==='0')applyVideoAdjustments(state.video);
+    if(state.gl){
+      try{state.gl.deleteTexture(state.texture);state.gl.deleteBuffer(state.buffer);
+        state.gl.deleteProgram(state.program);}catch(_){}
+    }
+  }
+  function nxGpuCompile(gl,type,source){
+    const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);
+    if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+      const reason=gl.getShaderInfoLog(shader)||'Shader invalido';gl.deleteShader(shader);throw new Error(reason);
+    }
+    return shader;
+  }
+  function nxGpuStart(video){
+    if(!video || !video.videoWidth || !video.videoHeight)return;
+    if(nxGpu && nxGpu.video===video)return;
+    nxGpuStop();
+    const canvas=document.createElement('canvas');
+    canvas.setAttribute('aria-hidden','true');
+    canvas.style.cssText='position:fixed;pointer-events:none;display:block;z-index:100;object-fit:fill;';
+    const host=fullscreenHost()||document.body;
+    if(!host)return;
+    const gl=canvas.getContext('webgl2',{alpha:false,antialias:false,preserveDrawingBuffer:false});
+    if(!gl){S.lastErr='GPU: WebGL2 indisponivel';return;}
+    let program,texture,buffer;
+    try{
+      const vert=nxGpuCompile(gl,gl.VERTEX_SHADER,`#version 300 es
+in vec2 a_pos;out vec2 v_uv;
+void main(){v_uv=vec2((a_pos.x+1.0)*0.5,1.0-(a_pos.y+1.0)*0.5);gl_Position=vec4(a_pos,0.0,1.0);}`);
+      const frag=nxGpuCompile(gl,gl.FRAGMENT_SHADER,`#version 300 es
+precision mediump float;
+uniform sampler2D u_tex;uniform float u_shadows;uniform float u_highlights;
+uniform vec3 u_adjust;uniform int u_clarityMode;uniform float u_clarityStrength;in vec2 v_uv;out vec4 outColor;
+void main(){
+ vec3 c=texture(u_tex,v_uv).rgb;
+ vec3 up=texture(u_tex,v_uv+vec2(0.0,1.0/float(textureSize(u_tex,0).y))).rgb;
+ vec3 down=texture(u_tex,v_uv-vec2(0.0,1.0/float(textureSize(u_tex,0).y))).rgb;
+ vec3 left=texture(u_tex,v_uv-vec2(1.0/float(textureSize(u_tex,0).x),0.0)).rgb;
+ vec3 right=texture(u_tex,v_uv+vec2(1.0/float(textureSize(u_tex,0).x),0.0)).rgb;
+ vec3 minimum=min(min(up,down),min(left,right));
+ vec3 maximum=max(max(up,down),max(left,right));
+ float detail=clamp(dot(maximum-minimum,vec3(0.3333)),0.0,1.0);
+ if(u_clarityMode==1)c=clamp(c+(4.0*c-up-down-left-right)*(u_clarityStrength*0.20),0.0,1.0);
+ else if(u_clarityMode==2){
+  vec3 mn=min(min(min(up,down),min(left,right)),c);
+  vec3 mx=max(max(max(up,down),max(left,right)),c);
+  vec3 amp=clamp(min(mn,2.0-mx)/max(mx,vec3(0.0001)),0.0001,1.0);
+  vec3 w=-1.0/(inversesqrt(amp)*5.6);
+  vec3 enhanced=clamp(((up+down+left+right)*w+c)/(4.0*w+1.0),0.0,1.0);
+  c=mix(c,enhanced,u_clarityStrength*0.5);
+ }
+ float l=dot(c,vec3(0.2126,0.7152,0.0722));
+ float shadows=(1.0-smoothstep(0.08,0.55,l))*u_shadows*0.22;
+ float highlights=smoothstep(0.45,0.95,l)*u_highlights*0.20;
+ c=clamp(c+vec3(shadows+highlights),0.0,1.0);
+ c=clamp((c-0.5)*u_adjust.y+0.5,0.0,1.0)*u_adjust.x;
+ float grey=dot(c,vec3(0.2126,0.7152,0.0722));
+ c=clamp(mix(vec3(grey),c,u_adjust.z),0.0,1.0);
+ outColor=vec4(c,1.0);
+}`);
+      program=gl.createProgram();gl.attachShader(program,vert);gl.attachShader(program,frag);gl.linkProgram(program);
+      gl.deleteShader(vert);gl.deleteShader(frag);
+      if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program)||'Link shader falhou');
+      buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+      gl.useProgram(program);
+      const attr=gl.getAttribLocation(program,'a_pos');gl.enableVertexAttribArray(attr);gl.vertexAttribPointer(attr,2,gl.FLOAT,false,0,0);
+      texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+      gl.uniform1i(gl.getUniformLocation(program,'u_tex'),0);
+      const state={video,canvas,gl,program,buffer,texture,host,running:true,raf:0,
+        originalOpacity:video.style.getPropertyValue('opacity'),
+        opacityPriority:video.style.getPropertyPriority('opacity'),appliedOpacity:'0'};
+      nxGpu=state;host.appendChild(canvas);
+      const render=function(){
+        if(!state.running || nxGpu!==state)return;
+        if(getPref(LS_NX_GPU,'0')!=='1' || document.visibilityState==='hidden' ||
+           !video.isConnected || !video.videoWidth || !video.videoHeight){
+          nxGpuStop();return;
+        }
+        const parent=fullscreenHost()||document.body;
+        if(parent!==state.host){state.host=parent;parent.appendChild(canvas);}
+        const rect=video.getBoundingClientRect();
+        if(rect.width<10||rect.height<10){state.raf=requestAnimationFrame(render);return;}
+        const hostRect=parent===document.body?{left:0,top:0}:parent.getBoundingClientRect();
+        canvas.style.left=(rect.left-hostRect.left)+'px';
+        canvas.style.top=(rect.top-hostRect.top)+'px';
+        canvas.style.width=rect.width+'px';canvas.style.height=rect.height+'px';
+        const w=Math.min(1920,Math.max(1,Math.round(rect.width)));
+        const h=Math.min(1080,Math.max(1,Math.round(rect.height)));
+        if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
+        try{
+          gl.bindTexture(gl.TEXTURE_2D,texture);
+          gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,video);
+          const cal=nxVideoCalibration();
+          gl.uniform3f(gl.getUniformLocation(program,'u_adjust'),cal.brightness/100,cal.contrast/100,cal.saturation/100);
+          const clamp=function(key){const n=Number(getPref(key,'0'));return Number.isFinite(n)?Math.max(-1,Math.min(1,n)):0;};
+           const clarityMode=getPref('nx.gpu.clarity.mode.v1','off');
+           const clarityRaw=Number(getPref('nx.gpu.clarity.strength.v1','35'));
+           gl.uniform1i(gl.getUniformLocation(program,'u_clarityMode'),clarityMode==='usm'?1:clarityMode==='cas'?2:0);
+           gl.uniform1f(gl.getUniformLocation(program,'u_clarityStrength'),Number.isFinite(clarityRaw)?Math.max(0,Math.min(100,clarityRaw))/100:0.35);
+          gl.uniform1f(gl.getUniformLocation(program,'u_shadows'),clamp(LS_NX_SHADOWS));
+          gl.uniform1f(gl.getUniformLocation(program,'u_highlights'),clamp(LS_NX_HIGHLIGHTS));
+          gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+          restoreVideoAdjustments(video); // GPU substitui CSS: nunca processar duas vezes.
+          if(video.style.opacity!==state.appliedOpacity)video.style.setProperty('opacity','0',state.opacityPriority);
+        }catch(e){
+          S.lastErr='GPU desativada: '+String(e&&e.message||e);
+          setPref(LS_NX_GPU,'0');nxGpuStop();return;
+        }
+        state.raf=requestAnimationFrame(render);
+      };
+      canvas.addEventListener('webglcontextlost',function(e){e.preventDefault();setPref(LS_NX_GPU,'0');nxGpuStop();});
+      state.raf=requestAnimationFrame(render);
+    }catch(e){
+      S.lastErr='GPU: '+String(e&&e.message||e);
+      try{if(texture)gl.deleteTexture(texture);if(buffer)gl.deleteBuffer(buffer);if(program)gl.deleteProgram(program);}catch(_){}
+      canvas.remove();
+    }
+  }
+  function nxGpuSync(){
+    const video=activeStreamVideo();
+    if(getPref(LS_NX_GPU,'0')==='1' && video && document.visibilityState!=='hidden')nxGpuStart(video);
+    else nxGpuStop();
+    if(video)applyVideoAdjustments(video);
+  }
+  function applyVideoAdjustments(video) {
+    if(!video)return;
+    if(getPref(LS_VIDEO_ECO,'1')==='1' && document.visibilityState==='hidden'){
+      restoreVideoAdjustments(video);return;
+    }
+    if(getPref(LS_NX_GPU,'0')==='1' && nxGpu && nxGpu.video===video){restoreVideoAdjustments(video);return;}
+    const cal=nxVideoCalibration();
+    if(cal.brightness===100 && cal.contrast===100 && cal.saturation===100){
+      restoreVideoAdjustments(video);return;
+    }
+    let state=nxVideoFilters.get(video);
+    if(state && video.style.filter!==state.applied){
+      // Se o site mudou o filtro, nao anexar filtros a um resultado anterior do NX.
+      nxVideoFilters.delete(video);
+      return;
+    }
+    if(!state){
+      state={original:video.style.getPropertyValue('filter'),
+        priority:video.style.getPropertyPriority('filter'),applied:''};
+      nxVideoFilters.set(video,state);
+    }
+    const adjustment='brightness('+(cal.brightness/100).toFixed(3)+
+      ') contrast('+(cal.contrast/100).toFixed(3)+
+      ') saturate('+(cal.saturation/100).toFixed(3)+')';
+    state.applied=(state.original&&state.original!=='none'?state.original+' ':'')+adjustment;
+    video.style.setProperty('filter',state.applied,state.priority);
+  }
+  function cycleSharpness() {
+    // Compatibilidade com atalho legado: ajuste suave de contraste, nao nitidez.
+    const video=activeStreamVideo();
+    if(!video){S.lastErr='Ajuste visual: video nao encontrado';update();return;}
+    const cal=nxVideoCalibration();
+    setPref(LS_VIDEO_BRIGHTNESS,String(cal.brightness));
+    setPref(LS_VIDEO_SATURATION,String(cal.saturation));
+    setPref(LS_VIDEO_CONTRAST,String(cal.contrast>=105?100:cal.contrast+2));
+    setPref(LS_VIDEO_PROFILE,'custom');
+    applyVideoAdjustments(video);
+    pushLog('video','Contraste suave atualizado; sem nitidez artificial');
+  }
+  function inspectServerMeasurements() {
+    const names = Object.keys(S.latencyByServer).filter(function (name) { const item = S.latencyByServer[name]; return item && item.at && Date.now() - item.at < 24 * 3600 * 1000 && item.samples >= 5; });
+    S.serverProbeStatus = names.length ? names.length + ' servidor(es) medido(s) em sessões; sondagem prévia não disponível' : 'Nenhum servidor medido; sondagem prévia não disponível';
+    update();
+  }
+  function inspectRemotePlay() {
+    S.remotePlayStatus = 'Não conectado: protocolo/autenticação Xbox Remote Play não integrados';
+    update();
+  }
+  function cycleVideoFilter() {
+    const video=activeStreamVideo();
+    if(!video){S.lastErr='Filtro: video nao encontrado';schedule();return;}
+    const cal=nxVideoCalibration();
+    setPref(LS_VIDEO_BRIGHTNESS,String(cal.brightness));
+    setPref(LS_VIDEO_CONTRAST,String(cal.contrast));
+    setPref(LS_VIDEO_SATURATION,String(cal.saturation>=110?100:cal.saturation+5));
+    setPref(LS_VIDEO_PROFILE,'custom');
+    applyVideoAdjustments(video);
+    pushLog('video','Saturacao CSS atualizada; filtro unico');
+  }
+  function captureStreamFrame() {
+    const video = activeStreamVideo();
+    if (!video || !video.videoWidth || !video.videoHeight) { S.lastErr = 'Captura: vídeo indisponível'; schedule(); return; }
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D indisponível');
+      ctx.drawImage(video, 0, 0);
+      canvas.toBlob(function (blob) {
+        if (!blob) { S.lastErr = 'Captura bloqueada ou indisponível'; schedule(); return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'nimboxcloud-' + Date.now() + '.png';
+        a.click(); setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+      }, 'image/png');
+    } catch (err) { S.lastErr = 'Captura: ' + String(err && err.message || err); schedule(); }
+  }
+  let nxAudioGraph = null;
+  const nxAudioGraphs = new WeakMap();
+  function getAudioBands() {
+    try { const a = JSON.parse(getPref(LS_AUDIO_BANDS,'[0,0,0,0,0,0,0,0,0,0]'));
+      if (Array.isArray(a) && a.length === 10) return a.map(function (n) { return Math.max(-12,Math.min(12,Number(n)||0)); });
+    } catch (e) {} return [0,0,0,0,0,0,0,0,0,0];
+  }
+  function nxAudioOutputSupport(){
+    const media=activeStreamAudio();
+    const graph=nxAudioGraph && nxAudioGraph.media===media ? nxAudioGraph : null;
+    return {media:media,graph:graph,
+      canRoute:!!(graph && typeof graph.ctx.setSinkId==='function' ||
+        !graph && media && typeof media.setSinkId==='function'),
+      bluetoothNative:/Android/i.test(navigator.userAgent)};
+  }
+  function applyAudioOutput(){
+    const status=nxAudioOutputSupport(),sink=getPref(LS_AUDIO_OUTPUT,'');
+    if(!status.media)return;
+    const target=status.graph?status.graph.ctx:status.media;
+    if(typeof target.setSinkId!=='function'){
+      if(sink)S.lastErr='Saida manual indisponivel: selecione o Bluetooth no sistema Android';
+      return;
+    }
+    // ID vazio representa a saida padrao do sistema, inclusive fones Bluetooth.
+    Promise.resolve(target.setSinkId(sink)).catch(function(e){
+      S.lastErr='Saida de audio: '+String(e&&e.name||e);
+    });
+  }
+  function applyAudioProcessing() {
+    const media = activeStreamAudio(); if (!media) return;
+    if(nxAudioGraph && nxAudioGraph.media!==media){
+      const previous=nxAudioGraph;
+      // O MediaElementSource continua ligado ao destino para nao silenciar a fonte antiga.
+      previous.filters.forEach(function(node){node.gain.value=0;});
+      previous.dialogue.gain.value=0;
+      previous.bypass.gain.value=1;previous.compressed.gain.value=0;previous.limited.gain.value=0;
+      nxAudioGraph=nxAudioGraphs.get(media)||null;
+    }
+    const enabled = getPref(LS_AUDIO_FX,'0') === '1';
+    if (!enabled && !nxAudioGraph) return;
+    try {
+      if (!nxAudioGraph) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) { S.lastErr = 'Web Audio não suportado'; return; }
+        const ctx = new AC(), source = ctx.createMediaElementSource(media);
+        const filters = [32,64,125,250,500,1000,2000,4000,8000,16000].map(function (hz,i) {
+          const n = ctx.createBiquadFilter(); n.type = i === 0 ? 'lowshelf' : i === 9 ? 'highshelf' : 'peaking';
+          n.frequency.value = Math.min(hz,ctx.sampleRate*0.45); n.Q.value = 1; return n;
+        });
+        const dialogue = ctx.createBiquadFilter(); dialogue.type = 'peaking'; dialogue.frequency.value = 2400; dialogue.Q.value = 0.75;
+        const monoSplitter = ctx.createChannelSplitter(2), monoMix = ctx.createGain(); monoMix.gain.value = 0.5;
+        const monoMerger = ctx.createChannelMerger(2), stereoGain = ctx.createGain(), monoGain = ctx.createGain();
+        const pan = ctx.createStereoPanner(), compressor = ctx.createDynamicsCompressor(), limiter = ctx.createDynamicsCompressor();
+        limiter.threshold.value = -4; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.003;
+        const bypass = ctx.createGain(), compressed = ctx.createGain(), limited = ctx.createGain(), compToLimit = ctx.createGain(), directToLimit = ctx.createGain();
+        const analyser=ctx.createAnalyser();analyser.fftSize=1024;
+        source.connect(analyser);
+        let prev = analyser; filters.forEach(function (node) { prev.connect(node); prev = node; }); prev.connect(dialogue);
+        dialogue.connect(stereoGain); stereoGain.connect(pan);
+        dialogue.connect(monoSplitter); monoSplitter.connect(monoMix,0); monoSplitter.connect(monoMix,1);
+        monoMix.connect(monoMerger,0,0); monoMix.connect(monoMerger,0,1); monoMerger.connect(monoGain); monoGain.connect(pan);
+        pan.connect(bypass); bypass.connect(ctx.destination);
+        pan.connect(compressor); compressor.connect(compressed); compressed.connect(ctx.destination);
+        pan.connect(directToLimit); directToLimit.connect(limiter);
+        compressor.connect(compToLimit); compToLimit.connect(limiter);
+        limiter.connect(limited); limited.connect(ctx.destination);
+        nxAudioGraph = {media:media,ctx:ctx,source:source,analyser:analyser,filters:filters,dialogue:dialogue,pan:pan,compressor:compressor,limiter:limiter,
+          stereoGain:stereoGain,monoGain:monoGain,bypass:bypass,compressed:compressed,limited:limited,
+          compToLimit:compToLimit,directToLimit:directToLimit};
+        nxAudioGraphs.set(media,nxAudioGraph);
+        applyAudioOutput();
+      }
+      const g = nxAudioGraph;
+      getAudioBands().forEach(function (n,i) { g.filters[i].gain.value = enabled ? n : 0; });
+      g.dialogue.gain.value = enabled && getPref(LS_AUDIO_DIALOG,'0') === '1' ? 4 : 0;
+      const mono = enabled && getPref(LS_AUDIO_MONO,'0') === '1'; g.stereoGain.gain.value = mono ? 0 : 1; g.monoGain.gain.value = mono ? 1 : 0;
+      g.pan.pan.value = enabled ? Math.max(-1,Math.min(1,Number(getPref(LS_AUDIO_BALANCE,'0'))/100)) : 0;
+      const compress = enabled && (getPref(LS_AUDIO_COMP,'0') === '1' || getPref(LS_AUDIO_NORMAL,'0') === '1');
+      const limit = enabled && getPref(LS_AUDIO_LIMIT,'0') === '1';
+      g.compressor.threshold.value = getPref(LS_AUDIO_NORMAL,'0') === '1' ? -30 : -24;
+      g.compressor.ratio.value = getPref(LS_AUDIO_NORMAL,'0') === '1' ? 2 : 3;
+      g.bypass.gain.value = !compress && !limit ? 1 : 0;
+      g.compressed.gain.value = compress && !limit ? 1 : 0;
+      g.limited.gain.value = limit ? 1 : 0;
+      g.compToLimit.gain.value = limit && compress ? 1 : 0;
+      g.directToLimit.gain.value = limit && !compress ? 1 : 0;
+      Promise.resolve(g.ctx.resume()).then(function(){
+        if(g.ctx.state!=='running')S.lastErr='Audio suspenso: toque em Ativar audio no painel NX';
+      }).catch(function(e){S.lastErr='Audio suspenso: '+String(e&&e.message||e);});
+    } catch (e) { S.lastErr = 'Web Audio: '+String(e && e.name || e); }
+  }
+  function nxAudioSignalStatus(){
+    const media=activeStreamAudio(),g=nxAudioGraph;
+    if(!media)return 'Fluxo de audio nao detectado';
+    if(!g || g.media!==media)return 'EQ nao conectado ao fluxo';
+    if(g.ctx.state!=='running')return 'AudioContext '+g.ctx.state+' — processamento inativo';
+    if(!g.analyser)return 'Sem medicao de sinal';
+    const samples=new Uint8Array(g.analyser.fftSize);
+    g.analyser.getByteTimeDomainData(samples);
+    let energy=0;
+    for(let i=0;i<samples.length;i++){const v=(samples[i]-128)/128;energy+=v*v;}
+    const rms=Math.sqrt(energy/samples.length);
+    return 'Web Audio running · sinal '+(rms>0.002?'detectado':'nao detectado/silencio')+
+      ' · '+(getPref(LS_AUDIO_FX,'0')==='1'?'EQ ativo':'bypass');
+  }
+  function activeStreamAudio() {
+    const media=Array.from(document.querySelectorAll('video,audio'));
+    const candidates=media.filter(function(v){
+      const stream=v.srcObject;
+      if(stream && typeof stream.getAudioTracks==='function')return stream.getAudioTracks().some(function(t){return t.readyState==='live';});
+      return !!(v.currentSrc && v.currentSrc.startsWith('blob:'));
+    });
+    const playable=candidates.filter(function(v){return !v.paused && !v.ended && v.readyState>=2;});
+    return playable.find(function(v){return v.srcObject && v.srcObject.getAudioTracks && v.srcObject.getAudioTracks().length;})
+      || playable[0] || candidates[0] || null;
+  }
+  function activeStreamVideo() {
+    const videos = Array.from(document.querySelectorAll('video'));
+    const candidates = videos.filter(function (v) { return v.srcObject || (v.currentSrc && v.currentSrc.startsWith('blob:')); });
+    return candidates.find(function (v) { return v.readyState >= 2 && !v.paused; }) || candidates[0] || null;
+  }
+  function adjustVolume(delta) {
+    const video = activeStreamAudio();
+    if (!video) { S.lastErr = 'Volume: vídeo de streaming não encontrado'; schedule(); return; }
+    const next = Math.max(0, Math.min(1, Math.round((video.volume + delta) * 10) / 10));
+    video.volume = next;
+    video.muted = false;
+    setPref(LS_VOLUME, String(next));
+    schedule();
+  }
+  function toggleMute() {
+    const video = activeStreamAudio();
+    if (!video) { S.lastErr = 'Volume: vídeo de streaming não encontrado'; schedule(); return; }
+    video.muted = !video.muted;
+    schedule();
+  }
+
+  function boot() {
+    startInputDiagnostics();
+    nxSampleGamepads();
+    setInterval(function () {
+      nxInputBridgeStatus();
+      if (document.visibilityState === 'visible') nxSampleGamepads();
+    }, 750);
+    S.diagnosticsWarnings = [
+      'RTT: apenas sessões usadas; sondagem ativa não implementada',
+      'Contraste adicional: filtro CSS, não é nitidez real nem CAS',
+      'Microfone: teste de captura local com permissão; transmissão ao jogo depende do xCloud',
+      'Vibração: testes locais de controle e celular; sem remapeamento do feedback do streaming',
+      'Remote Play: diagnóstico de indisponibilidade; protocolo não integrado'
+    ];
+    S.deviceDetected = detectedDeviceProfile();
+    // Observa apenas eventos relevantes; não coleta corpos de API, cookies ou tokens.
+    let labLastPath = location.pathname;
+    let labLastWarning = false;
+    setInterval(function () {
+      if (location.pathname !== labLastPath) {
+        labLastPath = location.pathname;
+        nxConsoleLabEvent('navigation', labLastPath);
+      }
+      const warning = nxConsoleLabWarning();
+      if (warning !== labLastWarning) {
+        labLastWarning = warning;
+        nxConsoleLabEvent(warning ? 'unsupported-device-warning' : 'warning-dismissed',
+          warning ? 'Diálogo de incompatibilidade exibido' : 'Diálogo ausente');
+      }
+    }, 1200);
+    document.addEventListener('keydown', function (e) {
+      if (!e.isTrusted || !e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey || e.repeat) return;
+      const a = document.activeElement;
+      if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+      if (e.code === getPref(LS_NX_SHORTCUT, 'KeyH')) { e.preventDefault(); e.stopImmediatePropagation(); setOpen(!openUI, true); }
+      if (e.code === 'KeyD') { e.preventDefault(); console.log('[NX diagnostic]', { qos: S.qos, history: S.qosHistory, diagnosis: S.lastDiagnosis }); }
+    }, false);
+    // Reaplicar volume salvo apenas quando um elemento de vídeo de streaming existir.
+    let lastVolumeAudio = null, lastAdjustedVideo = null;
+    setInterval(function () {
+      const audio = activeStreamAudio();
+      if (audio && audio !== lastVolumeAudio) {
+        lastVolumeAudio = audio;
+        const stored = Number(getPref(LS_VOLUME, '1'));
+        if (Number.isFinite(stored)) audio.volume = Math.max(0, Math.min(1, stored));
+      }
+      if(audio && getPref(LS_AUDIO_FX,'0')==='1' && (!nxAudioGraph || nxAudioGraph.media!==audio))applyAudioProcessing();
+      const video = activeStreamVideo();
+      if(getPref(LS_NX_GPU,'0')==='1' && video)nxGpuStart(video);
+      else if(nxGpu)nxGpuStop();
+      if (video !== lastAdjustedVideo) {
+        restoreVideoAdjustments(lastAdjustedVideo);
+        restoreVideoFit(lastAdjustedVideo);
+        lastAdjustedVideo = video;
+        applyVideoAdjustments(video);
+        applyVideoFit(video);
+      } else if (video && !nxVideoFilters.has(video) &&
+                 (['balanced', 'vivid'].includes(getPref(LS_VIDEO_PROFILE, 'original')) ||
+                  (getPref(LS_VIDEO_PROFILE, 'custom') === 'custom' &&
+                   (getPref(LS_VIDEO_COLOR, '0') !== '0' || getPref(LS_SHARPNESS, '0') !== '0')))) {
+        // Reapply when the stream element persists but the host has reset its style.
+        applyVideoAdjustments(video);
+      }
+    }, 2500);
+    document.addEventListener('visibilitychange', function () {
+      const video = activeStreamVideo();
+      if (video) applyVideoAdjustments(video);
+      nxGpuSync();
+    });
+    buildUI();
+    update();
+    tick();
+    // O site pode substituir o body durante a inicializacao do React.
+    // Recria/reataca o painel quando a arvore de documentos muda.
+    let recoveryQueued = false;
+    const panelObserver = new MutationObserver(function () {
+      if (recoveryQueued) return;
+      // Nao reagir a cada mudanca de React: so recuperar quando o NX perdeu o host.
+      const host = mountTarget();
+      if (wrap && wrap.isConnected && wrap.parentNode === host) return;
+      recoveryQueued = true;
+      queueMicrotask(function () {
+        recoveryQueued = false;
+        try {
+          const target = mountTarget();
+          if (!target) return;
+          if (!wrap || !wrap.isConnected) buildUI();
+          if (wrap && wrap.parentNode !== target) target.appendChild(wrap);
+          if (wrap && wrap.isConnected) { S.nxRecoveries++; syncNXPlacement(); }
+        } catch (err) { S.lastErr = 'NX recovery: ' + String(err); }
+      });
+    });
+    panelObserver.observe(document.documentElement, { childList: true, subtree: true });
+    // Recuperacao periodica: React pode recriar a barra sem emitir mudancas no root.
+    // Nao depende da deteccao de perfil para manter o NX acessivel.
+    // Atalho de recuperacao do painel para navegadores com teclado.
+    document.addEventListener('keydown', function (e) {
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyN') { e.preventDefault(); resetPos(); setOpen(true, true); }
+    }, false);
+    // Ao entrar/sair da tela cheia, move o painel imediatamente para o novo host, sem depender do tick de 1,5s
+    ['fullscreenchange', 'webkitfullscreenchange'].forEach(function (ev) {
+      document.addEventListener(ev, function () {
+        try {
+          const host = mountTarget();
+          if (wrap && host) host.appendChild(wrap);
+        } catch (e) { }
+      }, true);
+    });
+    setInterval(tick, 1500);
+    window.addEventListener('popstate', tick);
+    window.addEventListener('resize', tick);
+    tick();
+    setInterval(pumpQos, 2000);
+    console.log('[xcu] v' + VER + ' iniciado | data center', srvCfg().label, '| IPv4', v4on(), '| qualidade', resCfg().label);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
+})();
+)||k.startsWith('__reactContainer
+
+  const VER = '4.12.30';
+  const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
+  const LS_SRV = 'xcu.streamRegion'; // data center de streaming
+  const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
+  const LS_RES = 'xcu.resolution';   // faixa de qualidade
+  const LS_BITRATE = 'xcu.maxBitrateMbps'; // limite opcional de bitrate SDP
+  const LS_VOLUME = 'xcu.volume'; // volume local do elemento de video
+  const LS_AUTO_BEST = 'xcu.autoBestMeasured';
+  const LS_NX_DIAG = 'xcu.diagnostics';
+  const LS_DEVICE_PROFILE = 'xcu.deviceProfile';
+  const LS_CONSOLE_LAB = 'xcu.consoleLab.profile.v1';
+  const LS_CONSOLE_NOTES = 'xcu.consoleLab.notes.v1';
+  const LS_FORTNITE_CONSOLE = 'nx.fortnite.consoleExperience.v1';
+  const nxFortniteConsoleEnabled = (function () { try { return localStorage.getItem(LS_FORTNITE_CONSOLE) === '1'; } catch (_) { return false; } })();
+  const nxFortniteConsoleState = { enabled: nxFortniteConsoleEnabled, matched: false, inspected: 0, patched: 0, previousTouch: null, note: 'Experimental: sinalização de toque na configuração da sessão; não emula hardware Xbox.' };
+  function nxIsFortniteRoute() { return /(?:^|\/)(?:fortnite)(?:\/|$)/i.test(location.pathname); }
+
+  const LS_NX_SHORTCUT = 'xcu.nxShortcut';
+  const LS_RTT_HISTORY = 'xcu.rttHistory.v1';
+  const LS_VIBRATION = 'xcu.vibrationLevel';
+  const LS_MIC_ENABLED = 'xcu.microphoneDesired';
+  const LS_MIC_DEVICE = 'xcu.micDevice';
+  const LS_MIC_GAIN = 'xcu.micGain';
+  const LS_MIC_BASS = 'xcu.micBass';
+  const LS_MIC_TREBLE = 'xcu.micTreble';
+  const LS_MIC_NOISE = 'xcu.micNoise';
+  const LS_MIC_ECHO = 'xcu.micEcho';
+  const LS_MIC_AGC = 'xcu.micAgc';
+  const LS_MIC_MUTE = 'xcu.micMute';
+  const LS_MIC_PTT = 'xcu.micPtt';
+  const LS_MIC_GATE = 'xcu.micGate';
+  const LS_AUDIO_OUTPUT = 'xcu.audioOutput';
+  const LS_AUDIO_BASS = 'xcu.audioBass';
+  const LS_AUDIO_MID = 'xcu.audioMid';
+  const LS_AUDIO_TREBLE = 'xcu.audioTreble';
+  const LS_AUDIO_COMP = 'xcu.audioCompressor';
+  const LS_AUDIO_FX = 'xcu.audioFx';
+  const LS_AUDIO_BANDS = 'xcu.audioBands10';
+  const LS_AUDIO_PRESET = 'xcu.audioPreset';
+  const LS_AUDIO_LIMIT = 'xcu.audioLimit';
+  const LS_AUDIO_NORMAL = 'xcu.audioNormal';
+  const LS_AUDIO_DIALOG = 'xcu.audioDialog';
+  const LS_AUDIO_MONO = 'xcu.audioMono';
+  const LS_AUDIO_BALANCE = 'xcu.audioBalance';
+  const LS_SHARPNESS = 'xcu.sharpness';
+  const LS_VIDEO_COLOR = 'xcu.videoColor';
+  const LS_VIDEO_PROFILE = 'xcu.videoProfile.v1';
+  const LS_VIDEO_FIT = 'xcu.videoFit.v1';
+  const LS_VIDEO_ECO = 'xcu.videoEco.v1';
+  const LS_VIDEO_BRIGHTNESS='xcu.videoBrightness.v2';
+  const LS_VIDEO_CONTRAST='xcu.videoContrast.v2';
+  const LS_VIDEO_SATURATION='xcu.videoSaturation.v2';
+  const LS_VISUAL_LIBRARY='nx.visual.library.v1';
+  const LS_VISUAL_ACTIVE='nx.visual.active.v1';
+  const LS_NX_GPU='nx.visual.gpu.v1';
+  const LS_NX_SHADOWS='nx.visual.shadows.v1';
+  const LS_NX_HIGHLIGHTS='nx.visual.highlights.v1';
+
+  // Laboratório Xbox: experimental, desativado por padrão. Apenas identidade JS local;
+  // não altera cabeçalhos HTTP, autenticação, tokens, gamepad ou autorização do servidor.
+  const nxConsoleNativeUA = navigator.userAgent;
+  const nxConsoleLabProfile = (function () {
+    try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off';
+      // Xbox One / Series permanecem no código para pesquisa futura, mas estão suspensos.
+      // Sessões antigas migram para o perfil genérico sem expor seletores específicos.
+      if (p === 'xboxone' || p === 'xboxseries') { localStorage.setItem(LS_CONSOLE_LAB, 'xbox'); return 'xbox'; }
+      // Smart TV foi descontinuado: voltar à identificação nativa automática.
+      if (p === 'smarttv') { localStorage.setItem(LS_CONSOLE_LAB, 'off'); return 'off'; }
+      return ['off','android','xbox','windows'].includes(p) ? p : 'off'; }
+    catch (_) { return 'off'; }
+  })();
+  const nxConsoleLabState = { profile: nxConsoleLabProfile, applied: false, error: '', nativeUA: nxConsoleNativeUA, startedAt: new Date().toISOString() };
+  // Compatibilidade conservadora: perfis Xbox/TV não falsificam UA.
+  // A interface mantém o perfil escolhido, mas o navegador negocia como dispositivo real.
+  const nxCompatibilityProfiles = ['xbox', 'xboxone', 'xboxseries'];
+  const nxCompatibilityMode = nxCompatibilityProfiles.includes(nxConsoleLabProfile);
+  nxConsoleLabState.identityMode = nxCompatibilityMode ? 'native-compatible' : 'legacy-profile';
+  nxConsoleLabState.applied = false; // Seleção não comprova identidade Xbox.
+  if (nxCompatibilityMode) {
+    nxConsoleLabState.note = 'Perfil de experiência ativo; identidade nativa preservada para compatibilidade de sessão';
+  } else if (nxConsoleLabProfile !== 'off') {
+    try {
+      const ua = nxConsoleLabProfile === 'android'
+        ? (/Android/i.test(nxConsoleNativeUA) ? nxConsoleNativeUA : 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36 EdgA/140.0.0.0')
+        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0';
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, get: function () { return ua; } });
+      nxConsoleLabState.applied = navigator.userAgent === ua;
+    } catch (err) { nxConsoleLabState.error = String(err && err.message || err); }
+  }
+  // Perfil central de experiência: apenas ajustes suportados pelo userscript.
+  // A seleção não altera TLS, headers UA/CH nativos, hardware nem permissões do xCloud.
+  const nxPlatformProfile = Object.freeze({
+    off: { label: 'Automático', sessionOs: null, input: 'native' },
+    android: { label: 'Android Mobile', sessionOs: 'android', input: 'touch-preferred' },
+    windows: { label: 'Desktop', sessionOs: 'windows', input: 'keyboard-mouse-preferred' },
+    smarttv: { label: 'Smart TV compatível', sessionOs: null, input: 'gamepad-preferred' },
+    xbox: { label: 'Xbox compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' },
+    xboxone: { label: 'Xbox One compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' },
+    xboxseries: { label: 'Xbox Series X|S compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' }
+  }[nxConsoleLabProfile]);
+  const nxProfileSessionState = { attempted: 0, patched: 0, lastRequestedOs: null, lastOutcome: 'not-observed' };
+  // Diagnóstico passivo inspirado no XFly: não lê tokens, payloads ou identificadores.
+  const nxSessionTrace = [];
+  function nxSessionHealth() {
+    const attempts = nxSessionTrace.filter(function (x) { return x.stage === 'play'; });
+    const last = attempts.length ? attempts[attempts.length - 1] : null;
+    const lastAny = nxSessionTrace.length ? nxSessionTrace[nxSessionTrace.length - 1] : null;
+    const q = typeof S !== 'undefined' ? S.qos : null;
+    if (q && (q.decodedFps > 0 || q.fps > 0)) return { state: 'streaming', explanation: 'Quadros de vídeo observados no WebRTC' };
+    if (!last) return { state: 'not-observed', explanation: 'Nenhuma tentativa de criação de sessão capturada; verificar se o jogo foi iniciado' };
+    if (last.status === 0) return { state: 'network-error', explanation: 'Falha de rede ao criar a sessão' };
+    if (last.status === 401 || last.status === 403) return { state: 'access-rejected', explanation: 'Servidor rejeitou a requisição; causa não determinada' };
+    if (last.status === 429) return { state: 'rate-limited', explanation: 'Servidor limitou as requisições; evitar tentativas repetidas' };
+    if (last.status >= 500) return { state: 'server-error', explanation: 'Erro HTTP no servidor durante criação de sessão' };
+    if (last.status >= 400) return { state: 'request-rejected', explanation: 'Criação de sessão rejeitada com HTTP ' + last.status };
+    if (last.status >= 200 && last.status < 300) return { state: 'session-accepted', explanation: 'Criação de sessão aceita; última etapa: ' + (lastAny ? lastAny.stage : 'play') + '. Não comprova reprodução de vídeo' };
+    return { state: 'pending', explanation: 'Tentativa sem resultado conclusivo' };
+  }
+  function nxSessionRecord(item) {
+    nxSessionTrace.push(item);
+    if (nxSessionTrace.length > 35) nxSessionTrace.shift();
+  }
+  const nxClientHintsMode = (function () {
+    try { return localStorage.getItem('nx.consoleLab.hideClientHints.v1') === '1'; } catch (_) { return false; }
+  })();
+  let nxClientHintsApplied = false;
+  if (nxClientHintsMode && nxConsoleLabProfile !== 'off' && !nxCompatibilityMode) {
+    try {
+      Object.defineProperty(navigator, 'userAgentData', { configurable: true, get: function () { return undefined; } });
+      nxClientHintsApplied = typeof navigator.userAgentData === 'undefined';
+    } catch (err) { nxConsoleLabState.error += ' ClientHints: ' + String(err && err.message || err); }
+  }
+  const nxConsoleLabEvents = [];
+  function nxConsoleLabEvent(type, detail) {
+    const entry = { time: new Date().toISOString(), type: type, detail: String(detail || '').slice(0, 180) };
+    if (nxConsoleLabEvents.length && nxConsoleLabEvents[nxConsoleLabEvents.length - 1].type === type &&
+        nxConsoleLabEvents[nxConsoleLabEvents.length - 1].detail === entry.detail) return;
+    nxConsoleLabEvents.push(entry);
+    if (nxConsoleLabEvents.length > 35) nxConsoleLabEvents.shift();
+  }
+  const nxConsoleLabWarnings = [
+    'não há suporte para streaming nesse dispositivo',
+    'nao ha suporte para streaming nesse dispositivo',
+    'streaming is not supported on this device',
+    'device is not supported for streaming'
+  ];
+  function nxConsoleLabWarning() {
+    // Detecta avisos visíveis mesmo quando a interface não usa ARIA dialog.
+    const nodes = document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="alert"], dialog, h1, h2, h3, p');
+    for (const node of nodes) {
+      if (node.childElementCount > 4 || node.closest('[id^="nx-"]')) continue;
+      const rect = node.getBoundingClientRect();
+      if (!rect.width || !rect.height || rect.bottom < 0 || rect.top > innerHeight) continue;
+      const value = (node.textContent || '').toLowerCase().replace(/\s+/g, ' ').slice(0, 350);
+      if (nxConsoleLabWarnings.some(function (w) { return value.includes(w); })) return true;
+    }
+    return false;
+  }
+  function nxConsoleLabCapabilities() {
+    let codecs = null;
+    try { codecs = typeof RTCRtpReceiver !== 'undefined' && RTCRtpReceiver.getCapabilities ?
+      RTCRtpReceiver.getCapabilities('video').codecs.map(function (c) { return c.mimeType; }).filter(function (v,i,a) { return a.indexOf(v) === i; }) : null; } catch (_) {}
+    let mse = null;
+    try { mse = typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"'); } catch (_) {}
+    return {
+      secureContext: window.isSecureContext, webRTC: typeof RTCPeerConnection === 'function',
+      mediaSourceH264: mse, webCodecs: typeof VideoDecoder !== 'undefined',
+      videoCodecs: codecs, touchPoints: navigator.maxTouchPoints || 0,
+      pointerFine: !!(window.matchMedia && matchMedia('(any-pointer:fine)').matches),
+      fullscreenSupported: !!document.fullscreenEnabled,
+      userAgentDataPlatform: navigator.userAgentData ? navigator.userAgentData.platform : null,
+      identityConsistency: { uaContainsXboxOne: navigator.userAgent.includes('Xbox One'), uaContainsXbox: navigator.userAgent.includes('Xbox;'), platformReportsWindows: /Win/.test(navigator.platform || ''), clientHintsPlatform: navigator.userAgentData ? navigator.userAgentData.platform : null },
+      platform: navigator.platform || null, language: navigator.language || null,
+      hardwareConcurrency: navigator.hardwareConcurrency || null,
+      mediaDevices: !!navigator.mediaDevices, mediaCapabilities: !!navigator.mediaCapabilities,
+      h264Decode: document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"'),
+      screen: {width: screen.width, height: screen.height, dpr: devicePixelRatio},
+      gamepadAPI: typeof navigator.getGamepads === 'function'
+    };
+  }
+  function nxConsoleLabFullScreen() {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) Promise.resolve(exit.call(document)).catch(function (e) { nxConsoleLabEvent('fullscreen-error', e.message); });
+      return;
+    }
+    // A página inteira mantém controles e diálogos visíveis; não força orientação nem imita Xbox OS.
+    const target = document.documentElement;
+    const request = target.requestFullscreen || target.webkitRequestFullscreen;
+    if (!request) { nxConsoleLabEvent('fullscreen-unavailable', 'Fullscreen API indisponível'); toast('Tela cheia indisponível neste navegador'); return; }
+    try { Promise.resolve(request.call(target)).then(function () { nxConsoleLabEvent('fullscreen', 'ativado'); if (nxCompatibilityMode && screen.orientation && screen.orientation.lock) Promise.resolve(screen.orientation.lock('landscape')).catch(function (e) { nxConsoleLabEvent('orientation-lock-unavailable', String(e && e.message || e)); }); }).catch(function (e) { nxConsoleLabEvent('fullscreen-error', e.message); toast('Navegador bloqueou tela cheia'); }); }
+    catch (e) { nxConsoleLabEvent('fullscreen-error', e.message); toast('Navegador bloqueou tela cheia'); }
+  }
+  // Diagnóstico passivo: sem acesso a tokens, corpo ou headers.
+  const nxOfferingTrace = [];
+  function nxObserveOffering(u, method, promise) {
+    if (!u || !/^[a-z0-9-]+\.gssv-play-prod[z]?\.xboxlive\.com$/i.test(u.hostname) || !/^\/v2\/login\/user\/?$/i.test(u.pathname)) return promise;
+    const offering = u.hostname.split('.')[0].toLowerCase(), started = Date.now();
+    return promise.then(function (res) {
+      nxOfferingTrace.push({at:new Date().toISOString(),offering:offering,method:method,status:res.status,elapsedMs:Date.now()-started});
+      if (nxOfferingTrace.length > 24) nxOfferingTrace.shift();
+      return res;
+    }, function (err) {
+      nxOfferingTrace.push({at:new Date().toISOString(),offering:offering,method:method,status:0,reason:err && err.name === 'AbortError' ? 'cancelled' : 'network-error'});
+      if (nxOfferingTrace.length > 24) nxOfferingTrace.shift();
+      throw err;
+    });
+  }
+  function nxCompatibilityVerdict() {
+    const health = nxSessionHealth();
+    const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
+    const playing = !!(video && video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2 && !video.paused);
+    const offers = Array.from(new Set(nxOfferingTrace.map(function (e) { return e.offering; })));
+    let state = 'waiting', label = 'Aguardando teste', detail = 'Inicie um jogo para avaliar a conexão.';
+    if (playing || health.state === 'streaming') {
+      state = 'streaming'; label = 'Streaming observado';
+      detail = 'Vídeo detectado. Isso não comprova autorização como console.';
+    } else if (['access-rejected','request-rejected','network-error','rate-limited','server-error'].includes(health.state)) {
+      state = 'failed'; label = 'Falha detectada'; detail = health.explanation;
+    } else if (health.state === 'session-accepted') {
+      state = 'accepted'; label = 'Sessão aceita'; detail = 'Aguardando evidência de vídeo reproduzido.';
+    } else if (health.state === 'pending') {
+      state = 'pending'; label = 'Conexão iniciada'; detail = health.explanation;
+    }
+    return {state:state,label:label,detail:detail,consoleCompatibility:'não comprovada',offerings:offers,
+      sessionState:health.state,videoPlaying:playing,observedAt:new Date().toISOString()};
+  }
+  // Matriz de evidências: separa observação local, modificação e confirmação remota.
+  function nxProtocolEvidence() {
+    const nav = navigator, hints = nav.userAgentData || null;
+    const safeHints = hints ? {brands:Array.isArray(hints.brands) ? hints.brands.map(function(b){return {brand:String(b.brand).slice(0,60),version:String(b.version).slice(0,20)};}) : [],
+      mobile:typeof hints.mobile === 'boolean' ? hints.mobile : null,platform:hints.platform || null} : null;
+    const offer = nxOfferingTrace.length ? nxOfferingTrace[nxOfferingTrace.length-1] : null;
+    const play = nxSessionTrace.filter(function(x){return x.stage==='play';}).slice(-1)[0] || null;
+    const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
+    return {
+      schema:'nx-protocol-evidence-v1',
+      observed:{
+        javascriptIdentity:{userAgent:nav.userAgent,platform:nav.platform || null,vendor:nav.vendor || null,
+          clientHints:safeHints,maxTouchPoints:nav.maxTouchPoints || 0,language:nav.language || null},
+        capabilities:{webRTC:typeof RTCPeerConnection === 'function',gamepadAPI:typeof nav.getGamepads === 'function',
+          videoDecoder:typeof VideoDecoder !== 'undefined',secureContext:!!window.isSecureContext},
+        authOffering:offer ? {hostOffering:offer.offering,status:offer.status,at:offer.at} : null,
+        sessionPlay:play ? {status:play.status,method:play.method,at:play.time,elapsedMs:play.ms} : null,
+        video:video ? {readyState:video.readyState,width:video.videoWidth,height:video.videoHeight,paused:video.paused} : null
+      },
+      configured:{profile:nxConsoleLabProfile,identityMode:nxConsoleLabState.identityMode,
+        jsUserAgentChanged:nav.userAgent !== nxConsoleNativeUA,sessionOsRewriteDisabled:nxCompatibilityMode},
+      notObservableFromUserscript:[
+        'HTTP User-Agent e Sec-CH-UA realmente transmitidos pelo navegador',
+        'TLS ClientHello e fingerprint de rede',
+        'Identidade do hardware/firmware Xbox validada pelo servidor',
+        'Reconhecimento ou autorização de catálogo exclusivo de console'
+      ],
+      limitations:'Um nome de modelo ou User-Agent JavaScript nao equivale a identidade de hardware; verificar headers efetivos no DevTools.'
+    };
+  }
+  // Referências de hardware não verificadas; preserva autenticação e capacidades nativas.
+  const nxConsoleProfileManifest = Object.freeze({
+    xboxone: Object.freeze({id:'xboxone',label:'Xbox One',referenceVerified:false}),
+    xboxseries: Object.freeze({id:'xboxseries',label:'Xbox Series X|S',referenceVerified:false})
+  });
+  function nxConsoleProfileValidation() {
+    const manifest=nxConsoleProfileManifest[nxConsoleLabProfile] || null;
+    const evidence=nxProtocolEvidence();
+    const js=evidence.observed.javascriptIdentity;
+    const native=js.userAgent===nxConsoleNativeUA;
+    return {
+      selected:nxConsoleLabProfile,manifest:manifest,
+      state:manifest ? (native?'selected-native-preserved':'modified-unverified') : (nxConsoleLabProfile==='off'?'off':'other-profile'),
+      identity:{jsUserAgentChanged:!native,platform:js.platform,clientHintsPlatform:js.clientHints?js.clientHints.platform:null,touchPoints:js.maxTouchPoints},
+      layers:{javascript:native?'native-preserved':'modified-local',httpHeaders:'not-observable',
+        deviceCapabilities:'native-preserved',input:'native-preserved',session:nxSessionHealth().state,consoleAuthorization:'not-verified'},
+      warningsObserved:nxConsoleLabEvents.filter(function(e){return e.type==='unsupported-device-warning';}).length,
+      note:'Perfil nao comprova identidade Xbox. HTTP e TLS requerem verificacao externa.'
+    };
+  }
+  function nxConsoleLabReport() {
+    const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
+    const note = (function () { try { return localStorage.getItem(LS_CONSOLE_NOTES) || ''; } catch (_) { return ''; } })();
+    return {
+      version: VER, experiment: 'console-compatibility', profile: nxConsoleLabState.profile,
+      applied: nxConsoleLabState.applied, error: nxConsoleLabState.error,
+      nativeUserAgent: nxConsoleLabState.nativeUA, pageUserAgent: navigator.userAgent,
+      note: note.slice(0, 500), startedAt: nxConsoleLabState.startedAt,
+      unsupportedDeviceDialogDetected: nxConsoleLabWarning(),
+      unsupportedDeviceWarningsObserved: nxConsoleLabEvents.filter(function (e) { return e.type === 'unsupported-device-warning'; }).length,
+      platformExperience: nxPlatformProfile, profileSession: Object.assign({}, nxProfileSessionState),
+       compatibility: { enabled: nxCompatibilityMode, identityMode: nxConsoleLabState.identityMode, nativeUserAgentPreserved: navigator.userAgent === nxConsoleNativeUA, sessionOsRewriteDisabled: nxCompatibilityMode, clientHintsOverrideDisabled: nxCompatibilityMode },
+       clientHintsExperiment: { enabled: nxClientHintsMode, applied: nxClientHintsApplied, note: 'Somente navigator.userAgentData JS; nao altera cabecalhos HTTP' },
+      protocolEvidence: nxProtocolEvidence(), consoleProfileValidation: nxConsoleProfileValidation(),
+      fortniteConsoleExperience: Object.assign({}, nxFortniteConsoleState),
+      offeringTrace: nxOfferingTrace.slice(), offeringTraceNotice: 'Somente host, metodo, status e duracao; sem credenciais.',
+       sessionTrace: nxSessionTrace.slice(),
+      sessionHealth: nxSessionHealth(), compatibilityVerdict: nxCompatibilityVerdict(),
+      capabilities: nxConsoleLabCapabilities(),
+      events: nxConsoleLabEvents.slice(),
+      fullscreenActive: !!(document.fullscreenElement || document.webkitFullscreenElement),
+      capturedAt: new Date().toISOString(), page: location.origin + location.pathname,
+      touchPoints: navigator.maxTouchPoints || 0, controllerCount: navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean).length : null,
+      videoPresent: !!video, videoReadyState: video ? video.readyState : null,
+      videoWidth: video ? video.videoWidth : null, videoHeight: video ? video.videoHeight : null,
+      noteOnLimits: 'User-Agent JS nao altera headers de rede nem prova autorizacao de console.'
+    };
+  }
+  function nxConsoleLabSetProfile(profile) {
+    if (!['off','android','xbox','windows'].includes(profile)) return;
+    try { localStorage.setItem(LS_CONSOLE_LAB, profile); } catch (_) {}
+    // Reiniciar a página é necessário para negociar desde o document-start.
+    location.reload();
+  }
+
+  // Ícone da marca (caveira N em chamas, branco, fundo transparente). Usado pelo único botão do NX.
+  const BRAND_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACgCAYAAACLz2ctAAAnTUlEQVR42u1de5gkVXX/3erumWXZZR+4LAqKiCDyRkQQJCLGlaj4QI1EjagQJYooiSCiCGgkQUV5qUFAwAQF35oEoyEoDyWsD0AeBoGAAgossIvrujvT3XXyxznnm+P1VtWtR/fM7HR9X387O9NdXXXr3PP8nd9xRITRMTqm60hGSzA6RgI4Oubs0R4twYw+nPmZRgI4OgYpaPaVyotGGnB0DFLo1AXqZwjbmLyWAHgEwPqRAI6OJgSvBaAngqfPYScAewF4JoAdAWwJYBGA5QAuBfBBABs2NnPsRmmYoQZ8zgjdGIDnAzgEwAtE6EIK4b0AzhiZ4NFR19Sq4G0D4A0AXg9gZ++9qhXbANYBOAzAd+TztDH6hCMNONijZQTvaQCOBfBGAIuNwJG8zxkBWwfgZQCuAdAB0B1pwNFRVestAnAcgHd6gpeI4JHx60h+f/hcEL6RAA7O10tF+F4F4HQA28vfuiJ0LS/9QiKUHQAfBfCNuSB8IxM8OJO7AMAnALxdfj8pm936cs4IYV8+ewOA58nfR3nA0VF6LXsAdgXwBQB7GP+v46VPbIUjNcnn98k5WnNB+Ea14GY1X09SKleL8HVlfYvWuC/vuVI+ayPmkQCOjijN1wdwpPhuS0wqxT8o5xmcG9COIwEcHVFm990Azjf+XBIBLlDz2wJwL4CrzO9GAjg6ooXvbQDOlJ/LrCkZYfsfcO5vzvh+IwFsxud7NYDzROu5GvCpm+ei+R0JYPU16wPYDcDnjRZLPOErEiYrsPduzJi/kQCicYDoQgCXA9hMBLCs8Pnn+8MIkj86ylQ5zgSjV7qmqkEFwkc5v+uMBHB0xFY5XgngrSZhnBXhUkEEbNEty0Y+4OgoMpUEzvGdaTSd8wTN5QhcngnebaQBR0eM6T0OjOfrmbVzNftAAOA5c60CMgIjlBM+ArA1gFskAMnSdmUXkwxK5jly/lEpbnQEze97wNi+foE/V/bcfQDjAN5cMoIeacA5JHxLAfxCgoW0xsalDOF14K63XQCsMuiYkQacA6jllhfNhtbnVQC2KKjzljW7vhZcBuBkg4oemeCN9H5bpuaqyOV+gbC8LsPMUo3Aw2/T7AM4Ctwh18McwWrOBRPsTCBhzdo8AE8ENwttAYZSbQiY3y3F/C42n3clTCwifTtFxtwNYF8Aj86F8lwyB5LHJNolBbADgHcA+AoYAHATGAi6HAybTwJrs6cIXwzgwEXCsPJqzNsBuMCYYjeC5M/e1EkfXOZ6Bbh6cSCATbz3fhKcXE48DakPfg+joZIC8iBXsSZsr7sr13uq+IRtA/UqU1+mkQBOfy/uawC8H8Cz8KfN3x0AtwI4UT6TZvh3Ty8Z1cZqvazPKtTrQwBuBPBN755ig5zWbMgnJhup8O0A4Ntiap8lD7RrmsDb8vCPBzCRoTH0/0/IESjnBSdUkXrNfyaqjS8Cgx5iom893xYANjefSUYCOFzhex2A68ENQj1MgQY6pgmoBaa8+G6EphjPgdPbh6z+Wi8SCVMkTKn4nhfLNbgS9eVvAniToXlrjQRwOML3fgCXgRPHKnhJBlzq7MhzTwRMZt9o0i6A38gLGdAqVyFP2JJz7wPglAgtSHI9DwH4MYBLAHwJXLvuz1QhTDYi4TsJwGkmr9fKCBRaAG4D8H2PrSpLaFZ5PRypPOhfADhGouRdwVWMfeXBuxzOvyr39l4Az44QJO0xPh8Mcj0M3G/ycvPZmRVVE9FsfrXk3zcTH5NElJpX3/v/pLzvVPlcO+fc+rdjzbl78vMniGhBzmffIe/zv7/KqyvnukbuNylYEyevH8n1pvL5D3l/nxHPMNkIejN2BfDpDBPlMvKCV0b4ZhoVX238uhaY4eq9AH5v6DacqWi0AXwGwL95yBYqgZQORcUHADg0wqfTe7xBfp6Uz5wK7mFpzSTQw2w3wYn4cvNN4jarZKZ//w2An0f04Ko5uxnAT8W3+5jkDDsm4EjN+ftG8D/XYJJa3/N3GSmjkEDfaARSr/Ut4iOPzRQEdjKL/b4UwEvByWVbO82qt+pDuwPA40ZYY7TsRQDuAtPktgyvX5bgknzPhhxtVQbCpdexD4D9IwEL93ipItWGrxY/FTOh0jJbBVBNyHsDObiidMX9JXa/arQviiPfLSE4mgJyGe93JR4+GY386oJnp9/1KP4Yua0R+qQEJ2fPhOh4NgqgJml3AbCfV3qL6UB7tMJ3rpWotwxObwG47EcRDUuxxOYA8FwTZecJcNdsAHjVr0kAR4PRN73pFMLZKoD6INoBkABFPmhXEVETC7l6ukmjUE7zUtnjqeBqR9G1jBtfLwv+dQaA3adTEyazYJxB1rFzyXKX/rxlBS1EJRHKBMb1weugQ8VI2L5vkQhgkSAvCvSXkGcx5kvE3p4u8MJMFMDEg1FlPaynVASCbjdAyLuedz6YZBwRmoVK+oJjYCxj0TPdJnB+5wVyXXFj/nq6SnbJDBM8y6+8FYAjxOSEYEbzS2gQ+xB2MedMBoQ/PATAthF+Wqw5Jg+utSHivftFuiEk0f0CE+jMKQF0Jq2SSqrhPHC5bDGA+zL8r15gIfMeiObC5oMTuk33Xug1jAP4QI2hhEV/fxxTdWfKSAONATgo5xn7kK2ngaFrQ+9HmW4BtMDRPQF8FcCPwJx7nxYnmTKAousqJnQJXMNd0nBFQAOivwdXZ/oF6Gk/WKKMa/Xff4dE8qFNpyb0eciHcbmAVTl8OoCsyQxIJs8Dgwj+R3JcCXhGxgcLnOPfRTKKuoCP9hQAHzZUunWFUEcqHAhGrvQiqDpcBHeMC5QGryrwLQk8k8RF4BStxttPArt0mHKRTDOCZRdwrfX95iH2AJxgtEJW38VjNRqUepIHe5t8Z7viWjhz3buBy1xtbxImGmjdTI2G/XrGxtM1PQAM6e9H0oc4uf4xAC8Ztlwk00jq/SoA14EpKSbMoJarwYDSIoqKtd49UIn0hiZyzwNXU7rmISeRgqfauQvgzwH8F7i5qd9Aictl1KWvBDdS+f0r6sosAPDPJQEHVgu+GH9cAdroBNDyKn9dclU92X0qLN8u0CBlivpFsHcC8HEA/2JIh1IP2dIyP9thMxrQnAjgCtO43qrhS+VtmJ6Y91A6RV2Lz4LHvvYKgg9k+I57gBvkh4aWSaZB+I40vMr2gSmY4Bbk11t1cZaXrHxknasLHiD4M1MZ0MCoZ66zZwR0C/AUpJ+AR2u1TEmrTldayA9UoMXnxE+2aJiWub5PyX10c/xaV4D+2VwCqKHJRnvIpN6HykL2Azepi7M+ooGbJMpDiWpD0cZYCoY7vUuE8ccSca6S8y+U/OGzwYOll3mDZpIMp58K0ht52iYVt+Qu0bSJ0dDaDrBA1vSvDGMrRXyPP7VJg4+9JdBxG4sA6i7dS0ydP6TPdpa1RBBcgcZeLucL7VTyzp33oJ0XkasfuI+8UIB2QUDrOSMoPdMjkkZoJb/LLgFD698o+b8xo4VT8T3PkACoZ/xSqhh1QyzA0NIxyRCSzKloi8vEZ+oH8lC2NPYSI4yhiDMFsxsszjB7LnLBsyJk1WpdY3b9V+qRGvnaRLViBwxm/UygWy5LS1mNmYCrQTdgauhhKr7axRL47GbGgrnIfuQ88//0SLTNrBBANUsXyI11C5ioUkmI7i6LbQMASLR8ELift19ByGIRMokXgPgvV4AhbIEh+8dJlL+ZaK+0RP33D2JWL5Pr2QrcankFgJWyTlZr+xuBSjInqCw80ZBwzmoTrKb3WEyBOds5D0AFcIFEwm8H8J9esvcw8Ey1eYGHSQ0U/akm5W7XaL0jwHD+54sJjc3Lqfa7TgThQolsnwGu3lgXwOWkfFwJCg/noWiWgBP9btCmeFDsWCpMu0vk1gn4fUUsUQDwQwC/BNdXdwdn6sl7mBRxXqqo8csIpFZV/kM011r5vq+BmfXLAD8pww3pmv5fFzD9VIMWRAV/ElwWvT2Qb5wVAmh35bXgXtmYxQ+VjpIM81b1SI3pTio0jLuCTfNdcBViQv6/NRhUMb+AHRUGuJqYe0zNuiQRApsawXUVmVpTifRvGoYAtgfYLnl0CeFDADHcM0lqa9bXSqqmn1PrtB1yiZxjUzHdSYYZo4iSVZ7w3QKmBZmU75uUKHVTbwi1y9hUbe+cG7yOuyyB0eBsPOfeUILVa6jdcu0Bmd6twX2oaUmwpQtMD/o1mMXgOtEmD4p/4vfbUoZfk4jgbQYGIewNrpf+mcEU9kqaZz9dssGkSizXzIE5U5RSE+wAjAL6gfiP90gQ0s3QQORZm3mSaXiGbPoXyTOAl5imHE3ovJwgZiMzgjIVnJPBVJD36hsWACKi7xHR64ho0YC68rcXtoD7zHf2Mq6riLXgFI9NQZkHbsg4b9f8/hIi2rfhe1tKRO8korvM9/Qj1p+IaL2sDSJYGGq/mjxZIgu/AxGtkxvqRzzE1CwQyUNbERDstqGmSAzFROwrMeexC7uMiD5MRGu9TUMR15wS0b1EtKl3TSCi+UT0y4AAKr3HSiLaz6PU8O+xzKtlXnrOxUT0aUMT0su4L/u3B4loc28jzQpqDgv2nG/Mr4uMegnMCPo8AN/zcm5973xV4f4w51LztwpMBvlcMfMdk1+LcRkuAINjfdR2J0Dtpr7ghZKe+ZFh8CKvRJl465f1Ssza902Q1QawBowNPKoEh+GD8rlZZYJ1p2xORA95GiLrRd6uW+FpPBf4uUlXwXmaB0TUIaKz5Jq6OZpbf7+OiJ5mNKxdi3meBlSze1qAAMkVECWVsUKJd28d+fkNnjnuZ7gFXx2W+SWixoIQBRu8DIwU6RUgdp2J/u6Vz90mWqPnaQLd0fsBeCGAZ4rDnUQwl2py+GEAd4KR1td6EWJqrqUH4N3y3nNMFJqVM7sRwP95pUR9/wQYOr+9XMM8SaKfaDCRPa9u3BZN/BwwPGyhRzlCXqDQF411m+RM7/EAFmSS45fKtZzsFQX8wOYmL6CcFRpQd8u/md2U5/up5nuIiHYKUKVZX+rlRHQ9NXfcLPRpHS9w8jXRkZ7vZO9HtcXpGTRv+v8Ljba/0vhqzvvuNhEdTUQ/r3FfjxPRpUS0h/dMnOdfXudZn9RoRDKWqDUMDdik+V1GRI9E8OLpA91ARM83ps+eT2/+Y2aBNUqu8pqUf3vmfD80D8sXIL2etxpzbLn2VADfnPGw9P9/Ke9bRUTbeoLRMtH41ea6lMdwMnD9oZ8nDe+hRrF/G7gu/Xl/LyruewrhCd5zdYM0x02mXl4UGfLrwzs+IHz2fNYX63oCXIf4sU9EE3LutZLqCWlgva63eD6h1R5Z2kIf3qZEtJqIjvO+Qx/oTkR0v4m+uxXure9pZt0k7/auzQrSVd49TcjnvpWj/dxMjYLVJ9m1APdmm2tWgnFsLQ+mpEncN0g0PemVpuoAT0ONRAvAPMqvNT6YM75TG0zNdpTB2tn7W1vg564DI8AvMn5vYsiLviwol65B37iS9WK7Hm25vi54/skLAnTFTvxBv+TpwKSaflL6qaYG3zh6qskTbleAvrVpgA8FKhnqyG8qVZRQTbMM1q1orlvbpFv+Fdwk5c9o0/+fJ6ielnH+4bEzZAnh18CTMC3OTxlLd5ZN1i7JD4MM3KOdrpTIJh/zSnrKEPu4udc2gNVGAC3Ubb5slC0HIYRJQ1x98AhzQqPsVaC+b/J8/QB28GAR5pjZGBRBRpRVPrPv6QC4XKJxP0LUoTZngnGIbXPdT4rsOLNlwZ5EuEd5WD5XYQBOVnlNN8qekm8krxb9a0zRzXXlc98FM+z7LLOPSubh8xV4DYcqgOORwM8LCwrgB0eQQIZgSLF4wJDGUEG4HAx49c2x/v/j4IZ5xSNuF5lo99E9h3jJeuQwuqICkMN+7yGesKqA3eV9/oIcXu1VAP5CrEC/SS3YpA/Yy9mpWu1YLRow1Huq/39mRGN3SHirkAD5PSGbgIe8HOiZYzJ4v48C+Ae5vr1KUrelBqRAqE9aVLThnemd8XkU75N/x8ANWD8wgu88E7xQfn+KbLrG2BOatOerI97zUwC/DZStLLHP8grcea4BLa5J74UAvgVuSupmCOFJkqheAUYQp5EbQLvcntmQKcujJdZnu0zW1V/Hh81nzzGazbcmW8rG1LX5xyb7hpvUgPdHMBTcWvC9nQxWzyJib6rxACnAFrWZOOTPCmhCNdfHSIDx+pJruUCEtqmGdRT0e2wmgR0CFodE+30lg20BUj2xn3mNQNkaYVVt0ge8NUcbkcH21YXENwmW9MESljtmGYB/l0jVCqFFVR8J5qhplzDDSYUH5ypGyDDpndB1OMlITOT0f+wdKAWe1FTrZpMCeHNOSkEXZE2NhacSdGeoAdknU0t9Inio4Q4BTQgwaPTykmO5qIFrLWMF0oxJ708Cc/D8ZyAjoTnLcdF2duP0Jb+4TxOsqklDD82BR83fUsBo5WrsdldSOPMeEhVoRDJJ8ieLED7VA1lQRRqOKm4EVeDBCfmHNmBKwW0TeS2ae4i/mgYCyrfNpCBEd8ZXM1R56s3eLWtGYqK9Mr+LFRzVhE8Dd7s9qQECoti8ZV23o6iH5UIwBQlyYP+v9ehALJHRK8RNqdXA3pQA6g18CVPgzBCAdMcGHpxDcz5TTGVFOVh2EiF8Qk0HPI2YH4cGmbUoQyHcVZCDXCoBFgU2Sg9MZHRwJBH7UASwBeBXmOrkD7EA7GUQxyjZuY9pnMqkmnAPEcKlNRKyMWjrOoj0MqTtlEO0foT4wP2cwPJldZ9VMoDxWR8Fd61Zx7ZlNOB2kTXFsjQbVadRxjr3OmvtOZKiWVAxITsoAfRdDKpwr6o4tgQzhaU5s/ecrMWmdcxwkwKoD+MeMOdz4k2P1B7fFZHfTQ35UGU0gyvQyMpOtR+4YrKgQoE+jSQqalIYXcm22tNECNOMzIMmrJ8MbgXFTBBAa4rPAFPtjgVKbm8sGDlaJr1CNZAjVU2casIXStDVKSmEaWBNXIk1KOPrlbEm6mYcAh7r2jcNU6FMg/59t5kkgGSK94eDyz1t0/vQB9M+HFgih1QlOiQMrsOfDJ7wxWAoV6vE96U5E6AoosJRpUacRvb0bA/GLlLBWtpr3XEmCaAfkPwlmEYj8W7kGAyel7BqTi7WTOvUydeCiTfTSHb81AvQigAVRUMOCfVgUqoYlgP4hkS3aQQYRL9r2zpuxKD4AVU9X21CeavKXyIRcSiSdBXAp3VLcVWFV7v4DgNwfmTvctnBh67i1M8YwXSGG9qWHZMS67xsJgqgpSv7pvh9qQlG2gD+psD/oQEjYJrSsjr070hw22XRmAaqEAW7AWxAFcz5YFDFszPaNV0EuKIyn8ygGVJV2C4D8FbzYFJwJn1pgOuvySRsE/VViqyYdMEsBB8zFsBF+nrUoJsR6/9qxKssDZM5BOdFrghm8pgGTb98ATwRSR/WlmAWp7rajEqW7cqmYGLBruoTHoepcV1FYxuogoajCqMeskqnR4j70DMkolUs3YwTQBdg9mwD+Ccwsfa46f+oE8FShGNep4RVVpg14j8ZPDGzl6EJqQLWrwzNcN7vVPNtA24xKBqqWPQ9G2ZaFJwUoFM+IJrCgZtmWjV2kUN9/7AM+iZmJKziCf8BXE3waUpcTYg9appevY+TMDUxNInc0KHjsTqylAxoAubLMdUx5rzI+MfgDiyASRSf2CDKuQ5GkBoy9YnJq50B7n5TE5cEHHY3ABBqXqmtD4ZYvcGkW6jCtehn/m+maEDVZC8XH2hVTq7rS/L/JWCoU1X1j5LDWJpyKyjie1UTfhZTUzk7XhTs0DwsP68Up8/7b8Cdff0K0Df//DfOhDSM7qwnSbBxj4mqEEAcX48pFvnlDeXvBhGE1KkGJSbtdJ6kaSZKRppNVXXIBISbgpvwEUgXUYlIW0uSK2eCAOp0yQvADTe3FZiFB8CVEpjZF66GRqAh5wrLjEFVp/98TM0LaQ9gTESM70gA9geju9OaSXiAEfB3VuhjbpSkvGVY8f9CLm51wYV3jfO6SYMVDYocRUBDTGRbDsJL5LvX10xAuxob5iCvUFAn9fV1c57edAigLu5WYK4TTTz/LuIzaxtOKpOps7oMoEMTqJiyWstn7L8Y3MxUdaCMq+kz7l0zzaWafS0YiFGLVT9pCIV7PLiq0fUuKM8c/CHAqEA1H3xLHP02muk+q2L+XUF6qgXu1aWSbA5pRvddmYalBSboq9LaYBm+Pg9us23VEcB2A4HHUwC82UDXganm8rzwfcwTVleS4yW0K38IppjYEwx4SBuikWhizhxl0KpRJM9Ly6s+JBWgWkvAU0arWgG9jofBRYXas+TaDZjfI2RHd/HHA+9cAbJjqfy7LmIn541hVR/kiwD+2gj02wCcDa66dCPulSq2hLoa7FYxyWbNIf4B3MW2vWQO+l5EHSNQ8wPM/WU2oTKFHQvmpm5NVylO0wvjYMyf3+Syc0H/6yYm/bI6Ag1T1GJ4G3i6pkKkWuAp4ivAidJOBAx+UDnDquadjPD9DNwGcAAYxnZdiYfvGkLT6LV8RjZ7beGrK4CQxXiG8W1UyxwATnT6mkDTEjtiCsi4oUbXv577WPB8XoVGqVa8Rq7lKtONV7U6Uqc1oKypTw2T64VgBPnNck8PgAEED0WmP8jLPvQrXHdXXKYrALynSQb9pObnDjKOqZ2Zu63BAI6Z3oKWGUrdkc+tiYA+uQwURgIeu/BfpvIAbyjMb8Cgh7MCUyjL1F4dBsvO5Y+v6IKR40dKxNkyWugBMOAhTxBCpn6dlwJyJdBM/w4mJuo1GeAlNRvRn50T7f0TmF1qwkwnmpTgQM3lZANTec6PENKu7NyjjGD2K9RSm8IZugyiIE1j3QOetHmOIcrse4MVLwHPUu5EaGpngAMPl7g/9fkuAnCoCG+jQ6yTiuZXNci2gfOoY7y5mL4PSu5pX3DP8NfEPCuJ95octHAeSFTHbH2nIBdl84LnyYO91yRP3TQgrimjRNkRTbOfaHY7cMaP+Ddgimy8H9HQpKb0nsjcndLQnQoGE/fqVDwGkQfcxESyLmMS0iIAHwFwA7j+e6IIX88EIL8v2YRjQZA3gzmMXYSPpn7hteIXXm2CExogAttFaBn1jU8Bt0U+GJggENpU3/NSNDEBx00l0i0nyDW1SjyboQngvBwySWfyhF1PCOxNPCI7OSnha1lhuyOn6pHlz7TAZJorJKLrVMjmu4b7Zh4Co4hONcLYj/AZ7wgQi1NB598PPLYKymgoOx/A6Yb7cBB0eLUEMInsO2jngDofjeD9s79Lvev+VYWFUI0zCe7heIfZ8T0MjiQoTyPvD6b7aJdoWnJiQe4rCcq4QT6TBNJnms24EwymTUpyHw5VACcDu5RK7o5VNZtz1qMep2ELjNdbAS4rdRoQQhdJYdKWyPyFYG7FVgl3gHKG5VBOHrAtLs9VGcTyet5PyvuSQZNE1RHA9cZ/KwMHt++5v8TnQu9bWFNTqRb6PnhO8TUmPZTW0HRZaQp1AdaCy5fvERclqZDUJcOrjQKycv85X+aZYUs7shrcSuuaSDQPQgDtGNTf1vQHHqj4eX3/MxrwR1Qo7hNNeK5JfaQ52tmVrD5oDu8mMO3tJaZhKa0IAhkHtzTECqDez/cB3O4BCfT+rpcgyA2DIq9uIvqumgLwcEUYuJ1P10RqwPqF75I8ZdfLF7oMRz8WPNEBo8UPECFs1/CvnOF53hrFfSBtL002Acby+dUXf14wZqoA6gL8rKKZSjwBLNsLop/fCVMz6pKGWF61jvznohVdgOaiLPfMOhHsw03JsNdAALiXmeGRpalbnpnWv1/hTU6CCeyGdtSthFxvEpZUouFatc2jFcm9tew2D3/KPYMG/MJxcMH/wor+mY9RPFpMe6ch30rX4k0Rz9IfC2E13d3eVHqAhxgOjaE2aWA2yF0ZwwmLjscNEoYqjmwgcHltceS0orLd/rtHoHFiGtvvahAkq27B3uAadxrhjyaBTbEe3CLrX+vkbNCAWgqbwFSPb1k/bG2gClJ2tFYqTvgHvMmTqImR7IH5j1+ZwwWtucM8WJKuyTEFZb8q3YCnmTqwy0Ght3IIh25tmmpjmGkYvdFLzcOgEuZ7dQ4YNTYI0Wj878AlrK7n71QVvu0xNT0ylKdMTUXlTs8FIa9TsA/mEHx7g9d3rPiolgTJ5aBgkoxn99uMrMCsEED1G1aCofBlo9FHG7gGZxzyf5UIU9HPScl1sDNBrgADZtNAmVAf+rfFRO8CHuCXZFDv6u/PBncNVr0+hWi9CcAnvBJn1R7qxwK/m5gtAmihV+dUIM1Z0xAMSq9hMzCS5LUiSKmZk+Y/BGc0VMsQh68A10qfHiBqtAiRX4Lh/4/J+04EJ2+zZsYpe9ZX5XM9z4THXF8fnLi+2JjWJMKvzJtNNxGQhTWzSQDVP/omeBRrO8eHcIFSXhmi7bzcmx21+mWJXreXB93PaATSiLcPhpV9Bjw37ckFg2hSMae/MwlrB+BvweCKJBAYOIMg+oK4LTuY7y+6vl1EeD8VMKtlqk/+e8c8Tb3eAwjPeAG0ftgJJekl0hpM7y6jtqua4q2So/w8GAC7lSy2nn8eOIl7iAjrjSJACAQd5KFEPidasm0EvAWuHhyfo5VsNeL1AH4i16dETuPmc+Nyza8QgV0J4NWBFlZXk8p4qfeeR4xrNBQBbDfIB30luFnl9TmUZOR1aIXOtS6n8F7UbeYMsngBeNzAW2RXPyAmcwzcnvgE8wAs0jjJKHtpP8YHAv6ersFFYmJfEOjEI6+ha6G5vtVgWJWig5YB2MLQliCwprFVIwpEyPq3bbzf3yfpMTebBNAKxt+D+0SWR/TjbhGI1FJwD4dFjbic3U6B6gQZv0k142JM9cOGhjYXzfBVrXiWCHErB7l9GriJKMnZMP71LfGEzY9IE5NlcCVIOrUdYSJDcHcOcL1QUx1vw54Vl4gZeqcxh3n9CdtI4OBj/G4pOYo0z3y3PG6WnjGbqXmwLiLnmUp03DY+U8tEtPrgVkp6oxXhUhRdXyvi+oqo1X7vmVWN5OeDe3bs2l8zbAL4ZACs+F8HE3V3MnaRPqytzTh4q/K/EzHEJobPzgWYSxPz0F0F/OAyIyRWaFLz/83FvFLJqZ2JEbikxAjaoij4fq/kqefeXYIvbTxaBy4/YoCz7AbOkKq+0PvBCN+Ox5jgv+8Az/wmokF+klMzpZJcJmUpbvPYHM4V87pcItP3gWH0e8nv9pCgZqHJk7oBs/y7AsFcafxHmyx/hanJk2i/XzfZ8xt18UQ0KO68hWDk7V4eO6itJFwLHhEAz/d4JXhqTzdggpqmVovhdHGB9saFpqqhlHSLKhBQ1rnOvN/pGr8Y3Lxk/dYF4DLcU0QAx8B93JfWoVqbKSTlugC/k132C6MJbcDQB/BcEVArfJpXvDwDIu8aZhd1Jea29cwwZ72nSZPSaA1wEqaLvC9brbkRDD51Xrn0NSJ8qhjuBvCtYaGghzGmQW/2AXD5yQoheT7jCRnR29sluT2WsSPLzMOlhsxay5v31va66kK+6zAnOvkMY8cZyL9e4zi4lmyVxVnD6gEZ9qguHVr4IvHrrE+oVZNDwY05PtvT45JEvtaY736JB+sGxOmSBUp1Q+ikiyFrSmW9Tgbw38ayqAl+NxhJPiGb+3aDe0wx5GMQPmAWfm0xOKt/iPHtdBPcAp6+PemRfKfg8tWHZeE6psM/D53sGuRdpojIu8o4VWpwQpQVPEgW4n1G6NQEbydmeb6Jfg8CV3Zawza/w8L9q1+3RoKLT5mZGUpBtisY0JB6jTpanzwOTFfxJTCOsGOABokRxCTinlwD5pgyhKiJATl5WtzSEPuwrw6YduONInz+xPqWidCV7eqU6RS+YWnA0GIeDuBM0YoT8rcxMI/MRwOgBruY24pf+XxwJn9Lieo6Ofi3shuGAslsqqC5+gFBabLXOJUc3+2SNfiCROOJx6HTkw1+tGzoTcCtmX9ltCRt7ALo4+N2lLzaCzEFDRoHN++cG1iYJBCltcElvaXy2VR294fAsKxuhXKjy0lElzGfroFpTBqofUoEZoGpxEyKn/wAuI7suzzOROUngDGLKnzfEOHrDphLG8OqBVdpBv9fCU6OEYd5ifztLPn5I96CpgFKkB64dvwbhPuNUaHb7jIw3m9czv8mcNWGIul41X99BIx2URq6HWVTpJGlRXgcOCsjNjZ5aJ6eWJWPGH/6c+ByaW+YoIPslSearldCRE5+3o6ILiCi9TR1/AsRbSZ/b8n7/XM4eSXyGpN/Py3nmCSiNPLVl8/s633HtfL7bsFn9eeuvP927zwr5Pe9iHPoa1I+8y5Zg3H5t2XWxK4jiKhtfj7drOcaIjrGWzdM9yuZRtlPjY9yN5gJdB8wK9Nj4kzfAuClRgO6DACCrcVW7Y5TTbCZXNO4CXRQYqSpnQmyiQmYFlWY6uQ8y+G/Ui9roFpvKzC49nj52zfA/IxnNzAcfNZFwYigxtBC/M/B7PZ7geHnj4Bh9v8hUTCVbHxChbZPi0rpRTKcZrGz9gzcvz9Ael+95wWSZL5D0isXg7GJh4rLM60Bx0zwAYsERv27e8UXPAtc9D8YTObzZ7Kzby2gtUgzKgSugvA2lcNLC4AOVa9JaT/2B5c+F8km/m8TnCTT0XI5mwQQgaE1GsHdiqn+1cWSRKWK5bWybFZlKxGhsl1MJYZqjFJQF+QOMAppfeAaZpzgzVQBhDcjA97EyTWI69rq18xTNmEq8wC5sQlsF3k/PZMJaHmjvWb00cbMP9LAhPEiIVlbEr7uTPXl8YzUSAxeMC+hPVFDmNdEBj80G4RupgUhgyjc31lC+PyusF9laFMXOQPOh27BsE51SyJO9L13D3FYzkgAG/AhrwbDi0LUankm+0eSArLJ7ke9vt0YAnUC94WQSRLfKVE+IlNFWs34pfjAbrYK2VwTwBYYWn6+obNII9JAAHMj+8L6k4Imq6yy3c+8c3UBfDzSr+sbATwDU5MERgI4S4QwAXCSpGzGDc7Qdp31DcdyC5w/uzZQ+vsKuJQWo4FSU+v+shcMJGCU9ydNgptMvtAmlzURfi6YJKk123y72VCKG+RLy0wdIjqBiO6l8NEnoh8S0cGm5GfPo/8/2bx/Qsppfe/fSVOGOz1wPmfKiYcR0U2UfdxGREd697JRvoaNhsE0wNMBLq/tCSY1XyJa5kFwqe8mrzMvq4n8FMmzdQo04MflfVkDuJ0Zy7UnGFK2TL5nFXj07E9LaN3Z/ZA2YgH0E9qIQG0X5QefBabe2AeMkFHEzH3gATBflH+LBCfGpG68ZncOCWCIptYFgAwo0Vqgx6ZmGvvawCT5Mr0lLjCydm48mDkigE0GbVnjq9qBpPnoGAngwFsMMFe0FeZoKW42V2RGxxzMA46OkQCOjtERd/w/5zKwr5CST4wAAAAASUVORK5CYII=';
+
+  // IP de saída → região desejada. Os IPs abaixo são apenas exemplos comuns em projetos públicos;
+  // troque pelo endereço de saída que você realmente usa (também dá para escolher no painel,
+  // ou gravar direto em xcu.region no localStorage).
+  const REGIONS = {
+    jp: { ip: '138.199.21.239', territory: 'JP', name: 'Japão' },
+    us: { ip: '143.244.47.65', territory: 'US', name: 'EUA' },
+    kr: { ip: '121.125.60.151', territory: 'KR', name: 'Coreia' },
+    pl: { ip: '45.134.212.66', territory: 'PL', name: 'Polônia' },
+    br: { ip: '169.150.198.66', territory: 'BR', name: 'Brasil' }
+  };
+  const DEFAULT_REGION = 'jp';
+
+  // Data centers de streaming: name deve ser idêntico a offeringSettings.regions[].name do servidor.
+  // O /v2/login/user retorna na prática 19 regiões; na Ásia só Tóquio e Seul são opções reais.
+  const SERVERS = {
+    auto: { name: '', label: 'Auto' },
+    ejp: { name: 'JAPANEAST', label: 'Tóquio' },
+    ckr: { name: 'KOREACENTRAL', label: 'Seul' },
+    eus: { name: 'EASTUS', label: 'Leste EUA' },
+    weu: { name: 'WESTEUROPE', label: 'Europa Ocid.' }
+  };
+
+  // A qualidade e independente de viewport, DeX, tela cheia e perifericos.
+  // Perfis osName dizem respeito apenas a negociacao do streaming; nao sao um
+  // mecanismo de selecao de teclado/mouse, controle ou touchscreen.
+  // Auto usa perfil desktop Windows para nao anunciar uma Smart TV ao xCloud.
+  // HQ/Tizen permanece opcional: pode interferir na negociacao do controle virtual.
+  // O perfil solicitado NAO comprova resolucao/bitrate entregues; medir via WebRTC.
+  // O servidor ainda pode negociar uma resolucao inferior.
+  const RES_MODES = {
+    auto: { osName: 'windows', label: '1080p' },
+    hq: { osName: 'tizen', label: '1080p HQ' },
+    r720: { osName: 'android', label: '720p' }
+  };
+  const BITRATE_MODES = {
+    auto: { mbps: 0, label: 'Auto' },
+    b5: { mbps: 5, label: '5 Mbps' },
+    b8: { mbps: 8, label: '8 Mbps' },
+    b10: { mbps: 10, label: '10 Mbps' },
+    b12: { mbps: 12, label: '12 Mbps' },
+    b15: { mbps: 15, label: '15 Mbps' },
+    b20: { mbps: 20, label: '20 Mbps (limite)' },
+    b30: { mbps: 30, label: '30 Mbps (limite)' },
+    b40: { mbps: 40, label: '40 Mbps (limite)' },
+    b50: { mbps: 50, label: '50 Mbps (limite)' }
+  };
+  function bitrateCfg() {
+    return BITRATE_MODES[getPref(LS_BITRATE, 'auto')] || BITRATE_MODES.auto;
+  }
+
+  const GSSV_RE = /(^|\.)gssv-play-[a-z0-9-]*\.xboxlive\.com$/i;
+  const GEARS_RE = /^gears(-staging)?\.xboxservices\.com$/i;
+  const EXP_PATH_RE = /(\/Assignments\/experimentation|\/xboxcomfd\/experimentation)/i;
+  const CAP_RE = /contentaccess|storepages|catalog\.gamepass|titlehub|emerald|gssv-play|gears/i;
+  const MAX_CAP = 40;
+
+  const S = {
+    v: VER,
+    all: 0,
+    gssv: 0,
+    inj: 0,
+    caps: [],
+    logs: [],
+    env: {},
+    territoryBefore: '',
+    territoryNow: '',
+    expHits: 0,
+    expBefore: '(não passou)',
+    expAfter: '(não passou)',
+    cacheCleared: 0,
+    denied: 0,
+    // v2.2
+    serverPin: '',
+    serverActual: '',
+    v6dropped: 0,
+    resApplied: '',
+    playPatched: 0,
+    pcs: 0,
+    qos: null,
+    qosAt: 0,
+    latencyByServer: Object.create(null),
+    nxRecoveries: 0,
+    qosHistory: [],
+    lastDiagnosis: 'Aguardando amostras',
+    deviceDetected: '',
+    diagnosticsWarnings: [],
+    micStatus: 'Não verificado',
+    vibrationStatus: 'Não verificado',
+    remotePlayStatus: 'Sem integração de protocolo',
+    serverProbeStatus: 'Sem endpoints verificados para sondagem',
+    hist: [],
+    histMin: null,
+    startedAt: Date.now(),
+    lastErr: ''
+  };
+  window.__XCU__ = S;
+  // Amostras de sessões anteriores têm validade limitada e não equivalem a ping ativo.
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_RTT_HISTORY) || '{}');
+    const now = Date.now();
+    Object.keys(saved).forEach(function (name) {
+      const item = saved[name];
+      if (/^[A-Z][A-Z0-9]{2,30}$/.test(name) && item && Number.isFinite(item.avg) && item.avg >= 0 && item.avg < 5000 && Number.isInteger(item.samples) && item.samples >= 1 && item.samples <= 100000 && Number.isFinite(item.at) && now - item.at >= 0 && now - item.at < 24 * 3600 * 1000) {
+        S.latencyByServer[name] = { avg: item.avg, samples: item.samples, at: item.at };
+      }
+    });
+  } catch (e) { /* armazenamento indisponível */ }
+  let lastRttSave = 0;
+
+  // ---------- Configuração ----------
+  function cfg() {
+    let v = DEFAULT_REGION;
+    try { v = localStorage.getItem(LS_KEY) || DEFAULT_REGION; } catch (e) { }
+    if (v === 'off' || v === '0') return { key: 'off', ip: null, territory: null, name: 'Desligado' };
+    if (REGIONS[v]) return Object.assign({ key: v }, REGIONS[v]);
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(v)) {
+      return { key: 'custom', ip: v, territory: REGIONS[DEFAULT_REGION].territory, name: 'Personalizado' };
+    }
+    return Object.assign({ key: DEFAULT_REGION }, REGIONS[DEFAULT_REGION]);
+  }
+
+  function getPref(k, def) {
+    try { return localStorage.getItem(k) || def; } catch (e) { return def; }
+  }
+  function setPref(k, v) {
+    try { localStorage.setItem(k, v); } catch (e) { }
+  }
+
+  function srvCfg() {
+    const k = getPref(LS_SRV, 'auto');
+    if (k === 'auto' && getPref(LS_AUTO_BEST, '0') === '1') {
+      const entries = Object.keys(S.latencyByServer).filter(function (name) {
+        const sample = S.latencyByServer[name];
+        if (!sample.at || Date.now() - sample.at > 24 * 3600 * 1000) return false;
+        return S.latencyByServer[name].samples >= 5 && Object.keys(SERVERS).some(function (id) { return SERVERS[id].name === name; });
+      });
+      if (entries.length) {
+        entries.sort(function (a, b) { return S.latencyByServer[a].avg - S.latencyByServer[b].avg; });
+        return { name: entries[0], label: 'Medido: ' + entries[0] };
+      }
+    }
+    if (SERVERS[k]) return SERVERS[k];
+    if (/^[A-Z]{3,}$/.test(k)) return { name: k, label: k };
+    return SERVERS.auto;
+  }
+  function resCfg() {
+    const selected = getPref(LS_RES, 'auto');
+    // Migrar a antiga opcao 1080p duplicada para o perfil unico.
+    return RES_MODES[selected === 'r1080' ? 'auto' : selected] || RES_MODES.auto;
+  }
+  function v4on() { return getPref(LS_V4, '1') !== '0'; }
+
+  // Nos botões, não mostrar apenas "Auto" — exibir o valor realmente escolhido pelo automático
+  //   Data center: no modo automático, o servidor atribuído pelo backend (CKR/EJP…), só se sabe ao entrar numa partida
+  //   Qualidade: Auto solicita sempre HQ; a resolucao efetiva aparece nas estatisticas WebRTC
+  function srvBtnLabel() {
+    const c = srvCfg();
+    if (c.name) return c.label;
+    const a = S.serverActual;
+    if (!a) return 'Auto';
+    return 'Auto·' + a;
+  }
+
+  function resBtnLabel() {
+    const r = resCfg();
+    if (r.osName) return r.label;
+    const q = S.qos;
+    if (q && q.h) return 'Auto·' + q.h + 'p';
+    return 'Auto';
+  }
+
+  function getCookie(n) {
+    const m = document.cookie.match(new RegExp('(?:^|;\\s*)' + n + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  // ---------- 1. Limpar cache de experimentos (deve ocorrer antes de a página ler) ----------
+  (function clearExpCache() {
+    try {
+      const kill = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && /^experimentationInfo/i.test(k)) kill.push(k);
+      }
+      kill.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) { } });
+      S.cacheCleared = kill.length;
+    } catch (e) { }
+  })();
+
+  // ---------- 2. territory ----------
+  (function syncTerritory() {
+    const c = cfg();
+    S.territoryBefore = getCookie('territory') || '(nenhum)';
+    if (!c.territory) { S.territoryNow = S.territoryBefore; return; }
+    if (S.territoryBefore === c.territory) { S.territoryNow = c.territory; return; }
+    try {
+      document.cookie = 'territory=' + encodeURIComponent(c.territory) + '; path=/; max-age=31536000; SameSite=Lax';
+    } catch (e) { }
+    S.territoryNow = getCookie('territory') || '(falha ao gravar)';
+  })();
+
+  // ---------- 3. Ambiente ----------
+  try {
+    S.env = {
+      rtc: !!window.RTCPeerConnection,
+      audio: !!(window.AudioContext || window.webkitAudioContext),
+      online: navigator.onLine
+    };
+  } catch (e) { }
+
+  function injectable(path) {
+    return /\/v2\/login\/user$/i.test(path) || /\/sessions\//i.test(path);
+  }
+
+  function pushLog(kind, msg) {
+    const s = String(msg);
+    if (/Access to the streaming offering is denied/i.test(s)) S.denied++;
+    S.logs.push({ t: new Date().toISOString().slice(11, 19), kind: kind, msg: s.slice(0, 400) });
+    if (S.logs.length > 40) S.logs.shift();
+    schedule();
+  }
+
+  function addCap(rec) {
+    S.caps.push(rec);
+    if (S.caps.length > MAX_CAP) S.caps.shift();
+    schedule();
+  }
+
+  function nowStr() { return new Date().toISOString().slice(11, 19); }
+
+  // ---------- 4. Reescrita genérica de resposta JSON ----------
+  function rewriteJson(res, fn) {
+    let copy;
+    try { copy = res.clone(); } catch (e) { return Promise.resolve(res); }
+    return copy.text().then(function (txt) {
+      let j;
+      try { j = JSON.parse(txt); } catch (e) { return res; }
+      let changed = false;
+      try { changed = fn(j) === true; } catch (e) { S.lastErr = String(e && e.message || e); return res; }
+      if (!changed) return res;
+      const h = new Headers(res.headers);
+      h.delete('content-length');
+      h.delete('content-encoding');
+      h.set('content-type', 'application/json; charset=utf-8');
+      try {
+        return new Response(JSON.stringify(j), {
+          status: res.status, statusText: res.statusText, headers: h
+        });
+      } catch (e) { return res; }
+    }, function () { return res; });
+  }
+
+  // ---------- 5. Desbloqueio: reescrita da API de experimentos (physicalMarket) ----------
+  function rewriteExp(res, u) {
+    if (!res || !res.status || res.status < 200 || res.status >= 300) return Promise.resolve(res);
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (ct.indexOf('json') < 0) return Promise.resolve(res);
+    const c = cfg();
+    if (!c.territory) return Promise.resolve(res);
+
+    return rewriteJson(res, function (j) {
+      const holder = (j && typeof j === 'object' && j.exp && typeof j.exp === 'object') ? j.exp : j;
+      if (!holder || typeof holder !== 'object') return false;
+      const tf = holder.trafficFilters;
+      if (!tf || typeof tf !== 'object') return false;
+
+      const before = String(tf.territory == null ? '(vazio)' : tf.territory);
+      S.expHits++;
+      S.expBefore = before;
+      S.expAfter = c.territory;
+
+      tf.territory = c.territory;
+      if (Object.prototype.hasOwnProperty.call(tf, 'market')) tf.market = c.territory;
+
+      addCap({
+        at: nowStr(), method: 'REWRITE', host: u.host,
+        path: u.pathname + (u.search || ''), status: res.status,
+        type: 'patched', body: 'physicalMarket: ' + before + ' -> ' + c.territory
+      });
+      return true;
+    });
+  }
+
+  // ---------- 6. Fixar data center: reescrever offeringSettings.regions ----------
+  function rewriteRegions(res, u) {
+    const want = srvCfg();
+    if (!want.name) return Promise.resolve(res);
+
+    return rewriteJson(res, function (j) {
+      const os = j && j.offeringSettings;
+      if (!os || !Array.isArray(os.regions) || !os.regions.length) return false;
+
+      const hit = os.regions.filter(function (r) {
+        return String(r && r.name).toUpperCase() === want.name;
+      })[0];
+      if (!hit) {
+        // The server's original ordering remains authoritative on fallback.
+        S.serverPin = '';
+        S.serverActual = 'região indisponível';
+        addCap({
+          at: nowStr(), host: u.host, path: u.pathname, status: res.status,
+          type: 'patched', body: 'Região alvo ' + want.name + ' não está na lista (disponíveis: ' +
+            os.regions.map(function (r) { return r.name; }).join(',') + ')'
+        });
+        return false;
+      }
+
+      const rest = os.regions.filter(function (r) { return r !== hit; });
+      // Lógica do cliente: o que tem isDefault vai para o início com unshift, depois pega regions[0].
+      // Assim fixa a região sem perder as alternativas de reserva.
+      if (os.regions[0] === hit && hit.isDefault === true &&
+          rest.every(function (r) { return r.isDefault !== true; })) {
+        S.serverPin = want.name;
+        return false;
+      }
+      hit.isDefault = true;
+      rest.forEach(function (r) { r.isDefault = false; });
+      os.regions = [hit].concat(rest);
+
+      S.serverPin = want.name;
+      S.serverActual = want.name;
+      addCap({
+        at: nowStr(), host: u.host, path: u.pathname, status: res.status,
+        type: 'patched', body: 'streamRegion -> ' + want.name + ' (' + want.label + ')'
+      });
+      return true;
+    });
+  }
+
+  // ---------- 7. Forçar IPv4: remover candidatos ICE IPv6 ----------
+  function isV6Candidate(cand) {
+    // Formato "a=candidate:1 1 UDP 100 192.0.2.10 1040 typ host"; o 5º campo é o endereço
+    const parts = String(cand).trim().split(/\s+/);
+    const ip = parts[4] || '';
+    return ip.indexOf(':') >= 0;
+  }
+
+  function rewriteIce(res, u, isSdp) {
+    if (!res || !res.status || res.status < 200 || res.status >= 300) return Promise.resolve(res);
+    if (!v4on()) return Promise.resolve(res);
+
+    return rewriteJson(res, function (j) {
+      const raw = j && j.exchangeResponse;
+      if (typeof raw !== 'string' || !raw) return false;
+      let inner;
+      try { inner = JSON.parse(raw); } catch (e) { return false; }
+      let dropped = 0;
+
+      if (isSdp) {
+        const sdp = inner && inner.sdp;
+        if (typeof sdp !== 'string') return false;
+        const lines = sdp.split(/\r\n|\n/);
+        const keep = lines.filter(function (ln) {
+          if (/^a=candidate:/i.test(ln) && isV6Candidate(ln.replace(/^a=/, ''))) { dropped++; return false; }
+          return true;
+        });
+        if (!dropped) return false;
+        // Never strip every usable candidate: this would make the session impossible.
+        if (!keep.some(function (ln) { return /^a=candidate:/i.test(ln); })) return false;
+        inner.sdp = keep.join('\r\n');
+      } else {
+        if (!Array.isArray(inner)) return false;
+        const keep = inner.filter(function (c) {
+          const s = c && (c.candidate || '');
+          if (/end-of-candidates/i.test(s)) return true;
+          if (s && isV6Candidate(s)) { dropped++; return false; }
+          return true;
+        });
+        if (!dropped) return false;
+        // End-of-candidates is not a viable transport candidate.
+        if (!keep.some(function (item) { return item && typeof item.candidate === 'string' &&
+          /^candidate:/i.test(item.candidate.trim()); })) return false;
+        inner = keep;
+      }
+
+      S.v6dropped += dropped;
+      j.exchangeResponse = JSON.stringify(inner);
+      addCap({
+        at: nowStr(), host: u.host, path: u.pathname, status: res.status,
+        type: 'patched', body: 'Removidos ' + dropped + ' candidatos IPv6 (total ' + S.v6dropped + ')'
+      });
+      return true;
+    });
+  }
+
+  // ---------- 8. Faixa de qualidade: reescrever o corpo de /sessions/cloud/play ----------
+  // O perfil HQ usa tizen apenas na negociacao do stream. 1440p real nao e garantido.
+  // Diagnóstico sanitizado da negociação de entrada: somente nomes de campos e booleanos.
+  // Nunca registrar tokens, IDs de sessão ou corpo integral da requisição.
+  let lastInputNegotiation = null;
+  function inspectInputNegotiation(payload) {
+    try {
+      const settings = payload && payload.settings;
+      const input = (settings && settings.inputConfiguration) ||
+        (payload && payload.inputConfiguration);
+      const summary = {
+        settingsKeys: settings && typeof settings === 'object' ? Object.keys(settings).filter(k => /input|touch|mouse|keyboard|osName/i.test(k)) : [],
+        inputConfigurationPresent: !!input && typeof input === 'object',
+        inputConfigurationKeys: input && typeof input === 'object' ? Object.keys(input) : [],
+        enableTouchInput: input && typeof input.enableTouchInput === 'boolean' ? input.enableTouchInput : null,
+        enableMouseInput: input && typeof input.enableMouseInput === 'boolean' ? input.enableMouseInput : null,
+        enableKeyboardInput: input && typeof input.enableKeyboardInput === 'boolean' ? input.enableKeyboardInput : null,
+        maxTouchPoints: input && typeof input.maxTouchPoints === 'number' ? input.maxTouchPoints : null
+      };
+      lastInputNegotiation = summary;
+    } catch (e) {}
+  }
+
+  function patchPlayRequest(input, init) {
+    const r = resCfg();
+    const profileOs = nxPlatformProfile.sessionOs;
+    const effectiveOs = nxCompatibilityMode ? null : (profileOs || r.osName);
+    // Console: não enviar osName Windows/Tizen de qualidade como se fosse identidade Xbox.
+    if (!effectiveOs) return Promise.resolve({ input: input, init: init });
+    // An aborted request must not be parsed/rebuilt before reaching native fetch.
+    if ((init && init.signal && init.signal.aborted) ||
+        (input instanceof Request && input.signal.aborted)) {
+      return Promise.resolve({ input: input, init: init });
+    }
+    try {
+      const raw = typeof input === 'string' ? input
+        : (input instanceof URL ? input.href : (input && input.url) || '');
+      const abs = new URL(raw, location.href);
+      const req = new Request((input instanceof Request) ? input : abs.href, init);
+      if (!/^POST$/i.test(req.method)) return Promise.resolve({ input: input, init: init });
+      return req.clone().text().then(function (txt) {
+        let j;
+        try { j = JSON.parse(txt); } catch (e) { return { input: input, init: init }; }
+        if (!j || !j.settings || typeof j.settings !== 'object') {
+          return { input: input, init: init };
+        }
+        inspectInputNegotiation(j);
+        // Perfil de plataforma prevalece sobre o perfil de qualidade apenas quando explícito.
+        // Xbox mantém o osName existente: não existe valor de console validado aqui.
+        j.settings.osName = effectiveOs;
+        nxProfileSessionState.attempted++;
+        nxProfileSessionState.patched++;
+        nxProfileSessionState.lastRequestedOs = effectiveOs;
+        nxProfileSessionState.lastOutcome = 'request-rewritten';
+        const h = new Headers(req.headers);
+        h.delete('content-length');
+        // Preserve x-ms-device-info original: o dispositivo e suas capacidades
+        // (incluindo toque) nao podem ser mascarados como Tizen/Windows.
+        S.resApplied = r.label;
+        S.playPatched++;
+        addCap({
+          at: nowStr(), method: 'PATCH', host: abs.host, path: abs.pathname, status: 0,
+          type: 'patched', body: 'settings.osName -> ' + effectiveOs + ' (plataforma: ' + nxConsoleLabProfile + ', vídeo: ' + r.label + ')'
+        });
+        return {
+          input: abs.href,
+          init: {
+            method: req.method,
+            headers: h,
+            body: JSON.stringify(j),
+            mode: req.mode, credentials: req.credentials, cache: req.cache,
+            redirect: req.redirect, referrer: req.referrer, integrity: req.integrity,
+            signal: req.signal, referrerPolicy: req.referrerPolicy, keepalive: req.keepalive
+          }
+        };
+      }).catch(function () { return { input: input, init: init }; });
+    } catch (e) {
+      return Promise.resolve({ input: input, init: init });
+    }
+  }
+
+  // ---------- 9. Hook do fetch ----------
+  const nativeFetch = window.fetch;
+  if (typeof nativeFetch === 'function') {
+    window.fetch = function (input, init) {
+      let u = null;
+      try {
+        const raw = typeof input === 'string'
+          ? input
+          : (input instanceof URL ? input.href : (input && input.url) || '');
+        if (raw) {
+          u = new URL(raw, location.href);
+          S.all++;
+
+          if (GSSV_RE.test(u.host)) {
+            S.gssv++;
+            const c = cfg();
+            if (c.ip && injectable(u.pathname) && u.protocol === 'https:') {
+              if (input instanceof Request) {
+                const h = new Headers(input.headers);
+                if (!h.has('X-Forwarded-For')) {
+                  h.set('X-Forwarded-For', c.ip);
+                  input = new Request(input, { headers: h });
+                  S.inj++;
+                }
+              } else {
+                const h = new Headers((init && init.headers) || {});
+                if (!h.has('X-Forwarded-For')) {
+                  h.set('X-Forwarded-For', c.ip);
+                  init = Object.assign({}, init, { headers: h });
+                  S.inj++;
+                }
+              }
+            }
+          }
+          schedule();
+        }
+      } catch (e) { S.lastErr = String((e && e.message) || e); }
+
+      const isPlay = !!(u && GSSV_RE.test(u.host) && /\/v5\/sessions\/cloud\/play$/i.test(u.pathname));
+      if (isPlay) {
+        const m = /^([a-z0-9]+)\.core\./i.exec(u.host);
+        if (m) S.serverActual = m[1].toUpperCase();
+      }
+
+      const go = isPlay
+        ? patchPlayRequest(input, init).then(function (x) { return nativeFetch.call(this, x.input, x.init); }.bind(this))
+        : nativeFetch.call(this, input, init);
+
+      const offeringMethod = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+      let p = nxObserveOffering(u, offeringMethod, go);
+      // Monitoramento somente de status e etapa da sessão; nunca armazena headers ou corpo.
+      if (u && /xboxservices\.com$/i.test(u.hostname) &&
+          /\/sessions\/cloud\/(?:play|[^/]+\/(?:state|connect|configuration|sdp|ice|keepalive))\/?$/i.test(u.pathname)) {
+        const stage = /\/sessions\/cloud\/play\/?$/i.test(u.pathname) ? 'play' :
+          (u.pathname.match(/\/(state|connect|configuration|sdp|ice|keepalive)\/?$/i) || [,'other'])[1].toLowerCase();
+        const started = Date.now();
+        const method = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+        p = p.then(function (res) {
+          nxSessionRecord({ time: new Date().toISOString(), stage: stage, method: method,
+            status: res.status, ms: Date.now() - started, ok: res.ok });
+          return res;
+        }, function (err) {
+          nxSessionRecord({ time: new Date().toISOString(), stage: stage, method: method,
+            status: 0, ms: Date.now() - started,
+            error: err && err.name === 'AbortError' ? 'cancelled' : 'network-failure' });
+          throw err;
+        });
+      }
+
+      const isExp = !!(u && GEARS_RE.test(u.host) && EXP_PATH_RE.test(u.pathname));
+      const isExp2 = !!(u && EXP_PATH_RE.test(u.pathname) && /xboxservices\.com$/i.test(u.host));
+
+      if (isExp || isExp2) {
+        p = p.then(function (res) { return rewriteExp(res, u); }, function (err) { throw err; });
+      }
+
+      if (u && GSSV_RE.test(u.host) && /\/v2\/login\/user$/i.test(u.pathname)) {
+        p = p.then(function (res) {
+          if (res.status !== 200) return res;
+          return rewriteRegions(res, u);
+        }, function (err) { throw err; });
+      }
+
+      if (u && GSSV_RE.test(u.host) && u.pathname.includes('/sessions/cloud/') && u.pathname.endsWith('/configuration')) {
+        p = p.then(function (res) { return patchTouchSessionConfiguration(res); });
+      }
+
+      if (u && GSSV_RE.test(u.host) && /\/sdp$/i.test(u.pathname)) {
+        p = p.then(function (res) { return rewriteIce(res, u, true); }, function (err) { throw err; });
+      }
+      if (u && GSSV_RE.test(u.host) && /\/ice$/i.test(u.pathname)) {
+        p = p.then(function (res) { return rewriteIce(res, u, false); }, function (err) { throw err; });
+      }
+
+      if (u && CAP_RE.test(u.host) && !isExp && !isExp2) {
+        p.then(function (res) {
+          const rec = {
+            at: nowStr(),
+            method: (init && init.method) || (input instanceof Request ? input.method : 'GET'),
+            host: u.host,
+            path: u.pathname,
+            status: res.status,
+            type: res.type
+          };
+          addCap(rec);
+        }, function (err) {
+          addCap({
+            at: nowStr(), host: u.host, path: u.pathname,
+            status: 0, type: 'failed', note: 'network-failure'
+          });
+        });
+      }
+
+      return p;
+    };
+  }
+
+  // Limite máximo negociado por SDP; não aumenta o bitrate do servidor.
+  // A configuração é capturada ao criar a sessão WebRTC.
+  (function hookBitrate() {
+    try {
+      const original = RTCPeerConnection.prototype.setLocalDescription;
+      if (typeof original !== 'function') return;
+      RTCPeerConnection.prototype.setLocalDescription = function(description) {
+        const limit = bitrateCfg().mbps;
+        if (!limit || !description || typeof description.sdp !== 'string' ||
+            !/^(?:offer|answer)$/i.test(description.type || '')) {
+          return original.apply(this, arguments);
+        }
+        try {
+          const lines = description.sdp.split(/\r?\n/);
+          let video = false, inserted = false;
+          const out = [];
+          for (const line of lines) {
+            if (line.startsWith('m=')) {
+              if (video && !inserted) out.push('b=AS:' + Math.round(limit * 1000));
+              // Rejected (port 0) video sections must not be rewritten.
+              video = /^m=video\s+(?!0(?:\s|$))\d+/i.test(line);
+              inserted = false;
+            }
+            if (video && /^b=(AS|TIAS):/.test(line)) continue;
+            if (video && !inserted && /^a=/.test(line)) {
+              out.push('b=AS:' + Math.round(limit * 1000));
+              inserted = true;
+            }
+            out.push(line);
+          }
+          if (video && !inserted) out.push('b=AS:' + Math.round(limit * 1000));
+          const patchedSdp = out.join('\r\n');
+          // Keep original newline convention to avoid rewriting SDP unnecessarily.
+          const normalizedSdp = description.sdp.indexOf('\r\n') >= 0
+            ? patchedSdp : patchedSdp.replace(/\r\n/g, '\n');
+          if (normalizedSdp === description.sdp) return original.apply(this, arguments);
+          const patched = { type: description.type, sdp: normalizedSdp };
+          return original.call(this, patched);
+        } catch (e) { S.lastErr = 'Bitrate SDP: ' + String(e); }
+        return original.apply(this, arguments);
+      };
+    } catch (e) { S.lastErr = 'Bitrate hook: ' + String(e); }
+  })();
+
+  // ---------- 10. Amostragem de QoS (envolve o RTCPeerConnection) ----------
+  (function hookRtc() {
+    try {
+      const OPC = window.RTCPeerConnection;
+      if (typeof OPC !== 'function') return;
+
+      const W = function () {
+        const pc = new OPC(...arguments);
+        try {
+          S.pcs++; S.lastPc = pc;
+          // Nova sessão: zera a base de amostragem da partida anterior
+          if (S.pcs > 1) { prevSnap = null; S.hist = []; S.histMin = null; S.qos = null; }
+        } catch (e) { }
+        return pc;
+      };
+      W.prototype = OPC.prototype;
+      ['generateCertificate', 'getStats'].forEach(function (k) {
+        if (OPC[k]) W[k] = OPC[k];
+      });
+      window.RTCPeerConnection = W;
+      if (window.webkitRTCPeerConnection === OPC) window.webkitRTCPeerConnection = W;
+    } catch (e) { }
+  })();
+
+  let qosBusy = false, prevSnap = null;
+
+  function diagnoseQos(q) {
+    if (!q) return 'Aguardando amostras';
+    const loss = q.instLoss == null ? q.loss : q.instLoss;
+    if (Number.isFinite(loss) && loss >= 5) return 'Perda de pacotes elevada: verificar Wi-Fi, rede e servidor';
+    if (Number.isFinite(q.rtt) && q.rtt >= 160) return 'RTT WebRTC elevado: comparar data centers';
+    if (Number.isFinite(q.dropRate) && q.dropRate > 5) return 'Quadros descartados neste intervalo: investigar decodificação local';
+    if (Number.isFinite(q.jitter) && q.jitter > 40) return 'Jitter elevado: conexão instável';
+    return 'Sem alerta pelos limiares locais (não garante ausência de problemas)';
+  }
+
+  function pumpQos() {
+    const pc = S.lastPc;
+    if (!pc || pc.connectionState === 'closed' || pc.signalingState === 'closed') {
+      if (S.qos) { S.qos = null; S.lastDiagnosis = 'Sessão WebRTC encerrada'; schedule(); }
+      prevSnap = null;
+      return;
+    }
+    if (qosBusy || typeof pc.getStats !== 'function') return;
+    qosBusy = true;
+    PCQos(pc).then(function (q) {
+      if (q && S.lastPc === pc && pc.connectionState !== 'closed' && pc.signalingState !== 'closed') {
+        S.qos = q; S.qosAt = Date.now();
+        S.qosHistory.push({ at: Date.now(), fps: q.fps || q.decodedFps || 0, kbps: q.kbps || 0, rtt: q.rtt, loss: q.instLoss == null ? q.loss : q.instLoss, dropped: q.dropped || 0, dropRate: q.dropRate == null ? null : q.dropRate });
+        if (S.qosHistory.length > 90) S.qosHistory.shift();
+        S.lastDiagnosis = diagnoseQos(q);
+        // Comparacao somente entre data centers efetivamente usados em partidas.
+        // Nao confundir RTT WebRTC com ping do jogo nem sondar endpoints arbitrarios.
+        const server = S.serverActual;
+        if (server && Object.keys(SERVERS).some(function (id) { return SERVERS[id].name === server; }) && Number.isFinite(q.rtt) && q.rtt >= 0) {
+          const prev = S.latencyByServer[server] || { avg: q.rtt, samples: 0 };
+          prev.avg = prev.samples ? prev.avg * 0.8 + q.rtt * 0.2 : q.rtt;
+          prev.samples++;
+          prev.at = Date.now();
+          S.latencyByServer[server] = prev;
+          if (Date.now() - lastRttSave > 15000) {
+            lastRttSave = Date.now();
+            try { localStorage.setItem(LS_RTT_HISTORY, JSON.stringify(S.latencyByServer)); } catch (e) { }
+          }
+        }
+        schedule();
+      }
+    }).catch(function (err) {
+      S.lastErr = 'QoS: ' + String(err && err.message || err);
+      schedule();
+    }).then(function () { qosBusy = false; }, function () { qosBusy = false; });
+  }
+
+  function PCQos(pc) {
+    let stats;
+    try { stats = pc.getStats(); } catch (e) { return Promise.resolve(null); }
+    return Promise.resolve(stats).then(function (rep) {
+      const out = {};
+      let video = null, pair = null, pairId = null;
+
+      rep.forEach(function (r) {
+        if (r.type === 'inbound-rtp' && (r.kind === 'video' || r.mediaType === 'video') &&
+            !r.isRemote && (!video || (r.bytesReceived || 0) > (video.bytesReceived || 0))) video = r;
+        if (r.type === 'transport' && r.selectedCandidatePairId) pairId = r.selectedCandidatePairId;
+        if (r.type === 'candidate-pair' && (r.nominated || r.selected) && r.state === 'succeeded' &&
+            (!pair || (r.bytesReceived || 0) > (pair.bytesReceived || 0))) pair = r;
+      });
+      if (pairId && rep.get) {
+        const p2 = rep.get(pairId);
+        if (p2 && p2.type === 'candidate-pair' && p2.state === 'succeeded') pair = p2;
+      }
+      if (!video && !pair) return null;
+
+      if (video) {
+        const recv = video.packetsReceived || 0;
+        const lost = video.packetsLost || 0;
+        out.loss = (recv + lost) > 0 ? (lost / (recv + lost) * 100) : 0;
+        out.recv = recv;
+        out.lost = lost;
+        out.w = video.frameWidth || 0;
+        out.h = video.frameHeight || 0;
+        out.fps = Math.round(video.framesPerSecond || 0);
+        out.jitter = video.jitter != null ? Math.round(video.jitter * 1000) : null;
+        out.bytes = video.bytesReceived || 0;
+        out.ts = video.timestamp || Date.now();
+        // Métricas do lado do decodificador: distinguem "perda de pacotes na rede" de "decodificação/renderização local não acompanha"
+        out.dropped = video.framesDropped || 0;
+        out.freeze = video.freezeCount || 0;
+        out.freezeDur = Math.round(video.totalFreezesDuration || 0);
+        out.decoded = video.framesDecoded || 0;
+        out.decodeMs = video.totalDecodeTime != null && out.decoded > 0 ? Math.round(video.totalDecodeTime / out.decoded * 10000) / 10 : null;
+        out.keyFrames = video.keyFramesDecoded != null ? video.keyFramesDecoded : null;
+        out.pli = video.pliCount != null ? video.pliCount : null;
+        if (video.codecId && rep.get) {
+          const cc = rep.get(video.codecId);
+          if (cc && cc.mimeType) out.codec = String(cc.mimeType).replace(/^video\//i, '').toUpperCase();
+        }
+        if (video.jitterBufferDelay != null && video.jitterBufferEmittedCount) {
+          out.bufMs = Math.round(video.jitterBufferDelay / video.jitterBufferEmittedCount * 1000);
+        }
+
+        if (prevSnap && prevSnap.bytes != null && prevSnap.pc === pc && prevSnap.inboundId === video.id) {
+          const dB = out.bytes - prevSnap.bytes;
+          const dT = (out.ts - prevSnap.ts) / 1000;
+          if (dT > 0.5 && dB >= 0) out.kbps = Math.round(dB * 8 / dT / 1000);
+          if (dT > 0.5 && out.decoded >= (prevSnap.decoded || 0)) out.decodedFps = Math.round((out.decoded - (prevSnap.decoded || 0)) / dT);
+          const dDropped = out.dropped - (prevSnap.dropped || 0);
+          const dDecoded = out.decoded - (prevSnap.decoded || 0);
+          if (dT > 0.5 && dDropped >= 0 && dDecoded >= 0 && dDropped + dDecoded > 0) out.dropRate = dDropped / (dDropped + dDecoded) * 100;
+
+          // Perda instantânea: conta só este intervalo de amostragem; o valor acumulado esconderia melhorias
+          const dRecv = recv - prevSnap.recv;
+          const dLost = lost - prevSnap.lost;
+          if (dRecv + dLost > 20 && dRecv >= 0 && dLost >= 0) {
+            out.instLoss = dLost / (dRecv + dLost) * 100;
+            S.hist.push(Math.round(out.instLoss * 10) / 10);
+            if (S.hist.length > 12) S.hist.shift();
+            S.histMin = S.histMin == null ? out.instLoss : Math.min(S.histMin, out.instLoss);
+            out.hist = S.hist.slice(-6);
+            out.histMin = Math.round(S.histMin * 10) / 10;
+          }
+        }
+        prevSnap = { bytes: out.bytes, ts: out.ts, recv: recv, lost: lost, decoded: out.decoded, dropped: out.dropped, pc: pc, inboundId: video.id };
+      }
+
+      if (pair) {
+        out.rtt = pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : null;
+        out.lostReq = pair.requestsFailed || 0;
+        const rc = rep.get ? rep.get(pair.remoteCandidateId) : null;
+        if (rc) {
+          out.remote = rc.address || '';
+          out.port = rc.port || '';
+          out.family = (out.remote.indexOf(':') >= 0) ? 'IPv6' : 'IPv4';
+          out.ctype = rc.candidateType || rc.type || '';
+        }
+        // Candidato local: se for um IP público fora do lado do proxy de saída, o fluxo de mídia não passou pelo proxy (vazamento WebRTC / conexão direta)
+        const lc = rep.get ? rep.get(pair.localCandidateId) : null;
+        if (lc) {
+          out.local = lc.address || '';
+          out.ltype = lc.candidateType || lc.type || '';
+          out.lproto = lc.protocol || '';
+          out.lport = lc.port || '';
+        }
+        out.proto = pair.protocol || (lc && lc.protocol) || '';
+      }
+      return out;
+    }, function () { return null; });
+  }
+
+
+  // Configuracao independente de toque, inspirada no Better xCloud.
+  let touchSessionDiagnostics = { inspected: false, applied: false };
+  function patchTouchSessionConfiguration(response) {
+    if (!response || !response.ok) return Promise.resolve(response);
+    const caps = inputCapabilities();
+    const forceFortnite = nxFortniteConsoleEnabled && nxIsFortniteRoute();
+    if (!forceFortnite && (!caps.touch || caps.maxTouchPoints < 1)) return Promise.resolve(response);
+    if (forceFortnite) { nxFortniteConsoleState.matched = true; nxFortniteConsoleState.inspected++; }
+    return response.clone().text().then(function (body) {
+      let data;
+      try { data = JSON.parse(body); } catch (e) { return response; }
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return response;
+      let overrides;
+      try {
+        overrides = typeof data.clientStreamingConfigOverrides === 'string'
+          ? JSON.parse(data.clientStreamingConfigOverrides || '{}')
+          : (data.clientStreamingConfigOverrides || {});
+      } catch (e) { return response; }
+      if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return response;
+      const original = overrides.inputConfiguration;
+      if (original != null && (typeof original !== 'object' || Array.isArray(original))) return response;
+      const inputs = Object.assign({}, original || {});
+      const previous = typeof inputs.enableTouchInput === 'boolean' ? inputs.enableTouchInput : null;
+      inputs.enableTouchInput = !forceFortnite;
+      if (!forceFortnite) inputs.maxTouchPoints = Math.max(Number(inputs.maxTouchPoints) || 0, caps.maxTouchPoints);
+      if (forceFortnite) { nxFortniteConsoleState.patched++; nxFortniteConsoleState.previousTouch = previous; }
+      overrides.inputConfiguration = inputs;
+      data.clientStreamingConfigOverrides = JSON.stringify(overrides);
+      touchSessionDiagnostics = { inspected: true, applied: true, previousTouch: previous, maxTouchPoints: inputs.maxTouchPoints };
+      const headers = new Headers(response.headers);
+      headers.delete('content-length');
+      headers.delete('content-encoding');
+      return new Response(JSON.stringify(data), { status: response.status, statusText: response.statusText, headers: headers });
+    }).catch(function () { return response; });
+  }
+
+  // Pointer Lock pertence ao xCloud e ao navegador. Nao simular F9 nem
+  // substituir requestPointerLock: bloquear chamadas em fullscreen impedia
+  // o mouse fisico no Fortnite (41 tentativas suprimidas em 3.6.8).
+  // O suporte real depende do navegador e da sessao xCloud.
+  const touchFullscreenPolicy = {
+    enabled: false,
+    suppressed: 0,
+    lastReason: 'native pointer lock preserved',
+    mode: 'native',
+    f9Observed: 0,
+    requestsBlockedByNimbo: false
+  };
+  // O navegador e o xCloud gerenciam o Pointer Lock nativamente.
+  // Nao substituir requestPointerLock nem interceptar F9: isso provocava
+  // dialogos de recaptura repetidos e impedia restaurar o mouse.
+  touchFullscreenPolicy.mode='native-unmodified';
+  touchFullscreenPolicy.lastReason='NX does not override pointer lock or F9';
+  document.addEventListener('pointerlockchange',function(){
+    touchFullscreenPolicy.lastReason=document.pointerLockElement?'native pointer lock active':'native pointer lock released';
+  },true);
+
+  // Aviso F9: temporariamente desativado para preservar o DOM do xCloud.
+  // A versao anterior reconstruia elementos da pagina e podia afetar o boot.
+  // O atalho F9 e a protecao contra recaptura continuam independentes.
+
+  // ---------- 10b. Entradas nativas ----------
+  // Nao interceptar requestPointerLock, teclado/mouse/toque ou Gamepad API.
+  // Nao emular gamepad. O xCloud gerencia os perifericos nativamente.
+
+  // ---------- 11. XHR ----------
+  try {
+    const oSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function () {
+      const xhr = this;
+      xhr.addEventListener('loadend', function () {
+        try {
+          const u = new URL(xhr.responseURL || '', location.href);
+          if (!CAP_RE.test(u.host)) return;
+          addCap({
+            at: nowStr(), method: 'XHR', host: u.host,
+            path: u.pathname, status: xhr.status, type: 'xhr'
+          });
+        } catch (e) { }
+      });
+      return oSend.apply(xhr, arguments);
+    };
+  } catch (e) { }
+
+  // ---------- 12. Registro de exceções (só a mensagem, sem conteúdo da página) ----------
+  try {
+    window.addEventListener('error', function (e) {
+      pushLog('error', (e.message || '') + ' @ linha ' + (e.lineno || 0));
+    }, true);
+    window.addEventListener('unhandledrejection', function (e) {
+      const r = e.reason;
+      pushLog('reject', (r && (r.message || r)) || '');
+    });
+  } catch (e) { }
+
+  // ---------- 13. Interface: um único botão + cartão recolhível ----------
+  // Desde a v3.6.37 existe UM ponto de acesso por contexto:
+  //   · Biblioteca: só o ícone NX (branco, fundo transparente), logo à direita do ícone de
+  //     controle no topo da página, com um pontinho de status no canto. A pílula flutuante
+  //     fica oculta.
+  //   · Durante a partida (a barra do site não existe): só a pílula flutuante, no canto
+  //     superior direito, com ícone + perda de pacotes.
+  // O contêiner externo tem pointer-events:none; só o botão/cartão recebem cliques.
+  const LS_POS = 'xcu.pos';
+  const ZBASE = 2147483000;
+  const MONO = 'ui-monospace,Menlo,Consolas,monospace';
+
+  let wrap = null, pillEl = null, cardEl = null, dotEl = null, pillTxt = null, pickEl = null;
+  let openUI = false, userTouched = false, autoFolded = false, pending = false;
+  let nxLibraryButton = null, nxLibraryDot = null, nxLibraryAnchor = null, nxMode = '';
+  const el = {};
+
+  // Xbox Shell experimental: apresentação independente da identidade de rede.
+  const LS_NX_SHELL = 'nx.xboxShell.enabled.v1';
+  const nxShellEnabled = ['xbox','xboxone','xboxseries'].includes(nxConsoleLabProfile) && (function () { try { return localStorage.getItem(LS_NX_SHELL) !== '0'; } catch (_) { return true; } })();
+  let nxShellLastInput = 0, nxShellPrevButtons = [], nxShellPrevAxis = 0, nxShellHeldSince = 0, nxShellNeedsRelease = true;
+  const nxShellStats = { moves: 0, actions: 0, errors: 0, lastError: '' };
+  function nxShellError(e) { nxShellStats.errors++; nxShellStats.lastError = String(e && e.message || e); }
+  function nxShellInstall() {
+    if (!nxShellEnabled || document.getElementById('nx-console-shell-css')) return;
+    const css = document.createElement('style');
+    css.id = 'nx-console-shell-css';
+    css.textContent = [
+      '#__xcu_panel__.nx-console-shell.nx-shell-open{left:auto!important;right:12px!important;top:12px!important;transform:none!important;width:min(380px,calc(100vw - 24px))!important;max-width:calc(100vw - 24px)!important;align-items:stretch!important}',
+      '#__xcu_panel__.nx-console-shell.nx-shell-open [aria-label="Painel NimboXcloud"]{width:100%!important;max-height:calc(100dvh - 28px)!important;border-radius:18px!important;box-shadow:0 22px 90px #000b!important}',
+      '#__xcu_panel__.nx-console-shell button:focus-visible,#__xcu_panel__.nx-console-shell select:focus-visible,#__xcu_panel__.nx-console-shell input:focus-visible{outline:3px solid #80dfff!important;outline-offset:2px!important}',
+      '#__xcu_panel__.nx-console-shell button{min-height:34px}',
+      '@media (orientation:landscape) and (min-width:700px){#__xcu_panel__.nx-console-shell.nx-shell-open [aria-label="Painel NimboXcloud"]{max-height:calc(100dvh - 20px)!important}}'
+    ].join('');
+    // @run-at document-start: documentElement/head may not exist yet.
+    const host = document.head || document.documentElement;
+    if (host) host.appendChild(css);
+    else document.addEventListener('DOMContentLoaded', function () {
+      if (!document.getElementById('nx-console-shell-css')) {
+        const readyHost = document.head || document.documentElement;
+        if (readyHost) readyHost.appendChild(css);
+      }
+    }, { once: true });
+  }
+  function nxShellFocusable() {
+    if (!cardEl || !openUI) return [];
+    return Array.from(cardEl.querySelectorAll('button,select,input:not([type="hidden"]),textarea,[role="button"],[tabindex]'))
+      .filter(function (n) { return !n.disabled && n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden'; });
+  }
+  function nxShellMove(direction) {
+    const nodes = nxShellFocusable();
+    if (!nodes.length) return;
+    const active = document.activeElement;
+    const index = nodes.indexOf(active);
+    const next = nodes[(index < 0 ? (direction > 0 ? 0 : nodes.length - 1) : (index + direction + nodes.length) % nodes.length)];
+    if (next) { next.focus({preventScroll:true}); next.scrollIntoView({block:'nearest',behavior:'auto'}); nxShellStats.moves++; }
+  }
+  // Menu + View por 0,7s: abre o painel sem depender do toque.
+  let nxShellShortcutSince = 0, nxShellShortcutLatched = false;
+  let nxSticksShortcutSince = 0, nxSticksShortcutLatched = false;
+  const NX_STICKS_SHORTCUT_KEY = 'nx.access.sticksShortcut.v1';
+  function nxSticksShortcutEnabled() { try { return localStorage.getItem(NX_STICKS_SHORTCUT_KEY) !== '0'; } catch (_) { return true; } }
+  function nxShellGamepadPoll() {
+    if (!cardEl || !cardEl.isConnected || document.hidden || !navigator.getGamepads) {
+      nxShellPrevButtons = []; nxShellPrevAxis = 0; nxShellHeldSince = 0; nxShellNeedsRelease = true; return;
+    }
+    try {
+      const pad = Array.from(navigator.getGamepads()).filter(Boolean)[0];
+      if (!pad) { nxShellPrevButtons = []; nxShellPrevAxis = 0; nxShellNeedsRelease = true; return; }
+      const pressed = (pad.buttons || []).map(function (b) { return !!(b && b.pressed); });
+      const shortcut = pressed[8] && pressed[9];
+      const sticksShortcut = nxSticksShortcutEnabled() && pressed[10] && pressed[11];
+      if (sticksShortcut) {
+        if (!nxSticksShortcutSince) nxSticksShortcutSince = Date.now();
+        if (!nxSticksShortcutLatched && Date.now() - nxSticksShortcutSince >= 850) {
+          nxSticksShortcutLatched = true;
+          setOpen(!openUI, true);
+          nxShellNeedsRelease = true;
+        }
+      } else { nxSticksShortcutSince = 0; nxSticksShortcutLatched = false; }
+      if (shortcut) {
+        if (!nxShellShortcutSince) nxShellShortcutSince = Date.now();
+        if (!nxShellShortcutLatched && Date.now() - nxShellShortcutSince >= 700) {
+          nxShellShortcutLatched = true;
+          setOpen(!openUI, true);
+          nxShellNeedsRelease = true;
+        }
+      } else { nxShellShortcutSince = 0; nxShellShortcutLatched = false; }
+      if (!openUI || !nxShellEnabled) { nxShellPrevButtons = pressed; nxShellPrevAxis = 0; return; }
+      const axis = pad.axes && Math.abs(pad.axes[1] || 0) > .65 ? Math.sign(pad.axes[1]) : 0;
+      // Avoid a held gamepad button opening the panel and immediately activating a control.
+      const anyInput = pressed.some(Boolean) || (pad.axes || []).some(function (v) { return Math.abs(v || 0) > .65; });
+      if (nxShellNeedsRelease) {
+        nxShellPrevButtons = pressed; nxShellPrevAxis = 0;
+        if (!anyInput) nxShellNeedsRelease = false;
+        return;
+      }
+      const edge = function (i) { return pressed[i] && !nxShellPrevButtons[i]; };
+      const now = Date.now();
+      const direction = pressed[12] ? -1 : pressed[13] ? 1 : axis;
+      const previous = nxShellPrevButtons[12] ? -1 : nxShellPrevButtons[13] ? 1 : nxShellPrevAxis;
+      if (!direction) nxShellHeldSince = 0;
+      else if (direction !== previous) nxShellHeldSince = now;
+      const repeat = direction && direction === previous && nxShellHeldSince && now - nxShellHeldSince > 420 && now - nxShellLastInput > 160;
+      if (now - nxShellLastInput > 130) {
+        if (direction && (direction !== previous || repeat)) {
+          nxShellMove(direction); nxShellLastInput = now;
+        } else if (edge(0)) {
+          const active = document.activeElement;
+          if (cardEl.contains(active)) {
+            if (active.matches('button,[role="button"]')) { active.click(); nxShellStats.actions++; }
+            else if (active.matches('input[type="checkbox"],input[type="radio"]')) { active.click(); nxShellStats.actions++; }
+            else if (active.matches('select')) { active.focus(); }
+            else nxShellMove(1);
+          } else nxShellMove(1);
+          nxShellLastInput = now;
+        } else if (edge(1)) {
+          if (tabId !== 'overview') setTab('overview'); else setOpen(false,true);
+          nxShellLastInput = now;
+        } else if (edge(14) || edge(15)) {
+          const active = document.activeElement;
+          if (cardEl.contains(active) && active.matches('input[type="range"]')) {
+            const step = Number(active.step) || 1;
+            const min = Number(active.min) || 0;
+            const max = Number(active.max) || 100;
+            active.value = String(Math.min(max,Math.max(min,Number(active.value) + (edge(15) ? step : -step))));
+            active.dispatchEvent(new Event('input',{bubbles:true}));
+            active.dispatchEvent(new Event('change',{bubbles:true}));
+            nxShellLastInput = now;
+          }
+        }
+      }
+      nxShellPrevButtons = pressed;
+      nxShellPrevAxis = axis;
+    } catch (err) { nxShellError(err); }
+  }
+
+  if (nxShellEnabled) nxShellInstall();
+  // Atalhos disponíveis em todos os perfis, inclusive quando o Xbox Shell não está ativo.
+  setInterval(nxShellGamepadPoll, 90);
+
+  function readPos() {
+    try {
+      const p = JSON.parse(localStorage.getItem(LS_POS) || 'null');
+      if (p && typeof p.x === 'number' && typeof p.y === 'number') return p;
+    } catch (e) { }
+    return null;
+  }
+
+  function resetPos() {
+    try { localStorage.removeItem(LS_POS); } catch (e) { }
+    if (!wrap) return;
+    wrap.style.transform = 'none';
+    wrap.style.left = 'auto';
+    wrap.style.right = '12px';
+    wrap.style.top = '12px';
+  }
+
+  function mk(tag, css, text) {
+    const n = document.createElement(tag);
+    if (css) n.style.cssText = css;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function bindDrag(node, onTap) {
+    let lastTap = 0;
+    node.addEventListener('pointerdown', function (ev) {
+      if (ev.button !== 0) return;
+      // Deslocamento do ponto de pegada em relação ao canto superior esquerdo do "contêiner".
+      // O contêiner é centralizado por padrão com left:50% + translateX(-50%), então aqui é
+      // preciso usar o rect do contêiner e não o do próprio nó, senão ele "pula" ao arrastar.
+      const wr = wrap.getBoundingClientRect();
+      const offX = ev.clientX - wr.left;
+      const offY = ev.clientY - wr.top;
+      let moved = false;
+      function mv(e2) {
+        if (!moved && Math.abs(e2.clientX - ev.clientX) + Math.abs(e2.clientY - ev.clientY) < 3) return;
+        moved = true;
+        const w = wr.width, h = wr.height;
+        const x = Math.max(4, Math.min(Math.max(4, window.innerWidth - w - 4), e2.clientX - offX));
+        const y = Math.max(4, Math.min(Math.max(4, window.innerHeight - h - 4), e2.clientY - offY));
+        wrap.style.transform = 'none';
+        wrap.style.left = x + 'px';
+        wrap.style.top = y + 'px';
+      }
+      function up() {
+        window.removeEventListener('pointermove', mv, true);
+        window.removeEventListener('pointerup', up, true);
+        if (moved) {
+          try {
+            localStorage.setItem(LS_POS, JSON.stringify({
+              x: parseFloat(wrap.style.left), y: parseFloat(wrap.style.top)
+            }));
+          } catch (e) { }
+        } else if (onTap) {
+          const t = Date.now();
+          if (t - lastTap < 320) { lastTap = 0; resetPos(); }
+          else { lastTap = t; onTap(); }
+        }
+      }
+      window.addEventListener('pointermove', mv, true);
+      window.addEventListener('pointerup', up, true);
+      ev.stopPropagation();
+    });
+  }
+
+  function pillBtn(text, fn) {
+    const b = mk('button', [
+      'all:unset', 'cursor:pointer', 'padding:3px 8px', 'border-radius:6px',
+      'border:1px solid #30363d', 'background:#161b22', 'color:#c9d1d9',
+      'font:11px/1.2 ' + MONO, 'white-space:nowrap'
+    ].join(';'), text);
+    b.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    b.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); fn(); });
+    return b;
+  }
+
+  function isInGame() {
+    if (document.fullscreenElement || document.webkitFullscreenElement) return true;
+    if (S.pcs > 0 && S.qosAt && Date.now() - S.qosAt < 15000) return true;
+    // O video do stream nao e o mesmo que os trailers da biblioteca.
+    return !!document.querySelector('video[src^="blob:"][autoplay], video[data-testid*="stream"]');
+  }
+
+  function findProfileAnchor() {
+    // O novo xCloud pode usar header, banner ou uma barra sem semantica HTML.
+    // Priorizar o indicador de controle mostrado ao lado das notificacoes/perfil.
+    const selectors = [
+      'header button','header a','header [role="button"]',
+      '[role="banner"] button','[role="banner"] a','[role="banner"] [role="button"]',
+      '[data-testid*="header"] button','[data-testid*="header"] [role="button"]',
+      '[class*="header"] button','[class*="Header"] button'
+    ].join(',');
+    const nodes = Array.from(new Set(document.querySelectorAll(selectors)))
+      .filter(function (n) {
+        if (n.id === 'nimboxcloud-library-button' || n.closest('#__xcu_panel__')) return false;
+        const r = n.getBoundingClientRect();
+        return r.width > 8 && r.height > 8 && r.top >= 0 && r.top < Math.min(150, innerHeight * .20);
+      });
+    const desc = function (n) {
+      return [n.getAttribute('aria-label'),n.getAttribute('title'),
+        n.getAttribute('data-testid'),n.getAttribute('data-state'),
+        n.textContent && n.textContent.trim().slice(0,80)].filter(Boolean).join(' ').toLowerCase();
+    };
+    const controller = nodes.find(function (n) {
+      return /controller|gamepad|controle|joystick|disconnected|desconectado/.test(desc(n));
+    });
+    if (controller) return { node: controller, position: 'after' };
+    const profile = nodes.find(function (n) {
+      return /profile|perfil|account|conta|avatar|user|usuário|usuario/.test(desc(n));
+    });
+    if (profile) return { node: profile, position: 'before' };
+    // Fallback conservador: nao anexar em um elemento arbitrario da barra.
+    return null;
+  }
+
+  // Botão minimalista da biblioteca: só o ícone branco sobre fundo transparente + pontinho de status.
+  function buildLibraryButton() {
+    const b = document.createElement('button');
+    b.id = 'nimboxcloud-library-button';
+    b.type = 'button';
+    b.setAttribute('aria-label', 'Abrir painel NimboXcloud');
+    b.title = 'NimboXcloud — configurações antes de jogar';
+    b.style.cssText = [
+      'all:unset', 'position:relative', 'display:inline-flex', 'align-items:center',
+      'justify-content:center', 'box-sizing:border-box', 'width:40px', 'height:40px',
+      'min-width:40px', 'margin:0 2px', 'border-radius:50%', 'background:transparent',
+      'border:0', 'cursor:pointer', 'flex-shrink:0', 'opacity:1',
+      'transition:opacity .15s ease,transform .15s ease',
+      '-webkit-tap-highlight-color:transparent', 'z-index:' + ZBASE
+    ].join(';');
+
+    const icon = document.createElement('img');
+    icon.src = BRAND_ICON;
+    icon.alt = '';
+    icon.draggable = false;
+    icon.style.cssText = 'display:block;width:30px;height:30px;object-fit:contain;' +
+      'pointer-events:none;filter:drop-shadow(0 0 3px rgba(0,0,0,.7))';
+    b.appendChild(icon);
+
+    nxLibraryDot = document.createElement('span');
+    nxLibraryDot.style.cssText = 'position:absolute;right:3px;bottom:3px;width:8px;height:7px;' +
+      'border-radius:50%;background:#8b949e;box-shadow:0 0 0 1.5px rgba(0,0,0,.6);pointer-events:none';
+    b.appendChild(nxLibraryDot);
+
+    b.addEventListener('pointerenter', function () { b.style.opacity = '1'; b.style.transform = 'scale(1.08)'; });
+    b.addEventListener('pointerleave', function () { b.style.opacity = '1'; b.style.transform = 'none'; });
+    b.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation(); setOpen(!openUI, true);
+    });
+    return b;
+  }
+
+  // Encontra a faixa compacta de controles do xCloud no canto superior esquerdo.
+  // Não altera botões nativos: só acrescenta o acesso NX quando a estrutura é reconhecível.
+  function findInGameToolbar() {
+    const candidates = document.querySelectorAll('button,[role="button"]');
+    for (const node of candidates) {
+      if (node.id === 'nimboxcloud-library-button' || node.closest('#__xcu_panel__')) continue;
+      const r = node.getBoundingClientRect();
+      if (r.width < 22 || r.width > 90 || r.height < 22 || r.height > 90 ||
+          r.left < 0 || r.left > 170 || r.top < 0 || r.top > 105) continue;
+      let parent = node.parentElement;
+      for (let depth = 0; parent && depth < 3; depth++, parent = parent.parentElement) {
+        if (parent.id === '__xcu_panel__' || parent === document.body) break;
+        const pr = parent.getBoundingClientRect();
+        if (pr.left > 170 || pr.top > 110 || pr.width < 80 || pr.width > 360 ||
+            pr.height < 28 || pr.height > 125) continue;
+        const buttons = Array.from(parent.querySelectorAll('button,[role="button"]'))
+          .filter(function (b) {
+            if (b.id === 'nimboxcloud-library-button') return false;
+            const br = b.getBoundingClientRect();
+            return br.width >= 22 && br.height >= 22 && br.left >= pr.left - 2 &&
+              br.right <= pr.right + 2 && br.top >= pr.top - 2 && br.bottom <= pr.bottom + 2;
+          });
+        if (buttons.length < 2 || buttons.length > 5) continue;
+        // O grupo deve conter o controle Xbox/guia ou um botão de mais opções.
+        const labels = buttons.map(function (b) {
+          return [b.getAttribute('aria-label'), b.getAttribute('title'),
+            b.getAttribute('data-testid'), b.textContent].filter(Boolean).join(' ').toLowerCase();
+        }).join(' ');
+        const hasXbox = /xbox|guide|guia|menu|more|mais|options|opções|opcoes/.test(labels);
+        const hasIcons = buttons.filter(function (b) { return b.querySelector('svg,img'); }).length >= 2;
+        if (!hasXbox && !hasIcons) continue;
+        return buttons[buttons.length - 1];
+      }
+    }
+    return null;
+  }
+
+  function nxNativeToolbarOpen(anchor) {
+    if (!anchor || !anchor.parentElement) return false;
+    // O menu compacto pode manter um botão visível enquanto oculta o resto da barra.
+    // Exigir pelo menos dois controles NATIVOS visíveis no mesmo grupo.
+    const parent = anchor.parentElement;
+    const buttons = Array.from(parent.querySelectorAll('button,[role="button"]')).filter(function (b) {
+      if (b === nxLibraryButton || b.id === 'nimboxcloud-library-button' || b.closest('#__xcu_panel__')) return false;
+      const r = b.getBoundingClientRect();
+      if (r.width < 20 || r.height < 20 || r.left < 0 || r.right > innerWidth ||
+          r.top < 0 || r.bottom > innerHeight) return false;
+      const st = getComputedStyle(b);
+      return st.display !== 'none' && st.visibility !== 'hidden' && Number(st.opacity) >= 0.15;
+    });
+    return buttons.length >= 2;
+  }
+  function toolbarExpanded(anchor) {
+    if (!anchor || !anchor.isConnected) return false;
+    let n = anchor;
+    for (let i = 0; n && i < 5; i++, n = n.parentElement) {
+      const st = getComputedStyle(n);
+      if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) < 0.15) return false;
+      if (n !== anchor && st.pointerEvents === 'none') return false;
+    }
+    const r = anchor.getBoundingClientRect();
+    return r.width >= 20 && r.height >= 20 && r.top >= 0 && r.left >= 0 && r.right <= innerWidth;
+  }
+  function positionNXCard(anchor) {
+    if (!wrap || !anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const width = Math.min(380, Math.max(240, innerWidth - 16));
+    const left = Math.max(8, Math.min(innerWidth - width - 8, r.left));
+    const below = r.bottom + 10;
+    const above = r.top - 10;
+    const spaceBelow = innerHeight - below - 8;
+    const useBelow = spaceBelow >= 280 || spaceBelow >= above - 8;
+    wrap.style.width = width + 'px';
+    wrap.style.left = left + 'px';
+    wrap.style.right = 'auto';
+    wrap.style.top = (useBelow ? Math.max(8, below) : 8) + 'px';
+    wrap.style.bottom = 'auto';
+    wrap.style.alignItems = 'stretch';
+    if (cardEl) {
+      cardEl.style.marginTop = '0';
+      cardEl.style.maxHeight = Math.max(160, Math.min(640, useBelow ? spaceBelow : above - 16)) + 'px';
+    }
+  }
+
+  function syncNXPlacement() {
+    if (!wrap || !wrap.isConnected) return;
+    const playing = isInGame();
+    const mode = playing ? 'game' : 'library';
+    if (nxMode !== mode) {
+      nxMode = mode;
+      // A navegação do xCloud não deve cancelar uma abertura solicitada pelo jogador.
+      if (!userTouched) { openUI = false; if (cardEl) cardEl.style.display = 'none'; }
+      if (pickEl) pickEl.style.display = 'none';
+    }
+    if (playing) {
+      if (micTestStream) stopMicrophoneTest(); // Nunca manter a captura de diagnóstico durante a sessão.
+      const gameAnchor = findInGameToolbar();
+      if (gameAnchor && gameAnchor.parentElement) {
+        if (!nxLibraryButton) nxLibraryButton = buildLibraryButton();
+        if (nxLibraryButton.parentElement !== gameAnchor.parentElement ||
+            nxLibraryButton.previousElementSibling !== gameAnchor) gameAnchor.after(nxLibraryButton);
+        const expanded = toolbarExpanded(gameAnchor) && nxNativeToolbarOpen(gameAnchor);
+        nxLibraryButton.style.display = expanded ? 'inline-flex' : 'none';
+        nxLibraryButton.title = 'Abrir NimboXcloud durante a partida';
+        // O botão NX deve recolher junto com a barra nativa. Painel aberto permanece acessível.
+        // Barra nativa recolhida não implica fechar o painel aberto pelo atalho.
+        wrap.style.display = 'flex';
+        if (pillEl) pillEl.style.display = expanded ? 'none' : 'inline-flex';
+        if (openUI) {
+          if (expanded) positionNXCard(nxLibraryButton);
+          else { wrap.style.left='8px'; wrap.style.right='auto'; wrap.style.top='58px'; wrap.style.width=Math.min(380,innerWidth-16)+'px'; }
+        }
+      } else {
+        // Enquanto a barra nativa está recolhida, não deixar um ícone independente na tela.
+        if (nxLibraryButton) nxLibraryButton.style.display = 'none';
+        if (pillEl) pillEl.style.display = 'none';
+        wrap.style.display = 'flex';
+        if (pillEl) pillEl.style.display = 'inline-flex';
+        if (openUI) {
+          wrap.style.left = '8px'; wrap.style.right = 'auto'; wrap.style.top = '58px';
+          wrap.style.width = Math.min(380, innerWidth - 16) + 'px';
+          wrap.style.alignItems = 'stretch';
+          if (cardEl) cardEl.style.maxHeight = Math.max(160, innerHeight - 70) + 'px';
+        }
+      }
+      return;
+    }
+    const placement = findProfileAnchor();
+    const anchor = placement && placement.node;
+    if (anchor && anchor.parentElement) {
+      if (!nxLibraryButton) nxLibraryButton = buildLibraryButton();
+      if (placement.position === 'after') {
+        if (nxLibraryButton.parentElement !== anchor.parentElement || nxLibraryButton.previousElementSibling !== anchor) anchor.after(nxLibraryButton);
+      } else {
+        if (nxLibraryButton.parentElement !== anchor.parentElement || nxLibraryButton.nextElementSibling !== anchor) anchor.before(nxLibraryButton);
+      }
+      nxLibraryButton.style.display = 'inline-flex';
+      nxLibraryAnchor = anchor;
+      wrap.style.display = 'flex';
+      wrap.style.position = 'fixed';
+      wrap.style.transform = 'none';
+      wrap.style.left = 'auto';
+      wrap.style.right = '12px';
+      const ar = nxLibraryButton.getBoundingClientRect();
+      wrap.style.top = Math.min(innerHeight - 48, Math.max(44, ar.bottom + 8)) + 'px';
+      wrap.style.alignItems = 'flex-end';
+      // Um único acesso: o botão da barra substitui a pílula flutuante.
+      // Se o botão integrado estiver recortado/invisível, preservar o fallback.
+      const buttonRect = nxLibraryButton.getBoundingClientRect();
+      const buttonVisible = buttonRect.width >= 18 && buttonRect.height >= 18 &&
+        buttonRect.top >= 0 && buttonRect.bottom <= innerHeight &&
+        buttonRect.left >= 0 && buttonRect.right <= innerWidth;
+      if (pillEl) pillEl.style.display = buttonVisible ? 'none' : 'inline-flex';
+    } else {
+      // Barra do site ainda não carregou: fallback temporário com a pílula.
+      if (nxLibraryButton) nxLibraryButton.style.display = 'none';
+      wrap.style.display = 'flex';
+      wrap.style.position = 'fixed';
+      wrap.style.transform = 'none';
+      wrap.style.left = 'auto';
+      wrap.style.right = '12px';
+      wrap.style.top = '12px';
+      wrap.style.alignItems = 'flex-end';
+      if (pillEl) pillEl.style.display = 'inline-flex';
+    }
+  }
+
+  // ---------- 13b. Painel profissional: abas por categoria ----------
+  // Categorias: Geral · Streaming · Mídia · Controles · Região · Avançado.
+  // As abas são renderizadas sob demanda; os valores ao vivo são atualizados por liveFns,
+  // sem reconstruir o DOM (mantém rolagem, foco e slider durante a atualização).
+  const UI_FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
+  const C = {
+    bg: 'rgba(12,16,22,.97)', panel: 'rgba(255,255,255,.045)', line: 'rgba(255,255,255,.09)',
+    text: '#e8edf3', dim: '#8b96a5', accent: '#4ade80', good: '#3fb950', warn: '#d29922', bad: '#f85149'
+  };
+  const NS = 'http://www.w3.org/2000/svg';
+  const ICONS = {
+    overview: 'M22 12h-4l-3 9L9 3l-3 9H2',
+    stream: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+    media: 'M11 5L6 9H2v6h4l5 4V5z M15.5 8.5a5 5 0 0 1 0 7 M19 5a10 10 0 0 1 0 14',
+    audio: 'M11 5L6 9H2v6h4l5 4V5z M15.5 8.5a5 5 0 0 1 0 7 M19 5a10 10 0 0 1 0 14',
+    voice: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z M5 10v2a7 7 0 0 0 14 0v-2 M12 19v3 M8 22h8',
+    controls: 'M6 12h4 M8 10v4 M15 13h.01 M18 11h.01 M17.3 5H6.7a4 4 0 0 0-3.9 3.3L1.5 15a3 3 0 0 0 5.3 2L8 15h8l1.2 2a3 3 0 0 0 5.3-2l-1.3-6.7A4 4 0 0 0 17.3 5z',
+    region: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M2 12h20 M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20',
+    advanced: 'M9 2h6v4H9z M7 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2 M8 12h8 M8 16h5',
+    close: 'M18 6L6 18 M6 6l12 12'
+  };
+  const TABS = [
+    { id: 'overview', label: 'Início', desc: 'Resumo da sessão e acesso rápido' },
+    { id: 'stream', label: 'Streaming', desc: 'Qualidade, conexão e imagem' },
+    { id: 'audio', label: 'Áudio', desc: 'Volume, equalizador e reprodução' },
+    { id: 'voice', label: 'Voz e acessórios', desc: 'Microfone e vibração' },
+    { id: 'controls', label: 'Controles', desc: 'Entrada, gamepad e toque' },
+    { id: 'region', label: 'Rede e região', desc: 'Servidores e disponibilidade' },
+    { id: 'advanced', label: 'Sistema', desc: 'Diagnóstico e ferramentas' }
+  ];
+  const PRESETS = [
+    { name: 'Máximo', res: 'hq', br: 'auto', sub: 'Melhor imagem' },
+    { name: 'Equilibrado', res: 'auto', br: 'b10', sub: '1080p · 10 Mbps' },
+    { name: 'Economia', res: 'r720', br: 'b5', sub: '720p · 5 Mbps' }
+  ];
+
+  let tabId = 'overview';
+  let liveFns = [];
+  let toastTimer = 0;
+  let sliderDragging = false;
+  window.addEventListener('pointerup', function () { sliderDragging = false; }, true);
+  window.addEventListener('pointercancel', function () { sliderDragging = false; }, true);
+
+  function ico(d, size) {
+    const s = document.createElement('span');
+    s.style.cssText = 'display:inline-flex;width:' + (size || 18) + 'px;height:' + (size || 18) + 'px;flex:0 0 auto;pointer-events:none';
+    s.innerHTML = '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + d + '"/></svg>';
+    return s;
+  }
+
+  function stopEv(e) { e.stopPropagation(); }
+  function fmtN(v, unit, d) {
+    return v == null || !Number.isFinite(Number(v)) ? '—' : Number(v).toFixed(d || 0) + (unit || '');
+  }
+  function curLoss() {
+    const q = S.qos;
+    return q ? (q.instLoss != null ? q.instLoss : (q.loss || 0)) : null;
+  }
+  function lossColor(l) { return l == null ? C.dim : (l < 2 ? C.good : (l < 5 ? C.warn : C.bad)); }
+  function runLive() {
+    for (let i = 0; i < liveFns.length; i++) { try { liveFns[i](); } catch (e) { } }
+  }
+  function streaming() { return !!(S.qosAt && Date.now() - S.qosAt < 8000 && S.qos); }
+
+  function linkState() {
+    const q = S.qos;
+    if (!streaming()) return { text: 'Sem partida em andamento', sub: 'Os ajustes valem na próxima partida, sem recarregar.', color: C.dim };
+    const loss = curLoss();
+    const rtt = q.rtt;
+    if (loss >= 5 || (rtt != null && rtt >= 160)) return { text: 'Conexão instável', sub: S.lastDiagnosis, color: C.bad };
+    if (loss >= 2 || (rtt != null && rtt >= 100)) return { text: 'Conexão regular', sub: S.lastDiagnosis, color: C.warn };
+    return { text: 'Conexão estável', sub: S.lastDiagnosis, color: C.good };
+  }
+
+  function regionDiffs() {
+    const c = cfg();
+    const wantT = String(c.territory || '').toUpperCase();
+    const curT = String(getCookie('territory') || '').toUpperCase();
+    const expRaw = String(S.expAfter || '').toUpperCase();
+    const expT = /^[A-Z]{2}$/.test(expRaw) ? expRaw : '';
+    const d = [];
+    if (wantT) {
+      if (!curT) d.push('Cookie de território ausente');
+      else if (curT !== wantT) d.push('Território real ' + curT + ', configurado ' + wantT);
+      if (expT && expT !== wantT) d.push('IP detectado como ' + expT + ', não foi alterado para ' + wantT);
+    }
+    return d;
+  }
+
+  function hintOne(q, loss) {
+    if (!q) return '';
+    if (loss != null && loss > 5) {
+      if (!v4on()) return 'Perda alta: ative "Forçar IPv4" em Streaming';
+      if (srvCfg().name !== 'JAPANEAST') return 'Perda de ' + loss.toFixed(1) + '%: em Streaming, escolha Tóquio e compare outra partida';
+      return 'Tóquio também perde ' + loss.toFixed(1) + '% → problema de linha, não de qualidade nem de data center';
+    }
+    if (q.decoded || q.dropped) {
+      const dr = q.dropped / ((q.decoded + q.dropped) || 1) * 100;
+      if (dr > 5 && (loss == null || loss < 3)) return 'Quadros descartados ' + dr.toFixed(1) + '% mas perda baixa → a decodificação local não acompanha';
+    }
+    if (q.family === 'IPv6') return 'Usando IPv6; ative "Forçar IPv4" em Streaming para comparar';
+    return '';
+  }
+
+  // ----- Componentes -----
+  function group(title, hint) {
+    const root = mk('div', 'margin-top:14px');
+    root.appendChild(mk('div', 'color:' + C.dim + ';font-size:10.5px;font-weight:700;letter-spacing:.08em;' +
+      'text-transform:uppercase;margin:0 2px 6px', title));
+    const card = mk('div', 'background:' + C.panel + ';border:1px solid ' + C.line + ';border-radius:12px;padding:2px 12px');
+    root.appendChild(card);
+    if (hint) root.appendChild(mk('div', 'color:' + C.dim + ';font-size:11px;line-height:1.4;margin:6px 2px 0', hint));
+    return {
+      root: root, card: card,
+      add: function (n) {
+        if (card.children.length) n.style.borderTop = '1px solid ' + C.line;
+        card.appendChild(n);
+        return n;
+      }
+    };
+  }
+
+  function setRow(label, desc, ctrl, stacked) {
+    const r = mk('div', 'padding:11px 0;display:flex;flex-direction:' + (stacked ? 'column' : 'row') +
+      ';gap:' + (stacked ? '9px' : '12px') + ';align-items:' + (stacked ? 'stretch' : 'center') + ';justify-content:space-between');
+    const t = mk('div', 'min-width:0;flex:1');
+    t.appendChild(mk('div', 'font-size:13px;font-weight:600;color:' + C.text, label));
+    const d = mk('div', 'font-size:11px;color:' + C.dim + ';margin-top:2px;line-height:1.4;word-break:break-word', desc || '');
+    if (!desc) d.style.display = 'none';
+    t.appendChild(d);
+    r.appendChild(t);
+    if (ctrl) r.appendChild(ctrl);
+    r._desc = d;
+    return r;
+  }
+
+  function liveDesc(row, getter) {
+    liveFns.push(function () {
+      const v = getter();
+      row._desc.textContent = v;
+      row._desc.style.display = v ? 'block' : 'none';
+    });
+  }
+
+  function infoRow(label, getter, desc) {
+    const v = mk('div', 'font-size:12.5px;font-weight:600;color:' + C.text + ';text-align:right;max-width:58%;' +
+      'word-break:break-word;font-variant-numeric:tabular-nums', '—');
+    liveFns.push(function () { v.textContent = String(getter()); });
+    return setRow(label, desc, v);
+  }
+
+  function chips(opts, cur, pick) {
+    const w = mk('div', 'display:flex;flex-wrap:wrap;gap:6px');
+    w.setAttribute('role', 'radiogroup');
+    opts.forEach(function (o) {
+      const on = o.k === cur;
+      const b = mk('button', 'all:unset;box-sizing:border-box;display:inline-flex;align-items:center;cursor:pointer;' +
+        'padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;line-height:1.2;white-space:nowrap;' +
+        'border:1px solid ' + (on ? C.accent : C.line) + ';background:' + (on ? 'rgba(74,222,128,.14)' : 'transparent') +
+        ';color:' + (on ? C.accent : C.text) + ';-webkit-tap-highlight-color:transparent', o.label);
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+      b.addEventListener('pointerdown', stopEv);
+      b.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); pick(o.k); });
+      w.appendChild(b);
+    });
+    return w;
+  }
+
+  function toggle(on, fn, label) {
+    const b = mk('button', 'all:unset;position:relative;display:block;box-sizing:border-box;cursor:pointer;width:44px;height:26px;' +
+      'border-radius:13px;flex:0 0 auto;background:' + (on ? C.accent : 'rgba(255,255,255,.18)') +
+      ';transition:background .15s;-webkit-tap-highlight-color:transparent');
+    b.appendChild(mk('span', 'position:absolute;top:3px;left:' + (on ? '21px' : '3px') +
+      ';width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.45)'));
+    b.setAttribute('role', 'switch');
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+    if (label) b.setAttribute('aria-label', label);
+    b.addEventListener('pointerdown', stopEv);
+    b.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); fn(); });
+    return b;
+  }
+
+  function actBtn(label, fn, kind) {
+    const styles = {
+      primary: 'background:' + C.accent + ';color:#06210f;border:1px solid ' + C.accent,
+      danger: 'background:rgba(248,81,73,.12);color:#ff7b72;border:1px solid rgba(248,81,73,.4)',
+      ghost: 'background:transparent;color:' + C.text + ';border:1px solid ' + C.line
+    };
+    const b = mk('button', 'all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;' +
+      'cursor:pointer;padding:8px 14px;border-radius:9px;font-size:12px;font-weight:700;line-height:1.2;text-align:center;' +
+      '-webkit-tap-highlight-color:transparent;' + styles[kind || 'ghost'], label);
+    b.setAttribute('role', 'button');
+    b.addEventListener('pointerdown', stopEv);
+    b.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); fn(); });
+    return b;
+  }
+
+  function note(text, tone) {
+    const warn = tone === 'warn';
+    return mk('div', 'margin-bottom:2px;padding:9px 11px;border-radius:10px;font-size:11.5px;line-height:1.45;border:1px solid ' +
+      (warn ? 'rgba(210,153,34,.35)' : C.line) + ';background:' + (warn ? 'rgba(210,153,34,.1)' : C.panel) +
+      ';color:' + (warn ? '#e3b341' : C.dim), text);
+  }
+
+  function statTile(label, getter) {
+    const box = mk('div', 'background:' + C.panel + ';border:1px solid ' + C.line + ';border-radius:10px;padding:8px 10px;min-width:0');
+    box.appendChild(mk('div', 'color:' + C.dim + ';font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase', label));
+    const val = mk('div', 'font-size:17px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;' +
+      'white-space:nowrap;overflow:hidden;text-overflow:ellipsis', '—');
+    box.appendChild(val);
+    liveFns.push(function () { const r = getter(); val.textContent = r.text; val.style.color = r.color || C.text; });
+    return box;
+  }
+
+  function spark(label, key, color, unit, floorMax) {
+    const box = mk('div', 'padding:11px 0');
+    const head = mk('div', 'display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px');
+    head.appendChild(mk('span', 'font-size:13px;font-weight:600', label));
+    const val = mk('span', 'font-size:12px;color:' + C.dim + ';font-variant-numeric:tabular-nums', '—');
+    head.appendChild(val);
+    box.appendChild(head);
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 300 46');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '46');
+    svg.style.cssText = 'display:block;background:rgba(255,255,255,.03);border-radius:8px';
+    const base = document.createElementNS(NS, 'line');
+    base.setAttribute('x1', '0'); base.setAttribute('x2', '300'); base.setAttribute('y1', '45'); base.setAttribute('y2', '45');
+    base.setAttribute('stroke', 'rgba(255,255,255,.12)'); base.setAttribute('stroke-width', '1');
+    const line = document.createElementNS(NS, 'polyline');
+    line.setAttribute('fill', 'none'); line.setAttribute('stroke', color); line.setAttribute('stroke-width', '2');
+    line.setAttribute('stroke-linejoin', 'round'); line.setAttribute('stroke-linecap', 'round');
+    line.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.appendChild(base); svg.appendChild(line);
+    box.appendChild(svg);
+    liveFns.push(function () {
+      const vals = S.qosHistory.slice(-45).map(function (p) { return Number(p[key]); }).filter(Number.isFinite);
+      if (vals.length < 2) { line.setAttribute('points', ''); val.textContent = '—'; return; }
+      const max = Math.max(floorMax, Math.max.apply(null, vals));
+      line.setAttribute('points', vals.map(function (v, i) {
+        return (i * 300 / (vals.length - 1)).toFixed(1) + ',' + (42 - Math.max(0, v) / max * 38).toFixed(1);
+      }).join(' '));
+      val.textContent = vals[vals.length - 1].toFixed(0) + unit;
+    });
+    return box;
+  }
+
+  function toast(msg) {
+    if (!el.toast) return;
+    el.toast.textContent = msg;
+    el.toast.style.opacity = '1';
+    el.toast.style.transform = 'translate(-50%,0)';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      el.toast.style.opacity = '0';
+      el.toast.style.transform = 'translate(-50%,6px)';
+    }, 2300);
+  }
+
+  function copyText(text, tag, okMsg) {
+    const fail = function () { toast('Cópia bloqueada; diagnóstico não exibido no console por privacidade'); };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { toast(okMsg); }, fail);
+        return;
+      }
+    } catch (e) { }
+    fail();
+  }
+  function nxUnifiedReport() {
+    let general = {};
+    try { general = JSON.parse(buildReport()); } catch (e) { general = { error: String(e) }; }
+    const full = {
+      schema: 'nimboxcloud-unified-v1', version: VER, capturedAt: new Date().toISOString(),
+      consoleLab: nxConsoleLabReport(), gameAndInput: general,
+      sessionHealth: nxSessionHealth(),
+      system: { server: srvCfg().name || 'auto', quality: resCfg().label,
+        bitrate: bitrateCfg().mbps || 'auto', qos: S.qos, latencyByServer: S.latencyByServer,
+        recoveries: S.nxRecoveries, warnings: S.diagnosticsWarnings,
+        micStatus: S.micStatus, vibrationStatus: S.vibrationStatus,
+        remotePlayStatus: S.remotePlayStatus, lastError: S.lastErr },
+      history: { samples: S.qosHistory, diagnosis: S.lastDiagnosis }
+    };
+    function sanitize(v, key, depth) {
+      if (depth > 15) return '[limit]';
+      if (/token|authorization|cookie|secret|credential|xuid|user.?id|account|email|session.?id|subscriptionContext/i.test(key)) return '[redacted]';
+      if (typeof v === 'string') {
+        let value = v.replace(/xuid\(\d+\)/gi, 'xuid([redacted])')
+          .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[ip]')
+          .replace(/([?&](?:token|sig|auth|code|key|id)=)[^&\s]+/gi, '$1[redacted]');
+        if (value.includes('?')) value = value.split('?')[0] + '?[query-redacted]';
+        return value.slice(0, 1000);
+      }
+      if (Array.isArray(v)) return v.slice(0, 110).map(function (x) { return sanitize(x, key, depth + 1); });
+      if (v && typeof v === 'object') {
+        const out = {};
+        Object.keys(v).slice(0, 90).forEach(function (k) { out[k] = sanitize(v[k], k, depth + 1); });
+        return out;
+      }
+      return v;
+    }
+    return sanitize(full, '', 0);
+  }
+  function copyUnifiedReport() {
+    copyText(JSON.stringify(nxUnifiedReport(), null, 2), '[NX unified]', 'Diagnóstico completo copiado');
+  }
+  function copyReport() { copyUnifiedReport(); }
+  function copyHistory() {
+    copyText(JSON.stringify(nxUnifiedReport().history, null, 2), '[NX history]', 'Histórico copiado');
+  }
+  function copyDiag() {
+    // Compartilha a sanitização do relatório unificado, sem caminhos alternativos não filtrados.
+    copyText(JSON.stringify(nxUnifiedReport(), null, 2), '[NX diagnostic]', 'Diagnóstico copiado');
+  }
+
+  // ----- Abas -----
+  // Editor de layout local: não cria botões de gameplay nem modifica o HUD nativo.
+  const NX_HUD_LAYOUT_KEY = 'nx.hud.editor.layout.v1';
+  const NX_HUD_DEFAULT = Object.freeze({
+    stickL: [17, 65], stickR: [80, 65], a: [88, 42], b: [74, 45],
+    x: [78, 28], y: [91, 25], lt: [12, 16], rt: [88, 16]
+  });
+  function nxHudValidateLayout(value) {
+    const result = {};
+    Object.keys(NX_HUD_DEFAULT).forEach(function (id) {
+      const pos = value && Object.prototype.hasOwnProperty.call(value, id) ? value[id] : null;
+      result[id] = Array.isArray(pos) && pos.length === 2 && pos.every(Number.isFinite) ?
+        pos.map(function (n) { return Math.max(5, Math.min(95, Math.round(n))); }) :
+        NX_HUD_DEFAULT[id].slice();
+    });
+    return result;
+  }
+  const NX_HUD_PROFILES_KEY = 'nx.hud.editor.profiles.v1';
+  function nxHudProfileName(name) {
+    if (typeof name !== 'string') return '';
+    const clean = name.trim();
+    if (['__proto__', 'constructor', 'prototype'].includes(clean.toLowerCase())) return '';
+    return /^[A-Za-zÀ-ÿ0-9 _-]{1,32}$/u.test(clean) ? clean : '';
+  }
+  function nxHudProfilesRead() {
+    try {
+      const parsed = JSON.parse(getPref(NX_HUD_PROFILES_KEY, '{}'));
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      const result = {};
+      Object.keys(parsed).slice(0, 20).forEach(function (name) {
+        const clean = nxHudProfileName(name);
+        if (clean && parsed[name] && typeof parsed[name] === 'object' && !Array.isArray(parsed[name]))
+          result[clean] = nxHudValidateLayout(parsed[name]);
+      });
+      return result;
+    } catch (_) { return {}; }
+  }
+  function nxHudProfileSave(name) {
+    const clean = nxHudProfileName(name);
+    if (!clean) return false;
+    const profiles = nxHudProfilesRead();
+    if (!Object.prototype.hasOwnProperty.call(profiles, clean) && Object.keys(profiles).length >= 20) return false;
+    profiles[clean] = nxHudReadLayout();
+    const value = JSON.stringify(profiles);
+    try {
+      localStorage.setItem(NX_HUD_PROFILES_KEY, value);
+      return localStorage.getItem(NX_HUD_PROFILES_KEY) === value;
+    } catch (_) { return false; }
+  }
+  function nxHudProfileLoad(name) {
+    const profiles = nxHudProfilesRead();
+    if (!Object.prototype.hasOwnProperty.call(profiles, name)) return false;
+    const value = JSON.stringify(nxHudValidateLayout(profiles[name]));
+    try {
+      localStorage.setItem(NX_HUD_LAYOUT_KEY, value);
+      return localStorage.getItem(NX_HUD_LAYOUT_KEY) === value;
+    } catch (_) { return false; }
+  }
+  function nxHudProfileDelete(name) {
+    // Remoção transacional de melhor esforço: perfis e associações devem permanecer coerentes.
+    const profiles = nxHudProfilesRead();
+    if (!Object.prototype.hasOwnProperty.call(profiles, name)) return false;
+    const bindings = nxHudGameBindings();
+    delete profiles[name];
+    Object.keys(bindings).forEach(function (id) {
+      if (bindings[id] === name) delete bindings[id];
+    });
+    const writes = [
+      [NX_HUD_PROFILES_KEY, JSON.stringify(profiles)],
+      [NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(bindings)]
+    ];
+    const previous = [];
+    try {
+      writes.forEach(function (pair) { previous.push([pair[0], localStorage.getItem(pair[0])]); });
+      writes.forEach(function (pair) {
+        localStorage.setItem(pair[0], pair[1]);
+        if (localStorage.getItem(pair[0]) !== pair[1])
+          throw new Error('HUD storage write verification failed');
+      });
+    } catch (_) {
+      previous.forEach(function (pair) {
+        try {
+          if (pair[1] === null) localStorage.removeItem(pair[0]);
+          else localStorage.setItem(pair[0], pair[1]);
+        } catch (_) {}
+      });
+      return false;
+    }
+    nxHudLastRoute = null;
+    nxHudLastAppliedProfile = '';
+    return true;
+  }
+  const NX_HUD_GAME_BINDINGS_KEY = 'nx.hud.editor.gameBindings.v1';
+  function nxHudGameId(raw) {
+    if (typeof raw !== 'string') return '';
+    const value = raw.trim().toLowerCase();
+    return /^[a-z0-9_-]{2,64}$/.test(value) ? value : '';
+  }
+  function nxHudCurrentGameId() {
+    try {
+      const parts = new URL(location.href).pathname.split('/').filter(Boolean);
+      const index = parts.indexOf('play');
+      if (index < 0) return '';
+      const candidates = parts.slice(index + 1);
+      if (candidates[0] === 'games') candidates.shift();
+      if (!candidates.length) return '';
+      const candidate = candidates[candidates.length - 1];
+      if (['home', 'search', 'library', 'settings', 'social', 'friends', 'profile', 'games',
+        'all', 'recent', 'categories', 'collections', 'cloud', 'browse'].includes(candidate.toLowerCase())) return '';
+      // Apenas caminhos que indicam uma página de jogo, nunca páginas genéricas do catálogo.
+      if (candidates.length === 1 && !/^[0-9a-f]{8,}$/i.test(candidate) &&
+          !/^9[a-z0-9]{10,}$/i.test(candidate)) return '';
+      return nxHudGameId(candidate);
+    } catch (_) { return ''; }
+  }
+  function nxHudGameBindings() {
+    try {
+      const value = JSON.parse(getPref(NX_HUD_GAME_BINDINGS_KEY, '{}'));
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+      const result = {}, profiles = nxHudProfilesRead();
+      Object.keys(value).slice(0, 100).forEach(function (key) {
+        const id = nxHudGameId(key), profile = nxHudProfileName(value[key]);
+        if (id && profile && Object.prototype.hasOwnProperty.call(profiles, profile))
+          result[id] = profile;
+      });
+      return result;
+    } catch (_) { return {}; }
+  }
+  function nxHudBindGame(gameId, profileName) {
+    const id = nxHudGameId(gameId);
+    if (!id || !Object.prototype.hasOwnProperty.call(nxHudProfilesRead(), profileName)) return false;
+    const bindings = nxHudGameBindings();
+    if (!Object.prototype.hasOwnProperty.call(bindings, id) && Object.keys(bindings).length >= 100) return false;
+    bindings[id] = profileName;
+    const value = JSON.stringify(bindings);
+    try {
+      localStorage.setItem(NX_HUD_GAME_BINDINGS_KEY, value);
+      const saved = localStorage.getItem(NX_HUD_GAME_BINDINGS_KEY) === value;
+      if (saved) { nxHudLastRoute = null; nxHudLastAppliedProfile = ''; }
+      return saved;
+    } catch (_) { return false; }
+  }
+  function nxHudUnbindGame(gameId) {
+    const id = nxHudGameId(gameId), bindings = nxHudGameBindings();
+    if (!id || !Object.prototype.hasOwnProperty.call(bindings, id)) return false;
+    delete bindings[id];
+    const value = JSON.stringify(bindings);
+    try {
+      localStorage.setItem(NX_HUD_GAME_BINDINGS_KEY, value);
+      const saved = localStorage.getItem(NX_HUD_GAME_BINDINGS_KEY) === value;
+      if (saved) { nxHudLastRoute = null; nxHudLastAppliedProfile = ''; }
+      return saved;
+    } catch (_) { return false; }
+  }
+  const NX_HUD_AUTO_KEY = 'nx.hud.editor.autoLoad.v1';
+  function nxHudAutoEnabled() { return getPref(NX_HUD_AUTO_KEY, '0') === '1'; }
+  function nxHudSetAutoEnabled(enabled) {
+    setPref(NX_HUD_AUTO_KEY, enabled ? '1' : '0');
+    nxHudLastRoute = null;
+    nxHudLastAppliedProfile = '';
+    if (enabled) nxHudAutoLoadGame();
+  }
+  let nxHudLastRoute = null;
+  let nxHudLastAppliedProfile = '';
+  function nxHudAutoLoadGame() {
+    if (!nxHudAutoEnabled()) return false;
+    const id = nxHudCurrentGameId();
+    if (id === nxHudLastRoute && nxHudLastAppliedProfile) return false;
+    nxHudLastRoute = id;
+    nxHudLastAppliedProfile = '';
+    if (!id) return false;
+    const name = nxHudGameBindings()[id];
+    if (!name || !nxHudProfileLoad(name)) return false;
+    nxHudLastAppliedProfile = name;
+    return true;
+  }
+  function nxHudRouteMonitor() {
+    // SPA: observa a URL sem substituir history.pushState, replaceState ou hooks de terceiros.
+    if (document.visibilityState === 'hidden') return;
+    nxHudAutoLoadGame();
+    nxHudNativeSync();
+  }
+  window.addEventListener('popstate', nxHudRouteMonitor, { passive: true });
+  window.addEventListener('hashchange', nxHudRouteMonitor, { passive: true });
+  window.setInterval(nxHudRouteMonitor, 1500);
+  function nxHudExportBackup() {
+    return JSON.stringify({ format: 'nimboxcloud-hud-backup-v1',
+      layout: nxHudReadLayout(), profiles: nxHudProfilesRead(),
+      gameBindings: nxHudGameBindings() }, null, 2);
+  }
+  function nxHudImportBackup(raw) {
+    if (typeof raw !== 'string' || raw.length > 65536) return false;
+    let data;
+    try { data = JSON.parse(raw); } catch (_) { return false; }
+    if (!data || data.format !== 'nimboxcloud-hud-backup-v1' ||
+        !data.layout || typeof data.layout !== 'object' || Array.isArray(data.layout) ||
+        !data.profiles || typeof data.profiles !== 'object' || Array.isArray(data.profiles) ||
+        !data.gameBindings || typeof data.gameBindings !== 'object' || Array.isArray(data.gameBindings)) return false;
+    const ids = Object.keys(NX_HUD_DEFAULT);
+    function validLayout(layout) {
+      return layout && typeof layout === 'object' && !Array.isArray(layout) &&
+        Object.keys(layout).length === ids.length && ids.every(function (id) {
+          const p = layout[id];
+          return Array.isArray(p) && p.length === 2 && p.every(function (v) {
+            return Number.isFinite(v) && v >= 5 && v <= 95;
+          });
+        });
+    }
+    const names = Object.keys(data.profiles), gameIds = Object.keys(data.gameBindings);
+    // Não aceitar chaves especiais que possam interferir em objetos comuns.
+    const safeKey = function (key) { return key !== '__proto__' && key !== 'constructor' && key !== 'prototype'; };
+    if (!validLayout(data.layout) || names.length > 20 || gameIds.length > 100 ||
+        !names.every(safeKey) || !gameIds.every(safeKey) ||
+        !names.every(function (name) {
+          return nxHudProfileName(name) === name && validLayout(data.profiles[name]);
+        }) || !gameIds.every(function (id) {
+          return nxHudGameId(id) === id && typeof data.gameBindings[id] === 'string' &&
+            Object.prototype.hasOwnProperty.call(data.profiles, data.gameBindings[id]);
+        })) return false;
+    // A validação ocorre antes de qualquer escrita. Se o armazenamento falhar,
+    // restauramos os valores anteriores, inclusive quando a quota estiver esgotada.
+    const writes = [
+      [NX_HUD_PROFILES_KEY, JSON.stringify(data.profiles)],
+      [NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(data.gameBindings)],
+      [NX_HUD_LAYOUT_KEY, JSON.stringify(data.layout)]
+    ];
+    const previous = [];
+    try {
+      writes.forEach(function (pair) {
+        previous.push([pair[0], localStorage.getItem(pair[0])]);
+      });
+      writes.forEach(function (pair) {
+        localStorage.setItem(pair[0], pair[1]);
+        if (localStorage.getItem(pair[0]) !== pair[1])
+          throw new Error('HUD storage write verification failed');
+      });
+    } catch (_) {
+      previous.forEach(function (pair) {
+        try {
+          if (pair[1] === null) localStorage.removeItem(pair[0]);
+          else localStorage.setItem(pair[0], pair[1]);
+        } catch (_) {}
+      });
+      return false;
+    }
+    nxHudLastRoute = null;
+    nxHudLastAppliedProfile = '';
+    return true;
+  }
+  function nxHudReadLayout() {
+    try { return nxHudValidateLayout(JSON.parse(getPref(NX_HUD_LAYOUT_KEY, '{}'))); }
+    catch (_) { return nxHudValidateLayout(null); }
+  }
+  function nxHudExportLayout() {
+    return JSON.stringify({ format: 'nimboxcloud-hud-v1', layout: nxHudReadLayout() }, null, 2);
+  }
+  function nxHudImportLayout(raw) {
+    if (typeof raw !== 'string' || raw.length > 4096) return false;
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch (_) { return false; }
+    if (!parsed || parsed.format !== 'nimboxcloud-hud-v1' ||
+        !parsed.layout || typeof parsed.layout !== 'object' || Array.isArray(parsed.layout)) return false;
+    const ids = Object.keys(NX_HUD_DEFAULT);
+    if (Object.keys(parsed.layout).length !== ids.length ||
+        !ids.every(function (id) {
+          const pos = parsed.layout[id];
+          return Array.isArray(pos) && pos.length === 2 && pos.every(function (n) {
+            return Number.isFinite(n) && n >= 0 && n <= 100;
+          });
+        })) return false;
+    // Importação deve informar falha se o armazenamento recusar ou descartar a gravação.
+    const value = JSON.stringify(nxHudValidateLayout(parsed.layout));
+    try {
+      localStorage.setItem(NX_HUD_LAYOUT_KEY, value);
+      return localStorage.getItem(NX_HUD_LAYOUT_KEY) === value;
+    } catch (_) { return false; }
+  }
+  function nxHudSaveLayout(layout) {
+    const clean = nxHudValidateLayout(layout);
+    const value = JSON.stringify(clean);
+    try {
+      localStorage.setItem(NX_HUD_LAYOUT_KEY, value);
+      return localStorage.getItem(NX_HUD_LAYOUT_KEY) === value;
+    } catch (_) { return false; }
+  }
+  function nxHudNudge(layout, id, dx, dy) {
+    if (!layout || !Object.prototype.hasOwnProperty.call(NX_HUD_DEFAULT, id) ||
+        !Array.isArray(layout[id]) || !Number.isFinite(dx) || !Number.isFinite(dy)) return false;
+    const x = Math.max(5, Math.min(95, layout[id][0] + dx));
+    const y = Math.max(5, Math.min(95, layout[id][1] + dy));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    layout[id] = [x, y];
+    return true;
+  }
+  // Read-only discovery: accessibility labels are hints, not verified gameplay controls.
+  // Never reposition, intercept events, or retain DOM references from this probe.
+  function nxHudDomProbe() {
+    const result = { scanned: 0, candidates: 0, interactive: 0, visible: 0,
+      shadowRoots: 0, inaccessibleFrames: 0, truncated: false };
+    const pending = [document];
+    const pattern = /\b(?:left stick|right stick|joystick|thumbstick|d[\s-]?pad|trigger|bumper|touch control|virtual controller)\b/i;
+    // Walk incrementally: avoid querySelectorAll('*') allocating a full DOM snapshot.
+    while (pending.length && result.scanned < 1500) {
+      const root = pending.shift();
+      let walker;
+      try { walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT); }
+      catch (_) { continue; }
+      let el;
+      while (result.scanned < 1500 && (el = walker.nextNode())) {
+        result.scanned++;
+        if (el.shadowRoot) { result.shadowRoots++; pending.push(el.shadowRoot); }
+        if (el.tagName === 'IFRAME') {
+          try { if (el.contentDocument) pending.push(el.contentDocument); else result.inaccessibleFrames++; }
+          catch (_) { result.inaccessibleFrames++; }
+        }
+        // Ignore NimboXcloud's own controls; these are not native xCloud HUD elements.
+        if (el.closest && el.closest('#__xcu_panel__')) continue;
+        const label = (el.getAttribute('aria-label') || el.getAttribute('data-testid') || '').slice(0, 100);
+        if (!pattern.test(label)) continue;
+        result.candidates++;
+        const role = (el.getAttribute('role') || '').toLowerCase();
+        if (/^(?:button|slider|application|joystick)$/.test(role) ||
+            /^(?:BUTTON|INPUT)$/.test(el.tagName) || el.hasAttribute('tabindex'))
+          result.interactive++;
+        try {
+          const box = el.getBoundingClientRect();
+          if (box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== 'hidden')
+            result.visible++;
+        } catch (_) { /* Cross-document layout may be unavailable. */ }
+      }
+    }
+    result.truncated = result.scanned >= 1500;
+    return result;
+  }
+  // HUD nativo: aplicação conservadora, reversível e estritamente opt-in.
+  // Elementos sem rótulo inequívoco não são alterados.
+  const NX_HUD_NATIVE_KEY = 'nx.hud.native.enabled.v1';
+  const nxHudNativeOriginal = new Map();
+  const NX_HUD_NATIVE_LABELS = Object.freeze({
+    stickL: /^(?:left stick|left joystick|left thumbstick)$/i,
+    stickR: /^(?:right stick|right joystick|right thumbstick)$/i,
+    a: /^(?:a button|button a)$/i,
+    b: /^(?:b button|button b)$/i,
+    x: /^(?:x button|button x)$/i,
+    y: /^(?:y button|button y)$/i,
+    lt: /^(?:left trigger|lt button|button lt)$/i,
+    rt: /^(?:right trigger|rt button|button rt)$/i
+  });
+  function nxHudNativeEnabled() { return getPref(NX_HUD_NATIVE_KEY, '0') === '1'; }
+  function nxHudNativeRestore() {
+    nxHudNativeOriginal.forEach(function (style, node) {
+      try {
+        if (node && node.style) {
+          // Preserve changes made by the game or other scripts after our transform.
+          if (node.style.transform === style.appliedTransform &&
+              node.style.transformOrigin === style.appliedTransformOrigin) {
+            node.style.transform = style.transform;
+            node.style.transformOrigin = style.transformOrigin;
+          }
+        }
+      } catch (_) {}
+    });
+    nxHudNativeOriginal.clear();
+  }
+  function nxHudNativeCandidates() {
+    const found = Object.create(null);
+    const duplicates = new Set();
+    const roots = [document];
+    let scanned = 0;
+    while (roots.length && scanned < 1800) {
+      const root = roots.shift();
+      let walker;
+      try { walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT); }
+      catch (_) { continue; }
+      let node;
+      while ((node = walker.nextNode()) && scanned++ < 1800) {
+        if (node.shadowRoot) roots.push(node.shadowRoot);
+        if (node.closest && node.closest('#__xcu_panel__')) continue;
+        const label = (node.getAttribute('aria-label') || '').trim();
+        if (!label || label.length > 60) continue;
+        Object.keys(NX_HUD_NATIVE_LABELS).forEach(function (id) {
+          if (!NX_HUD_NATIVE_LABELS[id].test(label)) return;
+          // Rejeitar identificadores duplicados; não há destino inequívoco.
+          if (duplicates.has(id)) return;
+          if (Object.prototype.hasOwnProperty.call(found, id)) {
+            found[id] = null;
+            duplicates.add(id);
+          } else found[id] = node;
+        });
+      }
+    }
+    return found;
+  }
+  function nxHudNativeApply() {
+    nxHudNativeRestore();
+    if (!nxHudNativeEnabled() || !isInGame()) return { applied: 0, reason: 'inactive' };
+    const candidates = nxHudNativeCandidates();
+    const layout = nxHudReadLayout();
+    const scale = nxHudPreviewScale() / 100;
+    let applied = 0;
+    Object.keys(layout).forEach(function (id) {
+      const node = candidates[id];
+      if (!node || !node.style || !node.isConnected) return;
+      try {
+        const rect = node.getBoundingClientRect();
+        const viewportW = Math.max(1, window.innerWidth);
+        const viewportH = Math.max(1, window.innerHeight);
+        if (!rect.width || !rect.height) return;
+        // CSS transform desloca também a área de hit-test; não sintetiza eventos.
+        const dx = viewportW * layout[id][0] / 100 - (rect.left + rect.width / 2);
+        const dy = viewportH * layout[id][1] / 100 - (rect.top + rect.height / 2);
+        nxHudNativeOriginal.set(node, {
+          transform: node.style.transform, transformOrigin: node.style.transformOrigin
+        });
+        node.style.transformOrigin = 'center center';
+        node.style.transform = 'translate(' + Math.round(dx) + 'px,' + Math.round(dy) +
+          'px) scale(' + scale + ') ' + (nxHudNativeOriginal.get(node).transform || '');
+        const owned = nxHudNativeOriginal.get(node);
+        owned.appliedTransform = node.style.transform;
+        owned.appliedTransformOrigin = node.style.transformOrigin;
+        applied++;
+      } catch (_) {}
+    });
+    return { applied: applied, reason: applied ? 'mapped' : 'no-safe-match' };
+  }
+  // Reutiliza o monitor de rota existente (1,5 s): sem MutationObserver global.
+  // Reaplica apenas quando o perfil, a escala ou os elementos nativos mudam.
+  let nxHudNativeSignature = '';
+  let nxHudNativeNodes = Object.create(null);
+  function nxHudNativeSync() {
+    if (!nxHudNativeEnabled() || !isInGame()) {
+      if (nxHudNativeOriginal.size) nxHudNativeRestore();
+      nxHudNativeSignature = '';
+      nxHudNativeNodes = Object.create(null);
+      return;
+    }
+    const candidates = nxHudNativeCandidates();
+    const layout = nxHudReadLayout();
+    const signature = JSON.stringify([layout, nxHudPreviewScale(), nxHudCurrentGameId()]);
+    const ids = Object.keys(layout);
+    const changed = signature !== nxHudNativeSignature || ids.some(function (id) {
+      return (nxHudNativeNodes[id] || null) !== (candidates[id] || null);
+    });
+    if (!changed) return;
+    nxHudNativeSignature = signature;
+    nxHudNativeNodes = candidates;
+    nxHudNativeApply();
+  }
+  function nxHudNativeSetEnabled(enabled) {
+    try {
+      setPref(NX_HUD_NATIVE_KEY, enabled ? '1' : '0');
+      nxHudNativeSignature = '';
+      if (!enabled) {
+        nxHudNativeRestore();
+        nxHudNativeNodes = Object.create(null);
+      } else nxHudNativeSync();
+      return nxHudNativeEnabled() === !!enabled;
+    } catch (_) { nxHudNativeRestore(); return false; }
+  }
+  const NX_HUD_PREVIEW_SCALE_KEY = 'nx.hud.editor.previewScale.v1';
+  function nxHudPreviewScale() {
+    const value = Number(getPref(NX_HUD_PREVIEW_SCALE_KEY, '100'));
+    return Number.isFinite(value) ? Math.max(60, Math.min(160, Math.round(value))) : 100;
+  }
+  function nxHudSavePreviewScale(value) {
+    const scale = Number(value);
+    if (!Number.isFinite(scale) || scale < 60 || scale > 160) return false;
+    const stored = String(Math.round(scale));
+    try {
+      localStorage.setItem(NX_HUD_PREVIEW_SCALE_KEY, stored);
+      return localStorage.getItem(NX_HUD_PREVIEW_SCALE_KEY) === stored;
+    } catch (_) { return false; }
+  }
+  function nxHudEditor() {
+    const layout = nxHudReadLayout();
+    const outer = mk('div', 'display:flex;flex-direction:column;gap:8px;width:100%');
+    const stage = mk('div', 'position:relative;width:100%;aspect-ratio:16/9;min-height:175px;touch-action:none;user-select:none;overflow:hidden;border-radius:10px;border:1px solid ' + C.line + ';background:rgba(80,120,130,.12)');
+    const scaleRow = mk('div', 'display:flex;align-items:center;gap:10px;flex-wrap:wrap');
+    const scaleLabel = mk('label', 'font-size:12px;color:' + C.dim, 'Tamanho da prévia: ' + nxHudPreviewScale() + '%');
+    const scaleInput = document.createElement('input');
+    scaleInput.type = 'range';
+    scaleInput.min = '60';
+    scaleInput.max = '160';
+    scaleInput.step = '5';
+    scaleInput.value = String(nxHudPreviewScale());
+    scaleInput.setAttribute('aria-label', 'Tamanho dos botões na prévia');
+    scaleRow.appendChild(scaleLabel);
+    scaleRow.appendChild(scaleInput);
+    outer.appendChild(scaleRow);
+    const previewNodes = [];
+    scaleInput.addEventListener('change', function () {
+      if (!nxHudSavePreviewScale(scaleInput.value)) {
+        scaleInput.value = String(nxHudPreviewScale());
+        toast('Não foi possível salvar o tamanho da prévia');
+      }
+      const scale = nxHudPreviewScale();
+      scaleLabel.textContent = 'Tamanho da prévia: ' + scale + '%';
+      previewNodes.forEach(function (node) {
+        node.style.width = Math.round(35 * scale / 100) + 'px';
+        node.style.height = Math.round(35 * scale / 100) + 'px';
+      });
+    });
+    const labels = { stickL:'L', stickR:'R', a:'A', b:'B', x:'X', y:'Y', lt:'LT', rt:'RT' };
+    Object.keys(layout).forEach(function (id) {
+      const node = mk('button', 'position:absolute;transform:translate(-50%,-50%);min-width:35px;height:35px;border-radius:50%;border:1px solid ' + C.accent + ';background:rgba(15,28,30,.85);color:' + C.text + ';font-size:11px;font-weight:700;touch-action:none;cursor:grab', labels[id]);
+      node.type = 'button';
+      node.style.width = Math.round(35 * nxHudPreviewScale() / 100) + 'px';
+      node.style.height = Math.round(35 * nxHudPreviewScale() / 100) + 'px';
+      previewNodes.push(node);
+      node.style.left = layout[id][0] + '%';
+      node.style.top = layout[id][1] + '%';
+      node.setAttribute('aria-label', 'Mover ' + labels[id] + ' com as setas do teclado');
+      node.setAttribute('title', 'Setas: 1% | Shift + setas: 5%');
+      let dragStart = null;
+      let pointerStart = null;
+      let activePointerId = null;
+      node.addEventListener('keydown', function (e) {
+        const moves = { ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+          ArrowUp: [0, -1], ArrowDown: [0, 1] };
+        if (!Object.prototype.hasOwnProperty.call(moves, e.key)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const step = e.shiftKey ? 5 : 1;
+        const delta = moves[e.key];
+        const previousPosition = layout[id].slice();
+        if (nxHudNudge(layout, id, delta[0] * step, delta[1] * step)) {
+          node.style.left = layout[id][0] + '%';
+          node.style.top = layout[id][1] + '%';
+          if (!nxHudSaveLayout(layout)) {
+            layout[id] = previousPosition;
+            node.style.left = previousPosition[0] + '%';
+            node.style.top = previousPosition[1] + '%';
+            toast('Não foi possível salvar a posição do HUD');
+          }
+        }
+      });
+      node.addEventListener('pointerdown', function (e) {
+        if (!e.isPrimary || activePointerId !== null) return;
+        e.stopPropagation();
+        e.preventDefault();
+        dragStart = layout[id].slice();
+        pointerStart = [e.clientX, e.clientY];
+        try { node.setPointerCapture(e.pointerId); }
+        catch (_) {
+          // A captura pode falhar quando o navegador cancela o gesto.
+          dragStart = null;
+          pointerStart = null;
+          return;
+        }
+        activePointerId = e.pointerId;
+        node.style.cursor = 'grabbing';
+      });
+      node.addEventListener('pointermove', function (e) {
+        if (activePointerId !== e.pointerId || !node.hasPointerCapture(e.pointerId)) return;
+        const bounds = stage.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return;
+        // Move relative to the initial pointer position, preserving the button's grab offset.
+        if (!dragStart || !pointerStart) return;
+        const x = Math.max(5, Math.min(95, Math.round(dragStart[0] + (e.clientX - pointerStart[0]) / bounds.width * 100)));
+        const y = Math.max(5, Math.min(95, Math.round(dragStart[1] + (e.clientY - pointerStart[1]) / bounds.height * 100)));
+        layout[id] = [x, y];
+        node.style.left = x + '%';
+        node.style.top = y + '%';
+      });
+      function finish(e) {
+        if (activePointerId !== e.pointerId) return;
+        // Finaliza o estado antes de liberar a captura: lostpointercapture pode disparar logo depois.
+        activePointerId = null;
+        if (node.hasPointerCapture(e.pointerId)) node.releasePointerCapture(e.pointerId);
+        node.style.cursor = 'grab';
+        if (e.type === 'pointercancel' && dragStart) {
+          layout[id] = dragStart;
+          node.style.left = dragStart[0] + '%';
+          node.style.top = dragStart[1] + '%';
+        } else if (!nxHudSaveLayout(layout)) {
+          // Do not leave an unsaved position visible or available for profile export.
+          const saved = nxHudReadLayout()[id];
+          layout[id] = saved.slice();
+          node.style.left = saved[0] + '%';
+          node.style.top = saved[1] + '%';
+          toast('Não foi possível salvar a posição do HUD');
+        }
+        dragStart = null;
+        pointerStart = null;
+      }
+      node.addEventListener('pointerup', finish);
+      node.addEventListener('pointercancel', finish);
+      node.addEventListener('lostpointercapture', function () {
+        // Perda inesperada de captura não deve persistir um arrasto incompleto.
+        if (!dragStart || activePointerId === null) return;
+        activePointerId = null;
+        layout[id] = dragStart.slice();
+        node.style.left = dragStart[0] + '%';
+        node.style.top = dragStart[1] + '%';
+        node.style.cursor = 'grab';
+        dragStart = null;
+        pointerStart = null;
+      });
+      stage.appendChild(node);
+    });
+    outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
+      'EDITOR DE PRÉVIA — as posições abaixo ainda não movem os botões reais do Xbox Cloud Gaming.'));
+    outer.appendChild(stage);
+    const nativeStatus = mk('div', 'font-size:11px;color:' + C.dim,
+      'HUD nativo: integração experimental por rótulos de acessibilidade. Sem correspondência segura, nenhum botão será alterado.');
+    outer.appendChild(nativeStatus);
+    outer.appendChild(actBtn(nxHudNativeEnabled() ? 'Desativar integração nativa' : 'Ativar integração nativa (experimental)', function () {
+      const next = !nxHudNativeEnabled();
+      if (next && !window.confirm('Ativar reposicionamento experimental dos botões nativos identificados? A opção pode ser desativada para restaurar o layout original.')) return;
+      if (!nxHudNativeSetEnabled(next)) { toast('Falha ao alterar integração nativa'); return; }
+      const status = next ? nxHudNativeApply() : { applied: 0, reason: 'inactive' };
+      toast(next ? 'HUD nativo: ' + status.applied + ' controles identificados' : 'HUD nativo restaurado');
+      renderBody();
+    }, 'ghost'));
+    if (nxHudNativeEnabled()) outer.appendChild(actBtn('Aplicar posições ao HUD nativo', function () {
+      const status = nxHudNativeApply();
+      toast(status.applied ? status.applied + ' controles reposicionados' : 'Nenhum controle nativo identificado com segurança');
+    }, 'ghost'));
+    outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
+      'Acessibilidade: selecione um botão e use as setas para mover 1%; Shift + setas move 5%. Arrastos cancelados são revertidos.'));
+    const reset = actBtn('Restaurar posições', function () {
+      if (!nxHudSaveLayout(NX_HUD_DEFAULT)) { toast('Não foi possível restaurar o layout'); return; }
+      renderBody();
+      toast('Layout de prévia restaurado');
+    }, 'ghost');
+    outer.appendChild(reset);
+    outer.appendChild(actBtn('Salvar perfil', function () {
+      const name = window.prompt('Nome do perfil de HUD (até 32 caracteres):');
+      if (name === null) return;
+      toast(nxHudProfileSave(name) ? 'Perfil salvo' : 'Nome inválido ou limite de 20 perfis atingido');
+      renderBody();
+    }));
+    const profiles = nxHudProfilesRead();
+    const names = Object.keys(profiles).sort();
+    const gameId = nxHudCurrentGameId();
+    outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
+      gameId ? 'Jogo identificado na URL: ' + gameId :
+        'Jogo não identificado na URL. Associação automática indisponível nesta página.'));
+    if (names.length) {
+      const selection = mk('select', 'width:100%;padding:9px;border-radius:8px;background:' + C.panel + ';color:' + C.text + ';border:1px solid ' + C.line);
+      names.forEach(function (name) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        selection.appendChild(option);
+      });
+      outer.appendChild(selection);
+      if (gameId) {
+        outer.appendChild(actBtn('Associar ao jogo atual', function () {
+          toast(nxHudBindGame(gameId, selection.value) ?
+            'Perfil associado a este jogo (prévia)' : 'Não foi possível associar o perfil');
+        }));
+        outer.appendChild(actBtn('Remover associação do jogo', function () {
+          toast(nxHudUnbindGame(gameId) ? 'Associação removida' : 'Sem associação para este jogo');
+        }));
+      }
+      outer.appendChild(actBtn('Carregar perfil', function () {
+        if (nxHudProfileLoad(selection.value)) { renderBody(); toast('Perfil carregado'); }
+      }));
+      outer.appendChild(actBtn('Excluir perfil', function () {
+        if (!window.confirm('Excluir o perfil "' + selection.value + '"?')) return;
+        if (nxHudProfileDelete(selection.value)) { renderBody(); toast('Perfil excluído'); }
+      }, 'danger'));
+    }
+    outer.appendChild(actBtn('Exportar backup completo', function () {
+      const value = nxHudExportBackup();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(function () {
+          toast('Backup de HUD copiado');
+        }).catch(function () { window.prompt('Copie o backup JSON:', value); });
+      } else window.prompt('Copie o backup JSON:', value);
+    }));
+    outer.appendChild(actBtn('Restaurar backup completo', function () {
+      const value = window.prompt('Cole o backup JSON de HUD (substitui layout, perfis e associações):');
+      if (value === null) return;
+      if (!window.confirm('Substituir todos os perfis, associações e posições atuais de HUD?')) return;
+      if (!nxHudImportBackup(value)) { toast('Backup inválido; nenhuma alteração realizada'); return; }
+      renderBody();
+      toast('Backup de HUD restaurado');
+    }, 'danger'));
+    const exportButton = actBtn('Exportar layout', function () {
+      const value = nxHudExportLayout();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(function () {
+          toast('Layout copiado para a área de transferência');
+        }).catch(function () { window.prompt('Copie o layout JSON:', value); });
+      } else window.prompt('Copie o layout JSON:', value);
+    });
+    outer.appendChild(exportButton);
+    outer.appendChild(actBtn('Importar layout', function () {
+      const value = window.prompt('Cole o layout JSON exportado:');
+      if (value === null) return;
+      if (!nxHudImportLayout(value)) { toast('Layout inválido; nenhuma alteração realizada'); return; }
+      renderBody();
+      toast('Layout importado');
+    }));
+    return outer;
+  }
+  // Aplica somente a prévia local, nunca os botões reais do xCloud.
+  nxHudAutoLoadGame();
+  // Descoberta xHome: utiliza somente credenciais locais da sessão Xbox autenticada.
+  // Não substitui a negociação WebRTC/ICE nem cria uma sessão Remote Play.
+  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:'', peer:null, mediaStream:null, videoElement:null, iceTimer:null};
+  function nxRemoteGssvToken() {
+    try { const v=JSON.parse(localStorage.getItem('xboxcom_xbl_user_info')||'null');
+      const t=v && v.tokens && v.tokens['http://gssv.xboxlive.com/'];
+      if(t && typeof t.token==='string' && t.token && (!t.expiration || Date.parse(t.expiration)>Date.now())) return t.token; } catch (_) {}
+    try { for(let i=0;i<localStorage.length;i++) { const k=localStorage.key(i);
+      if(!k || !k.startsWith('Auth.User.')) continue;
+      const u=JSON.parse(localStorage.getItem(k)||'null');
+      for(const t of (u && Array.isArray(u.tokens)?u.tokens:[])) {
+        if(!/^https?:\/\/gssv\.xboxlive\.com\/?$/i.test(String(t.relyingParty||''))) continue;
+        if(t.tokenData && t.tokenData.token && new Date(t.tokenData.expiration)>new Date()) return t.tokenData.token;
+      }
+    }} catch (_) {} return '';
+  }
+  function nxRemoteStop() {
+    nxRemotePlay.requestId++;
+    if(nxRemotePlay.abortController)nxRemotePlay.abortController.abort();
+    nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
+    if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
+    if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
+    if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){}}
+    if(nxRemotePlay.mediaStream){try{nxRemotePlay.mediaStream.getTracks().forEach(function(t){t.stop();});}catch(_){}nxRemotePlay.mediaStream=null;}
+    nxRemotePlay.sessionStatus='stopped';nxRemotePlay.sessionId='';nxRemotePlay.status='Reprodução local encerrada';nxRemotePlay.error='';
+    if(tabId==='remote')renderBody();
+  }
+  function nxRemoteCancel() {
+    if(!nxRemotePlay.busy)return;
+    nxRemotePlay.requestId++;
+    if(nxRemotePlay.abortController) nxRemotePlay.abortController.abort();
+    nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
+    nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';nxRemotePlay.regionShortName='';nxRemotePlay.checkedAt=0;nxRemotePlay.attempts=[];
+    if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
+    if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
+    if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){}}
+    if(nxRemotePlay.mediaStream){try{nxRemotePlay.mediaStream.getTracks().forEach(function(t){t.stop();});}catch(_){}nxRemotePlay.mediaStream=null;}
+    nxRemotePlay.status=nxRemotePlay.sessionStatus==='authenticating'||nxRemotePlay.sessionStatus==='requesting'?'Operação cancelada':'Consulta cancelada';nxRemotePlay.error='';nxRemotePlay.sessionStatus='cancelled';nxRemotePlay.sessionId='';
+    if(tabId==='remote') renderBody();
+  }
+  async function nxRemoteDiscover() {
+    if(nxRemotePlay.busy) return;
+    const requestId=++nxRemotePlay.requestId;
+    const controller=new AbortController();
+    nxRemotePlay.abortController=controller;
+    const timeout=setTimeout(function(){controller.abort();},15000);
+    nxRemotePlay.busy=true;nxRemotePlay.error='';nxRemotePlay.attempts=[];nxRemotePlay.region='';nxRemotePlay.regionShortName='';
+    // Invalidate stale consoles before any authentication/network request.
+    nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.checkedAt=0;
+    nxRemotePlay.status='Consultando consoles vinculados…';
+    if(tabId==='remote') renderBody();
+    try {
+      const token=nxRemoteGssvToken();
+      if(!token) throw new Error('Credencial Xbox GSSV não encontrada. Entre na sua conta Xbox e recarregue.');
+      const auth=await fetch('https://xhome.gssv-play-prod.xboxlive.com/v2/login/user',{
+        method:'POST',headers:{'Content-Type':'application/json; charset=utf-8'},
+        body:JSON.stringify({offeringId:'xhome',token:token}),signal:controller.signal,redirect:'error'});
+      if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+      if(!auth.ok) throw new Error('Login xHome recusado (HTTP '+auth.status+').');
+      const login=await auth.json();
+      if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+      if(!login || typeof login.gsToken!=='string' || !login.gsToken || !login.offeringSettings || !Array.isArray(login.offeringSettings.regions))
+        throw new Error('Resposta xHome incompleta.');
+      const regions=login.offeringSettings.regions.slice().sort(function(a,b){return Number(!!(b && b.isDefault))-Number(!!(a && a.isDefault));});
+      let found=[];
+      let successfulRegions=0;
+      for(const region of regions) {
+        if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+        if(!region || typeof region.baseUri!=='string') {nxRemotePlay.attempts.push('Região ignorada: configuração inválida');continue;}
+        // Do not send the xHome bearer token to an untrusted origin from a malformed region response.
+        let regionOrigin;
+        try { const u=new URL(region.baseUri);if(u.protocol!=='https:' || u.username || u.password || !/(^|\.)xboxlive\.com$/i.test(u.hostname)) {nxRemotePlay.attempts.push('Região ignorada: origem não autorizada');continue;}regionOrigin=u.origin; }
+        catch (_) {nxRemotePlay.attempts.push('Região ignorada: endereço inválido');continue;}
+        try { const res=await fetch(regionOrigin+'/v6/servers/home?mr=50',{
+          headers:{Authorization:'Bearer '+login.gsToken},signal:controller.signal,redirect:'error'});
+          if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+          if(res.status===401 || res.status===403) throw new Error('Acesso xHome negado (HTTP '+res.status+'). Faça login novamente na conta Xbox.');
+          if(!res.ok) {nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': HTTP '+res.status);continue;}
+          const json=await res.json();
+          if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+          if(!json || !Array.isArray(json.results)) {nxRemotePlay.attempts.push('Resposta sem lista de consoles');continue;}
+          successfulRegions++;
+          nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': '+json.results.length+' console(s)');
+          if(json.results.length){found=json.results;nxRemotePlay.region=String(region.name||region.shortName||region.baseUri);nxRemotePlay.regionShortName=String(region.shortName||'').toLowerCase();break;}
+        } catch (e) {if(requestId!==nxRemotePlay.requestId || controller.signal.aborted || (e && /^Acesso xHome negado/.test(String(e.message)))) throw e;nxRemotePlay.attempts.push('Região indisponível: '+String(e && e.name||'erro'));}
+      }
+      if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
+      if(!successfulRegions) throw new Error('Não foi possível consultar nenhuma região xHome. Verifique conexão, CORS e autenticação.');
+      nxRemotePlay.consoles=found.filter(function(c){return c && typeof c.serverId==='string' && c.serverId.length>0;}).map(function(c){return {id:c.serverId,name:String(c.deviceName||c.name||c.serverName||'Xbox'),type:String(c.consoleType||'Xbox'),state:String(c.powerState||c.state||'Unknown')};});
+      nxRemotePlay.status=nxRemotePlay.consoles.length?nxRemotePlay.consoles.length+' console(s) encontrado(s)':'Nenhum console vinculado encontrado';
+      if(!nxRemotePlay.consoles.some(function(c){return c.id===nxRemotePlay.selectedId;})) nxRemotePlay.selectedId='';
+      nxRemotePlay.checkedAt=Date.now();
+    } catch(e) {
+      if(requestId!==nxRemotePlay.requestId) return;
+      // Never retain a previously discovered console after an auth or network failure.
+      nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';
+      nxRemotePlay.error=controller.signal.aborted?'Tempo limite de 15 segundos excedido.':String(e && e.message||e);nxRemotePlay.status='Falha na consulta';
+    }
+    finally {clearTimeout(timeout);if(requestId===nxRemotePlay.requestId){nxRemotePlay.busy=false;nxRemotePlay.abortController=null;if(tabId==='remote')renderBody();}}
+  }
+  // xHome session bootstrap: explicit user action, no persistent tokens or SDP logging.
+  async function nxRemoteStartSession() {
+    if(nxRemotePlay.busy || !nxRemotePlay.selectedId) return;
+    const serverId=nxRemotePlay.selectedId;
+    if(!nxRemotePlay.consoles.some(function(c){return c.id===serverId;})) return;
+    const region=nxRemotePlay.regionShortName;
+    if(!/^[a-z0-9]{2,12}$/.test(region)) {
+      nxRemotePlay.error='Região xHome sem identificador confiável. Atualize a lista de consoles.';
+      if(tabId==='remote')renderBody();
+      return;
+    }
+    const controller=new AbortController(), requestId=++nxRemotePlay.requestId;
+    nxRemotePlay.busy=true;nxRemotePlay.abortController=controller;
+    nxRemotePlay.error='';nxRemotePlay.sessionStatus='authenticating';nxRemotePlay.sessionId='';
+    nxRemotePlay.status='Autenticando sessão xHome…';
+    const timeout=setTimeout(function(){controller.abort();},20000);
+    const check=function(){if(requestId!==nxRemotePlay.requestId || controller.signal.aborted)throw new Error('Operação cancelada');};
+    try {
+      const token=nxRemoteGssvToken();
+      if(!token)throw new Error('Credencial GSSV ausente ou expirada.');
+      const auth=await fetch('https://xhome.gssv-play-prod.xboxlive.com/v2/login/user',{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({offeringId:'xhome',token:token}),signal:controller.signal,redirect:'error'
+      });
+      check();
+      if(!auth.ok)throw new Error('Login xHome HTTP '+auth.status);
+      const login=await auth.json();check();
+      if(!login || typeof login.gsToken!=='string' || !login.gsToken)throw new Error('Credencial de sessão xHome inválida.');
+      const base='https://'+region+'.core.gssv-play-prodxhome.xboxlive.com';
+      const deviceInfo=JSON.stringify({
+        appInfo:{env:{clientAppId:'Microsoft.GamingApp',clientAppType:'native',clientAppVersion:'2203.1001.4.0',clientSdkVersion:'8.5.2',httpEnvironment:'prod',sdkInstallId:''}},
+        dev:{hw:{make:'Microsoft',model:'Surface Pro',sdktype:'native'},os:{name:'Windows 11',ver:'22631.2715',platform:'desktop'},displayInfo:{dimensions:{widthInPixels:1920,heightInPixels:1080},pixelDensity:{dpiX:1,dpiY:1}}}
+      });
+      nxRemotePlay.sessionStatus='requesting';nxRemotePlay.status='Solicitando sessão ao console…';
+      if(tabId==='remote')renderBody();
+      const play=await fetch(base+'/v5/sessions/home/play',{
+        method:'POST',redirect:'error',signal:controller.signal,
+        headers:{'Content-Type':'application/json','X-MS-Device-Info':deviceInfo,Authorization:'Bearer '+login.gsToken},
+        body:JSON.stringify({clientSessionId:'',titleId:'',systemUpdateGroup:'',settings:{nanoVersion:'V3;WebrtcTransport.dll',enableTextToSpeech:false,highContrast:0,locale:navigator.language||'pt-BR',useIceConnection:false,timezoneOffsetMinutes:new Date().getTimezoneOffset(),sdkType:'web',osName:'windows'},serverId:serverId,fallbackRegionNames:[]})
+      });
+      check();
+      if(!play.ok)throw new Error('Criação de sessão recusada (HTTP '+play.status+').');
+      const response=await play.json();check();
+      if(!response || typeof response.sessionId!=='string' || !/^[a-z0-9-]{8,80}$/i.test(response.sessionId))throw new Error('Resposta de sessão inválida.');
+      nxRemotePlay.sessionId=response.sessionId;
+      nxRemotePlay.sessionStatus='provisioning';
+      nxRemotePlay.status='Aguardando provisionamento do Xbox…';
+      if(tabId==='remote')renderBody();
+      const sessionUrl=base+'/v5/sessions/home/'+encodeURIComponent(response.sessionId);
+      let ready=false;
+      for(let attempt=0;attempt<12;attempt++){
+        check();
+        const stateResponse=await fetch(sessionUrl+'/state',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});
+        check();
+        if(!stateResponse.ok)throw new Error('Consulta de estado xHome recusada (HTTP '+stateResponse.status+').');
+        const state=await stateResponse.json();check();
+        if(state && state.state==='Provisioned'){ready=true;break;}
+        if(!state || state.state!=='Provisioning')throw new Error('Sessão xHome não provisionada: '+String(state && state.state||'resposta inválida').slice(0,80));
+        await new Promise(function(resolve,reject){
+          const timer=setTimeout(function(){controller.signal.removeEventListener('abort',onAbort);resolve();},1000);
+          function onAbort(){clearTimeout(timer);reject(new Error('Operação cancelada'));}
+          controller.signal.addEventListener('abort',onAbort,{once:true});
+          if(controller.signal.aborted)onAbort();
+        });
+      }
+      check();
+      if(!ready)throw new Error('Xbox não ficou pronto após 12 consultas de estado.');
+      nxRemotePlay.sessionStatus='provisioned';
+      nxRemotePlay.status='Xbox provisionado. Preparando negociação WebRTC…';
+      if(typeof RTCPeerConnection==='function'){
+        const peer=new RTCPeerConnection();
+        nxRemotePlay.peer=peer;
+        if(typeof MediaStream==='function'){
+          const stream=new MediaStream();
+          nxRemotePlay.mediaStream=stream;
+          peer.ontrack=function(event){
+            if(requestId!==nxRemotePlay.requestId)return;
+            const tracks=event.streams&&event.streams[0]?event.streams[0].getTracks():[event.track];
+            for(const track of tracks)if(track && !stream.getTracks().some(function(t){return t.id===track.id;}))stream.addTrack(track);
+            if(nxRemotePlay.videoElement){
+              nxRemotePlay.videoElement.srcObject=stream;
+              nxRemotePlay.videoElement.play().catch(function(){});
+            }
+            if(tabId==='remote')renderBody();
+          };
+        }
+        const localIceCandidates=[];
+        let iceSend=null;
+        let iceSendChain=Promise.resolve();
+        peer.onicecandidate=function(event){
+          if(!event || !event.candidate || requestId!==nxRemotePlay.requestId || controller.signal.aborted)return;
+          const c=event.candidate;
+          const candidate={candidate:c.candidate,sdpMid:c.sdpMid,sdpMLineIndex:c.sdpMLineIndex};
+          if(iceSend){
+            iceSendChain=iceSendChain.then(function(){return iceSend(candidate);}).catch(function(){
+              if(requestId===nxRemotePlay.requestId){nxRemotePlay.status='Falha no envio de candidato ICE';if(tabId==='remote')renderBody();}
+            });
+          }else localIceCandidates.push(candidate);
+        };
+        peer.addTransceiver('audio',{direction:'recvonly'});
+        peer.addTransceiver('video',{direction:'recvonly'});
+        peer.createDataChannel('input',{ordered:false,maxRetransmits:0});
+        const offer=await peer.createOffer();check();
+        await peer.setLocalDescription(offer);check();
+        const exchange=await fetch(sessionUrl+'/sdp',{
+          method:'POST',redirect:'error',signal:controller.signal,
+          headers:{'Accept':'application/json','Content-Type':'application/json',Authorization:'Bearer '+login.gsToken},
+          body:JSON.stringify({messageType:'offer',sdp:peer.localDescription.sdp,configuration:{
+            chatConfiguration:{bytesPerSample:2,expectedClipDurationMs:20,format:{codec:'opus',container:'webm'},numChannels:1,sampleFrequencyHz:24000},
+            chat:{minVersion:1,maxVersion:1},control:{minVersion:1,maxVersion:3},input:{minVersion:1,maxVersion:8},message:{minVersion:1,maxVersion:1}
+          }})
+        });check();
+        if(!exchange.ok)throw new Error('Envio SDP xHome recusado (HTTP '+exchange.status+').');
+        nxRemotePlay.sessionStatus='negotiating';
+        nxRemotePlay.status='Aguardando resposta SDP do Xbox…';
+        if(tabId==='remote')renderBody();
+        let answer=null;
+        for(let attempt=0;attempt<8;attempt++){
+          check();
+          const res=await fetch(sessionUrl+'/sdp',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});check();
+          if(!res.ok)throw new Error('Consulta SDP recusada (HTTP '+res.status+').');
+          const payload=await res.json();check();
+          if(payload && typeof payload.exchangeResponse==='string' && payload.exchangeResponse){
+            let parsed;
+            try{parsed=JSON.parse(payload.exchangeResponse);}catch(_){throw new Error('Resposta SDP inválida.');}
+            if(parsed && parsed.sdpType==='answer' && typeof parsed.sdp==='string' && parsed.sdp){answer=parsed.sdp;break;}
+            if(parsed && parsed.status==='failed')throw new Error('Negociação SDP recusada pelo Xbox.');
+          }
+          await new Promise(function(resolve,reject){
+            const timer=setTimeout(function(){controller.signal.removeEventListener('abort',onAbort);resolve();},500);
+            function onAbort(){clearTimeout(timer);reject(new Error('Operação cancelada'));}
+            controller.signal.addEventListener('abort',onAbort,{once:true});
+            if(controller.signal.aborted)onAbort();
+          });
+        }
+        check();
+        if(!answer)throw new Error('Resposta SDP não recebida.');
+        await peer.setRemoteDescription({type:'answer',sdp:answer});check();
+        nxRemotePlay.sessionStatus='sdp-ready';
+        nxRemotePlay.status='SDP negociado. Preparando candidatos ICE…';
+        // ICE candidates may arrive before or after the SDP answer.
+        iceSend=async function(candidate){
+          check();
+          const res=await fetch(sessionUrl+'/ice',{
+            method:'POST',redirect:'error',signal:controller.signal,
+            headers:{'Content-Type':'application/json',Authorization:'Bearer '+login.gsToken},
+            body:JSON.stringify({candidate:JSON.stringify(candidate)})
+          });check();
+          if(!res.ok)throw new Error('Envio ICE recusado (HTTP '+res.status+').');
+        };
+        // Remote candidates are accepted only as valid candidate objects.
+        const iceRes=await fetch(sessionUrl+'/ice',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});check();
+        if(!iceRes.ok)throw new Error('Consulta ICE recusada (HTTP '+iceRes.status+').');
+        const iceData=await iceRes.json();check();
+        const remoteList=Array.isArray(iceData)?iceData:Array.isArray(iceData&&iceData.candidates)?iceData.candidates:[];
+        for(const entry of remoteList){
+          check();
+          let candidate=entry;
+          if(typeof candidate==='string'){try{candidate=JSON.parse(candidate);}catch(_){continue;}}
+          if(candidate && typeof candidate.candidate==='string' && candidate.candidate.length<8192){
+            await peer.addIceCandidate(candidate);check();
+          }
+        }
+        for(const candidate of localIceCandidates){await iceSend(candidate);}
+        localIceCandidates.length=0;
+        const remoteSeen=new Set(remoteList.map(function(c){return JSON.stringify(c);}));
+        let icePollCount=0;
+        const pollIce=async function(){
+          if(requestId!==nxRemotePlay.requestId || !nxRemotePlay.peer || peer.connectionState==='closed' || peer.connectionState==='failed' || peer.connectionState==='connected' || icePollCount++>=30)return;
+          try{
+            const res=await fetch(sessionUrl+'/ice',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});
+            if(requestId!==nxRemotePlay.requestId)return;
+            if(!res.ok)throw new Error('HTTP '+res.status);
+            const payload=await res.json();
+            if(requestId!==nxRemotePlay.requestId)return;
+            const entries=Array.isArray(payload)?payload:Array.isArray(payload&&payload.candidates)?payload.candidates:[];
+            for(const entry of entries){
+              const key=JSON.stringify(entry);
+              if(remoteSeen.has(key))continue;
+              remoteSeen.add(key);
+              let c=entry;
+              if(typeof c==='string'){try{c=JSON.parse(c);}catch(_){continue;}}
+              if(c && typeof c.candidate==='string' && c.candidate.length<8192)await peer.addIceCandidate(c);
+            }
+          }catch(e){
+            if(requestId===nxRemotePlay.requestId){nxRemotePlay.status='ICE: '+String(e&&e.message||e);if(tabId==='remote')renderBody();}
+          }
+          if(requestId===nxRemotePlay.requestId && !controller.signal.aborted && (peer.connectionState==='new'||peer.connectionState==='connecting'))nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
+        };
+        if(peer.connectionState==='new'||peer.connectionState==='connecting')nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
+        nxRemotePlay.sessionStatus='ice-pending';
+        nxRemotePlay.status='Candidatos ICE processados; aguardando conexão WebRTC.';
+        peer.onconnectionstatechange=function(){
+          if(requestId!==nxRemotePlay.requestId)return;
+          if(peer.connectionState==='connected'){
+            nxRemotePlay.sessionStatus='connected';
+            nxRemotePlay.status='WebRTC conectado; aguardando trilhas de mídia e integração de controles.';
+            if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
+          }else if(peer.connectionState==='failed'||peer.connectionState==='closed'){
+            nxRemotePlay.sessionStatus='disconnected';
+            nxRemotePlay.status='Conexão WebRTC '+peer.connectionState+'.';
+          }
+          if(tabId==='remote')renderBody();
+        };
+      }else{
+        nxRemotePlay.status='Xbox provisionado; WebRTC indisponível neste navegador.';
+      }
+    }catch(e){
+      if(requestId!==nxRemotePlay.requestId)return;
+      if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
+    if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
+      if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){} }
+      nxRemotePlay.mediaStream=null;
+      nxRemotePlay.sessionStatus='failed';
+      nxRemotePlay.error=controller.signal.aborted?'Tempo limite da sessão (20 s).':String(e && e.message||e);
+      nxRemotePlay.status='Falha ao criar sessão';
+    }finally{
+      clearTimeout(timeout);
+      if(requestId===nxRemotePlay.requestId){nxRemotePlay.busy=false;nxRemotePlay.abortController=null;if(tabId==='remote')renderBody();}
+    }
+  }
+  const TAB_BUILDERS = {
+    remote: function(root) {
+      root.appendChild(mk('div','font-size:19px;font-weight:750;margin-bottom:6px','Remote Play · Xbox em casa'));
+      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:14px','Consulta seus consoles vinculados usando a autenticação Xbox atual. A transmissão Remote Play ainda não está implementada.'));
+      const btn=mk('button','cursor:pointer;padding:10px 14px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.busy?'Consultando…':'Buscar meus consoles');
+      btn.disabled=nxRemotePlay.busy;btn.addEventListener('click',function(e){e.stopPropagation();nxRemoteDiscover();});root.appendChild(btn);
+      if(nxRemotePlay.busy){const cancel=mk('button','cursor:pointer;padding:10px 14px;margin-left:8px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,'Cancelar');cancel.addEventListener('click',function(e){e.stopPropagation();nxRemoteCancel();});root.appendChild(cancel);}
+      root.appendChild(mk('div','font-size:12px;margin:12px 0;color:'+(nxRemotePlay.error?C.bad:C.dim),nxRemotePlay.error||nxRemotePlay.status));
+      if(nxRemotePlay.region) root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:5px','Região xHome: '+nxRemotePlay.region));
+      if(nxRemotePlay.checkedAt) root.appendChild(mk('div','font-size:10px;color:'+C.dim+';margin-bottom:8px','Última consulta: '+new Date(nxRemotePlay.checkedAt).toLocaleTimeString()));
+      if(nxRemotePlay.attempts.length) {const details=mk('details','font-size:11px;color:'+C.dim+';margin-bottom:10px');details.appendChild(mk('summary','cursor:pointer','Diagnóstico da descoberta'));nxRemotePlay.attempts.forEach(function(a){details.appendChild(mk('div','padding:3px 0',a));});root.appendChild(details);}
+      if(nxRemotePlay.consoles.length){
+        const quality=mk('select','padding:8px;border-radius:8px;background:'+C.panel+';color:'+C.text+';border:1px solid '+C.line+';margin-bottom:9px');
+        ['720p','1080p','1080p-hq'].forEach(function(q){const o=document.createElement('option');o.value=q;o.textContent=q==='1080p-hq'?'1080p (HQ)':q;quality.appendChild(o);});
+        quality.value=nxRemotePlay.resolution;quality.addEventListener('change',function(){nxRemotePlay.resolution=quality.value;});
+        root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:5px','Qualidade desejada (para futura sessão)'));root.appendChild(quality);
+      }
+      nxRemotePlay.consoles.forEach(function(c){const box=mk('div','padding:10px;margin-bottom:7px;border-radius:9px;border:1px solid '+C.line);
+        box.appendChild(mk('div','font-weight:700',c.name));box.appendChild(mk('div','font-size:11px;color:'+C.dim,'Modelo: '+c.type+' · Estado: '+c.state));
+        const select=mk('button','cursor:pointer;padding:8px 12px;margin-top:7px;border-radius:8px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.selectedId===c.id?'Selecionado':'Selecionar console');
+        select.addEventListener('click',function(e){e.stopPropagation();nxRemotePlay.selectedId=c.id;renderBody();});box.appendChild(select);root.appendChild(box);});
+      if(nxRemotePlay.mediaStream){
+        if(!nxRemotePlay.videoElement){
+          const video=document.createElement('video');
+          video.autoplay=true;video.playsInline=true;video.controls=true;video.style.cssText='display:block;width:100%;max-height:48vh;margin-top:12px;background:#000;border-radius:10px';
+          nxRemotePlay.videoElement=video;
+        }
+        nxRemotePlay.videoElement.srcObject=nxRemotePlay.mediaStream;
+        root.appendChild(nxRemotePlay.videoElement);
+        const stop=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,'Encerrar reprodução local');
+        stop.addEventListener('click',function(e){e.stopPropagation();nxRemoteStop();});root.appendChild(stop);
+      }
+      if(nxRemotePlay.selectedId) {
+        const start=mk('button','cursor:pointer;padding:10px 14px;margin-top:10px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,'Iniciar sessão xHome (experimental)');
+        start.disabled=nxRemotePlay.busy;
+        start.addEventListener('click',function(e){e.stopPropagation();nxRemoteStartSession();});
+        root.appendChild(start);
+        root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-top:8px','A criação da sessão não inicia vídeo nem controles. WebRTC está pendente.'));
+        if(nxRemotePlay.sessionStatus==='provisioned')root.appendChild(mk('div','font-size:11px;color:'+C.dim,'Xbox provisionado; aguardando integração WebRTC.'));
+      }
+    },
+    overview: function (root) {
+      const intro = mk('div','font-size:19px;font-weight:750;letter-spacing:-.025em;margin:0 0 3px','Central de controle');
+      root.appendChild(intro);
+      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:12px','Status e ajustes rápidos primeiro. Todas as configurações continuam acessíveis abaixo.'));
+      // Navegação compacta: opções existentes, sem duplicar gerenciadores ou controles.
+      const nav = mk('div','display:flex;flex-direction:column;gap:5px;margin:12px 0');
+      const navGroups = [
+        { title: 'Jogo e controles', ids: ['stream','controls'] },
+        { title: 'Áudio e acessórios', ids: ['audio','voice'] },
+        { title: 'Conexão e sistema', ids: ['region','remote','advanced'] }
+      ];
+      navGroups.forEach(function (g) {
+        nav.appendChild(mk('div','font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:'+C.dim+';margin:8px 0 2px',g.title));
+        g.ids.forEach(function (id) {
+          const t = TABS.find(function (item) { return item.id === id; });
+          if (!t) return;
+          const btn = mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 11px;min-height:44px;border-radius:9px;background:rgba(255,255,255,.035);border:1px solid '+C.line+';color:'+C.text);
+          btn.setAttribute('aria-label','Abrir '+t.label);
+          btn.appendChild(ico(ICONS[t.id] || ICONS.advanced,17));
+          const labels = mk('span','flex:1;min-width:0;display:flex;flex-direction:column');
+          labels.appendChild(mk('span','font-size:12px;font-weight:650',t.label));
+          labels.appendChild(mk('span','font-size:10px;color:'+C.dim,t.desc));
+          btn.appendChild(labels);
+          btn.appendChild(mk('span','font-size:16px;color:'+C.dim,'›'));
+          btn.addEventListener('click',function (e) { e.stopPropagation(); setTab(t.id); });
+          nav.appendChild(btn);
+        });
+      });
+      const ban = mk('div', 'display:flex;align-items:center;gap:11px;padding:12px;border-radius:12px;border:1px solid ' + C.line + ';background:' + C.panel);
+      const bdot = mk('span', 'width:10px;height:10px;border-radius:50%;flex:0 0 auto');
+      const btxt = mk('div', 'min-width:0;flex:1');
+      const bt = mk('div', 'font-size:14px;font-weight:700');
+      const bs = mk('div', 'font-size:11px;color:' + C.dim + ';margin-top:2px;line-height:1.4');
+      btxt.appendChild(bt); btxt.appendChild(bs);
+      ban.appendChild(bdot); ban.appendChild(btxt);
+      root.appendChild(ban);
+      liveFns.push(function () {
+        const s = linkState();
+        bdot.style.background = s.color;
+        bdot.style.boxShadow = '0 0 0 4px ' + (s.color.charAt(0) === '#' ? s.color + '33' : 'transparent');
+        bt.textContent = s.text;
+        bs.textContent = s.sub;
+      });
+
+      const grid = mk('div', 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px');
+      grid.appendChild(statTile('Perda', function () {
+        const l = curLoss();
+        return { text: fmtN(l, '%', 1), color: lossColor(l) };
+      }));
+      grid.appendChild(statTile('RTT', function () {
+        const r = S.qos && S.qos.rtt;
+        return { text: fmtN(r, ' ms'), color: r == null ? C.dim : (r < 100 ? C.text : (r < 160 ? C.warn : C.bad)) };
+      }));
+      grid.appendChild(statTile('FPS', function () {
+        const q = S.qos;
+        return { text: fmtN(q && (q.fps > 0 ? q.fps : q.decodedFps)), color: q ? C.text : C.dim };
+      }));
+      grid.appendChild(statTile('Bitrate', function () {
+        const q = S.qos;
+        return { text: q && q.kbps != null ? fmtN(q.kbps / 1000, ' Mb', 1) : '—', color: q ? C.text : C.dim };
+      }));
+      grid.appendChild(statTile('Resolução', function () {
+        const q = S.qos;
+        return { text: q && q.h ? q.h + 'p' : '—', color: q ? C.text : C.dim };
+      }));
+      grid.appendChild(statTile('Jitter', function () {
+        const q = S.qos;
+        return { text: fmtN(q && q.jitter, ' ms'), color: q ? C.text : C.dim };
+      }));
+      root.appendChild(grid);
+
+      const al = mk('div', 'display:none;margin-top:10px;white-space:pre-line;padding:9px 11px;border-radius:10px;font-size:11.5px;' +
+        'line-height:1.5;border:1px solid rgba(210,153,34,.35);background:rgba(210,153,34,.1);color:#e3b341');
+      root.appendChild(al);
+      liveFns.push(function () {
+        const msgs = regionDiffs();
+        const h = hintOne(S.qos, curLoss());
+        if (h) msgs.push(h);
+        al.textContent = msgs.map(function (m) { return '⚠ ' + m; }).join('\n');
+        al.style.display = msgs.length ? 'block' : 'none';
+      });
+
+      const pg = group('Perfis rápidos', 'Aplicam qualidade e limite de bitrate de uma vez. Valem na próxima partida.');
+      const row = mk('div', 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 0');
+      PRESETS.forEach(function (p) {
+        const on = getPref(LS_RES, 'auto') === p.res && getPref(LS_BITRATE, 'auto') === p.br;
+        const b = mk('button', 'all:unset;box-sizing:border-box;cursor:pointer;text-align:center;padding:9px 4px;border-radius:10px;' +
+          'border:1px solid ' + (on ? C.accent : C.line) + ';background:' + (on ? 'rgba(74,222,128,.12)' : 'transparent') +
+          ';-webkit-tap-highlight-color:transparent');
+        b.appendChild(mk('div', 'font-size:12.5px;font-weight:700;color:' + (on ? C.accent : C.text), p.name));
+        b.appendChild(mk('div', 'font-size:10px;color:' + C.dim + ';margin-top:2px', p.sub));
+        b.setAttribute('role', 'button');
+        b.addEventListener('pointerdown', stopEv);
+        b.addEventListener('click', function (e) {
+          e.stopPropagation(); e.preventDefault();
+          setPref(LS_RES, p.res); setPref(LS_BITRATE, p.br);
+          S.lastPreset = p.name;
+          pushLog('quality', 'Perfil ' + p.name + ' selecionado; aplicar na próxima partida');
+          renderBody();
+          toast('Perfil ' + p.name + ' · vale na próxima partida');
+        });
+        row.appendChild(b);
+      });
+      pg.card.appendChild(row);
+      root.appendChild(pg.root);
+
+      const cg = group('Configuração atual');
+      cg.add(infoRow('Data center', function () { return srvBtnLabel(); }));
+      cg.add(infoRow('Qualidade', function () { return resCfg().label; }));
+      cg.add(infoRow('Limite de bitrate', function () { return bitrateCfg().label; }));
+      cg.add(infoRow('Rede', function () { return v4on() ? 'IPv4 forçado' : 'IPv4 + IPv6'; }));
+      cg.add(infoRow('Região da loja', function () { return cfg().name; }));
+      root.appendChild(cg.root);
+      root.appendChild(nav);
+    },
+
+    stream: function (root) {
+      const healthGroup = group('Monitor de transmissão', 'Métricas reais do WebRTC e etapa de criação da sessão. Atualiza enquanto o painel estiver aberto.');
+      healthGroup.add(infoRow('Estado da sessão', function () {
+        const h = nxSessionHealth();
+        const labels = { streaming:'Recebendo vídeo', 'not-observed':'Sem tentativa capturada',
+          'network-error':'Falha de rede', 'access-rejected':'Acesso rejeitado',
+          'rate-limited':'Limite de requisições', 'server-error':'Erro do servidor',
+          'request-rejected':'Requisição rejeitada', 'session-accepted':'Sessão aceita', pending:'Aguardando' };
+        return labels[h.state] || h.state;
+      }));
+      const healthDetail = setRow('Diagnóstico', '', null, true);
+      healthGroup.add(healthDetail);
+      liveDesc(healthDetail, function () { return nxSessionHealth().explanation; });
+      healthGroup.add(infoRow('FPS recebido', function () {
+        const q = S.qos;
+        return q && (q.decodedFps != null || q.fps != null) ? String(q.decodedFps || q.fps || 0) : '—';
+      }));
+      healthGroup.add(infoRow('Bitrate recebido', function () {
+        const q = S.qos;
+        return q && Number.isFinite(q.kbps) ? (q.kbps / 1000).toFixed(2) + ' Mbps' : '—';
+      }));
+      healthGroup.add(infoRow('RTT WebRTC', function () {
+        return S.qos && Number.isFinite(S.qos.rtt) ? S.qos.rtt + ' ms' : '—';
+      }, 'Não equivale ao ping interno do jogo.'));
+      healthGroup.add(infoRow('Jitter', function () {
+        return S.qos && Number.isFinite(S.qos.jitter) ? S.qos.jitter + ' ms' : '—';
+      }));
+      healthGroup.add(infoRow('Perda de pacotes', function () {
+        const q = S.qos;
+        const n = q && (Number.isFinite(q.instLoss) ? q.instLoss : q.loss);
+        return Number.isFinite(n) ? n.toFixed(1) + '%' : '—';
+      }));
+      healthGroup.add(infoRow('Decodificação', function () {
+        return S.qos && Number.isFinite(S.qos.decodeMs) ? S.qos.decodeMs + ' ms/quadro' : '—';
+      }));
+      healthGroup.add(infoRow('Quadros descartados', function () {
+        return S.qos && Number.isFinite(S.qos.dropped) ? String(S.qos.dropped) : '—';
+      }));
+      healthGroup.add(infoRow('Codec', function () { return S.qos && S.qos.codec || '—'; }));
+      root.appendChild(healthGroup.root);
+      root.appendChild(note('Alterações valem na próxima partida — não é preciso recarregar a página.'));
+
+      const g1 = group('Data center');
+      const srvOpts = Object.keys(SERVERS).map(function (k) {
+        return { k: k, label: SERVERS[k].label + (k === 'auto' && S.serverActual ? ' · ' + S.serverActual : '') };
+      });
+      const rs = setRow('Servidor de streaming', 'Fixa o data center usado ao iniciar o jogo.',
+        chips(srvOpts, getPref(LS_SRV, 'auto'), function (k) {
+          setPref(LS_SRV, k);
+          S.serverActual = '';
+          S.serverPin = SERVERS[k].name;
+          renderBody();
+        }), true);
+      g1.add(rs);
+      g1.add(setRow('Escolher o mais rápido', 'No modo Auto, usa o data center com menor RTT medido nas últimas 24 h (mínimo 5 amostras).',
+        toggle(getPref(LS_AUTO_BEST, '0') === '1', function () {
+          const enabled = getPref(LS_AUTO_BEST, '0') === '1';
+          setPref(LS_AUTO_BEST, enabled ? '0' : '1');
+          pushLog('region', 'Auto RTT ' + (enabled ? 'desativado' : 'ativado'));
+          renderBody();
+        }, 'Escolher o data center mais rápido')));
+      root.appendChild(g1.root);
+
+      const g2 = group('Qualidade de vídeo');
+      g2.add(setRow('Perfil de qualidade', 'O perfil HQ usa a negociação Tizen e pode interferir no controle virtual (toque). A resolução entregue aparece em Geral.',
+        chips(Object.keys(RES_MODES).map(function (k) { return { k: k, label: RES_MODES[k].label }; }),
+          getPref(LS_RES, 'auto') === 'r1080' ? 'auto' : getPref(LS_RES, 'auto'), function (k) {
+            setPref(LS_RES, k); renderBody();
+          }), true));
+      g2.add(setRow('Limite de bitrate', 'Teto solicitado via SDP (experimental). Não aumenta o bitrate entregue pelo servidor.',
+        chips(Object.keys(BITRATE_MODES).map(function (k) {
+          return { k: k, label: BITRATE_MODES[k].label.replace(' (limite)', '') };
+        }), getPref(LS_BITRATE, 'auto'), function (k) { setPref(LS_BITRATE, k); renderBody(); }), true));
+      root.appendChild(g2.root);
+
+      const g3 = group('Rede');
+      g3.add(setRow('Forçar IPv4', 'Remove candidatos IPv6 do ICE. Útil quando há perda alta ou rota instável.',
+        toggle(v4on(), function () { toggleV4(); renderBody(); }, 'Forçar IPv4')));
+      root.appendChild(g3.root);
+    },
+
+    media: function (root) {
+      const g1 = group('Áudio');
+      const sl = document.createElement('input');
+      sl.type = 'range'; sl.min = '0'; sl.max = '100'; sl.step = '5'; sl.value = '100';
+      sl.setAttribute('aria-label', 'Volume do streaming');
+      sl.style.cssText = 'width:100%;accent-color:' + C.accent + ';margin:0;height:28px';
+      sl.addEventListener('pointerdown', function (e) { e.stopPropagation(); sliderDragging = true; });
+      sl.addEventListener('input', function () {
+        const v = activeStreamAudio();
+        if (!v) return;
+        const n = Number(sl.value) / 100;
+        v.volume = n; v.muted = false;
+        setPref(LS_VOLUME, String(n));
+        pct.textContent = sl.value + '%';
+      });
+      const pct = mk('span', 'font-size:12px;font-weight:600;min-width:38px;text-align:right;font-variant-numeric:tabular-nums', '—');
+      const ctl = mk('div', 'display:flex;align-items:center;gap:10px');
+      ctl.appendChild(sl); ctl.appendChild(pct);
+      const volRow = setRow('Volume do jogo', '', ctl, true);
+      g1.add(volRow);
+      liveDesc(volRow, function () { return activeStreamAudio() ? '' : 'Saída de áudio do streaming não encontrada; confira volume do sistema e do xCloud.'; });
+      liveFns.push(function () {
+        const v = activeStreamAudio();
+        sl.disabled = !v;
+        sl.style.opacity = v ? '1' : '.45';
+        if (v && !sliderDragging) {
+          sl.value = String(v.muted ? 0 : Math.round(v.volume * 100));
+          pct.textContent = sl.value + '%';
+        } else if (!v) pct.textContent = '—';
+      });
+      const muteLbl = mk('span', '', 'Silenciar');
+      const muteBtn = actBtn('Silenciar', function () { toggleMute(); }, 'ghost');
+      g1.add(setRow('Mudo', 'Silencia ou reativa o áudio do streaming.', muteBtn));
+      liveFns.push(function () {
+        const v = activeStreamAudio();
+        muteBtn.textContent = v && v.muted ? 'Reativar som' : 'Silenciar';
+        muteBtn.style.opacity = v ? '1' : '.45';
+      });
+      const audioOutputs=document.createElement('select');
+      audioOutputs.setAttribute('aria-label','Dispositivo de saida');
+      audioOutputs.style.cssText='width:100%;background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:7px';
+      const outputStatus=mk('span','font-size:11px','');
+      const refreshOutputs=async function(){
+        audioOutputs.replaceChildren();
+        const def=document.createElement('option');def.value='';def.textContent='Padrao do sistema (inclui Bluetooth)';audioOutputs.appendChild(def);
+        const status=nxAudioOutputSupport();
+        audioOutputs.disabled=!status.canRoute;
+        outputStatus.textContent=status.canRoute
+          ? 'Selecao manual disponivel. O fone Bluetooth pode aparecer apenas como saida padrao.'
+          : 'Saida controlada pelo sistema operacional. No Android, selecione o fone Bluetooth nas configuracoes do celular.';
+        if(status.canRoute && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices){
+          try{
+            const devices=await navigator.mediaDevices.enumerateDevices();
+            devices.filter(function(d){return d.kind==='audiooutput'&&d.deviceId;}).forEach(function(d,i){
+              const opt=document.createElement('option');opt.value=d.deviceId;opt.textContent=d.label||('Saida '+(i+1));audioOutputs.appendChild(opt);
+            });
+          }catch(e){S.lastErr='Listar saidas: '+String(e&&e.name||e);}
+        }
+        const stored=getPref(LS_AUDIO_OUTPUT,'');
+        audioOutputs.value=Array.from(audioOutputs.options).some(function(o){return o.value===stored;})?stored:'';
+      };
+      audioOutputs.addEventListener('change',function(){setPref(LS_AUDIO_OUTPUT,audioOutputs.value);applyAudioOutput();});
+      g1.add(setRow('Saida de audio','No Android, fones Bluetooth normalmente usam a saida padrao do sistema.',audioOutputs,true));
+      g1.add(setRow('Roteamento', 'Status de selecao de dispositivo.',outputStatus,true));
+      g1.add(setRow('Dispositivos','Atualiza saidas disponibilizadas pelo navegador.',actBtn('Atualizar saidas',refreshOutputs,'ghost')));
+      refreshOutputs();
+            const presets = {
+        original: [0,0,0,0,0,0,0,0,0,0], fps: [-3,-2,-1,0,1,2,3,3,1,0],
+        corrida: [3,2,1,0,0,0,1,1,1,0], cinema: [3,2,1,0,0,1,2,2,1,1],
+        musica: [2,1,0,0,0,0,0,1,1,2], dialogos: [-3,-2,-1,0,2,3,3,2,0,-1]
+      };
+      const fx = document.createElement('input'); fx.type = 'checkbox'; fx.checked = getPref(LS_AUDIO_FX, '0') === '1';
+      fx.addEventListener('change', function () { setPref(LS_AUDIO_FX, fx.checked ? '1' : '0'); applyAudioProcessing(); });
+      g1.add(setRow('Processamento', 'Desligado por padrão. Habilita os efeitos locais.', fx));
+      const profile = document.createElement('select'); profile.style.cssText = 'width:100%;background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:7px';
+      Object.keys(presets).concat(['personalizado']).forEach(function (k) { const o = document.createElement('option'); o.value = k; o.textContent = k[0].toUpperCase() + k.slice(1); profile.appendChild(o); });
+      profile.value = getPref(LS_AUDIO_PRESET, 'original');
+      profile.addEventListener('change', function () {
+        setPref(LS_AUDIO_PRESET, profile.value);
+        if (presets[profile.value]) setPref(LS_AUDIO_BANDS, JSON.stringify(presets[profile.value]));
+        setPref(LS_AUDIO_FX, profile.value === 'original' ? '0' : '1'); applyAudioProcessing(); renderBody();
+      });
+      g1.add(setRow('Perfil de áudio', 'FPS, corrida, cinema, música, diálogos e personalizado.', profile, true));
+      g1.add(setRow('Ativar audio','Executa AudioContext.resume por clique direto. Necessario em navegadores com bloqueio de reproducao automatica.',
+        actBtn('Ativar processamento',function(){
+          setPref(LS_AUDIO_FX,'1');
+          applyAudioProcessing();
+          if(nxAudioGraph){
+            Promise.resolve(nxAudioGraph.ctx.resume()).then(function(){
+              toast(nxAudioGraph.ctx.state==='running'?'Audio ativo':'Audio ainda suspenso');
+              renderBody();
+            }).catch(function(e){S.lastErr='Audio: '+String(e&&e.message||e);renderBody();});
+          }else{toast('Fluxo de audio indisponivel');renderBody();}
+        },'ghost')));
+
+      const eq = mk('div', 'display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;width:100%');
+      const values = getAudioBands();
+      [32,64,125,250,500,1000,2000,4000,8000,16000].forEach(function (hz,i) {
+        const label = mk('label', 'display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px');
+        label.appendChild(mk('span','',hz >= 1000 ? hz / 1000 + 'k' : String(hz)));
+        const range = document.createElement('input'); range.type = 'range'; range.min = '-12'; range.max = '12'; range.step = '1'; range.value = String(values[i]); range.style.width = '100%';
+        const value = mk('span','',range.value + 'dB');
+        range.addEventListener('input',function () { values[i] = Number(range.value); value.textContent = range.value + 'dB'; setPref(LS_AUDIO_BANDS,JSON.stringify(values)); setPref(LS_AUDIO_PRESET,'personalizado'); setPref(LS_AUDIO_FX,'1'); applyAudioProcessing(); });
+        label.appendChild(range); label.appendChild(value); eq.appendChild(label);
+      });
+      g1.add(setRow('Equalizador 10 bandas','32 Hz a 16 kHz; -12 a +12 dB.',eq,true));
+      [['Compressor',LS_AUDIO_COMP,'Reduz a dinâmica de volume.'],['Normalização',LS_AUDIO_NORMAL,'Compressão leve para suavizar diferenças de volume.'],
+       ['Limitador',LS_AUDIO_LIMIT,'Reduz picos, sem garantir um limite absoluto.'],['Destacar diálogos',LS_AUDIO_DIALOG,'Realça frequências de voz, sem isolar falas.'],
+       ['Mono',LS_AUDIO_MONO,'Combina os canais esquerdo e direito.']].forEach(function (cfg) {
+        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = getPref(cfg[1],'0') === '1';
+        check.addEventListener('change',function () { setPref(cfg[1],check.checked ? '1' : '0'); setPref(LS_AUDIO_FX,'1'); applyAudioProcessing(); });
+        g1.add(setRow(cfg[0],cfg[2],check));
+      });
+      const balance = document.createElement('input'); balance.type = 'range'; balance.min = '-100'; balance.max = '100'; balance.step = '5'; balance.value = getPref(LS_AUDIO_BALANCE,'0'); balance.style.width = '100%';
+      balance.addEventListener('input',function () { setPref(LS_AUDIO_BALANCE,balance.value); setPref(LS_AUDIO_FX,'1'); applyAudioProcessing(); });
+      g1.add(setRow('Balanço L/R','Esquerda (-100), centro (0), direita (+100).',balance,true));
+      g1.add(setRow('Áudio original','Desativa os efeitos e mantém a reprodução sem equalização.',actBtn('Restaurar áudio original',function () { setPref(LS_AUDIO_FX,'0'); setPref(LS_AUDIO_PRESET,'original'); applyAudioProcessing(); renderBody(); },'ghost')));
+      const diagnosis = setRow('Diagnóstico','Estado da reprodução e do processamento.',mk('span','font-size:11px','Áudio local'));
+      g1.add(diagnosis); liveDesc(diagnosis,function () { const m = activeStreamAudio(); return !m ? 'Fluxo não detectado' : (m.paused ? 'Pausado' : 'Reproduzindo') + ' · ' + (m.muted ? 'Mudo' : Math.round(m.volume*100)+'%') + ' · ' + (nxAudioGraph && nxAudioGraph.media === m ? 'Web Audio: '+nxAudioGraph.ctx.state+(getPref(LS_AUDIO_FX,'0')==='1'?' · EQ ligado':' · bypass') : 'Web Audio desconectado'); });
+      const signalRow=setRow('Sinal do equalizador','Mede o audio recebido pelo Web Audio, sem depender do nome do fone Bluetooth.',mk('span','font-size:11px','Monitoramento local'));
+      g1.add(signalRow);
+      liveDesc(signalRow,function(){return nxAudioSignalStatus();});
+      g1.add(setRow('Áudio espacial','Depende do jogo, sistema e dispositivo; sem controle universal.',mk('span','font-size:11px','Sistema / jogo')));
+      g1.add(setRow('Chat x jogo','Controle independente exige fluxos separados do xCloud.',mk('span','font-size:11px','Não disponível em fluxo misto')));
+      root.appendChild(g1.root);
+
+      const g2 = group('Imagem', 'Calibracao local por filtro CSS unico. Ajustes moderados para preservar sombras e realces.');
+      g2.add(setRow('Perfil visual', 'Original restaura o video; os demais perfis substituem o filtro, sem acumular efeitos.',
+        chips([{k:'original',label:'Original'},{k:'balanced',label:'Equilibrado'},{k:'vivid',label:'Vivido'},{k:'custom',label:'Manual'}],
+          getPref(LS_VIDEO_PROFILE,'original'),function(k){
+            setPref(LS_VIDEO_PROFILE,k);applyVideoAdjustments(activeStreamVideo());renderBody();
+          }),true));
+      const cal=nxVideoCalibration();
+      function calibrationSlider(label,key,value,min,max,help){
+        const control=mk('div','display:flex;align-items:center;gap:10px;min-width:150px');
+        const slider=mk('input','flex:1;min-width:90px;accent-color:'+C.accent);
+        slider.type='range';slider.min=String(min);slider.max=String(max);slider.step='1';slider.value=String(value);
+        const readout=mk('span','font-variant-numeric:tabular-nums;min-width:40px;text-align:right',String(value)+'%');
+        slider.addEventListener('input',function(){
+          readout.textContent=slider.value+'%';
+          if(getPref(LS_VIDEO_PROFILE,'original')!=='custom'){
+            const base=nxVideoCalibration();
+            setPref(LS_VIDEO_BRIGHTNESS,String(base.brightness));
+            setPref(LS_VIDEO_CONTRAST,String(base.contrast));
+            setPref(LS_VIDEO_SATURATION,String(base.saturation));
+          }
+          setPref(LS_VIDEO_PROFILE,'custom');
+          setPref(key,slider.value);
+          applyVideoAdjustments(activeStreamVideo());
+        });
+        slider.addEventListener('change',function(){renderBody();});
+        control.appendChild(slider);control.appendChild(readout);
+        g2.add(setRow(label,help,control,true));
+      }
+      calibrationSlider('Brilho',LS_VIDEO_BRIGHTNESS,cal.brightness,85,115,'Controla a luminosidade geral. Nao recupera detalhes ja perdidos no stream.');
+      calibrationSlider('Contraste',LS_VIDEO_CONTRAST,cal.contrast,85,115,'Ajusta a separacao de claros e escuros. Evite extremos para nao estourar brancos ou fechar pretos.');
+      calibrationSlider('Saturacao',LS_VIDEO_SATURATION,cal.saturation,75,125,'Ajusta a intensidade das cores sem alterar a resolucao.');
+      g2.add(setRow('Restaurar imagem','Remove apenas o filtro NX e volta a configuracao original.',
+        actBtn('Restaurar original',function(){
+          setPref(LS_VIDEO_PROFILE,'original');applyVideoAdjustments(activeStreamVideo());renderBody();
+        },'ghost')));
+      const gpuGroup=group('Clarity Boost experimental','WebGL2: curvas simples de sombras e realces. Pode aumentar consumo e latencia; se falhar, retorna ao video nativo.');
+      gpuGroup.add(setRow('Processamento GPU','Desativado por padrao. Ative somente durante uma partida.',
+        chips([{k:'0',label:'Desligado'},{k:'1',label:'WebGL2'}],getPref(LS_NX_GPU,'0'),function(k){
+          setPref(LS_NX_GPU,k);nxGpuSync();renderBody();
+        }),true));
+      gpuGroup.add(setRow('Nitidez','Ative WebGL2. Escolha o filtro de nitidez local.',
+        chips([{k:'off',label:'Original'},{k:'usm',label:'Unsharp'},{k:'cas',label:'CAS'}],getPref('nx.gpu.clarity.mode.v1','off'),function(k){setPref('nx.gpu.clarity.mode.v1',k);renderBody();}),true));
+      const clarityRow=mk('div','display:flex;align-items:center;gap:8px');
+      const claritySlider=mk('input','flex:1;accent-color:'+C.accent);claritySlider.type='range';claritySlider.min='0';claritySlider.max='100';claritySlider.step='5';
+      claritySlider.value=getPref('nx.gpu.clarity.strength.v1','35');
+      const clarityLabel=mk('span','min-width:38px;text-align:right',claritySlider.value+'%');
+      claritySlider.addEventListener('input',function(){clarityLabel.textContent=claritySlider.value+'%';setPref('nx.gpu.clarity.strength.v1',claritySlider.value);});
+      clarityRow.appendChild(claritySlider);clarityRow.appendChild(clarityLabel);
+      gpuGroup.add(setRow('Intensidade','Comece em 20–40%; excesso pode criar halos.',clarityRow,true));
+      function gpuToneSlider(label,key){
+        const row=mk('div','display:flex;align-items:center;gap:8px');
+        const slider=mk('input','flex:1;accent-color:'+C.accent);slider.type='range';slider.min='-100';slider.max='100';slider.step='1';
+        slider.value=String(Math.round((Number(getPref(key,'0'))||0)*100));
+        const value=mk('span','min-width:35px;text-align:right',slider.value);
+        slider.addEventListener('input',function(){value.textContent=slider.value;setPref(key,String(Number(slider.value)/100));});
+        row.appendChild(slider);row.appendChild(value);
+        gpuGroup.add(setRow(label,'Curva tonal local, sem alterar o stream original.',row,true));
+      }
+      gpuToneSlider('Sombras',LS_NX_SHADOWS);
+      gpuToneSlider('Realces',LS_NX_HIGHLIGHTS);
+      gpuGroup.add(setRow('Restaurar GPU','Desativa shader e remove a camada de apresentacao.',
+        actBtn('Desativar GPU',function(){setPref(LS_NX_GPU,'0');nxGpuSync();renderBody();},'ghost')));
+      root.appendChild(gpuGroup.root);
+      const gVisual=group('Biblioteca de perfis', 'Compartilhe ajustes NX em JSON. Importacao validada e limitada a 16 KB; nenhuma instrucao de codigo e executada.');
+      gVisual.add(setRow('Salvar configuracao','Armazena ate 24 perfis neste navegador.',
+        actBtn('Salvar perfil',function(){
+          const name=prompt('Nome do perfil visual (ate 64 caracteres):','Meu perfil NX');
+          if(name===null)return;
+          try{nxVisualSave(name);toast('Perfil salvo');renderBody();}
+          catch(e){toast(String(e.message||e));}
+        },'ghost')));
+      gVisual.add(setRow('Exportar configuracao','Gera um arquivo JSON portatil.',
+        actBtn('Exportar JSON',function(){
+          const cal=nxVideoCalibration();
+          nxVisualExport({format:NX_VISUAL_FORMAT,version:1,name:getPref(LS_VISUAL_ACTIVE,'Meu perfil NX'),
+            author:'Local',settings:{brightness:cal.brightness,contrast:cal.contrast,saturation:cal.saturation}});
+        },'ghost')));
+      const importInput=mk('input','max-width:100%;font-size:11px');
+      importInput.type='file';importInput.accept='.json,application/json';
+      importInput.addEventListener('change',function(){if(importInput.files&&importInput.files[0])nxVisualImport(importInput.files[0]);});
+      gVisual.add(setRow('Importar JSON','Aceita apenas perfis NX v1, sem scripts nem URLs externas.',importInput,true));
+      const saved=nxVisualLibrary();
+      if(saved.length){
+        const options=saved.map(function(p,i){return {k:String(i),label:p.name};});
+        gVisual.add(setRow('Perfis salvos','Selecione um perfil local para aplicar.',
+          chips(options,'',function(k){nxVisualApply(saved[Number(k)]);renderBody();}),true));
+      }
+      root.appendChild(gVisual.root);
+      g2.add(setRow('Enquadramento', 'Original preserva o site; Conter evita cortes; Preencher ocupa a tela, podendo cortar bordas.',
+        chips([{ k: 'original', label: 'Original' }, { k: 'contain', label: 'Conter' }, { k: 'cover', label: 'Preencher' }], getPref(LS_VIDEO_FIT, 'original'), function (k) {
+          setPref(LS_VIDEO_FIT, k); applyVideoFit(activeStreamVideo()); renderBody();
+        }), true));
+      g2.add(setRow('Tela cheia', 'Solicita a Fullscreen API apenas por ação do usuário.',
+        actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'ghost')));
+      g2.add(setRow('Economia de recursos', 'Desativa filtros visuais locais enquanto a aba estiver oculta; não altera o stream ou FPS do servidor.',
+        chips([{ k: '1', label: 'Ativa' }, { k: '0', label: 'Desativada' }], getPref(LS_VIDEO_ECO, '1'), function (k) {
+          setPref(LS_VIDEO_ECO, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
+        }), true));
+      root.appendChild(g2.root);
+
+      const g3 = group('Captura');
+      g3.add(setRow('Capturar quadro', 'Salva o quadro atual do jogo como imagem PNG.',
+        actBtn('Capturar', function () { captureStreamFrame(); }, 'primary')));
+      root.appendChild(g3.root);
+    },
+
+    controls: function (root) {
+      const g1 = group('Dispositivo');
+      const r1 = setRow('Perfil do dispositivo', '', chips([
+        { k: 'auto', label: 'Auto' }, { k: 'desktop', label: 'Desktop' }, { k: 'mobile', label: 'Celular' }, { k: 'dex', label: 'DeX' }
+      ], getPref(LS_DEVICE_PROFILE, 'auto'), function (k) {
+        setPref(LS_DEVICE_PROFILE, k);
+        pushLog('device', 'Perfil local ' + k + ' (não altera User-Agent nem controles)');
+        renderBody();
+      }), true);
+      g1.add(r1);
+      liveDesc(r1, function () { return 'Detectado: ' + S.deviceDetected + '. Não altera o User-Agent nem os controles.'; });
+      g1.add(setRow('Aplicar perfil', 'Ajusta qualidade e limite de bitrate conforme o perfil (próxima sessão).',
+        actBtn('Aplicar', function () { applyDeviceProfile(); renderBody(); toast('Perfil aplicado · próxima partida'); }, 'primary')));
+      root.appendChild(g1.root);
+
+      const g2 = group('Entradas detectadas');
+      g2.add(infoRow('Tela de toque', function () {
+        const c = inputCapabilities();
+        return (c.touch ? 'Sim' : 'Não') + ' · ' + c.maxTouchPoints + ' pontos';
+      }));
+      g2.add(infoRow('Controles conectados', function () { return inputCapabilities().gamepadsConnected; }));
+      g2.add(infoRow('Mouse capturado', function () { return document.pointerLockElement ? 'Sim' : 'Não'; },
+        'Com teclado físico, F9 libera ou recaptura o mouse durante a partida.'));
+      g2.add(infoRow('Controles com atividade', function () {
+        return nxGamepadMonitor.active + ' / ' + nxGamepadMonitor.connected;
+      }, 'Leitura de botões e eixos sem alterar entradas enviadas ao jogo.'));
+      g2.add(infoRow('Última alteração de conexão', function () {
+        return nxGamepadMonitor.lastChange ? new Date(nxGamepadMonitor.lastChange).toLocaleTimeString() : '—';
+      }));
+      g2.add(infoRow('Falhas de leitura', function () { return String(nxGamepadMonitor.errors); }));
+      g2.add(infoRow('Fontes ativas (2 s)', function () {
+        const r = nxInputSourcesReport();
+        return r.recent.length ? r.recent.join(', ') : 'Nenhuma';
+      }, 'Observação passiva de toque, mouse, teclado e controle.'));
+      g2.add(infoRow('Sobreposições toque/mouse', function () {
+        return String(nxInputSources.simultaneous);
+      }, 'Toques podem gerar eventos de mouse sintéticos; não indica necessariamente um problema.'));
+      root.appendChild(g2.root);
+
+      const coordination = group('Coordenação de entradas — diagnóstico',
+        'Prioridade visual das fontes. Não bloqueia toque, mouse, teclado ou controle.');
+      coordination.add(setRow('Preferência de fonte', 'Automático sugere a fonte com atividade mais recente nos últimos 2 segundos.',
+        chips(Object.keys(nxCoordModes).map(function (k) {
+          return { k: k, label: nxCoordModes[k] };
+        }), nxCoordMode(), function (k) {
+          setPref(NX_INPUT_COORD_KEY, k);
+          renderBody();
+        }), true));
+      coordination.add(infoRow('Fonte sugerida', function () {
+        const state = nxCoordState();
+        return nxCoordModes[state.suggested] || 'Nenhuma';
+      }));
+      coordination.add(infoRow('Fontes simultâneas', function () {
+        return nxCoordState().mixed ? nxCoordState().activeSources.join(' + ') : 'Não detectadas';
+      }, 'Janela de observação de 2 segundos; uso simultâneo pode ser intencional.'));
+      coordination.add(infoRow('Fontes virtuais registradas', function () {
+        const v = nxVirtualInputState();
+        return v.count ? v.kinds.join(', ') : 'Nenhuma';
+      }, 'Registro interno preparado para HUD, giroscópio e teclado/mouse virtuais. Ainda não controla o jogo.'));
+      coordination.add(infoRow('Interferência no jogo', function () { return 'Nenhuma (somente diagnóstico)'; }));
+      coordination.add(infoRow('Autoteste de entradas', function () {
+        const result = nxInputSelfCheck();
+        return result.passed + '/' + result.total + ' verificações';
+      }, 'Testes matemáticos e estruturais locais; não valida uma partida real.'));
+      coordination.add(infoRow('Eventos recentes', function () { return String(nxInputEvents.length); },
+        'Histórico limitado aos 30 eventos mais recentes, sem registrar teclas ou coordenadas.'));
+      coordination.add(setRow('Limpar diagnóstico de entradas', 'Zera contadores e histórico desta sessão.',
+        actBtn('Limpar', function () {
+          nxResetInputDiagnostics();
+          nxSampleGamepads();
+          renderBody();
+          toast('Diagnóstico de entradas limpo');
+        }, 'ghost')));
+      root.appendChild(coordination.root);
+
+      // Touch HUD é carregado pelo @require oficial: um único módulo e nenhuma instalação separada.
+      const nxTouchGroup = group('HUD de teclado e mouse por toque',
+        'Mouse relativo pelo dedo, joystick WASD, botões configuráveis e editor próprio. Requer suporte de teclado/mouse no jogo e na sessão.');
+      nxTouchGroup.add(infoRow('Módulo', function () {
+        return window.NimboTouch ? 'Carregado · v' + window.NimboTouch.version : 'Indisponível';
+      }, 'Integração experimental: não converte mouse em analógico e não garante compatibilidade com todos os jogos.'));
+      nxTouchGroup.add(setRow('Configurar teclado e mouse',
+        'Abre o editor e a ativação do touchpad. Ao abrir, o painel NX é recolhido.',
+        actBtn('Abrir Touch HUD', function () {
+          if (!window.NimboTouch || typeof window.NimboTouch.open !== 'function') {
+            toast('Touch HUD indisponível; atualize o userscript'); return;
+          }
+          setOpen(false, true);
+          window.NimboTouch.open();
+        }, 'primary')));
+      root.appendChild(nxTouchGroup.root);
+
+      const hudEditorGroup = group('Editor de HUD — prévia arrastável',
+        'Arraste os botões para montar um layout e salve perfis locais por jogo. Ainda não altera o HUD do xCloud.');
+      hudEditorGroup.add(infoRow('Sinais de controles na página', function () {
+        const probe = nxHudDomProbe();
+        return probe.candidates + ' candidatos (' + probe.interactive + ' interativos, ' +
+          probe.visible + ' visíveis) / ' + probe.scanned + ' examinados' +
+          (probe.truncated ? ' [limite atingido]' : '');
+      }, 'Inspeção somente leitura de rótulos de acessibilidade; não confirma controles reais nem altera o HUD. Limite de 1500 elementos.'));
+      hudEditorGroup.add(setRow('Carregar perfil automaticamente',
+        'Desativado por padrão: evita substituir posições editadas quando você navega entre jogos. Afeta apenas a prévia.',
+        toggle(nxHudAutoEnabled(), function () {
+          nxHudSetAutoEnabled(!nxHudAutoEnabled());
+          renderBody();
+        }, 'Carregar perfil de HUD automaticamente')));
+      hudEditorGroup.add(setRow('Posições dos botões', 'Toque ou use o mouse para arrastar os elementos da prévia.',
+        nxHudEditor(), true));
+      root.appendChild(hudEditorGroup.root);
+
+      const gyroGroup = group('Giroscópio — calibração experimental',
+        'Leitura e calibração dos sensores. A integração com a câmera é experimental e precisa ser ativada separadamente.');
+      gyroGroup.add(infoRow('Orientação da tela', function () {
+        const g = nxGyroPreviewState();
+        return g.screenAngle === null ? 'Aguardando sensor' : g.screenAngle + '°';
+      }, 'Ao girar o aparelho, o centro é redefinido e precisa ser calibrado novamente.'));
+      gyroGroup.add(infoRow('Mudanças de orientação', function () {
+        return String(nxGyroPreviewState().orientationChanges);
+      }));
+      gyroGroup.add(infoRow('Amostras recebidas', function () {
+        return String(nxGyroPreviewState().samples);
+      }));
+      gyroGroup.add(infoRow('Sensor', function () {
+        const g = nxGyroPreviewState();
+        return g.enabled ? (g.receiving ? 'Recebendo dados' : 'Aguardando movimento') : g.permission;
+      }));
+      gyroGroup.add(infoRow('Inclinação horizontal', function () {
+        const x = nxGyroPreviewState().tiltX;
+        return x === null ? 'Calibre após ativar' : x + '°';
+      }));
+      gyroGroup.add(infoRow('Inclinação vertical', function () {
+        const y = nxGyroPreviewState().tiltY;
+        return y === null ? 'Calibre após ativar' : y + '°';
+      }));
+      gyroGroup.add(setRow('Inverter eixo horizontal', 'Apenas visualização; não afeta o jogo.',
+        toggle(nxGyroInvertX(), function () {
+          setPref(NX_GYRO_INVERT_X_KEY, nxGyroInvertX() ? '0' : '1');
+          renderBody();
+        }, 'Inverter eixo horizontal')));
+      gyroGroup.add(setRow('Inverter eixo vertical', 'Apenas visualização; não afeta o jogo.',
+        toggle(nxGyroInvertY(), function () {
+          setPref(NX_GYRO_INVERT_Y_KEY, nxGyroInvertY() ? '0' : '1');
+          renderBody();
+        }, 'Inverter eixo vertical')));
+      gyroGroup.add(setRow('Enviar giroscópio ao jogo (experimental)',
+        'Desativado por padrão. Exige controle físico padrão e sensor calibrado. Recarrega a página; ative novamente a leitura do sensor após recarregar.',
+        toggle(nxGyroGameEnabled(), function () {
+          setPref(NX_GYRO_GAME_KEY, nxGyroGameEnabled() ? '0' : '1');
+          location.reload();
+        }, 'Ativar giroscópio experimental no jogo')));
+      gyroGroup.add(setRow('Controle que recebe o giroscópio',
+        'Evita movimentar todos os controles conectados. Índice 0 é o padrão.',
+        chips([{ k: '0', label: 'Controle 1' }, { k: '1', label: 'Controle 2' },
+          { k: '2', label: 'Controle 3' }, { k: '3', label: 'Controle 4' }],
+          String(nxGyroTargetIndex()), function (k) {
+            setPref(NX_GYRO_TARGET_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(setRow('Intensidade da contribuição no jogo',
+        'Limita a força adicionada ao analógico direito. Comece em 25% para evitar movimentos bruscos.',
+        chips([{ k: '0.25', label: '25%' }, { k: '0.5', label: '50%' }, { k: '1', label: '100%' }],
+          getPref(NX_GYRO_BLEND_KEY, '0.5'), function (k) {
+            setPref(NX_GYRO_BLEND_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(setRow('Ativação da mira por giroscópio',
+        'LT (gatilho esquerdo) é o padrão; Sempre ativo exige controle físico conectado.',
+        chips([{ k: 'lt', label: 'Segurar LT' }, { k: 'always', label: 'Sempre ativo' }],
+          nxGyroActivationMode(), function (k) {
+            setPref(NX_GYRO_TRIGGER_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(infoRow('Saída ao jogo', function () {
+        if (!nxGyroGameEnabled()) return 'Desativada';
+        if (!nxInputBridge.installed) return 'Aguardando ponte experimental';
+        const g = nxGyroPreviewState();
+        return g.enabled && g.calibrated && g.receiving ? 'Pronta (controle padrão)' : 'Aguardando sensor e calibração';
+      }));
+      gyroGroup.add(infoRow('Eixos virtuais simulados', function () {
+        const g = nxGyroPreviewState();
+        return g.axisX.toFixed(2) + ' / ' + g.axisY.toFixed(2);
+      }, 'Valores normalizados entre -1 e 1; não enviados ao jogo.'));
+      gyroGroup.add(setRow('Sensibilidade da prévia', 'Somente simulação dos eixos; não modifica o controle físico.',
+        chips([{ k: '0.5', label: 'Baixa' }, { k: '1', label: 'Normal' }, { k: '2', label: 'Alta' }],
+          getPref(NX_GYRO_SENS_KEY, '1'), function (k) {
+            setPref(NX_GYRO_SENS_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(setRow('Zona morta da prévia', 'Ignora pequenas inclinações para reduzir tremores.',
+        chips([{ k: '0', label: 'Nenhuma' }, { k: '0.04', label: 'Normal' }, { k: '0.1', label: 'Alta' }],
+          getPref(NX_GYRO_DEADZONE_KEY, '0.04'), function (k) {
+            setPref(NX_GYRO_DEADZONE_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(setRow('Suavização da leitura', 'Afeta apenas a prévia local. Não modifica a mira.',
+        chips([{ k: '0.1', label: 'Suave' }, { k: '0.25', label: 'Equilibrada' }, { k: '0.7', label: 'Rápida' }],
+          getPref(NX_GYRO_SMOOTH_KEY, '0.25'), function (k) {
+            setPref(NX_GYRO_SMOOTH_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(setRow('Leitura de sensores', 'Solicita permissão apenas após toque no botão.',
+        actBtn(nxGyroPreview.enabled ? 'Desativar' : 'Ativar', function () {
+          if (nxGyroPreview.enabled) {
+            nxStopGyroPreview();
+            renderBody();
+            return;
+          }
+          nxStartGyroPreview().then(function (ok) {
+            renderBody();
+            toast(ok ? 'Sensor ativado; mova o aparelho e calibre' : 'Sensor indisponível ou permissão negada');
+          });
+        }, 'primary')));
+      gyroGroup.add(setRow('Reiniciar calibração', 'Apaga o centro atual, sem alterar configurações salvas.',
+        actBtn('Reiniciar', function () {
+          nxResetGyroCalibration();
+          renderBody();
+          toast('Calibração reiniciada');
+        })));
+      gyroGroup.add(setRow('Definir posição central', 'Mantenha o aparelho na posição de jogo antes de calibrar.',
+        actBtn('Calibrar', function () {
+          const ok = nxCalibrateGyroPreview();
+          renderBody();
+          toast(ok ? 'Centro do sensor definido' : 'Ative o sensor e aguarde uma leitura');
+        })));
+      root.appendChild(gyroGroup.root);
+
+      /* NX_FROZEN_ANALOG_UI_START
+      const inputPreview = group('Perfis de analógico',
+        'Simulação por padrão. Aplicação experimental opcional com recarregamento e retorno imediato ao modo nativo.');
+      inputPreview.add(setRow('Aplicar curvas ao jogo (experimental)',
+        'Desativado por padrão. Altera somente os eixos lidos pela Gamepad API; não altera botões. Requer recarregar a página.',
+        toggle(nxInputEnabled(), function () {
+          setPref(NX_INPUT_APPLY_KEY, nxInputEnabled() ? '0' : '1');
+          location.reload();
+        }, 'Ativar processamento experimental de eixos')));
+      inputPreview.add(setRow('Restaurar controle nativo',
+        'Desativa o processamento experimental imediatamente, sem precisar recarregar.',
+        actBtn('Restaurar', function () {
+          nxRestoreNativeGamepads('Restauração solicitada pelo usuário');
+          nxSampleGamepads();
+          renderBody();
+          toast('Leitura nativa restaurada');
+        }, 'ghost')));
+      inputPreview.add(infoRow('Integridade da Gamepad API', function () {
+        nxInputBridgeStatus();
+        if (nxInputBridge.foreignOverride) return 'Outro script assumiu o controle';
+        if (nxInputBridge.installed && navigator.getGamepads !== nxInputBridge.wrapper) return 'Alterada por outro script';
+        return nxInputBridge.installed ? 'Ponte experimental ativa' : 'API nativa';
+      }));
+      inputPreview.add(infoRow('Recuperações automáticas', function () {
+        return String(nxInputBridge.fallbacks);
+      }));
+      inputPreview.add(infoRow('Processamento de entradas', function () {
+        return nxInputBridgeStatus();
+      }));
+      inputPreview.add(setRow('Analógico esquerdo', 'Curva dos eixos 0 e 1 (movimentação, conforme o jogo).',
+        chips(Object.keys(nxInputProfiles).map(function (k) { return { k: k, label: nxInputProfiles[k].label }; }),
+          nxInputProfileName(), function (k) {
+            setPref(NX_INPUT_PROFILE_KEY, k);
+            nxSampleGamepads();
+            renderBody();
+          }), true));
+      inputPreview.add(setRow('Analógico direito', 'Curva dos eixos 2 e 3 (câmera, conforme o jogo).',
+        chips(Object.keys(nxInputProfiles).map(function (k) { return { k: k, label: nxInputProfiles[k].label }; }),
+          nxRightStickProfileName(), function (k) {
+            setPref(NX_RIGHT_STICK_PROFILE_KEY, k);
+            nxSampleGamepads();
+            renderBody();
+          }), true));
+      inputPreview.add(infoRow('Zona morta', function () {
+        return Math.round(nxInputProfiles[nxInputProfileName()].deadzone * 100) + '%';
+      }));
+      inputPreview.add(infoRow('Curva', function () {
+        return String(nxInputProfiles[nxInputProfileName()].curve);
+      }));
+      inputPreview.add(infoRow('Eixos simulados (até 4)', function () {
+        return nxGamepadMonitor.snapshots.length ?
+          nxGamepadMonitor.snapshots.map(function (p) {
+            return '#' + p.index + ': ' + p.axisPreview.map(function (v) { return v.toFixed(2); }).join(', ');
+          }).join(' | ') : 'Conecte e mova um controle';
+      }, 'Valores normalizados de -1 a 1. Não afeta o jogo.'));
+      root.appendChild(inputPreview.root);
+      NX_FROZEN_ANALOG_UI_END */
+
+      const g3 = group('Acessórios');
+      const micButtons = mk('div', 'display:flex;gap:6px;flex-wrap:wrap');
+      const micToggle = actBtn(getPref(LS_MIC_ENABLED, '0') === '1' ? 'Microfone: ativado' : 'Microfone: desativado', function () {
+        const enabled = getPref(LS_MIC_ENABLED, '0') !== '1';
+        setPref(LS_MIC_ENABLED, enabled ? '1' : '0');
+        if (!enabled) stopMicrophoneTest();
+        S.micStatus = enabled ? 'Preferência ativa. Teste a entrada; a voz no jogo depende do xCloud.' : 'Microfone desativado nas preferências NX.';
+        renderBody(); update();
+      }, 'ghost');
+      micButtons.appendChild(micToggle);
+      micButtons.appendChild(actBtn('Testar microfone', function () { inspectMicrophone(); }, 'ghost'));
+      micButtons.appendChild(actBtn('Parar teste', function () { stopMicrophoneTest(); }, 'ghost'));
+      micButtons.appendChild(actBtn('Atualizar dispositivos', function () { refreshMicDevices(); }, 'ghost'));
+      const micDevice = document.createElement('select');
+      micDevice.setAttribute('aria-label', 'Dispositivo de entrada de voz');
+      micDevice.style.cssText = 'width:100%;max-width:100%;background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:7px';
+      const defaultMic = document.createElement('option'); defaultMic.value = ''; defaultMic.textContent = 'Microfone padrão do sistema'; micDevice.appendChild(defaultMic);
+      micDevice.value = getPref(LS_MIC_DEVICE, '');
+      micDevice.addEventListener('change', function () { setPref(LS_MIC_DEVICE, micDevice.value); if (micTestStream) inspectMicrophone(); });
+      micDeviceControl = micDevice;
+      micButtons.appendChild(micDevice);
+      [['Redução de ruído', LS_MIC_NOISE], ['Cancelamento de eco', LS_MIC_ECHO],
+        ['Ganho automático', LS_MIC_AGC], ['Silenciar voz enviada', LS_MIC_MUTE],
+        ['Apertar V para falar (teclado)', LS_MIC_PTT]].forEach(function (cfg) {
+        const label = document.createElement('label'); label.style.cssText = 'display:flex;gap:7px;align-items:center;width:100%;font-size:12px';
+        const check = document.createElement('input'); check.type = 'checkbox';
+        check.checked = getPref(cfg[1], cfg[1] === LS_MIC_MUTE || cfg[1] === LS_MIC_PTT ? '0' : '1') === '1';
+        check.addEventListener('change', function () { setPref(cfg[1], check.checked ? '1' : '0'); applyVoiceMute(); });
+        label.appendChild(check); label.appendChild(document.createTextNode(cfg[0])); micButtons.appendChild(label);
+      });
+      const micMeter = document.createElement('progress'); micMeter.max = 100; micMeter.value = 0;
+      micMeter.style.cssText = 'width:100%;height:12px'; micMeter.setAttribute('aria-label', 'Nível de entrada do microfone');
+      micLevelControl = micMeter; micButtons.appendChild(micMeter);
+      refreshMicDevices();
+      const mic = setRow('Microfone', 'Escolha o microfone para as próximas solicitações de captura do xCloud. O jogo precisa oferecer chat de voz.', micButtons);
+      g3.add(mic);
+      liveDesc(mic, function () { return S.micStatus; });
+      const vibControls = mk('div', 'display:flex;gap:6px;flex-wrap:wrap;align-items:center');
+      const vibLevel = document.createElement('select');
+      vibLevel.setAttribute('aria-label', 'Intensidade do teste de vibração');
+      vibLevel.style.cssText = 'background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:6px';
+      [0,25,50,75,100].forEach(function (v) {
+        const opt = document.createElement('option'); opt.value = String(v); opt.textContent = v + '%';
+        vibLevel.appendChild(opt);
+      });
+      vibLevel.value = String(Math.round(Number(getPref(LS_VIBRATION, '0.5')) * 100));
+      vibLevel.addEventListener('change', function () { setPref(LS_VIBRATION, String(Number(vibLevel.value) / 100)); S.vibrationStatus = 'Intensidade salva para testes: ' + vibLevel.value + '%. Ajuste automático durante a partida ainda não integrado.'; update(); });
+      vibControls.appendChild(vibLevel);
+      vibControls.appendChild(actBtn('Testar controle', function () { testVibration(); }, 'ghost'));
+      vibControls.appendChild(actBtn('Testar celular', function () { testPhoneVibration(); }, 'ghost'));
+      const vib = setRow('Vibração', 'Teste local do motor do controle ou do celular. Não altera automaticamente a vibração enviada pelo xCloud.', vibControls);
+      g3.add(vib);
+      liveDesc(vib, function () { return S.vibrationStatus; });
+      root.appendChild(g3.root);
+
+      const g4 = group('Atalho do painel');
+      g4.add(setRow('Abrir/fechar o painel', 'Combinação de teclado (Ctrl+Shift+N recentraliza o painel).',
+        chips([{ k: 'KeyH', label: 'Ctrl+Shift+H' }, { k: 'KeyJ', label: 'Ctrl+Shift+J' }, { k: 'KeyK', label: 'Ctrl+Shift+K' }],
+          getPref(LS_NX_SHORTCUT, 'KeyH'), function (k) { setPref(LS_NX_SHORTCUT, k); renderBody(); }), true));
+      root.appendChild(g4.root);
+    },
+
+    region: function (root) {
+      root.appendChild(note('Ao trocar a região da loja, a página recarrega uma vez para aplicar.'));
+      const g1 = group('Região da loja');
+      const opts = Object.keys(REGIONS).map(function (k) { return { k: k, label: REGIONS[k].name }; });
+      opts.push({ k: 'off', label: 'Desligado' });
+      g1.add(setRow('Desbloqueio de região', 'Reescreve a verificação de mercado para a região escolhida.',
+        chips(opts, cfg().key, function (k) {
+          pickApply('region', k);
+          location.reload();
+        }), true));
+      root.appendChild(g1.root);
+
+      const al = mk('div', 'display:none;margin-top:12px;white-space:pre-line;padding:9px 11px;border-radius:10px;font-size:11.5px;' +
+        'line-height:1.5;border:1px solid rgba(210,153,34,.35);background:rgba(210,153,34,.1);color:#e3b341');
+      root.appendChild(al);
+      liveFns.push(function () {
+        const d = regionDiffs();
+        al.textContent = d.map(function (m) { return '⚠ ' + m; }).join('\n');
+        al.style.display = d.length ? 'block' : 'none';
+      });
+
+      const g2 = group('Estado');
+      g2.add(infoRow('Região configurada', function () { return cfg().name + (cfg().territory ? ' (' + cfg().territory + ')' : ''); }));
+      g2.add(infoRow('Cookie de território', function () { return getCookie('territory') || '(nenhum)'; }));
+      g2.add(infoRow('Experimentos reescritos', function () {
+        return S.expHits ? S.expHits + '× · ' + S.expBefore + ' → ' + S.expAfter : 'Nenhum ainda';
+      }));
+      g2.add(infoRow('Requisições com cabeçalho', function () { return S.inj; }));
+      g2.add(infoRow('Acesso negado (erros)', function () { return S.denied; }));
+      root.appendChild(g2.root);
+    },
+
+    advanced: function (root) {
+      inspectRemotePlay();
+      inspectServerMeasurements();
+
+      const g1 = group('Desempenho');
+      g1.add(spark('FPS recebidos', 'fps', C.accent, ' FPS', 60));
+      g1.add(spark('RTT WebRTC', 'rtt', '#58a6ff', ' ms', 100));
+      g1.add(spark('Perda de pacotes', 'loss', '#f0883e', '%', 5));
+      root.appendChild(g1.root);
+
+      const g2 = group('Detalhes do link', 'Métricas do navegador; o RTT não representa a latência interna do jogo. Valores ausentes não são estimados.');
+      g2.add(infoRow('Codec', function () { return (S.qos && S.qos.codec) || 'Indisponível'; }));
+      g2.add(infoRow('Transporte', function () {
+        const q = S.qos;
+        return q ? ([q.family, q.proto].filter(Boolean).join(' / ') || 'Indisponível') : 'Indisponível';
+      }));
+      g2.add(infoRow('Servidor', function () { return S.serverActual || 'Automático / não identificado'; }));
+      g2.add(infoRow('Buffer de jitter', function () { return fmtN(S.qos && S.qos.bufMs, ' ms'); }));
+      g2.add(infoRow('Decodificação média', function () { return fmtN(S.qos && S.qos.decodeMs, ' ms', 1); }));
+      g2.add(infoRow('Quadros descartados', function () {
+        const q = S.qos;
+        if (!q || !(q.decoded || q.dropped)) return '—';
+        return fmtN(q.dropped / ((q.decoded + q.dropped) || 1) * 100, '%', 1) + ' (' + q.dropped + ')';
+      }));
+      g2.add(infoRow('Congelamentos', function () {
+        const q = S.qos;
+        return q ? fmtN(q.freeze) + ' · ' + fmtN(q.freezeDur, ' s') : '—';
+      }));
+      g2.add(infoRow('Diagnóstico automático', function () { return S.lastDiagnosis; }));
+      root.appendChild(g2.root);
+
+      const g3 = group('Servidores medidos');
+      g3.add(infoRow('RTT por data center', function () {
+        const keys = Object.keys(S.latencyByServer);
+        return keys.length ? keys.map(function (k) { return k + ': ' + Math.round(S.latencyByServer[k].avg) + ' ms'; }).join('\n') : 'Aguardando amostras';
+      }, 'Medido apenas em partidas reais (não é sondagem ativa).'));
+      g3.add(setRow('Limpar medições', 'Apaga o histórico de RTT salvo neste navegador.',
+        actBtn('Limpar', function () {
+          S.latencyByServer = Object.create(null);
+          try { localStorage.removeItem(LS_RTT_HISTORY); } catch (e) { }
+          pushLog('region', 'Histórico RTT local apagado');
+          renderBody();
+          toast('Medições apagadas');
+        }, 'ghost')));
+      root.appendChild(g3.root);
+
+      const lab = group('Plataforma e modo console', 'Perfis Xbox e TV preservam a identidade nativa para iniciar jogos. Tela cheia e orientação horizontal dependem de permissão do navegador e de uma ação do usuário.');
+      lab.add(infoRow('Identidade observada', function () { const e=nxProtocolEvidence(); return e.observed.javascriptIdentity.platform+' · '+(e.configured.jsUserAgentChanged?'UA JS alterado':'UA JS nativo'); }));
+      lab.add(infoRow('Client Hints', function () { const h=nxProtocolEvidence().observed.javascriptIdentity.clientHints; return h ? (h.platform || 'sem plataforma')+' · '+(h.mobile?'mobile':'desktop') : 'Não disponível via JavaScript'; }));
+      lab.add(infoRow('Modelo de hardware Xbox', function () { return 'Não verificável por userscript'; }));
+      lab.add(setRow('Copiar diagnóstico de protocolo', 'Relatório estruturado de identidade, autenticação e sessão. Revise os dados antes de compartilhar.',
+        actBtn('Copiar', function(){copyText(JSON.stringify(nxProtocolEvidence(),null,2),'[NX protocol]','Diagnóstico de protocolo copiado');},'ghost')));
+      lab.add(infoRow('Resultado do teste', function () { return nxCompatibilityVerdict().label; }));
+      lab.add(infoRow('Detalhes do teste', function () { return nxCompatibilityVerdict().detail; }));
+      lab.add(infoRow('Compatibilidade de console', function () { return nxCompatibilityVerdict().consoleCompatibility; }));
+      lab.add(setRow('Verificar conexão agora', 'Avalia os eventos de sessão e o vídeo disponíveis. Não envia requisições extras nem altera autenticação.',
+        actBtn('Verificar', function () {
+          const v = nxCompatibilityVerdict();
+          nxConsoleLabEvent('compatibility-check', v.state + ': ' + v.detail);
+          toast(v.label);
+          renderBody();
+        }, 'primary')));
+      lab.add(setRow('Telemetria sobre o jogo', 'Exibe FPS, RTT, perda, servidor e etapas de carregamento fora do painel. Tempo exibido é decorrido, não estimativa.',
+        chips([{k:'on',label:'Ativar'},{k:'off',label:'Desativar'}], nxTelemetryEnabled?'on':'off', function(k){nxTelemetryToggle(k==='on');renderBody();}),true));
+      lab.add(infoRow('Atalho do controle', function(){return nxShellEnabled?'View + Menu (segurar 0,7 s)':'Disponível no perfil Xbox';}));
+      lab.add(infoRow('Entrada preferencial', function () { return nxPlatformProfile.input; }));
+      lab.add(infoRow('Oferta xCloud observada', function () { const e = nxOfferingTrace[nxOfferingTrace.length-1]; return e ? e.offering + ' · HTTP ' + e.status : 'Aguardando autenticação'; }));
+      lab.add(infoRow('Ofertas observadas', function () { return nxOfferingTrace.length ? Array.from(new Set(nxOfferingTrace.map(function(e){return e.offering;}))).join(', ') : 'Nenhuma'; }));
+       lab.add(infoRow('Xbox Shell', function () { return nxShellEnabled ? 'Ativo · ' + nxShellStats.moves + ' movimentos · ' + nxShellStats.errors + ' erros' : 'Desativado'; }));
+       if (nxConsoleLabProfile === 'xbox') lab.add(setRow('Interface Xbox Shell', 'Desative para recuperar imediatamente a interface original do painel. A alteração não modifica o streaming.', chips([{k:'on',label:'Ativar'},{k:'off',label:'Desativar'}],nxShellEnabled ? 'on' : 'off',function(k){try{localStorage.setItem(LS_NX_SHELL,k === 'on' ? '1' : '0');}catch(_){} location.reload();}),true));
+       if (nxShellEnabled) lab.add(infoRow('Último erro Xbox Shell', function () { return nxShellStats.lastError || 'Nenhum'; }));
+       lab.add(infoRow('SO da sessão solicitado', function () { return nxProfileSessionState.lastRequestedOs || 'Original / não observado'; }));
+       lab.add(infoRow('Perfil desta sessão', function () { return nxConsoleLabState.profile + ' · ' + nxConsoleProfileValidation().state; }));
+      lab.add(infoRow('Identidade contém Xbox;', function () { return navigator.userAgent.includes('Xbox;') ? 'Sim' : 'Não'; }));
+      lab.add(infoRow('Erro de identidade', function () { return nxConsoleLabState.error || 'Nenhum'; }));
+      lab.add(infoRow('Aviso de incompatibilidade', function () { return nxConsoleLabWarning() ? 'Detectado' : 'Não detectado'; }));
+      lab.add(infoRow('WebRTC / H.264 MSE', function () { const c = nxConsoleLabCapabilities(); return (c.webRTC ? 'Sim' : 'Não') + ' / ' + (c.mediaSourceH264 === null ? 'Indefinido' : c.mediaSourceH264 ? 'Sim' : 'Não'); }));
+      lab.add(infoRow('Tela cheia', function () { return document.fullscreenElement || document.webkitFullscreenElement ? 'Ativa' : 'Desativada'; }));
+      lab.add(setRow('Tela cheia e horizontal', 'O navegador exige um toque ou clique para entrar em tela cheia; a orientação horizontal é solicitada quando suportada.',
+        actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'primary')));
+      lab.add(setRow('Perfil de plataforma', 'Automático preserva a identidade nativa do dispositivo. Android e Desktop solicitam experiências específicas quando o cliente permite; Console permanece experimental. A escolha não garante reconhecimento pelo servidor.',
+        chips([{k:'off',label:'Automático'},{k:'android',label:'Android'},{k:'windows',label:'Desktop'},{k:'xbox',label:'Console'}],
+          nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
+      lab.add(setRow('Fortnite: experiência de console (experimental)',
+        'Inspirado no Better xCloud: desativa a sinalização de toque na configuração da sessão do Fortnite. Não muda User-Agent, não emula Xbox e pode não alterar a experiência no cliente novo. Requer reiniciar a sessão.',
+        chips([{k:'off',label:'Desligado'},{k:'on',label:'Ativar'}],
+          nxFortniteConsoleEnabled ? 'on' : 'off', function (k) {
+            try { localStorage.setItem(LS_FORTNITE_CONSOLE, k === 'on' ? '1' : '0'); } catch (_) {}
+            location.reload();
+          }), true));
+      lab.add(infoRow('Fortnite: aplicação', function () { return nxFortniteConsoleState.patched ? 'Configuração de toque modificada' : (nxFortniteConsoleEnabled ? 'Aguardando configuração da sessão' : 'Desligado'); }));
+      lab.add(setRow('Client Hints (avançado)',
+        'Ocultar navigator.userAgentData apenas no JavaScript, conforme Xperience XCloud. Não altera headers e pode prejudicar compatibilidade.',
+        chips([{k:'off',label:'Normal'},{k:'on',label:'Ocultar JS'}],
+          nxClientHintsMode ? 'on' : 'off', function (k) {
+            try { localStorage.setItem('nx.consoleLab.hideClientHints.v1', k === 'on' ? '1' : '0'); } catch (_) {}
+            location.reload();
+          }), true));
+      lab.add(setRow('Registrar observação', 'Anote o jogo, se apareceu no catálogo, se iniciou e eventuais mensagens de erro.',
+        actBtn('Anotar', function () {
+          let old = ''; try { old = localStorage.getItem(LS_CONSOLE_NOTES) || ''; } catch (_) {}
+          const value = window.prompt('Resultado do teste (sem dados pessoais ou tokens):', old);
+          if (value === null) return;
+          try { localStorage.setItem(LS_CONSOLE_NOTES, value.slice(0, 500)); } catch (_) {}
+          toast('Observação salva');
+        }, 'ghost')));
+      lab.add(setRow('Diagnóstico completo', 'Copia todos os registros em um JSON, ocultando identificadores sensíveis.',
+        actBtn('Copiar tudo', copyUnifiedReport, 'primary')));
+      root.appendChild(lab.root);
+
+      const g4 = group('Sistema');
+      g4.add(infoRow('Remote Play', function () { return S.remotePlayStatus; }));
+      g4.add(infoRow('Recuperações do painel', function () { return S.nxRecoveries; }));
+      g4.add(infoRow('Histórico de QoS', function () { return S.qosHistory.length + ' amostras'; }));
+      g4.add(infoRow('Último erro', function () { return S.lastErr || 'Nenhum'; }));
+      root.appendChild(g4.root);
+
+      const g5 = group('Ferramentas');
+      const tools = mk('div', 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px 0');
+      tools.appendChild(actBtn('Copiar tudo', copyUnifiedReport, 'primary'));
+      tools.appendChild(actBtn('Limpar cache', hardReload, 'danger'));
+      g5.card.appendChild(tools);
+      root.appendChild(g5.root);
+
+      root.appendChild(mk('div', 'text-align:center;color:' + C.dim + ';font-size:10.5px;margin:14px 0 2px', 'NimboXcloud v' + VER + ' · por KReight'));
+    }
+  };
+
+  // Páginas temáticas reutilizam os controles originais sem duplicar suas rotinas.
+  const buildLegacyMedia = TAB_BUILDERS.media;
+  const buildLegacyControls = TAB_BUILDERS.controls;
+  TAB_BUILDERS.audio = function (root) {
+    const temp = document.createElement('div'); buildLegacyMedia(temp);
+    if (temp.firstElementChild) root.appendChild(temp.firstElementChild);
+  };
+  TAB_BUILDERS.voice = function (root) {
+    const temp = document.createElement('div'); buildLegacyControls(temp);
+    if (temp.children[2]) root.appendChild(temp.children[2]);
+  };
+  TAB_BUILDERS.stream = (function (original) { return function (root) {
+    original(root);
+    const temp = document.createElement('div'); buildLegacyMedia(temp);
+    Array.from(temp.children).slice(1).forEach(function (node) { root.appendChild(node); });
+  }; })(TAB_BUILDERS.stream);
+  TAB_BUILDERS.controls = function (root) {
+    const temp = document.createElement('div'); buildLegacyControls(temp);
+    Array.from(temp.children).slice(0,2).forEach(function (node) { root.appendChild(node); });
+  };
+
+  function setTab(id) {
+    if (!TAB_BUILDERS[id]) id = 'overview';
+    tabId = id;
+    renderBody(true);
+  }
+
+  function renderTabs() {
+    if (!el.navTitle) return;
+    const current = TABS.find(function (t) { return t.id === tabId; }) || TABS[0];
+    el.navTitle.textContent = current.label;
+    if (el.navBack) el.navBack.style.visibility = tabId === 'overview' ? 'hidden' : 'visible';
+  }
+
+  function renderBody(resetScroll) {
+    if (!el.body) return;
+    const keep = el.body.scrollTop;
+    liveFns = [];
+    el.body.textContent = '';
+    try { TAB_BUILDERS[tabId](el.body); }
+    catch (err) {
+      S.lastErr = 'Painel: ' + String(err && err.message || err);
+      el.body.appendChild(mk('div', 'color:' + C.bad + ';font-size:12px;padding:8px', 'Erro ao montar esta aba: ' + S.lastErr));
+    }
+    renderTabs();
+    runLive();
+    el.body.scrollTop = resetScroll ? 0 : keep;
+  }
+
+  function fitCard() {
+    if (!wrap || !cardEl) return;
+    const wr = wrap.getBoundingClientRect();
+    const used = pillEl && pillEl.offsetHeight ? pillEl.offsetHeight + 6 : 0;
+    cardEl.style.maxHeight = Math.max(260, Math.min(640, innerHeight - (wr.top + used) - 14)) + 'px';
+  }
+
+  function buildUI() {
+    if (wrap && wrap.isConnected) return wrap;
+    if (wrap && !wrap.isConnected) {
+      const target = mountTarget();
+      if (target) { target.appendChild(wrap); return wrap; }
+    }
+    const host = mountTarget() || document.documentElement;
+    if (!host) return null;
+
+    wrap = mk('div', [
+      'position:fixed', 'right:12px', 'top:12px',
+      'z-index:' + ZBASE, 'pointer-events:none',
+      'width:360px', 'max-width:calc(100vw - 16px)',
+      'display:flex', 'flex-direction:column', 'align-items:flex-end',
+      'font:12px/1.5 ' + UI_FONT, 'color:' + C.text, 'text-align:left'
+    ].join(';'));
+    wrap.id = '__xcu_panel__';
+    if (nxShellEnabled) wrap.classList.add('nx-console-shell');
+
+    // Pílula flutuante (usada só durante a partida): ícone + pontinho + perda de pacotes
+    pillEl = mk('div', [
+      'pointer-events:auto', 'display:inline-flex', 'align-items:center', 'gap:6px',
+      'padding:3px 10px 3px 7px', 'height:28px', 'box-sizing:border-box', 'border-radius:14px',
+      'background:rgba(0,0,0,.38)', 'border:1px solid rgba(255,255,255,.14)', 'cursor:pointer',
+      '-webkit-backdrop-filter:blur(6px)', 'backdrop-filter:blur(6px)',
+      'user-select:none', 'white-space:nowrap'
+    ].join(';'));
+    dotEl = mk('span', 'width:7px;height:7px;border-radius:50%;background:#8b949e;flex:0 0 auto');
+    pillTxt = mk('span', 'color:#e6edf3;font-weight:600;font-size:11px', '');
+    pillEl.title = 'NimboXcloud — toque para abrir o painel';
+    const brandIcon = mk('img', 'width:20px;height:20px;display:block;flex:0 0 auto;object-fit:contain');
+    brandIcon.src = BRAND_ICON;
+    brandIcon.alt = 'NimboXcloud';
+    brandIcon.draggable = false;
+    pillEl.appendChild(brandIcon);
+    pillEl.appendChild(dotEl);
+    pillEl.appendChild(pillTxt);
+    wrap.appendChild(pillEl);
+    pillEl.addEventListener('click', function (e) { e.stopPropagation(); setOpen(!openUI, true); });
+
+    // Cartão do painel
+    cardEl = mk('div', [
+      'pointer-events:auto', 'display:none', 'flex-direction:column', 'position:relative', 'margin-top:6px',
+      'width:100%', 'box-sizing:border-box', 'overflow:hidden',
+      'background:' + C.bg, 'border:1px solid rgba(255,255,255,.10)', 'border-radius:16px',
+      'box-shadow:0 20px 56px rgba(0,0,0,.65)',
+      '-webkit-backdrop-filter:blur(14px)', 'backdrop-filter:blur(14px)'
+    ].join(';'));
+    cardEl.style.maxWidth='min(360px,calc(100vw - 16px))';
+    cardEl.setAttribute('role', 'dialog');
+    cardEl.setAttribute('aria-label', 'Painel NimboXcloud');
+    cardEl.addEventListener('pointerdown', stopEv);
+
+    // Cabeçalho
+    const head = mk('div', 'display:flex;align-items:center;gap:10px;padding:12px 12px 11px 14px;border-bottom:1px solid ' + C.line + ';flex:0 0 auto');
+    const logo = mk('img', 'width:28px;height:28px;object-fit:contain;flex:0 0 auto');
+    logo.src = BRAND_ICON; logo.alt = ''; logo.draggable = false;
+    head.appendChild(logo);
+    const ttl = mk('div', 'min-width:0;flex:1');
+    ttl.appendChild(mk('div', 'font-size:14px;font-weight:700;letter-spacing:.01em', 'NimboXcloud'));
+    ttl.appendChild(mk('div', 'font-size:10.5px;color:' + C.dim, 'Xbox Cloud · v' + VER));
+    head.appendChild(ttl);
+    el.hdrChip = mk('div', 'display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;' +
+      'background:' + C.panel + ';border:1px solid ' + C.line + ';font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums');
+    el.hdrDot = mk('span', 'width:7px;height:7px;border-radius:50%;background:' + C.dim);
+    el.hdrTxt = mk('span', '', 'Offline');
+    el.hdrChip.appendChild(el.hdrDot); el.hdrChip.appendChild(el.hdrTxt);
+    head.appendChild(el.hdrChip);
+    const closeBtn = mk('button', 'all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
+      'width:30px;height:30px;border-radius:8px;color:' + C.dim + ';-webkit-tap-highlight-color:transparent');
+    closeBtn.appendChild(ico(ICONS.close, 18));
+    closeBtn.setAttribute('aria-label', 'Fechar painel');
+    closeBtn.title = 'Fechar';
+    closeBtn.addEventListener('click', function (e) { e.stopPropagation(); setOpen(false, true); });
+    head.appendChild(closeBtn);
+    cardEl.appendChild(head);
+
+    // Corpo (rolável)
+    el.body = mk('div', 'flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:12px 14px 16px;' +
+      'overscroll-behavior:contain;-webkit-overflow-scrolling:touch');
+    cardEl.appendChild(el.body);
+
+    // Aviso temporário
+    el.toast = mk('div', 'position:absolute;left:50%;bottom:66px;transform:translate(-50%,6px);opacity:0;pointer-events:none;' +
+      'background:#e8edf3;color:#0d1117;font-size:12px;font-weight:600;padding:7px 13px;border-radius:999px;white-space:nowrap;' +
+      'max-width:90%;overflow:hidden;text-overflow:ellipsis;transition:opacity .18s,transform .18s;box-shadow:0 6px 18px rgba(0,0,0,.5)');
+    cardEl.appendChild(el.toast);
+
+    // Navegação contextual: título e retorno ao início, sem seis abas comprimidas.
+    const navBar = mk('div','display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid '+C.line+';background:rgba(255,255,255,.025);flex:0 0 auto');
+    el.navBack = mk('button','all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.055);color:'+C.text);
+    el.navBack.setAttribute('aria-label','Voltar ao início'); el.navBack.appendChild(ico('M15 18l-6-6 6-6',18));
+    el.navBack.addEventListener('click',function (e) { e.stopPropagation(); setTab('overview'); });
+    el.navTitle = mk('span','font-size:13px;font-weight:700;flex:1','Início');
+    navBar.appendChild(el.navBack); navBar.appendChild(el.navTitle);
+    const home = mk('button','all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;width:34px;height:34px;color:'+C.dim);
+    home.title = 'Central de controle'; home.setAttribute('aria-label','Central de controle'); home.appendChild(ico('M3 10l9-7 9 7 M5 9v12h14V9 M9 21v-8h6v8',18));
+    home.addEventListener('click',function (e) { e.stopPropagation(); setTab('overview'); }); navBar.appendChild(home);
+    cardEl.insertBefore(navBar,el.body);
+
+    wrap.appendChild(cardEl);
+    host.appendChild(wrap);
+    return wrap;
+  }
+
+  // HUD independente do painel, sem interferir com o fluxo do jogo.
+  const NX_TELEMETRY_KEY = 'nx.telemetry.overlay.v1';
+  let nxTelemetryEnabled = (function(){try{return localStorage.getItem(NX_TELEMETRY_KEY)==='1';}catch(_){return false;}})();
+  let nxTelemetryEl = null, nxLoadingStarted = 0, nxLoadingLastStage = '';
+  function nxTelemetryEnsure() {
+    if (nxTelemetryEl && nxTelemetryEl.isConnected) return nxTelemetryEl;
+    const host = mountTarget();
+    if (!host) return null;
+    nxTelemetryEl = document.createElement('div');
+    nxTelemetryEl.id = 'nx-telemetry-overlay';
+    nxTelemetryEl.setAttribute('aria-label','Telemetria NimboXcloud');
+    nxTelemetryEl.style.cssText = 'position:fixed;left:12px;top:12px;z-index:2147483000;pointer-events:none;background:rgba(9,14,23,.83);color:#eaf4ff;border:1px solid rgba(130,177,230,.3);border-radius:10px;padding:9px 12px;font:12px/1.6 system-ui,sans-serif;white-space:pre-line;max-width:min(390px,calc(100vw - 24px));box-shadow:0 4px 22px #0007';
+    host.appendChild(nxTelemetryEl);
+    nxTelemetryEl.setAttribute('title','Arraste para mover o NX Stream Monitor');
+    nxTelemetryEl.addEventListener('pointerdown',nxMonitorDrag);
+    return nxTelemetryEl;
+  }
+  // NX Stream Monitor: métricas WebRTC existentes, sem sondagens paralelas.
+  const NX_MONITOR_SETTINGS='nx.monitor.settings.v1';
+  const nxMonitorDefaults={layout:'auto',opacity:45,color:'white',scale:100,position:'top-left',x:null,y:null,fields:['server','fps','rtt','bitrate','loss']};
+  function nxMonitorLoad(){try{const p=JSON.parse(localStorage.getItem(NX_MONITOR_SETTINGS)||'{}');return Object.assign({},nxMonitorDefaults,p,{fields:Array.isArray(p.fields)?p.fields:nxMonitorDefaults.fields});}catch(_){return Object.assign({},nxMonitorDefaults);}}
+  let nxMonitor=nxMonitorLoad();
+  function nxMonitorSave(){try{localStorage.setItem(NX_MONITOR_SETTINGS,JSON.stringify(nxMonitor));}catch(_){}nxTelemetryTick();}
+  function nxMonitorPlace(){
+    if(!nxTelemetryEl)return;
+    const n=nxTelemetryEl,p=nxMonitor;
+    const x=Number.isFinite(p.x)?p.x:(p.position.endsWith('right')?innerWidth-n.offsetWidth-12:12);
+    const y=Number.isFinite(p.y)?p.y:(p.position.startsWith('bottom')?innerHeight-n.offsetHeight-12:12);
+    n.style.left=Math.max(0,Math.min(innerWidth-n.offsetWidth,x))+'px';
+    n.style.top=Math.max(0,Math.min(innerHeight-n.offsetHeight,y))+'px';
+    n.style.right='auto';n.style.bottom='auto';
+  }
+  function nxMonitorDrag(e){
+    if(e.button!=null&&e.button!==0)return;
+    const n=nxTelemetryEl,r=n.getBoundingClientRect(),dx=e.clientX-r.left,dy=e.clientY-r.top;
+    try{n.setPointerCapture(e.pointerId);}catch(_){}
+    const move=function(v){if(v.pointerId!==e.pointerId)return;nxMonitor.x=v.clientX-dx;nxMonitor.y=v.clientY-dy;nxMonitorPlace();};
+    const stop=function(v){if(v.pointerId!==e.pointerId)return;n.removeEventListener('pointermove',move);n.removeEventListener('pointerup',stop);n.removeEventListener('pointercancel',stop);nxMonitorSave();};
+    n.addEventListener('pointermove',move);n.addEventListener('pointerup',stop);n.addEventListener('pointercancel',stop);e.stopPropagation();
+  }
+  function nxTelemetryTick(){
+    if(!nxTelemetryEnabled||document.hidden||!streaming()){if(nxTelemetryEl)nxTelemetryEl.style.display='none';return;}
+    const n=nxTelemetryEnsure();if(!n)return;
+    const host=mountTarget();if(host&&n.parentNode!==host)host.appendChild(n);
+    const q=S.qos||{},p=nxMonitor;
+    const flags={JAPANEAST:'🇯🇵',KOREACENTRAL:'🇰🇷',EASTUS:'🇺🇸',WESTEUROPE:'🇪🇺',BRAZILSOUTH:'🇧🇷'};
+    const srv=String(S.serverActual||'').toUpperCase();
+    const vals={server:(flags[srv]||'◈')+' '+(srv||'Servidor não identificado'),fps:'FPS '+fmtN(q.decodedFps||q.fps),rtt:'RTT '+fmtN(q.rtt,' ms'),bitrate:'BR '+(Number.isFinite(q.kbps)?fmtN(q.kbps/1000,' Mbps',1):'—'),loss:'Perda '+fmtN(curLoss(),'% ',1),resolution:'Res '+(q.h?q.h+'p':'—'),jitter:'Jitter '+fmtN(q.jitter,' ms')};
+    const keys=p.layout==='compact'?['server','fps','rtt']:p.fields;
+    const layout=p.layout==='auto'?(innerWidth<700?'vertical':'horizontal'):p.layout;
+    n.textContent=keys.filter(function(k){return Object.prototype.hasOwnProperty.call(vals,k);}).map(function(k){return vals[k];}).join(layout==='vertical'?'\\n':'  ·  ');
+    n.style.cssText='position:fixed;z-index:2147483000;display:block;pointer-events:auto;touch-action:none;user-select:none;cursor:move;box-sizing:border-box;border-radius:7px;padding:5px 8px;max-width:calc(100vw - 24px);white-space:pre-line;font-family:ui-monospace,Consolas,monospace;font-weight:600;line-height:1.5';
+    n.style.fontSize=(11*Math.max(60,Math.min(140,Number(p.scale)||100))/100)+'px';
+    n.style.background='rgba(0,0,0,'+(Math.max(0,Math.min(100,Number(p.opacity)||0))/100)+')';
+    n.style.color=({white:'#fff',black:'#000',blue:'#65b8ff',green:'#80e5a4'})[p.color]||'#fff';
+    nxMonitorPlace();
+  }
+  setInterval(nxTelemetryTick, 1000);
+  function nxTelemetryToggle(enabled) {
+    nxTelemetryEnabled = !!enabled;
+    try { localStorage.setItem(NX_TELEMETRY_KEY,enabled?'1':'0'); } catch (_) {}
+    nxTelemetryTick();
+  }
+  // Configurações no início: o monitor funciona mesmo com o painel recolhido.
+  const nxOverviewOriginal=TAB_BUILDERS.overview;
+  TAB_BUILDERS.overview=function(root){
+    const section=mk('div','border:1px solid '+C.line+';border-radius:12px;padding:12px;margin-bottom:12px');
+    section.appendChild(mk('div','font-weight:700;font-size:14px;margin-bottom:5px','NX Stream Monitor'));
+    section.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:10px','Informações mínimas durante a partida; arraste o monitor para reposicionar.'));
+    section.appendChild(actBtn(nxTelemetryEnabled?'Ocultar monitor':'Ativar monitor',function(){nxTelemetryToggle(!nxTelemetryEnabled);renderBody();},'ghost'));
+    function option(label,key,choices){
+      const row=mk('label','display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:9px;font-size:12px');
+      row.appendChild(mk('span','',label));
+      const sel=mk('select','background:#18212b;color:white;border:1px solid '+C.line+';border-radius:7px;padding:6px;max-width:60%');
+      choices.forEach(function(o){const opt=document.createElement('option');opt.value=o[0];opt.textContent=o[1];sel.appendChild(opt);});
+      sel.value=String(nxMonitor[key]);sel.addEventListener('change',function(){nxMonitor[key]=['opacity','scale'].includes(key)?Number(sel.value):sel.value;if(key==='position'){nxMonitor.x=null;nxMonitor.y=null;}nxMonitorSave();});
+      row.appendChild(sel);section.appendChild(row);
+    }
+    option('Layout','layout',[['auto','Automático'],['horizontal','Horizontal'],['vertical','Vertical'],['compact','Compacto']]);
+    option('Posição','position',[['top-left','Superior esquerdo'],['top-right','Superior direito'],['bottom-left','Inferior esquerdo'],['bottom-right','Inferior direito']]);
+    option('Fundo','opacity',[['0','Transparente'],['25','25%'],['45','45%'],['65','65%'],['85','85%'],['100','Preto']]);
+    option('Texto','color',[['white','Branco'],['black','Preto'],['blue','Azul'],['green','Verde']]);
+    option('Escala','scale',[['60','60%'],['80','80%'],['100','100%'],['120','120%'],['140','140%']]);
+    const fields=mk('div','display:flex;flex-wrap:wrap;gap:8px;margin-top:10px');
+    [['server','Servidor'],['fps','FPS'],['rtt','RTT'],['bitrate','Bitrate'],['loss','Perda'],['resolution','Resolução'],['jitter','Jitter']].forEach(function(item){
+      const label=mk('label','display:inline-flex;align-items:center;gap:4px;font-size:11px');
+      const check=document.createElement('input');check.type='checkbox';check.checked=nxMonitor.fields.includes(item[0]);
+      check.addEventListener('change',function(){nxMonitor.fields=check.checked?Array.from(new Set(nxMonitor.fields.concat(item[0]))):nxMonitor.fields.filter(function(k){return k!==item[0];});nxMonitorSave();});
+      label.appendChild(check);label.appendChild(mk('span','',item[1]));fields.appendChild(label);
+    });
+    section.appendChild(fields);root.appendChild(section);nxOverviewOriginal(root);
+  };
+    // NX UI v2: início minimalista com quatro grupos; páginas legadas preservadas.
+  const nxMonitorSettingsPage=TAB_BUILDERS.overview;
+  TABS.push({id:'personalize',label:'Personalização',desc:'Monitor, aparência e posição'});
+  TABS.push({id:'dashboard',label:'Dashboard',desc:'Gráficos e indicadores detalhados'});
+  TAB_BUILDERS.personalize=function(root){
+    const temp=document.createElement('div');
+    nxMonitorSettingsPage(temp);
+    if(temp.firstElementChild)root.appendChild(temp.firstElementChild);
+    root.appendChild(mk('div','font-size:11px;color:'+C.dim+';line-height:1.5;margin-top:12px','As opções de monitor são independentes do painel. A posição também pode ser alterada arrastando o monitor durante uma transmissão.'));
+  };
+  TAB_BUILDERS.dashboard=function(root){
+    nxOverviewOriginal(root);
+  };
+  TAB_BUILDERS.overview=function(root){
+    root.appendChild(mk('div','font-size:18px;font-weight:750;letter-spacing:-.02em;margin-bottom:4px','NX · Central'));
+    root.appendChild(mk('div','font-size:11px;color:'+C.dim+';line-height:1.5;margin-bottom:12px','Ajustes organizados. O painel pode ser fechado a qualquer momento.'));
+    const status=mk('div','padding:10px 12px;border-radius:10px;background:'+C.panel+';border:1px solid '+C.line+';margin-bottom:10px');
+    const state=mk('div','font-size:12px;font-weight:700');
+    const metrics=mk('div','font-size:11px;color:'+C.dim+';margin-top:4px;line-height:1.5');
+    status.appendChild(state);status.appendChild(metrics);root.appendChild(status);
+    liveFns.push(function(){
+      state.textContent=linkState().text;
+      const q=S.qos||{};
+      metrics.textContent='FPS '+fmtN(q.decodedFps||q.fps)+'  ·  RTT '+fmtN(q.rtt,' ms')+'  ·  '+(S.serverActual||'Servidor automático');
+    });
+    const groups=[
+      {title:'Transmissão',sub:'Qualidade, servidores e estatísticas',icon:ICONS.stream,links:[['stream','Imagem e transmissão'],['region','Rede e servidores'],['dashboard','Dashboard e gráficos']]},
+      {title:'Controles',sub:'Gamepad, toque, áudio e acessórios',icon:ICONS.controls,links:[['controls','Controle e HUD'],['audio','Áudio'],['voice','Voz e acessórios']]},
+      {title:'Personalização',sub:'Monitor, transparência e layout',icon:ICONS.overview,links:[['personalize','Configurar NX Stream Monitor']]},
+      {title:'Avançado',sub:'Ferramentas e diagnóstico',icon:ICONS.advanced,links:[['advanced','Sistema e laboratório']]}
+    ];
+    groups.forEach(function(g){
+      const section=mk('div','margin-bottom:8px;border:1px solid '+C.line+';border-radius:11px;overflow:hidden;background:'+C.panel);
+      const button=mk('button','all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:11px;padding:12px;color:'+C.text+';text-align:left');
+      button.setAttribute('aria-expanded','false');
+      button.appendChild(ico(g.icon,19));
+      const titles=mk('span','display:flex;flex-direction:column;gap:3px;min-width:0;flex:1');
+      titles.appendChild(mk('span','font-size:13px;font-weight:700',g.title));
+      titles.appendChild(mk('span','font-size:10.5px;color:'+C.dim,g.sub));
+      button.appendChild(titles);
+      button.appendChild(ico('M6 9l6 6 6-6',15));
+      const details=mk('div','display:none;padding:0 8px 8px');
+      g.links.forEach(function(link){
+        const entry=mk('button','all:unset;box-sizing:border-box;display:block;cursor:pointer;width:100%;text-align:left;font-size:12px;color:'+C.text+';padding:11px 12px;border-top:1px solid '+C.line,link[1]);
+        entry.addEventListener('click',function(e){e.stopPropagation();setTab(link[0]);});
+        details.appendChild(entry);
+      });
+      button.addEventListener('click',function(e){
+        e.stopPropagation();
+        const open=details.style.display==='none';
+        details.style.display=open?'block':'none';
+        button.setAttribute('aria-expanded',String(open));
+      });
+      section.appendChild(button);section.appendChild(details);root.appendChild(section);
+    });
+    const monitor=actBtn(nxTelemetryEnabled?'Ocultar monitor de desempenho':'Ativar monitor de desempenho',function(){nxTelemetryToggle(!nxTelemetryEnabled);renderBody();},'ghost');
+    monitor.style.width='100%';monitor.style.marginTop='4px';root.appendChild(monitor);
+  };
+    // Painel como inventario: solta o ponteiro uma unica vez ao abrir.
+  // Ao fechar, nao recaptura sem gesto do usuario; F9 continua nativo.
+  document.addEventListener('keydown',function(e){
+    if(!openUI)return;
+    const isShortcut=e.ctrlKey&&e.shiftKey&&(e.code===getPref(LS_NX_SHORTCUT,'KeyH')||e.code==='KeyN');
+    if(isShortcut)return;
+    if(e.code==='Escape'){e.preventDefault();e.stopImmediatePropagation();setOpen(false,true);return;}
+    if(wrap && e.target && wrap.contains(e.target))return;
+    e.preventDefault();e.stopImmediatePropagation();
+  },true);
+  document.addEventListener('keyup',function(e){
+    if(!openUI || (wrap&&e.target&&wrap.contains(e.target)))return;
+    e.preventDefault();e.stopImmediatePropagation();
+  },true);
+  // Gerenciamento de foco independente do Pointer Lock: nunca recapturar automaticamente.
+  let nxFocusBeforePanel = null;
+  function setOpen(v, byUser) {
+    const wasOpen = openUI;
+    openUI = !!v;
+    if (byUser) userTouched = true;
+    if (!cardEl) buildUI();
+    if (!cardEl) return;
+    cardEl.style.display = openUI ? 'flex' : 'none';
+    if (nxShellEnabled && wrap) { wrap.classList.toggle('nx-shell-open', openUI); if (openUI) nxShellNeedsRelease = true; }
+    if(openUI && !wasOpen){
+      nxFocusBeforePanel = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+      if(document.pointerLockElement){
+        try{document.exitPointerLock();}catch(_){}
+      }
+    }
+    if (openUI) {
+      syncNXPlacement(); fitCard(); renderBody(); update();
+      if(!wasOpen){
+        // Teclado e controle podem operar o menu sem enviar comandos ao jogo.
+        if(!cardEl.hasAttribute('tabindex'))cardEl.setAttribute('tabindex','-1');
+        try{cardEl.focus({preventScroll:true});}catch(_){}
+      }
+    }else if(wasOpen){
+      const previous=nxFocusBeforePanel;
+      nxFocusBeforePanel=null;
+      // Restaurar foco nao significa restaurar Pointer Lock; o jogador decide quando retomar.
+      if(previous && previous.isConnected && typeof previous.focus==='function'){
+        try{previous.focus({preventScroll:true});}catch(_){}
+      }else if(document.activeElement && wrap && wrap.contains(document.activeElement)){
+        try{document.activeElement.blur();}catch(_){}
+      }
+    }
+    if (wrap) wrap.style.display = 'flex';
+  }
+
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    setTimeout(function () { pending = false; update(); }, 150);
+  }
+
+  // Tocar fora do painel o fecha (o botão da barra e o próprio painel não contam como "fora")
+  document.addEventListener('pointerdown', function (e) {
+    if (!openUI) return;
+    const t = e.target;
+    if (t && wrap && wrap.contains(t)) return;
+    if (t && nxLibraryButton && nxLibraryButton.contains(t)) return;
+    // Fechar sem encaminhar o clique ao jogo.
+    e.preventDefault();e.stopImmediatePropagation();
+    setOpen(false,true);
+  }, true);
+  ['pointerup','mousedown','mouseup','click','wheel','touchstart','touchmove','touchend'].forEach(function(type){
+    document.addEventListener(type,function(e){
+      if(!openUI || (wrap&&e.target&&wrap.contains(e.target)))return;
+      e.preventDefault();e.stopImmediatePropagation();
+    },{capture:true,passive:false});
+  });
+
+  function update() {
+    if (!buildUI()) return;
+
+    const loss = curLoss();
+    const col = lossColor(loss);
+    // O pontinho (na pílula, no botão da biblioteca e no cabeçalho) indica o estado do link
+    dotEl.style.background = col;
+    if (nxLibraryDot) nxLibraryDot.style.background = col;
+    pillTxt.textContent = loss == null ? '' : loss.toFixed(1) + '%';
+    pillTxt.style.display = loss == null ? 'none' : 'inline';
+    if (el.hdrDot) {
+      el.hdrDot.style.background = col;
+      el.hdrTxt.textContent = loss == null ? 'Sem partida' : loss.toFixed(1) + '% perda';
+    }
+
+    if (!openUI) return;
+    fitCard();
+    runLive();
+  }
+
+  // ---------- 14. Aplicação de configurações ----------
+  function pickApply(kind, k) {
+    if (kind === 'srv') {
+      setPref(LS_SRV, k);
+      S.serverActual = '';
+      S.serverPin = SERVERS[k].name;
+      return false;
+    }
+    if (kind === 'bitrate') { setPref(LS_BITRATE, k); return false; }
+    if (kind === 'res') { setPref(LS_RES, k); return false; }
+    if (kind === 'region') { setPref(LS_KEY, k); return true; }
+    return false;
+  }
+
+  function toggleV4() {
+    setPref(LS_V4, v4on() ? '0' : '1');
+    S.v6dropped = 0;
+    update();
+  }
+
+  function hardReload() {
+    try {
+      const kill = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && /^experimentationInfo|^HydrationCache/i.test(k)) kill.push(k);
+      }
+      kill.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) { } });
+    } catch (e) { }
+    location.reload();
+  }
+
+  // Diagnóstico somente leitura; não modifica navigator, eventos nem a sessão.
+  function inputCapabilities() {
+    let touchPoints = 0, coarse = false, anyCoarse = false, hover = false;
+    try { touchPoints = Number(navigator.maxTouchPoints) || 0; } catch (e) {}
+    try { coarse = !!window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
+    try { anyCoarse = !!window.matchMedia('(any-pointer: coarse)').matches; } catch (e) {}
+    try { hover = !!window.matchMedia('(any-hover: hover)').matches; } catch (e) {}
+    let gamepads = 0;
+    try { gamepads = Array.from(navigator.getGamepads ? navigator.getGamepads() : []).filter(Boolean).length; } catch (e) {}
+    return {
+      touch: touchPoints > 0 || ('ontouchstart' in window) || coarse || anyCoarse,
+      maxTouchPoints: touchPoints, pointerCoarse: coarse,
+      anyPointerCoarse: anyCoarse, anyHover: hover, gamepadsConnected: gamepads,
+      note: 'Capacidades locais; não confirmam liberação do controle virtual pelo xCloud'
+    };
+  }
+
+  // Diagnóstico multimodal de eventos (somente leitura, buffer circular, sem dados digitados).
+  const DIAG_MAX = 100;
+  const diagEvents = [];
+  const diagStart = Date.now();
+  let diagLastTouch = 0;
+  let diagLastPointer = 0;
+  let diagLastKey = 0;
+  function diagState() {
+    let lock = false, focus = false, visibility = 'unknown';
+    try { lock = !!(document.pointerLockElement || document.webkitPointerLockElement); } catch (e) {}
+    try { focus = document.hasFocus(); } catch (e) {}
+    try { visibility = document.visibilityState; } catch (e) {}
+    return { pointerLocked: lock, focused: focus, visibility: visibility,
+      fullscreen: !!(document.fullscreenElement || document.webkitFullscreenElement),
+      screen: { width: window.innerWidth, height: window.innerHeight } };
+  }
+  function diagLog(type, detail) {
+    try {
+      diagEvents.push({ ms: Date.now() - diagStart, type: type, detail: detail || null, state: diagState() });
+      if (diagEvents.length > DIAG_MAX) diagEvents.shift();
+    } catch (e) {}
+  }
+  function diagZone(x, y) {
+    const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
+    const col = Math.min(3, Math.max(0, Math.floor(x / w * 4)));
+    const row = Math.min(3, Math.max(0, Math.floor(y / h * 4)));
+    return 'r' + row + 'c' + col;
+  }
+  // Camada única de observação de controles: somente leitura, sem interceptar getGamepads.
+  const NX_INPUT_PROFILE_KEY = 'nx.input.previewProfile.v1';
+  const nxInputProfiles = {
+    default: { label: 'Padrão', deadzone: 0.12, curve: 1 },
+    precision: { label: 'Precisão', deadzone: 0.08, curve: 1.6 },
+    racing: { label: 'Corrida', deadzone: 0.05, curve: 1.2 },
+    accessible: { label: 'Acessibilidade', deadzone: 0.18, curve: 0.75 }
+  };
+  function nxInputProfileName() {
+    const name = getPref(NX_INPUT_PROFILE_KEY, 'default');
+    return Object.prototype.hasOwnProperty.call(nxInputProfiles, name) ? name : 'default';
+  }
+  const NX_RIGHT_STICK_PROFILE_KEY = 'nx.input.rightStickProfile.v1';
+  function nxRightStickProfileName() {
+    const name = getPref(NX_RIGHT_STICK_PROFILE_KEY, 'default');
+    return Object.prototype.hasOwnProperty.call(nxInputProfiles, name) ? name : 'default';
+  }
+  function nxTransformStickAxis(value, index) {
+    const name = index < 2 ? nxInputProfileName() : nxRightStickProfileName();
+    return nxPreviewAxis(value, nxInputProfiles[name]);
+  }
+  function nxPreviewAxis(value, profile) {
+    if (!Number.isFinite(value)) return 0;
+    const x = Math.max(-1, Math.min(1, value));
+    const magnitude = Math.abs(x);
+    if (magnitude <= profile.deadzone) return 0;
+    const normalized = (magnitude - profile.deadzone) / (1 - profile.deadzone);
+    return Math.sign(x) * Math.pow(normalized, profile.curve);
+  }
+  const NX_INPUT_APPLY_KEY = 'nx.input.applyAxes.v1';
+  const nxInputBridge = { enabled: false, installed: false, error: '', transformedReads: 0, nativeReads: 0, fallbacks: 0, lastFallback: '', foreignOverride: false, restored: false };
+  const nxOriginalGamepadDescriptor = Object.getOwnPropertyDescriptor(navigator, 'getGamepads');
+  const nxNativeGetGamepads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads.bind(navigator) : null;
+  const NX_GYRO_GAME_KEY = 'nx.gyro.gameInput.v1';
+  const NX_GYRO_TRIGGER_KEY = 'nx.gyro.activation.v1';
+  function nxGyroGameEnabled() { return getPref(NX_GYRO_GAME_KEY, '0') === '1'; }
+  function nxGyroActivationMode() { return getPref(NX_GYRO_TRIGGER_KEY, 'lt') === 'always' ? 'always' : 'lt'; }
+  function nxInputEnabled() { return getPref(NX_INPUT_APPLY_KEY, '0') === '1'; }
+  function nxGameBridgeRequested() { return nxInputEnabled() || nxGyroGameEnabled(); }
+  const NX_GYRO_BLEND_KEY = 'nx.gyro.blend.v1';
+  const NX_GYRO_MAX_AGE_MS = 250;
+  function nxGyroBlend() {
+    const value = Number(getPref(NX_GYRO_BLEND_KEY, '0.5'));
+    return Number.isFinite(value) ? Math.max(0.1, Math.min(1, value)) : 0.5;
+  }
+  const NX_GYRO_TARGET_KEY = 'nx.gyro.gamepadIndex.v1';
+  function nxGyroTargetIndex() {
+    const raw = getPref(NX_GYRO_TARGET_KEY, '0');
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 0 && n <= 3 ? n : 0;
+  }
+  function nxGyroGameAxes(buttons) {
+    if (!nxGyroGameEnabled() || !nxGyroPreview.enabled || !nxGyroPreviewState().calibrated ||
+        Date.now() - nxGyroPreview.lastAt > NX_GYRO_MAX_AGE_MS ||
+        document.visibilityState === 'hidden') return null;
+    if (nxGyroActivationMode() === 'lt') {
+      const lt = buttons && buttons[6];
+      if (!lt || !(lt.pressed || Number(lt.value) > 0.5)) return null;
+    }
+    const g = nxGyroPreviewState();
+    return [g.axisX, g.axisY];
+  }
+  function nxMergeGyroAxes(axes, buttons, padIndex) {
+    const target = nxGyroTargetIndex();
+    if (padIndex !== undefined && padIndex !== target) return axes;
+    const gyro = nxGyroGameAxes(buttons);
+    if (!gyro || axes.length < 4) return axes;
+    const merged = axes.slice();
+    const blend = nxGyroBlend();
+    merged[2] = Math.max(-1, Math.min(1, merged[2] + gyro[0] * blend));
+    merged[3] = Math.max(-1, Math.min(1, merged[3] + gyro[1] * blend));
+    return merged;
+  }
+  function nxInputBridgeStatus() {
+    // Consulta somente leitura: abrir o painel nunca deve apagar preferencias.
+    // Se outro script substituiu a API, a ponte NimboXcloud deixa de ser chamada.
+    if (nxInputBridge.installed && navigator.getGamepads !== nxInputBridge.wrapper) {
+      return 'Outro script controla a Gamepad API; ponte NimboXcloud inativa';
+    }
+    return nxInputBridge.installed ? 'Ativo' : (nxInputBridge.error || 'Nativo / simulação');
+  }
+  function nxRestoreNativeGamepads(reason) {
+    nxInputBridge.fallbacks++;
+    nxInputBridge.lastFallback = String(reason || 'Recuperação manual').slice(0, 160);
+    nxInputBridge.error = nxInputBridge.lastFallback;
+    nxInputBridge.enabled = false;
+    setPref(NX_INPUT_APPLY_KEY, '0');
+    setPref(NX_GYRO_GAME_KEY, '0');
+    if (nxNativeGetGamepads) {
+      try {
+        if (!nxInputBridge.wrapper || navigator.getGamepads !== nxInputBridge.wrapper) {
+          if (nxInputBridge.wrapper) nxInputBridge.foreignOverride = true;
+          nxInputBridge.error += '; API não pertence à ponte NimboXcloud; não sobrescrita';
+          nxInputBridge.installed = false;
+          return;
+        }
+        if (nxOriginalGamepadDescriptor) {
+          Object.defineProperty(navigator, 'getGamepads', nxOriginalGamepadDescriptor);
+        } else {
+          delete navigator.getGamepads;
+        }
+        nxInputBridge.installed = false;
+        nxInputBridge.restored = true;
+      } catch (err) { nxInputBridge.error += '; restauração: ' + String(err && err.message || err); }
+    }
+  }
+  function nxInstallInputBridge() {
+    nxInputBridge.enabled = nxGameBridgeRequested();
+    if (!nxInputBridge.enabled || !nxNativeGetGamepads) return;
+    // Não instalar por cima de outro wrapper que assumiu a API após o boot.
+    // O descriptor original é capturado uma única vez; ownership deve ser conferido.
+    if (nxInputBridge.wrapper && navigator.getGamepads === nxInputBridge.wrapper) {
+      nxInputBridge.installed = true;
+      return;
+    }
+    if (nxInputBridge.wrapper && navigator.getGamepads !== nxInputBridge.wrapper) {
+      nxInputBridge.foreignOverride = true;
+    }
+    if (nxInputBridge.foreignOverride) {
+      nxInputBridge.enabled = false;
+      nxInputBridge.error = 'Outro script controla a Gamepad API';
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(navigator, 'getGamepads') && nxOriginalGamepadDescriptor && !nxOriginalGamepadDescriptor.configurable) {
+      nxInputBridge.error = 'Gamepad API não configurável; processamento ignorado';
+      return;
+    }
+    try {
+      const bridge = function () {
+        let pads;
+        try {
+          pads = nxNativeGetGamepads();
+          nxInputBridge.nativeReads++;
+          if (!pads) return pads;
+          const result = Array.from(pads, function (pad) {
+            if (!pad || !pad.connected || !pad.axes || !pad.axes.length || pad.mapping !== 'standard') return pad;
+            // Apenas eixos padrão dos sticks. Eixos adicionais ficam intactos.
+            const nativeAxes = Array.from(pad.axes);
+            const profiledAxes = nxInputEnabled() ? nativeAxes.map(function (v, i) {
+              return i < 4 ? nxTransformStickAxis(v, i) : v;
+            }) : nativeAxes;
+            const axes = nxMergeGyroAxes(profiledAxes, pad.buttons, pad.index);
+            // Evita criar um novo objeto se não houver diferença perceptível.
+            if (axes.every(function (v, i) { return Object.is(v, pad.axes[i]); })) return pad;
+            const output = { id: pad.id, index: pad.index, connected: pad.connected,
+              mapping: pad.mapping, timestamp: pad.timestamp, axes: axes, buttons: pad.buttons };
+            try { if ('vibrationActuator' in pad) output.vibrationActuator = pad.vibrationActuator; } catch (_) {}
+            try { if ('hapticActuators' in pad) output.hapticActuators = pad.hapticActuators; } catch (_) {}
+            nxInputBridge.transformedReads++;
+            return output;
+          });
+          return result;
+        } catch (err) {
+          nxRestoreNativeGamepads('Falha no processamento: ' + String(err && err.message || err));
+          if (pads) return pads;
+          try { return nxNativeGetGamepads(); } catch (_) { return []; }
+        }
+      };
+      Object.defineProperty(navigator, 'getGamepads', { configurable: true, writable: true, value: bridge });
+      nxInputBridge.wrapper = bridge;
+      nxInputBridge.installed = navigator.getGamepads === bridge;
+      if (!nxInputBridge.installed) nxInputBridge.error = 'Não foi possível instalar o processamento';
+    } catch (err) { nxInputBridge.error = String(err && err.message || err); }
+  }
+  // Instala no início do userscript, antes de a interface do site inicializar.
+  nxInstallInputBridge();
+  // Telemetria agregada de fontes de entrada; nunca envia ou injeta comandos.
+  const nxInputEvents = [];
+  const NX_INPUT_EVENTS_MAX = 30;
+  function nxInputEvent(kind, detail) {
+    nxInputEvents.push({ at: new Date().toISOString(), kind: kind, detail: String(detail || '').slice(0, 90) });
+    if (nxInputEvents.length > NX_INPUT_EVENTS_MAX) nxInputEvents.shift();
+  }
+  // Registro de entradas virtuais interno: não injeta Gamepad nem intercepta eventos do jogo.
+  const nxVirtualInputs = Object.create(null);
+  const NX_VIRTUAL_INPUT_TTL = 2000;
+  const NX_VIRTUAL_INPUT_LIMIT = 8;
+  function nxPruneVirtualInputs() {
+    const now = Date.now();
+    Object.keys(nxVirtualInputs).forEach(function (id) {
+      if (now - nxVirtualInputs[id].at > NX_VIRTUAL_INPUT_TTL) delete nxVirtualInputs[id];
+    });
+  }
+  function nxRegisterVirtualInput(id, kind, active) {
+    if (typeof id !== 'string' || !/^[a-z0-9_-]{1,32}$/i.test(id)) return false;
+    if (kind !== 'touch-hud' && kind !== 'gyro' && kind !== 'virtual-keyboard' && kind !== 'virtual-mouse') return false;
+    if (active === false) {
+      delete nxVirtualInputs[id];
+      return true;
+    }
+    nxPruneVirtualInputs();
+    if (!Object.prototype.hasOwnProperty.call(nxVirtualInputs, id) && Object.keys(nxVirtualInputs).length >= NX_VIRTUAL_INPUT_LIMIT) return false;
+    nxVirtualInputs[id] = { kind: kind, at: Date.now() };
+    return true;
+  }
+  function nxVirtualInputState() {
+    nxPruneVirtualInputs();
+    const kinds = Object.keys(nxVirtualInputs).map(function (id) { return nxVirtualInputs[id].kind; });
+    return { count: kinds.length, kinds: Array.from(new Set(kinds)), injectionEnabled: false,
+      note: 'Registro interno de atividade virtual; nenhuma entrada é enviada ao xCloud.' };
+  }
+  // Giroscópio em modo de observação: exige ativação explícita e nunca move o jogo.
+  const NX_GYRO_INVERT_X_KEY = 'nx.gyro.previewInvertX.v1';
+  const NX_GYRO_INVERT_Y_KEY = 'nx.gyro.previewInvertY.v1';
+  function nxGyroInvertX() { return getPref(NX_GYRO_INVERT_X_KEY, '0') === '1'; }
+  function nxGyroInvertY() { return getPref(NX_GYRO_INVERT_Y_KEY, '0') === '1'; }
+  const NX_GYRO_SENS_KEY = 'nx.gyro.previewSensitivity.v1';
+  const NX_GYRO_DEADZONE_KEY = 'nx.gyro.previewDeadzone.v1';
+  function nxGyroSensitivity() {
+    const value = Number(getPref(NX_GYRO_SENS_KEY, '1'));
+    return Number.isFinite(value) ? Math.max(0.25, Math.min(3, value)) : 1;
+  }
+  function nxGyroDeadzone() {
+    const value = Number(getPref(NX_GYRO_DEADZONE_KEY, '0.04'));
+    return Number.isFinite(value) ? Math.max(0, Math.min(0.2, value)) : 0.04;
+  }
+  function nxGyroAxisPreview(degrees, range) {
+    if (!Number.isFinite(degrees)) return 0;
+    const normalized = Math.max(-1, Math.min(1, degrees / range * nxGyroSensitivity()));
+    const deadzone = nxGyroDeadzone();
+    if (Math.abs(normalized) <= deadzone) return 0;
+    return Math.sign(normalized) * (Math.abs(normalized) - deadzone) / (1 - deadzone);
+  }
+  const NX_GYRO_SMOOTH_KEY = 'nx.gyro.previewSmoothing.v1';
+  function nxGyroSmoothFactor() {
+    const raw = Number(getPref(NX_GYRO_SMOOTH_KEY, '0.25'));
+    return Number.isFinite(raw) ? Math.max(0.05, Math.min(1, raw)) : 0.25;
+  }
+  function nxScreenAngle() {
+    try {
+      const angle = screen.orientation && Number(screen.orientation.angle);
+      return Number.isFinite(angle) ? ((angle % 360) + 360) % 360 : 0;
+    } catch (_) { return 0; }
+  }
+  let nxGyroRequestGeneration = 0;
+  const nxGyroPreview = { enabled: false, permission: 'não solicitada', samples: 0, lastAt: 0,
+    alpha: null, beta: null, gamma: null, originBeta: null, originGamma: null,
+    filteredX: null, filteredY: null, screenAngle: null, orientationChanges: 0, error: '' };
+  function nxGyroOnOrientation(e) {
+    if (!nxGyroPreview.enabled) return;
+    if (!Number.isFinite(e.beta) || !Number.isFinite(e.gamma)) return;
+    nxGyroPreview.samples++;
+    nxGyroPreview.lastAt = Date.now();
+    nxGyroPreview.alpha = Number.isFinite(e.alpha) ? e.alpha : null;
+    nxGyroPreview.beta = e.beta;
+    nxGyroPreview.gamma = e.gamma;
+    const angle = nxScreenAngle();
+    if (nxGyroPreview.screenAngle !== null && angle !== nxGyroPreview.screenAngle) {
+      nxGyroPreview.orientationChanges++;
+      nxResetGyroCalibration();
+    }
+    nxGyroPreview.screenAngle = angle;
+    if (nxGyroPreview.originBeta !== null && nxGyroPreview.originGamma !== null) {
+      const x = Math.max(-90, Math.min(90, e.gamma - nxGyroPreview.originGamma));
+      const y = Math.max(-180, Math.min(180, e.beta - nxGyroPreview.originBeta));
+      const factor = nxGyroSmoothFactor();
+      nxGyroPreview.filteredX = nxGyroPreview.filteredX === null ? x : nxGyroPreview.filteredX + factor * (x - nxGyroPreview.filteredX);
+      nxGyroPreview.filteredY = nxGyroPreview.filteredY === null ? y : nxGyroPreview.filteredY + factor * (y - nxGyroPreview.filteredY);
+    }
+    nxRegisterVirtualInput('nx-gyro-preview', 'gyro', true);
+  }
+  async function nxStartGyroPreview() {
+    if (nxGyroPreview.enabled) return true;
+    const generation = ++nxGyroRequestGeneration;
+    if (typeof DeviceOrientationEvent === 'undefined') {
+      nxGyroPreview.permission = 'indisponível';
+      nxGyroPreview.error = 'DeviceOrientationEvent não disponível';
+      return false;
+    }
+    try {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if (generation !== nxGyroRequestGeneration || document.visibilityState === 'hidden') return false;
+        nxGyroPreview.permission = permission;
+        if (permission !== 'granted') return false;
+      } else nxGyroPreview.permission = 'API disponível';
+      if (generation !== nxGyroRequestGeneration || document.visibilityState === 'hidden') return false;
+      nxGyroPreview.enabled = true;
+      nxGyroPreview.error = '';
+      window.addEventListener('deviceorientation', nxGyroOnOrientation, { passive: true });
+      return true;
+    } catch (err) {
+      if (generation !== nxGyroRequestGeneration) return false;
+      nxGyroPreview.permission = 'erro';
+      nxGyroPreview.error = String(err && err.message || err).slice(0, 120);
+      return false;
+    }
+  }
+  function nxStopGyroPreview() {
+    ++nxGyroRequestGeneration;
+    nxGyroPreview.enabled = false;
+    window.removeEventListener('deviceorientation', nxGyroOnOrientation);
+    nxRegisterVirtualInput('nx-gyro-preview', 'gyro', false);
+    nxGyroPreview.lastAt = 0;
+    nxGyroPreview.beta = null;
+    nxGyroPreview.gamma = null;
+    nxGyroPreview.screenAngle = null;
+    nxResetGyroCalibration();
+  }
+  function nxResetGyroCalibration() {
+    nxGyroPreview.originBeta = null;
+    nxGyroPreview.originGamma = null;
+    nxGyroPreview.filteredX = null;
+    nxGyroPreview.filteredY = null;
+  }
+  function nxCalibrateGyroPreview() {
+    if (!nxGyroPreview.enabled || Date.now() - nxGyroPreview.lastAt > 2000 ||
+      !Number.isFinite(nxGyroPreview.beta) || !Number.isFinite(nxGyroPreview.gamma)) return false;
+    nxGyroPreview.originBeta = nxGyroPreview.beta;
+    nxGyroPreview.originGamma = nxGyroPreview.gamma;
+    nxGyroPreview.filteredX = 0;
+    nxGyroPreview.filteredY = 0;
+    return true;
+  }
+  function nxGyroPreviewState() {
+    const g = nxGyroPreview;
+    return { enabled: g.enabled, permission: g.permission, samples: g.samples,
+      receiving: g.enabled && Date.now() - g.lastAt < 2000,
+      calibrated: g.originBeta !== null && g.originGamma !== null,
+      tiltX: g.filteredX === null ? null : Math.round((nxGyroInvertX() ? -1 : 1) * g.filteredX * 10) / 10,
+      tiltY: g.filteredY === null ? null : Math.round((nxGyroInvertY() ? -1 : 1) * g.filteredY * 10) / 10,
+      invertX: nxGyroInvertX(), invertY: nxGyroInvertY(),
+      smoothing: nxGyroSmoothFactor(),
+      sensitivity: nxGyroSensitivity(), deadzone: nxGyroDeadzone(),
+      axisX: !g.enabled || Date.now() - g.lastAt > 2000 || g.filteredX === null ? 0 :
+        Math.round(nxGyroAxisPreview((nxGyroInvertX() ? -1 : 1) * g.filteredX, 45) * 1000) / 1000,
+      axisY: !g.enabled || Date.now() - g.lastAt > 2000 || g.filteredY === null ? 0 :
+        Math.round(nxGyroAxisPreview((nxGyroInvertY() ? -1 : 1) * g.filteredY, 60) * 1000) / 1000,
+      screenAngle: g.screenAngle, orientationChanges: g.orientationChanges,
+      autoPauseOnHidden: true,
+      error: g.error, gameplayInput: nxGyroGameEnabled() && nxInputBridge.installed &&
+        g.enabled && g.originBeta !== null && g.originGamma !== null &&
+        Date.now() - g.lastAt <= NX_GYRO_MAX_AGE_MS };
+  }
+  const nxInputSources = {
+    touch: { count: 0, lastAt: 0 }, mouse: { count: 0, lastAt: 0 },
+    keyboard: { count: 0, lastAt: 0 }, gamepad: { count: 0, lastAt: 0 },
+    simultaneous: 0, lastConflictAt: 0
+  };
+  const nxInputEventLastAt = Object.create(null);
+  // Observação de movimento relativo: não injeta mouse nem guarda coordenadas.
+  const nxRelativeMouse = { samples: 0, lastAt: 0, distance: 0, maxStep: 0, invalid: 0 };
+  function nxObserveRelativeMouse(e) {
+    if (!e.isTrusted || e.pointerType !== 'mouse') return;
+    // Campos ausentes não devem virar zero ou gerar estatísticas falsas.
+    if (typeof e.movementX !== 'number' || typeof e.movementY !== 'number') {
+      nxRelativeMouse.invalid++;
+      return;
+    }
+    const dx = e.movementX, dy = e.movementY;
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) { nxRelativeMouse.invalid++; return; }
+    const step = Math.hypot(dx, dy);
+    if (step === 0) return;
+    nxRelativeMouse.samples++;
+    nxRelativeMouse.lastAt = Date.now();
+    nxRelativeMouse.distance = Math.min(1000000, nxRelativeMouse.distance + Math.min(step, 10000));
+    nxRelativeMouse.maxStep = Math.max(nxRelativeMouse.maxStep, Math.min(step, 10000));
+  }
+  function nxRecordInputSource(name) {
+    const source = nxInputSources[name];
+    if (!source) return;
+    const now = Date.now();
+    if (now - source.lastAt < 100) return;
+    source.count++;
+    source.lastAt = now;
+    if (now - (nxInputEventLastAt[name] || 0) >= 1500) {
+      nxInputEvent('source', name);
+      nxInputEventLastAt[name] = now;
+    }
+    // Apenas pares touch/mouse indicam possível duplicação de evento.
+    // Teclado + toque ou teclado + mouse são combinações legítimas.
+    if (name === 'touch' || name === 'mouse') {
+      const other = name === 'touch' ? 'mouse' : 'touch';
+      const lastOther = nxInputSources[other].lastAt;
+      if (lastOther > 0 && now - lastOther >= 0 && now - lastOther < 300 &&
+          now - nxInputSources.lastConflictAt > 500) {
+        nxInputSources.simultaneous++;
+        nxInputSources.lastConflictAt = now;
+        nxInputEvent('overlap', name + '/' + other);
+      }
+    }
+  }
+  const NX_INPUT_COORD_KEY = 'nx.input.coordination.v1';
+  const nxCoordModes = {
+    auto: 'Automático', gamepad: 'Controle físico', touch: 'Toque',
+    mouse: 'Mouse', keyboard: 'Teclado'
+  };
+  function nxCoordMode() {
+    const mode = getPref(NX_INPUT_COORD_KEY, 'auto');
+    return Object.prototype.hasOwnProperty.call(nxCoordModes, mode) ? mode : 'auto';
+  }
+  function nxCoordState() {
+    const now = Date.now(), recent = {};
+    ['touch', 'mouse', 'keyboard', 'gamepad'].forEach(function (k) {
+      recent[k] = nxInputSources[k].lastAt > 0 && now - nxInputSources[k].lastAt < 2000;
+    });
+    const configured = nxCoordMode();
+    const priority = ['gamepad', 'touch', 'mouse', 'keyboard'];
+    const active = configured !== 'auto' ? configured : (priority.filter(function (k) { return recent[k]; })
+      .sort(function (a, b) { return nxInputSources[b].lastAt - nxInputSources[a].lastAt; })[0] || 'none');
+    const simultaneous = priority.filter(function (k) { return recent[k]; });
+    const virtual = nxVirtualInputState();
+    return {
+      configured: configured, suggested: active,
+      activeSources: simultaneous, mixed: simultaneous.length > 1,
+      virtualSources: virtual.kinds, virtualCount: virtual.count,
+      outputModified: false,
+      note: 'Arbitragem apenas diagnóstica. Não bloqueia eventos, não emula controles e não interfere no HUD nativo.'
+    };
+  }
+  function nxInputSourcesReport() {
+    return {
+      touch: nxInputSources.touch.count, mouse: nxInputSources.mouse.count,
+      keyboard: nxInputSources.keyboard.count, gamepad: nxInputSources.gamepad.count,
+      recent: ['touch', 'mouse', 'keyboard', 'gamepad'].filter(function (k) {
+        return nxInputSources[k].lastAt > 0 && Date.now() - nxInputSources[k].lastAt < 2000;
+      }),
+      touchMouseOverlap: nxInputSources.simultaneous,
+      note: 'Observação passiva; toque pode gerar eventos de mouse sintéticos. Sobreposição não comprova conflito.'
+    };
+  }
+  function nxInputSelfCheck() {
+    const tests = [];
+    function check(name, pass) { tests.push({ name: name, pass: !!pass }); }
+    const neutral = nxInputProfiles.default;
+    check('eixo neutro', nxPreviewAxis(0, neutral) === 0);
+    check('zona morta', nxPreviewAxis(0.05, neutral) === 0);
+    check('limite positivo', nxPreviewAxis(1, neutral) === 1);
+    check('limite negativo', nxPreviewAxis(-1, neutral) === -1);
+    check('valor inválido', nxPreviewAxis(NaN, neutral) === 0);
+    check('curva direita finita', Number.isFinite(nxTransformStickAxis(0.6, 2)));
+    check('perfil esquerdo existente', !!nxInputProfiles[nxInputProfileName()]);
+    check('perfil direito existente', !!nxInputProfiles[nxRightStickProfileName()]);
+    const state = nxCoordState();
+    check('coordenação não invasiva', state.outputModified === false);
+    check('histórico limitado', nxInputEvents.length <= NX_INPUT_EVENTS_MAX);
+    check('registro virtual rejeita identificador inválido', !nxRegisterVirtualInput('../bad', 'gyro', true));
+    check('registro virtual rejeita tipo inválido', !nxRegisterVirtualInput('test', 'unknown', true));
+    check('registro virtual não injeta comandos', nxVirtualInputState().injectionEnabled === false);
+    check('giroscópio desativado por padrão', !nxGyroGameEnabled() || nxGyroPreviewState().gameplayInput === nxInputBridge.installed &&
+      nxGyroPreview.enabled && nxGyroPreview.originBeta !== null &&
+      nxGyroPreview.originGamma !== null && Date.now() - nxGyroPreview.lastAt <= NX_GYRO_MAX_AGE_MS);
+    check('suavização do sensor válida', nxGyroSmoothFactor() > 0 && nxGyroSmoothFactor() <= 1);
+    check('pausa automática do sensor configurada', nxGyroPreviewState().autoPauseOnHidden === true);
+    check('prévia informa status de entrada', typeof nxGyroPreviewState().gameplayInput === 'boolean');
+    check('limite de entradas virtuais', NX_VIRTUAL_INPUT_LIMIT === 8);
+    check('janela de expiração virtual', NX_VIRTUAL_INPUT_TTL === 2000);
+    check('ângulo de tela normalizado', nxScreenAngle() >= 0 && nxScreenAngle() < 360);
+    check('inversão horizontal booleana', typeof nxGyroInvertX() === 'boolean');
+    check('inversão vertical booleana', typeof nxGyroInvertY() === 'boolean');
+    check('eixo virtual neutro', nxGyroAxisPreview(0, 45) === 0);
+    check('eixo virtual positivo limitado', nxGyroAxisPreview(999, 45) === 1);
+    check('eixo virtual negativo limitado', nxGyroAxisPreview(-999, 45) === -1);
+    check('eixo virtual inválido neutro', nxGyroAxisPreview(NaN, 45) === 0);
+    check('fusão de eixos sem sensor mantém original', nxMergeGyroAxes([0, 0, 0.2, -0.3], []).join(',') === '0,0,0.2,-0.3');
+    check('modo de ativação válido', ['lt', 'always'].includes(nxGyroActivationMode()));
+    check('intensidade de fusão limitada', nxGyroBlend() >= 0.1 && nxGyroBlend() <= 1);
+    check('idade máxima do sensor limitada', NX_GYRO_MAX_AGE_MS <= 250);
+    check('controle alvo válido', nxGyroTargetIndex() >= 0 && nxGyroTargetIndex() <= 3);
+    check('linha do tempo com limite de eventos', NX_INPUT_EVENTS_MAX === 30);
+    check('rota de jogo não assume página genérica', nxHudGameId('../bad') === '');
+    const nudgeLayout = nxHudValidateLayout(null);
+    check('HUD auto-carregamento booleano', typeof nxHudAutoEnabled() === 'boolean');
+    check('HUD teclado move posição', nxHudNudge(nudgeLayout, 'a', 1, 0) === true);
+    check('HUD teclado rejeita botão desconhecido', nxHudNudge(nudgeLayout, 'invalid', 1, 0) === false);
+    check('HUD teclado rejeita movimento inválido', nxHudNudge(nudgeLayout, 'a', NaN, 0) === false);
+    check('backup HUD rejeita JSON inválido', !nxHudImportBackup('{'));
+    check('backup HUD rejeita JSON excessivo', !nxHudImportBackup(' '.repeat(65537)));
+    check('backup HUD rejeita formato desconhecido', !nxHudImportBackup('{"format":"outro"}'));
+    check('backup HUD exportado tem formato correto',
+      JSON.parse(nxHudExportBackup()).format === 'nimboxcloud-hud-backup-v1');
+    check('identificador de jogo rejeita caminho', nxHudGameId('../bad') === '');
+    check('identificador de jogo normalizado', nxHudGameId('GAME_123') === 'game_123');
+    check('nome de perfil de HUD válido', nxHudProfileName('Corrida 1') === 'Corrida 1');
+    check('nome de perfil de HUD inválido rejeitado', nxHudProfileName('../bad') === '');
+    check('layout de HUD tem oito elementos', Object.keys(nxHudReadLayout()).length === 8);
+    check('layout de HUD limita coordenadas', nxHudValidateLayout({ a: [999, -5] }).a.join(',') === '95,5');
+    check('layout de HUD exportado tem versão', nxHudExportLayout().includes('nimboxcloud-hud-v1'));
+    check('layout de HUD rejeita importação inválida', nxHudImportLayout('{"format":"unknown"}') === false);
+    check('layout de HUD recupera dados inválidos', nxHudValidateLayout({ a: [NaN, 5] }).a.join(',') === NX_HUD_DEFAULT.a.join(','));
+    check('controle secundário preservado',
+      nxMergeGyroAxes([0, 0, 0.2, 0.1], [], nxGyroTargetIndex() === 0 ? 1 : 0).join(',') === '0,0,0.2,0.1');
+    check('zona morta válida', nxGyroDeadzone() >= 0 && nxGyroDeadzone() <= 0.2);
+    check('sensibilidade válida', nxGyroSensitivity() >= 0.25 && nxGyroSensitivity() <= 3);
+    return { passed: tests.filter(function (t) { return t.pass; }).length,
+      total: tests.length, tests: tests, note: 'Autoteste matemático e estrutural; não substitui teste de streaming.' };
+  }
+  function nxResetInputDiagnostics() {
+    ['touch', 'mouse', 'keyboard', 'gamepad'].forEach(function (k) {
+      nxInputSources[k].count = 0;
+      nxInputSources[k].lastAt = 0;
+    });
+    nxInputSources.simultaneous = 0;
+    nxInputSources.lastConflictAt = 0;
+    nxInputEvents.length = 0;
+    nxRelativeMouse.samples = 0;
+    nxRelativeMouse.lastAt = 0;
+    nxRelativeMouse.distance = 0;
+    nxRelativeMouse.maxStep = 0;
+    nxRelativeMouse.invalid = 0;
+    Object.keys(nxInputEventLastAt).forEach(function (k) { delete nxInputEventLastAt[k]; });
+    Object.keys(nxVirtualInputs).forEach(function (id) { delete nxVirtualInputs[id]; });
+    nxGamepadMonitor.errors = 0;
+    nxGamepadMonitor.lastChange = null;
+    nxGamepadMonitor.lastSignature = undefined;
+  }
+  const nxGamepadMonitor = { connected: 0, active: 0, snapshots: [], lastChange: null, errors: 0 };
+  function nxSampleGamepads() {
+    let pads;
+    try { pads = nxNativeGetGamepads ? nxNativeGetGamepads() : []; }
+    catch (err) {
+      nxGamepadMonitor.errors++;
+      nxGamepadMonitor.connected = 0;
+      nxGamepadMonitor.active = 0;
+      nxGamepadMonitor.snapshots = [];
+      nxGamepadMonitor.lastSignature = undefined;
+      nxInputEvent('gamepad-error', err && err.name || 'read');
+      return;
+    }
+    const next = [];
+    try {
+      for (let i = 0; i < (pads ? pads.length : 0); i++) {
+        const pad = pads[i];
+        if (!pad || !pad.connected) continue;
+        const buttons = Array.from(pad.buttons || []);
+        const axes = Array.from(pad.axes || []);
+        next.push({
+          index: pad.index, mapping: pad.mapping || 'unknown',
+          buttons: buttons.length, axes: axes.length,
+          pressed: buttons.reduce(function (n, b) { return n + (b && b.pressed ? 1 : 0); }, 0),
+          movingAxes: axes.filter(function (v) { return Number.isFinite(v) && Math.abs(v) > 0.18; }).length,
+          axisPreview: axes.slice(0, 4).map(function (v, i) { return Math.round(nxTransformStickAxis(v, i) * 100) / 100; })
+        });
+      }
+    } catch (err) {
+      nxGamepadMonitor.errors++;
+      nxGamepadMonitor.connected = 0;
+      nxGamepadMonitor.active = 0;
+      nxGamepadMonitor.snapshots = [];
+      nxGamepadMonitor.lastSignature = undefined;
+      nxInputEvent('gamepad-error', err && err.name || 'snapshot');
+      return;
+    }
+    const signature = next.map(function (p) { return p.index + ':' + p.mapping + ':' + p.buttons + ':' + p.axes; }).join('|');
+    if (nxGamepadMonitor.lastSignature !== undefined && signature !== nxGamepadMonitor.lastSignature) {
+      nxGamepadMonitor.lastChange = new Date().toISOString();
+      nxInputEvent('gamepad-connection', next.length + ' connected');
+    }
+    nxGamepadMonitor.lastSignature = signature;
+    nxGamepadMonitor.connected = next.length;
+    nxGamepadMonitor.active = next.filter(function (p) { return p.pressed || p.movingAxes; }).length;
+    if (nxGamepadMonitor.active) nxRecordInputSource('gamepad');
+    nxGamepadMonitor.snapshots = next;
+  }
+  let nxInputDiagnosticsStarted = false;
+  function startInputDiagnostics() {
+    // A navegação SPA pode reabrir painéis; nunca duplicar observadores globais.
+    if (nxInputDiagnosticsStarted) return;
+    nxInputDiagnosticsStarted = true;
+    document.addEventListener('touchstart', function (e) {
+      if (e.isTrusted) nxRecordInputSource('touch');
+    }, { passive: true, capture: true });
+    document.addEventListener('pointerdown', function (e) {
+      if (e.pointerType === 'mouse' && e.isTrusted) nxRecordInputSource('mouse');
+    }, true);
+    document.addEventListener('pointermove', nxObserveRelativeMouse, { capture: true, passive: true });
+    document.addEventListener('keydown', function (e) {
+      if (e.isTrusted && !e.repeat) nxRecordInputSource('keyboard');
+    }, true);
+    diagLog('diagnostics-start', { capabilities: inputCapabilities() });
+    document.addEventListener('pointerlockchange', function () { diagLog('pointerlockchange'); }, true);
+    document.addEventListener('webkitpointerlockchange', function () { diagLog('webkitpointerlockchange'); }, true);
+    document.addEventListener('pointerlockerror', function () { diagLog('pointerlockerror'); }, true);
+    document.addEventListener('visibilitychange', function () {
+      diagLog('visibilitychange');
+      if (document.visibilityState === 'hidden') nxStopGyroPreview();
+    }, true);
+    document.addEventListener('fullscreenchange', function () { diagLog('fullscreenchange'); }, true);
+    document.addEventListener('webkitfullscreenchange', function () { diagLog('webkitfullscreenchange'); }, true);
+    window.addEventListener('blur', function () { diagLog('window-blur'); }, true);
+    window.addEventListener('focus', function () { diagLog('window-focus'); }, true);
+    document.addEventListener('focusin', function () { diagLog('focusin', { target: 'element' }); }, true);
+    document.addEventListener('touchstart', function (e) {
+      const now = Date.now();
+      if (now - diagLastTouch < 180) return;
+      diagLastTouch = now;
+      const t = e.changedTouches && e.changedTouches[0];
+      diagLog('touchstart', { zone: t ? diagZone(t.clientX, t.clientY) : null, touches: e.touches ? e.touches.length : null });
+    }, { capture: true, passive: true });
+    document.addEventListener('pointerdown', function (e) {
+      const now = Date.now();
+      if (now - diagLastPointer < 180) return;
+      diagLastPointer = now;
+      diagLog('pointerdown', { pointerType: e.pointerType || 'unknown', zone: diagZone(e.clientX, e.clientY), button: e.button });
+    }, { capture: true, passive: true });
+    document.addEventListener('keydown', function (e) {
+      const now = Date.now();
+      if (now - diagLastKey < 250) return;
+      diagLastKey = now;
+      // Nunca registra tecla, texto, código ou combinações digitadas.
+      diagLog('keydown', { trusted: e.isTrusted, repeat: e.repeat });
+    }, true);
+    window.addEventListener('gamepadconnected', function () { diagLog('gamepadconnected'); }, true);
+    window.addEventListener('gamepaddisconnected', function () { diagLog('gamepaddisconnected'); }, true);
+    window.addEventListener('resize', function () { diagLog('resize'); }, true);
+    window.addEventListener('pageshow', function () { diagLog('pageshow'); }, true);
+    window.addEventListener('pagehide', function () { diagLog('pagehide'); }, true);
+  }
+
+  function compactInteractionEvents() {
+    const important = new Set(['diagnostics-start','pageshow','pagehide','gamepadconnected','gamepaddisconnected','fullscreenchange','pointerlockchange','pointerlockerror','visibilitychange','resize']);
+    const counts = {};
+    const timeline = [];
+    for (const e of diagEvents) {
+      counts[e.type] = (counts[e.type] || 0) + 1;
+      if (important.has(e.type)) timeline.push(e);
+    }
+    return { state: diagState(), counts: counts, timeline: timeline.slice(-30),
+      retained: DIAG_MAX, note: 'Eventos de foco e toque agregados por tipo para reduzir o relatório; sem coordenadas ou teclas.' };
+  }
+  function buildReport() {
+    return JSON.stringify({
+      v: VER,
+      url: location.href,
+      inputCapabilities: inputCapabilities(),
+      inputSources: nxInputSourcesReport(),
+      relativeMouse: { samples: nxRelativeMouse.samples, lastAt: nxRelativeMouse.lastAt,
+        distance: Math.round(nxRelativeMouse.distance), maxStep: Math.round(nxRelativeMouse.maxStep),
+        invalid: nxRelativeMouse.invalid, pointerLocked: !!document.pointerLockElement,
+        note: 'Movimento relativo passivo; não mede precisão no jogo nem altera sensibilidade.' },
+      inputEventHistory: nxInputEvents.slice(),
+      inputBridgeHealth: nxInputBridgeStatus(),
+      inputSelfCheck: nxInputSelfCheck(),
+      inputCoordination: nxCoordState(),
+      virtualInputs: nxVirtualInputState(),
+      gyroPreview: nxGyroPreviewState(),
+      hudEditor: { layout: nxHudReadLayout(), savedProfileNames: Object.keys(nxHudProfilesRead()),
+        currentGameId: nxHudCurrentGameId(), autoLoadEnabled: nxHudAutoEnabled(), lastRoute: nxHudLastRoute,
+        lastAppliedProfile: nxHudLastAppliedProfile, gameBindings: nxHudGameBindings(), gameplayApplied: false },
+      gyroGame: { enabled: nxGyroGameEnabled(), activation: nxGyroActivationMode(),
+        blend: nxGyroBlend(), targetGamepadIndex: nxGyroTargetIndex(),
+        maxSensorAgeMs: NX_GYRO_MAX_AGE_MS,
+        bridgeInstalled: nxInputBridge.installed },
+      gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), rightStickProfile: nxRightStickProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback, foreignOverride: nxInputBridge.foreignOverride, restored: nxInputBridge.restored } },
+      inputNegotiation: lastInputNegotiation,
+      touchSession: touchSessionDiagnostics,
+      touchFullscreenPolicy: touchFullscreenPolicy,
+      interactionDiagnostics: compactInteractionEvents(),
+      region: cfg(),
+      stream: { pin: S.serverPin, actual: S.serverActual, label: srvBtnLabel(), ipv4Only: v4on(), resolution: resBtnLabel(), bitrateLimit: bitrateCfg().label, playPatched: S.playPatched },
+      territory: { before: S.territoryBefore, now: S.territoryNow, cookie: getCookie('territory') },
+      experiment: { hits: S.expHits, before: S.expBefore, after: S.expAfter, cacheCleared: S.cacheCleared },
+      media: { peerConnections: S.pcs, ipv6CandidatesDropped: S.v6dropped },
+      qos: S.qos,
+      qosHistory: { samples: S.hist, min: S.histMin },
+      env: S.env,
+      counts: {
+        hookAll: S.all, gssv: S.gssv, injected: S.inj,
+        captured: S.caps.length, deniedErrors: S.denied
+      },
+      logs: S.logs,
+      captures: S.caps,
+      lastErr: S.lastErr,
+      elapsedSec: Math.round((Date.now() - S.startedAt) / 1000)
+    }, null, 2);
+  }
+
+  function copyAll() {
+    const t = buildReport();
+    console.log(t);
+    try {
+      navigator.clipboard.writeText(t).then(
+        function () { alert('Relatório copiado'); },
+        function () { alert('Falha ao copiar; o relatório foi impresso no console'); }
+      );
+    } catch (e) { alert('Falha ao copiar; o relatório foi impresso no console'); }
+  }
+
+  // Quando o streaming começa, a página chama a Fullscreen API e entra em tela cheia. Nesse estado
+  // o navegador só renderiza o elemento em tela cheia e seus descendentes, então um painel preso
+  // ao body some por completo (no Steam Deck / Game Mode: "ao entrar no jogo a pílula some e só
+  // reaparece ao abrir o guia do Steam, que interrompe a tela cheia"). Por isso o painel
+  // precisa acompanhar o elemento em tela cheia.
+  function fullscreenHost() {
+    let fs = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!fs) return null;
+    try {
+      if (fs.tagName === 'VIDEO') fs = fs.parentElement || fs.parentNode;
+      if (fs && fs.nodeType === 1 && fs.appendChild) return fs;
+    } catch (e) { }
+    return null;
+  }
+
+  function mountTarget() {
+    return fullscreenHost() || document.body || document.documentElement;
+  }
+
+  // Verifica se um diálogo do site realmente está sobre o painel: usa apenas "visível + intersecta
+  // o retângulo do painel", evitando falsos positivos de nós ocultos permanentes do framework
+  // (um falso positivo deixaria o painel invisível o tempo todo).
+  function modalHit() {
+    if (!wrap) return false;
+    let wr;
+    try { wr = wrap.getBoundingClientRect(); } catch (e) { return false; }
+    if (!wr.width) return false;
+    try {
+      const list = document.querySelectorAll('[aria-modal="true"],[role="dialog"]');
+      for (let i = 0; i < list.length; i++) {
+        const n = list[i];
+        if (wrap.contains(n)) continue;
+        const r = n.getBoundingClientRect();
+        if (r.width < 60 || r.height < 60) continue;
+        // Contêiner que cobre a maior parte da viewport é a própria imagem do streaming, não um diálogo; não pode esconder o painel
+        if (r.width > window.innerWidth * 0.7 && r.height > window.innerHeight * 0.7) continue;
+        if (r.right > wr.left - 8 && r.left < wr.right + 8 &&
+            r.bottom > wr.top - 8 && r.top < wr.bottom + 8) return true;
+      }
+    } catch (e) { }
+    return false;
+  }
+
+  // ---------- 15. Loop principal ----------
+  function tick() {
+    try {
+      if (wrap && wrap.isConnected) {
+        const r = wrap.getBoundingClientRect();
+        if (r.right < 28 || r.left > innerWidth - 28 || r.bottom < 24 || r.top > innerHeight - 24) resetPos();
+      }
+      const host = mountTarget();
+      if (!wrap || !wrap.isConnected) buildUI();
+      if (wrap && host && wrap.parentNode !== host) host.appendChild(wrap);
+      // O botão integrado permanece na barra original; o painel segue o host fullscreen.
+      syncNXPlacement();
+    } catch (e) { S.lastErr = 'NX tick: ' + String(e && e.message || e); }
+
+    // Não reabrir o painel quando a barra nativa do xCloud estiver recolhida.
+    if (cardEl) cardEl.style.display = openUI ? 'flex' : 'none';
+    if (pillEl) {
+      pillEl.style.opacity = '1';
+      pillEl.style.pointerEvents = 'auto';
+    }
+
+    // Na primeira entrada no streaming, recolhe automaticamente para não atrapalhar os controles do jogo
+    if (!autoFolded && isInGame()) {
+      autoFolded = true;
+      if (!userTouched) setOpen(false);
+    }
+    update();
+  }
+
+  function detectedDeviceProfile() {
+    const mobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+    const desktopPointer = window.matchMedia && window.matchMedia('(any-pointer:fine)').matches;
+    return mobile ? (desktopPointer && innerWidth >= 900 ? 'dex' : 'mobile') : 'desktop';
+  }
+  function applyDeviceProfile() {
+    const pref = getPref(LS_DEVICE_PROFILE, 'auto');
+    const mode = pref === 'auto' ? detectedDeviceProfile() : pref;
+    // Configuração explícita, sem modificar User-Agent, pointer lock, gamepads ou touch.
+    const bitrate = mode === 'mobile' ? 'b8' : (mode === 'dex' ? 'b12' : 'auto');
+    setPref(LS_BITRATE, bitrate);
+    setPref(LS_RES, mode === 'mobile' ? 'r720' : 'auto');
+    pushLog('device', 'Perfil ' + mode + ' aplicado (qualidade/limite SDP; próxima sessão)');
+    update();
+  }
+  function cycleDeviceProfile() {
+    const modes = ['auto', 'desktop', 'mobile', 'dex'];
+    const next = modes[(modes.indexOf(getPref(LS_DEVICE_PROFILE, 'auto')) + 1) % modes.length];
+    setPref(LS_DEVICE_PROFILE, next);
+    pushLog('device', 'Perfil local ' + next + ' (não altera User-Agent nem controles)');
+  }
+  function cycleNxShortcut() {
+    const modes = ['KeyH', 'KeyJ', 'KeyK'];
+    const next = modes[(modes.indexOf(getPref(LS_NX_SHORTCUT, 'KeyH')) + 1) % modes.length];
+    setPref(LS_NX_SHORTCUT, next);
+    pushLog('shortcut', 'Atalho NX: Ctrl+Shift+' + next.slice(3));
+  }
+  // Respeita o pedido de áudio feito pelo próprio xCloud. Não inicia chat nem cria conexão.
+  const nxVoiceTracks = new Set();
+  let nxNativeGetUserMedia = null;
+  let nxPttHeld = false;
+  function applyVoiceMute() {
+    const allowed = getPref(LS_MIC_MUTE, '0') !== '1' && (getPref(LS_MIC_PTT, '0') !== '1' || nxPttHeld);
+    nxVoiceTracks.forEach(function (track) { if (track.readyState === 'live') track.enabled = allowed; });
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.code !== 'KeyV' || e.repeat || e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    nxPttHeld = true; applyVoiceMute();
+  }, true);
+  document.addEventListener('keyup', function (e) { if (e.code === 'KeyV') { nxPttHeld = false; applyVoiceMute(); } }, true);
+  window.addEventListener('blur', function () { nxPttHeld = false; applyVoiceMute(); });
+  function installMicDeviceRouting() {
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') return;
+    const media = navigator.mediaDevices;
+    const original = media.getUserMedia.bind(media);
+    nxNativeGetUserMedia = original;
+    if (media.getUserMedia.__nxMicRouter) return;
+    const routed = function (constraints) {
+      const selected = getPref(LS_MIC_DEVICE, '');
+      const enabled = getPref(LS_MIC_ENABLED, '0') === '1';
+      if (!enabled || !constraints || !constraints.audio) return original(constraints);
+      const audio = constraints.audio === true ? {} : Object.assign({}, constraints.audio);
+      // A escolha do usuário substitui somente o dispositivo, mantendo demais opções do site.
+      if (selected) audio.deviceId = { ideal: selected };
+      audio.noiseSuppression = getPref(LS_MIC_NOISE, '1') === '1';
+      audio.echoCancellation = getPref(LS_MIC_ECHO, '1') === '1';
+      audio.autoGainControl = getPref(LS_MIC_AGC, '1') === '1';
+      const requested = Object.assign({}, constraints, { audio: audio });
+      return original(requested).then(function (stream) {
+        const track = stream.getAudioTracks()[0];
+        if (track) { nxVoiceTracks.add(track); track.addEventListener('ended', function () { nxVoiceTracks.delete(track); }); applyVoiceMute(); }
+        const settings = track && typeof track.getSettings === 'function' ? track.getSettings() : {};
+        if (selected && settings.deviceId && settings.deviceId !== selected) {
+          S.micStatus = 'O navegador escolheu outro microfone; dispositivo solicitado indisponível.';
+        } else {
+          S.micStatus = 'Captura de áudio iniciada com as preferências NX. Chat de voz não confirmado.';
+        }
+        return stream;
+      });
+    };
+    try {
+      Object.defineProperty(routed, '__nxMicRouter', { value: true });
+      media.getUserMedia = routed;
+    } catch (err) { S.micStatus = 'Roteamento indisponível: ' + String(err && err.name || err); }
+  }
+  installMicDeviceRouting();
+
+  let micTestStream = null, micTestContext = null, micTestTimer = null;
+  let micDeviceControl = null, micLevelControl = null, micGainNode = null, micBassNode = null;
+  let micTrebleNode = null, micMonitorNode = null, micMonitorEnabled = false, micRequestId = 0;
+  function applyMicEffects() {
+    if (micGainNode) micGainNode.gain.value = Math.max(0, Math.min(2, Number(getPref(LS_MIC_GAIN, '100')) / 100));
+    if (micBassNode) micBassNode.gain.value = Math.max(-12, Math.min(12, Number(getPref(LS_MIC_BASS, '0'))));
+    if (micTrebleNode) micTrebleNode.gain.value = Math.max(-12, Math.min(12, Number(getPref(LS_MIC_TREBLE, '0'))));
+  }
+  function setMicMonitor(enabled) {
+    micMonitorEnabled = !!enabled;
+    if (micMonitorNode) micMonitorNode.gain.value = micMonitorEnabled ? 1 : 0;
+    if (micMonitorEnabled && micTestContext) Promise.resolve(micTestContext.resume()).catch(function () {});
+  }
+  async function refreshMicDevices() {
+    if (!micDeviceControl || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const devices = (await navigator.mediaDevices.enumerateDevices()).filter(function (d) { return d.kind === 'audioinput'; });
+      const selected = getPref(LS_MIC_DEVICE, '');
+      micDeviceControl.replaceChildren();
+      const base = document.createElement('option'); base.value = ''; base.textContent = 'Microfone padrão do sistema'; micDeviceControl.appendChild(base);
+      devices.forEach(function (d, i) {
+        if (!d.deviceId) return;
+        const opt = document.createElement('option'); opt.value = d.deviceId;
+        opt.textContent = d.label || ('Entrada de áudio ' + (i + 1)); micDeviceControl.appendChild(opt);
+      });
+      micDeviceControl.value = Array.from(micDeviceControl.options).some(function (o) { return o.value === selected; }) ? selected : '';
+    } catch (err) { S.micStatus = 'Não foi possível listar dispositivos: ' + String(err && err.name || err); update(); }
+  }
+  function stopMicrophoneTest() {
+    micRequestId++;
+    if (micTestTimer) { clearInterval(micTestTimer); micTestTimer = null; }
+    if (micTestStream) { micTestStream.getTracks().forEach(function (t) { t.stop(); }); micTestStream = null; }
+    if (micTestContext) { Promise.resolve(micTestContext.close()).catch(function () {}); micTestContext = null; }
+    micGainNode = micBassNode = micTrebleNode = micMonitorNode = null;
+    micMonitorEnabled = false;
+    if (micLevelControl) micLevelControl.value = 0;
+    S.micStatus = 'Teste encerrado. Nenhum áudio de teste é enviado ao jogo.';
+    update();
+  }
+  async function inspectMicrophone() {
+    if (getPref(LS_MIC_ENABLED, '0') !== '1') { S.micStatus = 'Ative o microfone antes do teste.'; update(); return; }
+    stopMicrophoneTest();
+    const request = micRequestId;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      S.micStatus = 'Captura indisponível: confira HTTPS e permissões'; update(); return;
+    }
+    S.micStatus = 'Solicitando permissão do microfone…'; update();
+    try {
+      const deviceId = getPref(LS_MIC_DEVICE, '');
+      const constraints = {
+        echoCancellation: getPref(LS_MIC_ECHO, '1') === '1',
+        noiseSuppression: getPref(LS_MIC_NOISE, '1') === '1',
+        autoGainControl: getPref(LS_MIC_AGC, '1') === '1'
+      };
+      if (deviceId) constraints.deviceId = { ideal: deviceId };
+      const capture = nxNativeGetUserMedia || navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      const stream = await capture({ audio: constraints, video: false });
+      if (request !== micRequestId || isInGame()) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+      micTestStream = stream;
+      await refreshMicDevices();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) { S.micStatus = 'Microfone autorizado; processamento de áudio indisponível'; update(); return; }
+      const ctx = new AudioCtx(); micTestContext = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      micBassNode = ctx.createBiquadFilter(); micBassNode.type = 'lowshelf'; micBassNode.frequency.value = 180;
+      micTrebleNode = ctx.createBiquadFilter(); micTrebleNode.type = 'highshelf'; micTrebleNode.frequency.value = 3000;
+      micGainNode = ctx.createGain();
+      const analyser = ctx.createAnalyser(); analyser.fftSize = 1024;
+      micMonitorNode = ctx.createGain(); micMonitorNode.gain.value = 0;
+      source.connect(micBassNode); micBassNode.connect(micTrebleNode);
+      micTrebleNode.connect(micGainNode); micGainNode.connect(analyser);
+      analyser.connect(micMonitorNode); micMonitorNode.connect(ctx.destination);
+      applyMicEffects(); setMicMonitor(false); // Monitor desligado por padrão para evitar realimentação.
+      const samples = new Uint8Array(analyser.fftSize);
+      const refresh = function () {
+        if (micTestStream !== stream) return;
+        analyser.getByteTimeDomainData(samples);
+        let power = 0;
+        for (let i = 0; i < samples.length; i++) { const v = (samples[i] - 128) / 128; power += v * v; }
+        const level = Math.min(100, Math.round(Math.sqrt(power / samples.length) * 250));
+        if (micLevelControl) micLevelControl.value = level;
+        S.micStatus = 'Teste local ativo · nível ' + level + '% · processamento apenas na prévia';
+        update();
+      };
+      refresh(); micTestTimer = setInterval(refresh, 350);
+      stream.getAudioTracks().forEach(function (track) {
+        track.addEventListener('ended', function () { if (micTestStream === stream) stopMicrophoneTest(); });
+      });
+    } catch (err) {
+      if (request !== micRequestId) return;
+      stopMicrophoneTest();
+      S.micStatus = 'Falha ao acessar microfone: ' + String(err && (err.name || err.message) || err);
+      update();
+    }
+  }
+  function testPhoneVibration() {
+    if (typeof navigator.vibrate !== 'function') {
+      S.vibrationStatus = 'Vibração do celular indisponível neste navegador'; update(); return;
+    }
+    const strength = Math.max(0, Math.min(1, Number(getPref(LS_VIBRATION, '0.5')) || 0));
+    // Vibration API permite duração, não intensidade física.
+    const ok = navigator.vibrate(strength > 0 ? [Math.round(80 + 170 * strength), 70, Math.round(80 + 170 * strength)] : 0);
+    S.vibrationStatus = ok ? 'Comando enviado ao celular (intensidade física não configurável)' : 'Navegador recusou vibração do celular';
+    update();
+  }
+  async function testVibration() {
+    let pads;
+    try { pads = typeof navigator.getGamepads === 'function' ? Array.from(navigator.getGamepads() || []).filter(Boolean) : []; }
+    catch (err) { S.vibrationStatus = 'Acesso aos controles bloqueado: ' + String(err && err.name || err); update(); return; }
+    if (!pads.length) { S.vibrationStatus = 'Nenhum controle detectado. Pressione um botão do controle e tente novamente.'; update(); return; }
+    const pad = pads.find(function (p) {
+      return (p.vibrationActuator && (typeof p.vibrationActuator.playEffect === 'function' || typeof p.vibrationActuator.pulse === 'function')) ||
+        (p.hapticActuators && p.hapticActuators[0] && typeof p.hapticActuators[0].pulse === 'function');
+    });
+    if (!pad) { S.vibrationStatus = 'Controle conectado, mas sem API de vibração exposta pelo navegador'; update(); return; }
+    const strength = Math.max(0, Math.min(1, Number(getPref(LS_VIBRATION, '0.5')) || 0));
+    if (!strength) { S.vibrationStatus = 'Intensidade 0%: selecione um valor acima de zero'; update(); return; }
+    S.vibrationStatus = 'Enviando teste para ' + (pad.id || 'controle') + '…'; update();
+    try {
+      let result;
+      if (pad.vibrationActuator && typeof pad.vibrationActuator.playEffect === 'function') {
+        result = await pad.vibrationActuator.playEffect('dual-rumble', {
+          startDelay: 0, duration: 400, strongMagnitude: strength, weakMagnitude: strength
+        });
+      } else if (pad.vibrationActuator && typeof pad.vibrationActuator.pulse === 'function') {
+        result = await pad.vibrationActuator.pulse(strength, 400);
+      } else {
+        result = await pad.hapticActuators[0].pulse(strength, 400);
+      }
+      const accepted = result === true || result === 'complete' || result === undefined;
+      S.vibrationStatus = accepted
+        ? 'Teste solicitado ao controle (' + Math.round(strength * 100) + '%). Confirme se vibrou fisicamente.'
+        : 'Teste não executado pelo navegador: ' + String(result);
+    } catch (err) {
+      S.vibrationStatus = 'Falha na vibração do controle: ' + String(err && (err.name || err.message) || err);
+    }
+    update();
+  }
+  // P04: preserve the host's original inline filter and restore it on bypass.
+  // This is presentation-only CSS; no decoding, capture or frame copying.
+  const nxVideoFilters = new WeakMap();
+  function restoreVideoAdjustments(video) {
+    if (!video) return;
+    const state = nxVideoFilters.get(video);
+    if (!state) return;
+    if (video.style.filter === state.applied) {
+      if (state.original) video.style.setProperty('filter', state.original, state.priority);
+      else video.style.removeProperty('filter');
+    }
+    nxVideoFilters.delete(video);
+  }
+  const nxVideoFits = new WeakMap();
+  function restoreVideoFit(video) {
+    if (!video) return;
+    const state = nxVideoFits.get(video);
+    if (!state) return;
+    if (video.style.objectFit === state.applied) {
+      if (state.original) video.style.setProperty('object-fit', state.original, state.priority);
+      else video.style.removeProperty('object-fit');
+    }
+    nxVideoFits.delete(video);
+  }
+  function applyVideoFit(video) {
+    if (!video) return;
+    const fit = getPref(LS_VIDEO_FIT, 'original');
+    if (fit !== 'contain' && fit !== 'cover') { restoreVideoFit(video); return; }
+    let state = nxVideoFits.get(video);
+    if (state && video.style.objectFit !== state.applied) { nxVideoFits.delete(video); return; }
+    if (!state) {
+      state = { original: video.style.getPropertyValue('object-fit'),
+        priority: video.style.getPropertyPriority('object-fit'), applied: fit };
+      nxVideoFits.set(video, state);
+    }
+    state.applied = fit;
+    video.style.setProperty('object-fit', fit, state.priority);
+  }
+  // Uma unica cadeia de filtros substituida a cada ajuste; nunca empilhar camadas.
+  // Brilho/contraste/saturacao sao controles CSS, nao equalizacao independente de
+  // brancos/pretos nem sharpening real.
+  // Perfis portateis: somente dados numericos e metadados, nunca codigo executavel.
+  const NX_VISUAL_FORMAT='nx-visual-preset';
+  const NX_VISUAL_DEFAULT={brightness:100,contrast:100,saturation:100};
+  function nxVisualSanitize(input){
+    if(!input || typeof input!=='object' || Array.isArray(input))throw new Error('Perfil invalido');
+    if(input.format!==NX_VISUAL_FORMAT || input.version!==1)throw new Error('Formato de perfil incompativel');
+    const name=String(input.name||'').trim();
+    if(!name || name.length>64)throw new Error('Nome deve ter entre 1 e 64 caracteres');
+    const author=String(input.author||'Comunidade').trim().slice(0,48);
+    const values=input.settings;
+    if(!values || typeof values!=='object' || Array.isArray(values))throw new Error('Ajustes ausentes');
+    const limits={brightness:[85,115],contrast:[85,115],saturation:[75,125]};
+    const clean={};
+    for(const key of Object.keys(limits)){
+      const n=values[key];
+      if(typeof n!=='number' || !Number.isFinite(n) || n<limits[key][0] || n>limits[key][1])
+        throw new Error('Valor invalido: '+key);
+      clean[key]=Math.round(n);
+    }
+    return {format:NX_VISUAL_FORMAT,version:1,name,author,settings:clean};
+  }
+  function nxVisualLibrary(){
+    try{
+      const parsed=JSON.parse(getPref(LS_VISUAL_LIBRARY,'[]'));
+      if(!Array.isArray(parsed))return [];
+      return parsed.slice(0,24).map(function(x){try{return nxVisualSanitize(x);}catch(_){return null;}}).filter(Boolean);
+    }catch(_){return [];}
+  }
+  function nxVisualApply(preset){
+    const safe=nxVisualSanitize(preset);
+    setPref(LS_VIDEO_BRIGHTNESS,String(safe.settings.brightness));
+    setPref(LS_VIDEO_CONTRAST,String(safe.settings.contrast));
+    setPref(LS_VIDEO_SATURATION,String(safe.settings.saturation));
+    setPref(LS_VIDEO_PROFILE,'custom');
+    setPref(LS_VISUAL_ACTIVE,safe.name);
+    applyVideoAdjustments(activeStreamVideo());
+    return safe;
+  }
+  function nxVisualSave(name){
+    const cal=nxVideoCalibration();
+    const safe=nxVisualSanitize({format:NX_VISUAL_FORMAT,version:1,name,
+      author:'Local',settings:{brightness:cal.brightness,contrast:cal.contrast,saturation:cal.saturation}});
+    const library=nxVisualLibrary().filter(function(x){return x.name!==safe.name;});
+    library.unshift(safe);
+    setPref(LS_VISUAL_LIBRARY,JSON.stringify(library.slice(0,24)));
+    setPref(LS_VISUAL_ACTIVE,safe.name);
+    return safe;
+  }
+  function nxVisualExport(preset){
+    const safe=nxVisualSanitize(preset);
+    const blob=new Blob([JSON.stringify(safe,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download='nx-visual-'+safe.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.json';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+  }
+  function nxVisualImport(file){
+    if(!file || file.size>16384){toast('Arquivo invalido ou maior que 16 KB');return;}
+    const reader=new FileReader();
+    reader.onload=function(){
+      try{
+        const parsed=JSON.parse(String(reader.result||''));
+        const safe=nxVisualSanitize(parsed);
+        const library=nxVisualLibrary().filter(function(x){return x.name!==safe.name;});
+        library.unshift(safe);
+        setPref(LS_VISUAL_LIBRARY,JSON.stringify(library.slice(0,24)));
+        nxVisualApply(safe);
+        toast('Perfil importado: '+safe.name);
+        renderBody();
+      }catch(e){toast('Importacao rejeitada: '+String(e.message||e));}
+    };
+    reader.onerror=function(){toast('Falha ao ler arquivo');};
+    reader.readAsText(file);
+  }
+  function nxVideoCalibration(){
+    const profile=getPref(LS_VIDEO_PROFILE,'original');
+    const presets={
+      original:{brightness:100,contrast:100,saturation:100},
+      balanced:{brightness:100,contrast:102,saturation:104},
+      vivid:{brightness:100,contrast:105,saturation:108}
+    };
+    if(presets[profile])return presets[profile];
+    const clamp=function(key,min,max,def){
+      const value=Number(getPref(key,String(def)));
+      return Number.isFinite(value)?Math.max(min,Math.min(max,value)):def;
+    };
+    return {
+      brightness:clamp(LS_VIDEO_BRIGHTNESS,85,115,100),
+      contrast:clamp(LS_VIDEO_CONTRAST,85,115,100),
+      saturation:clamp(LS_VIDEO_SATURATION,75,125,100)
+    };
+  }
+  // GPU opt-in: canvas WebGL2 de apresentacao, sem modificar o stream original.
+  // Falhas de CORS, DRM ou contexto grafico restauram o video nativo.
+  let nxGpu=null;
+  function nxGpuStop(){
+    const state=nxGpu;nxGpu=null;
+    if(!state)return;
+    state.running=false;
+    if(state.raf)cancelAnimationFrame(state.raf);
+    if(state.video && state.video.style.opacity===state.appliedOpacity){
+      if(state.originalOpacity)state.video.style.setProperty('opacity',state.originalOpacity,state.opacityPriority);
+      else state.video.style.removeProperty('opacity');
+    }
+    if(state.canvas)state.canvas.remove();
+    if(state.video && state.video.isConnected && getPref(LS_NX_GPU,'0')==='0')applyVideoAdjustments(state.video);
+    if(state.gl){
+      try{state.gl.deleteTexture(state.texture);state.gl.deleteBuffer(state.buffer);
+        state.gl.deleteProgram(state.program);}catch(_){}
+    }
+  }
+  function nxGpuCompile(gl,type,source){
+    const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);
+    if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+      const reason=gl.getShaderInfoLog(shader)||'Shader invalido';gl.deleteShader(shader);throw new Error(reason);
+    }
+    return shader;
+  }
+  function nxGpuStart(video){
+    if(!video || !video.videoWidth || !video.videoHeight)return;
+    if(nxGpu && nxGpu.video===video)return;
+    nxGpuStop();
+    const canvas=document.createElement('canvas');
+    canvas.setAttribute('aria-hidden','true');
+    canvas.style.cssText='position:fixed;pointer-events:none;display:block;z-index:100;object-fit:fill;';
+    const host=fullscreenHost()||document.body;
+    if(!host)return;
+    const gl=canvas.getContext('webgl2',{alpha:false,antialias:false,preserveDrawingBuffer:false});
+    if(!gl){S.lastErr='GPU: WebGL2 indisponivel';return;}
+    let program,texture,buffer;
+    try{
+      const vert=nxGpuCompile(gl,gl.VERTEX_SHADER,`#version 300 es
+in vec2 a_pos;out vec2 v_uv;
+void main(){v_uv=vec2((a_pos.x+1.0)*0.5,1.0-(a_pos.y+1.0)*0.5);gl_Position=vec4(a_pos,0.0,1.0);}`);
+      const frag=nxGpuCompile(gl,gl.FRAGMENT_SHADER,`#version 300 es
+precision mediump float;
+uniform sampler2D u_tex;uniform float u_shadows;uniform float u_highlights;
+uniform vec3 u_adjust;uniform int u_clarityMode;uniform float u_clarityStrength;in vec2 v_uv;out vec4 outColor;
+void main(){
+ vec3 c=texture(u_tex,v_uv).rgb;
+ vec3 up=texture(u_tex,v_uv+vec2(0.0,1.0/float(textureSize(u_tex,0).y))).rgb;
+ vec3 down=texture(u_tex,v_uv-vec2(0.0,1.0/float(textureSize(u_tex,0).y))).rgb;
+ vec3 left=texture(u_tex,v_uv-vec2(1.0/float(textureSize(u_tex,0).x),0.0)).rgb;
+ vec3 right=texture(u_tex,v_uv+vec2(1.0/float(textureSize(u_tex,0).x),0.0)).rgb;
+ vec3 minimum=min(min(up,down),min(left,right));
+ vec3 maximum=max(max(up,down),max(left,right));
+ float detail=clamp(dot(maximum-minimum,vec3(0.3333)),0.0,1.0);
+ if(u_clarityMode==1)c=clamp(c+(4.0*c-up-down-left-right)*(u_clarityStrength*0.20),0.0,1.0);
+ else if(u_clarityMode==2){
+  vec3 mn=min(min(min(up,down),min(left,right)),c);
+  vec3 mx=max(max(max(up,down),max(left,right)),c);
+  vec3 amp=clamp(min(mn,2.0-mx)/max(mx,vec3(0.0001)),0.0001,1.0);
+  vec3 w=-1.0/(inversesqrt(amp)*5.6);
+  vec3 enhanced=clamp(((up+down+left+right)*w+c)/(4.0*w+1.0),0.0,1.0);
+  c=mix(c,enhanced,u_clarityStrength*0.5);
+ }
+ float l=dot(c,vec3(0.2126,0.7152,0.0722));
+ float shadows=(1.0-smoothstep(0.08,0.55,l))*u_shadows*0.22;
+ float highlights=smoothstep(0.45,0.95,l)*u_highlights*0.20;
+ c=clamp(c+vec3(shadows+highlights),0.0,1.0);
+ c=clamp((c-0.5)*u_adjust.y+0.5,0.0,1.0)*u_adjust.x;
+ float grey=dot(c,vec3(0.2126,0.7152,0.0722));
+ c=clamp(mix(vec3(grey),c,u_adjust.z),0.0,1.0);
+ outColor=vec4(c,1.0);
+}`);
+      program=gl.createProgram();gl.attachShader(program,vert);gl.attachShader(program,frag);gl.linkProgram(program);
+      gl.deleteShader(vert);gl.deleteShader(frag);
+      if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program)||'Link shader falhou');
+      buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+      gl.useProgram(program);
+      const attr=gl.getAttribLocation(program,'a_pos');gl.enableVertexAttribArray(attr);gl.vertexAttribPointer(attr,2,gl.FLOAT,false,0,0);
+      texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+      gl.uniform1i(gl.getUniformLocation(program,'u_tex'),0);
+      const state={video,canvas,gl,program,buffer,texture,host,running:true,raf:0,
+        originalOpacity:video.style.getPropertyValue('opacity'),
+        opacityPriority:video.style.getPropertyPriority('opacity'),appliedOpacity:'0'};
+      nxGpu=state;host.appendChild(canvas);
+      const render=function(){
+        if(!state.running || nxGpu!==state)return;
+        if(getPref(LS_NX_GPU,'0')!=='1' || document.visibilityState==='hidden' ||
+           !video.isConnected || !video.videoWidth || !video.videoHeight){
+          nxGpuStop();return;
+        }
+        const parent=fullscreenHost()||document.body;
+        if(parent!==state.host){state.host=parent;parent.appendChild(canvas);}
+        const rect=video.getBoundingClientRect();
+        if(rect.width<10||rect.height<10){state.raf=requestAnimationFrame(render);return;}
+        const hostRect=parent===document.body?{left:0,top:0}:parent.getBoundingClientRect();
+        canvas.style.left=(rect.left-hostRect.left)+'px';
+        canvas.style.top=(rect.top-hostRect.top)+'px';
+        canvas.style.width=rect.width+'px';canvas.style.height=rect.height+'px';
+        const w=Math.min(1920,Math.max(1,Math.round(rect.width)));
+        const h=Math.min(1080,Math.max(1,Math.round(rect.height)));
+        if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
+        try{
+          gl.bindTexture(gl.TEXTURE_2D,texture);
+          gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,video);
+          const cal=nxVideoCalibration();
+          gl.uniform3f(gl.getUniformLocation(program,'u_adjust'),cal.brightness/100,cal.contrast/100,cal.saturation/100);
+          const clamp=function(key){const n=Number(getPref(key,'0'));return Number.isFinite(n)?Math.max(-1,Math.min(1,n)):0;};
+           const clarityMode=getPref('nx.gpu.clarity.mode.v1','off');
+           const clarityRaw=Number(getPref('nx.gpu.clarity.strength.v1','35'));
+           gl.uniform1i(gl.getUniformLocation(program,'u_clarityMode'),clarityMode==='usm'?1:clarityMode==='cas'?2:0);
+           gl.uniform1f(gl.getUniformLocation(program,'u_clarityStrength'),Number.isFinite(clarityRaw)?Math.max(0,Math.min(100,clarityRaw))/100:0.35);
+          gl.uniform1f(gl.getUniformLocation(program,'u_shadows'),clamp(LS_NX_SHADOWS));
+          gl.uniform1f(gl.getUniformLocation(program,'u_highlights'),clamp(LS_NX_HIGHLIGHTS));
+          gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+          restoreVideoAdjustments(video); // GPU substitui CSS: nunca processar duas vezes.
+          if(video.style.opacity!==state.appliedOpacity)video.style.setProperty('opacity','0',state.opacityPriority);
+        }catch(e){
+          S.lastErr='GPU desativada: '+String(e&&e.message||e);
+          setPref(LS_NX_GPU,'0');nxGpuStop();return;
+        }
+        state.raf=requestAnimationFrame(render);
+      };
+      canvas.addEventListener('webglcontextlost',function(e){e.preventDefault();setPref(LS_NX_GPU,'0');nxGpuStop();});
+      state.raf=requestAnimationFrame(render);
+    }catch(e){
+      S.lastErr='GPU: '+String(e&&e.message||e);
+      try{if(texture)gl.deleteTexture(texture);if(buffer)gl.deleteBuffer(buffer);if(program)gl.deleteProgram(program);}catch(_){}
+      canvas.remove();
+    }
+  }
+  function nxGpuSync(){
+    const video=activeStreamVideo();
+    if(getPref(LS_NX_GPU,'0')==='1' && video && document.visibilityState!=='hidden')nxGpuStart(video);
+    else nxGpuStop();
+    if(video)applyVideoAdjustments(video);
+  }
+  function applyVideoAdjustments(video) {
+    if(!video)return;
+    if(getPref(LS_VIDEO_ECO,'1')==='1' && document.visibilityState==='hidden'){
+      restoreVideoAdjustments(video);return;
+    }
+    if(getPref(LS_NX_GPU,'0')==='1' && nxGpu && nxGpu.video===video){restoreVideoAdjustments(video);return;}
+    const cal=nxVideoCalibration();
+    if(cal.brightness===100 && cal.contrast===100 && cal.saturation===100){
+      restoreVideoAdjustments(video);return;
+    }
+    let state=nxVideoFilters.get(video);
+    if(state && video.style.filter!==state.applied){
+      // Se o site mudou o filtro, nao anexar filtros a um resultado anterior do NX.
+      nxVideoFilters.delete(video);
+      return;
+    }
+    if(!state){
+      state={original:video.style.getPropertyValue('filter'),
+        priority:video.style.getPropertyPriority('filter'),applied:''};
+      nxVideoFilters.set(video,state);
+    }
+    const adjustment='brightness('+(cal.brightness/100).toFixed(3)+
+      ') contrast('+(cal.contrast/100).toFixed(3)+
+      ') saturate('+(cal.saturation/100).toFixed(3)+')';
+    state.applied=(state.original&&state.original!=='none'?state.original+' ':'')+adjustment;
+    video.style.setProperty('filter',state.applied,state.priority);
+  }
+  function cycleSharpness() {
+    // Compatibilidade com atalho legado: ajuste suave de contraste, nao nitidez.
+    const video=activeStreamVideo();
+    if(!video){S.lastErr='Ajuste visual: video nao encontrado';update();return;}
+    const cal=nxVideoCalibration();
+    setPref(LS_VIDEO_BRIGHTNESS,String(cal.brightness));
+    setPref(LS_VIDEO_SATURATION,String(cal.saturation));
+    setPref(LS_VIDEO_CONTRAST,String(cal.contrast>=105?100:cal.contrast+2));
+    setPref(LS_VIDEO_PROFILE,'custom');
+    applyVideoAdjustments(video);
+    pushLog('video','Contraste suave atualizado; sem nitidez artificial');
+  }
+  function inspectServerMeasurements() {
+    const names = Object.keys(S.latencyByServer).filter(function (name) { const item = S.latencyByServer[name]; return item && item.at && Date.now() - item.at < 24 * 3600 * 1000 && item.samples >= 5; });
+    S.serverProbeStatus = names.length ? names.length + ' servidor(es) medido(s) em sessões; sondagem prévia não disponível' : 'Nenhum servidor medido; sondagem prévia não disponível';
+    update();
+  }
+  function inspectRemotePlay() {
+    S.remotePlayStatus = 'Não conectado: protocolo/autenticação Xbox Remote Play não integrados';
+    update();
+  }
+  function cycleVideoFilter() {
+    const video=activeStreamVideo();
+    if(!video){S.lastErr='Filtro: video nao encontrado';schedule();return;}
+    const cal=nxVideoCalibration();
+    setPref(LS_VIDEO_BRIGHTNESS,String(cal.brightness));
+    setPref(LS_VIDEO_CONTRAST,String(cal.contrast));
+    setPref(LS_VIDEO_SATURATION,String(cal.saturation>=110?100:cal.saturation+5));
+    setPref(LS_VIDEO_PROFILE,'custom');
+    applyVideoAdjustments(video);
+    pushLog('video','Saturacao CSS atualizada; filtro unico');
+  }
+  function captureStreamFrame() {
+    const video = activeStreamVideo();
+    if (!video || !video.videoWidth || !video.videoHeight) { S.lastErr = 'Captura: vídeo indisponível'; schedule(); return; }
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D indisponível');
+      ctx.drawImage(video, 0, 0);
+      canvas.toBlob(function (blob) {
+        if (!blob) { S.lastErr = 'Captura bloqueada ou indisponível'; schedule(); return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'nimboxcloud-' + Date.now() + '.png';
+        a.click(); setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+      }, 'image/png');
+    } catch (err) { S.lastErr = 'Captura: ' + String(err && err.message || err); schedule(); }
+  }
+  let nxAudioGraph = null;
+  const nxAudioGraphs = new WeakMap();
+  function getAudioBands() {
+    try { const a = JSON.parse(getPref(LS_AUDIO_BANDS,'[0,0,0,0,0,0,0,0,0,0]'));
+      if (Array.isArray(a) && a.length === 10) return a.map(function (n) { return Math.max(-12,Math.min(12,Number(n)||0)); });
+    } catch (e) {} return [0,0,0,0,0,0,0,0,0,0];
+  }
+  function nxAudioOutputSupport(){
+    const media=activeStreamAudio();
+    const graph=nxAudioGraph && nxAudioGraph.media===media ? nxAudioGraph : null;
+    return {media:media,graph:graph,
+      canRoute:!!(graph && typeof graph.ctx.setSinkId==='function' ||
+        !graph && media && typeof media.setSinkId==='function'),
+      bluetoothNative:/Android/i.test(navigator.userAgent)};
+  }
+  function applyAudioOutput(){
+    const status=nxAudioOutputSupport(),sink=getPref(LS_AUDIO_OUTPUT,'');
+    if(!status.media)return;
+    const target=status.graph?status.graph.ctx:status.media;
+    if(typeof target.setSinkId!=='function'){
+      if(sink)S.lastErr='Saida manual indisponivel: selecione o Bluetooth no sistema Android';
+      return;
+    }
+    // ID vazio representa a saida padrao do sistema, inclusive fones Bluetooth.
+    Promise.resolve(target.setSinkId(sink)).catch(function(e){
+      S.lastErr='Saida de audio: '+String(e&&e.name||e);
+    });
+  }
+  function applyAudioProcessing() {
+    const media = activeStreamAudio(); if (!media) return;
+    if(nxAudioGraph && nxAudioGraph.media!==media){
+      const previous=nxAudioGraph;
+      // O MediaElementSource continua ligado ao destino para nao silenciar a fonte antiga.
+      previous.filters.forEach(function(node){node.gain.value=0;});
+      previous.dialogue.gain.value=0;
+      previous.bypass.gain.value=1;previous.compressed.gain.value=0;previous.limited.gain.value=0;
+      nxAudioGraph=nxAudioGraphs.get(media)||null;
+    }
+    const enabled = getPref(LS_AUDIO_FX,'0') === '1';
+    if (!enabled && !nxAudioGraph) return;
+    try {
+      if (!nxAudioGraph) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) { S.lastErr = 'Web Audio não suportado'; return; }
+        const ctx = new AC(), source = ctx.createMediaElementSource(media);
+        const filters = [32,64,125,250,500,1000,2000,4000,8000,16000].map(function (hz,i) {
+          const n = ctx.createBiquadFilter(); n.type = i === 0 ? 'lowshelf' : i === 9 ? 'highshelf' : 'peaking';
+          n.frequency.value = Math.min(hz,ctx.sampleRate*0.45); n.Q.value = 1; return n;
+        });
+        const dialogue = ctx.createBiquadFilter(); dialogue.type = 'peaking'; dialogue.frequency.value = 2400; dialogue.Q.value = 0.75;
+        const monoSplitter = ctx.createChannelSplitter(2), monoMix = ctx.createGain(); monoMix.gain.value = 0.5;
+        const monoMerger = ctx.createChannelMerger(2), stereoGain = ctx.createGain(), monoGain = ctx.createGain();
+        const pan = ctx.createStereoPanner(), compressor = ctx.createDynamicsCompressor(), limiter = ctx.createDynamicsCompressor();
+        limiter.threshold.value = -4; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.003;
+        const bypass = ctx.createGain(), compressed = ctx.createGain(), limited = ctx.createGain(), compToLimit = ctx.createGain(), directToLimit = ctx.createGain();
+        const analyser=ctx.createAnalyser();analyser.fftSize=1024;
+        source.connect(analyser);
+        let prev = analyser; filters.forEach(function (node) { prev.connect(node); prev = node; }); prev.connect(dialogue);
+        dialogue.connect(stereoGain); stereoGain.connect(pan);
+        dialogue.connect(monoSplitter); monoSplitter.connect(monoMix,0); monoSplitter.connect(monoMix,1);
+        monoMix.connect(monoMerger,0,0); monoMix.connect(monoMerger,0,1); monoMerger.connect(monoGain); monoGain.connect(pan);
+        pan.connect(bypass); bypass.connect(ctx.destination);
+        pan.connect(compressor); compressor.connect(compressed); compressed.connect(ctx.destination);
+        pan.connect(directToLimit); directToLimit.connect(limiter);
+        compressor.connect(compToLimit); compToLimit.connect(limiter);
+        limiter.connect(limited); limited.connect(ctx.destination);
+        nxAudioGraph = {media:media,ctx:ctx,source:source,analyser:analyser,filters:filters,dialogue:dialogue,pan:pan,compressor:compressor,limiter:limiter,
+          stereoGain:stereoGain,monoGain:monoGain,bypass:bypass,compressed:compressed,limited:limited,
+          compToLimit:compToLimit,directToLimit:directToLimit};
+        nxAudioGraphs.set(media,nxAudioGraph);
+        applyAudioOutput();
+      }
+      const g = nxAudioGraph;
+      getAudioBands().forEach(function (n,i) { g.filters[i].gain.value = enabled ? n : 0; });
+      g.dialogue.gain.value = enabled && getPref(LS_AUDIO_DIALOG,'0') === '1' ? 4 : 0;
+      const mono = enabled && getPref(LS_AUDIO_MONO,'0') === '1'; g.stereoGain.gain.value = mono ? 0 : 1; g.monoGain.gain.value = mono ? 1 : 0;
+      g.pan.pan.value = enabled ? Math.max(-1,Math.min(1,Number(getPref(LS_AUDIO_BALANCE,'0'))/100)) : 0;
+      const compress = enabled && (getPref(LS_AUDIO_COMP,'0') === '1' || getPref(LS_AUDIO_NORMAL,'0') === '1');
+      const limit = enabled && getPref(LS_AUDIO_LIMIT,'0') === '1';
+      g.compressor.threshold.value = getPref(LS_AUDIO_NORMAL,'0') === '1' ? -30 : -24;
+      g.compressor.ratio.value = getPref(LS_AUDIO_NORMAL,'0') === '1' ? 2 : 3;
+      g.bypass.gain.value = !compress && !limit ? 1 : 0;
+      g.compressed.gain.value = compress && !limit ? 1 : 0;
+      g.limited.gain.value = limit ? 1 : 0;
+      g.compToLimit.gain.value = limit && compress ? 1 : 0;
+      g.directToLimit.gain.value = limit && !compress ? 1 : 0;
+      Promise.resolve(g.ctx.resume()).then(function(){
+        if(g.ctx.state!=='running')S.lastErr='Audio suspenso: toque em Ativar audio no painel NX';
+      }).catch(function(e){S.lastErr='Audio suspenso: '+String(e&&e.message||e);});
+    } catch (e) { S.lastErr = 'Web Audio: '+String(e && e.name || e); }
+  }
+  function nxAudioSignalStatus(){
+    const media=activeStreamAudio(),g=nxAudioGraph;
+    if(!media)return 'Fluxo de audio nao detectado';
+    if(!g || g.media!==media)return 'EQ nao conectado ao fluxo';
+    if(g.ctx.state!=='running')return 'AudioContext '+g.ctx.state+' — processamento inativo';
+    if(!g.analyser)return 'Sem medicao de sinal';
+    const samples=new Uint8Array(g.analyser.fftSize);
+    g.analyser.getByteTimeDomainData(samples);
+    let energy=0;
+    for(let i=0;i<samples.length;i++){const v=(samples[i]-128)/128;energy+=v*v;}
+    const rms=Math.sqrt(energy/samples.length);
+    return 'Web Audio running · sinal '+(rms>0.002?'detectado':'nao detectado/silencio')+
+      ' · '+(getPref(LS_AUDIO_FX,'0')==='1'?'EQ ativo':'bypass');
+  }
+  function activeStreamAudio() {
+    const media=Array.from(document.querySelectorAll('video,audio'));
+    const candidates=media.filter(function(v){
+      const stream=v.srcObject;
+      if(stream && typeof stream.getAudioTracks==='function')return stream.getAudioTracks().some(function(t){return t.readyState==='live';});
+      return !!(v.currentSrc && v.currentSrc.startsWith('blob:'));
+    });
+    const playable=candidates.filter(function(v){return !v.paused && !v.ended && v.readyState>=2;});
+    return playable.find(function(v){return v.srcObject && v.srcObject.getAudioTracks && v.srcObject.getAudioTracks().length;})
+      || playable[0] || candidates[0] || null;
+  }
+  function activeStreamVideo() {
+    const videos = Array.from(document.querySelectorAll('video'));
+    const candidates = videos.filter(function (v) { return v.srcObject || (v.currentSrc && v.currentSrc.startsWith('blob:')); });
+    return candidates.find(function (v) { return v.readyState >= 2 && !v.paused; }) || candidates[0] || null;
+  }
+  function adjustVolume(delta) {
+    const video = activeStreamAudio();
+    if (!video) { S.lastErr = 'Volume: vídeo de streaming não encontrado'; schedule(); return; }
+    const next = Math.max(0, Math.min(1, Math.round((video.volume + delta) * 10) / 10));
+    video.volume = next;
+    video.muted = false;
+    setPref(LS_VOLUME, String(next));
+    schedule();
+  }
+  function toggleMute() {
+    const video = activeStreamAudio();
+    if (!video) { S.lastErr = 'Volume: vídeo de streaming não encontrado'; schedule(); return; }
+    video.muted = !video.muted;
+    schedule();
+  }
+
+  function boot() {
+    startInputDiagnostics();
+    nxSampleGamepads();
+    setInterval(function () {
+      nxInputBridgeStatus();
+      if (document.visibilityState === 'visible') nxSampleGamepads();
+    }, 750);
+    S.diagnosticsWarnings = [
+      'RTT: apenas sessões usadas; sondagem ativa não implementada',
+      'Contraste adicional: filtro CSS, não é nitidez real nem CAS',
+      'Microfone: teste de captura local com permissão; transmissão ao jogo depende do xCloud',
+      'Vibração: testes locais de controle e celular; sem remapeamento do feedback do streaming',
+      'Remote Play: diagnóstico de indisponibilidade; protocolo não integrado'
+    ];
+    S.deviceDetected = detectedDeviceProfile();
+    // Observa apenas eventos relevantes; não coleta corpos de API, cookies ou tokens.
+    let labLastPath = location.pathname;
+    let labLastWarning = false;
+    setInterval(function () {
+      if (location.pathname !== labLastPath) {
+        labLastPath = location.pathname;
+        nxConsoleLabEvent('navigation', labLastPath);
+      }
+      const warning = nxConsoleLabWarning();
+      if (warning !== labLastWarning) {
+        labLastWarning = warning;
+        nxConsoleLabEvent(warning ? 'unsupported-device-warning' : 'warning-dismissed',
+          warning ? 'Diálogo de incompatibilidade exibido' : 'Diálogo ausente');
+      }
+    }, 1200);
+    document.addEventListener('keydown', function (e) {
+      if (!e.isTrusted || !e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey || e.repeat) return;
+      const a = document.activeElement;
+      if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+      if (e.code === getPref(LS_NX_SHORTCUT, 'KeyH')) { e.preventDefault(); e.stopImmediatePropagation(); setOpen(!openUI, true); }
+      if (e.code === 'KeyD') { e.preventDefault(); console.log('[NX diagnostic]', { qos: S.qos, history: S.qosHistory, diagnosis: S.lastDiagnosis }); }
+    }, false);
+    // Reaplicar volume salvo apenas quando um elemento de vídeo de streaming existir.
+    let lastVolumeAudio = null, lastAdjustedVideo = null;
+    setInterval(function () {
+      const audio = activeStreamAudio();
+      if (audio && audio !== lastVolumeAudio) {
+        lastVolumeAudio = audio;
+        const stored = Number(getPref(LS_VOLUME, '1'));
+        if (Number.isFinite(stored)) audio.volume = Math.max(0, Math.min(1, stored));
+      }
+      if(audio && getPref(LS_AUDIO_FX,'0')==='1' && (!nxAudioGraph || nxAudioGraph.media!==audio))applyAudioProcessing();
+      const video = activeStreamVideo();
+      if(getPref(LS_NX_GPU,'0')==='1' && video)nxGpuStart(video);
+      else if(nxGpu)nxGpuStop();
+      if (video !== lastAdjustedVideo) {
+        restoreVideoAdjustments(lastAdjustedVideo);
+        restoreVideoFit(lastAdjustedVideo);
+        lastAdjustedVideo = video;
+        applyVideoAdjustments(video);
+        applyVideoFit(video);
+      } else if (video && !nxVideoFilters.has(video) &&
+                 (['balanced', 'vivid'].includes(getPref(LS_VIDEO_PROFILE, 'original')) ||
+                  (getPref(LS_VIDEO_PROFILE, 'custom') === 'custom' &&
+                   (getPref(LS_VIDEO_COLOR, '0') !== '0' || getPref(LS_SHARPNESS, '0') !== '0')))) {
+        // Reapply when the stream element persists but the host has reset its style.
+        applyVideoAdjustments(video);
+      }
+    }, 2500);
+    document.addEventListener('visibilitychange', function () {
+      const video = activeStreamVideo();
+      if (video) applyVideoAdjustments(video);
+      nxGpuSync();
+    });
+    buildUI();
+    update();
+    tick();
+    // O site pode substituir o body durante a inicializacao do React.
+    // Recria/reataca o painel quando a arvore de documentos muda.
+    let recoveryQueued = false;
+    const panelObserver = new MutationObserver(function () {
+      if (recoveryQueued) return;
+      // Nao reagir a cada mudanca de React: so recuperar quando o NX perdeu o host.
+      const host = mountTarget();
+      if (wrap && wrap.isConnected && wrap.parentNode === host) return;
+      recoveryQueued = true;
+      queueMicrotask(function () {
+        recoveryQueued = false;
+        try {
+          const target = mountTarget();
+          if (!target) return;
+          if (!wrap || !wrap.isConnected) buildUI();
+          if (wrap && wrap.parentNode !== target) target.appendChild(wrap);
+          if (wrap && wrap.isConnected) { S.nxRecoveries++; syncNXPlacement(); }
+        } catch (err) { S.lastErr = 'NX recovery: ' + String(err); }
+      });
+    });
+    panelObserver.observe(document.documentElement, { childList: true, subtree: true });
+    // Recuperacao periodica: React pode recriar a barra sem emitir mudancas no root.
+    // Nao depende da deteccao de perfil para manter o NX acessivel.
+    // Atalho de recuperacao do painel para navegadores com teclado.
+    document.addEventListener('keydown', function (e) {
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyN') { e.preventDefault(); resetPos(); setOpen(true, true); }
+    }, false);
+    // Ao entrar/sair da tela cheia, move o painel imediatamente para o novo host, sem depender do tick de 1,5s
+    ['fullscreenchange', 'webkitfullscreenchange'].forEach(function (ev) {
+      document.addEventListener(ev, function () {
+        try {
+          const host = mountTarget();
+          if (wrap && host) host.appendChild(wrap);
+        } catch (e) { }
+      }, true);
+    });
+    setInterval(tick, 1500);
+    window.addEventListener('popstate', tick);
+    window.addEventListener('resize', tick);
+    tick();
+    setInterval(pumpQos, 2000);
+    console.log('[xcu] v' + VER + ' iniciado | data center', srvCfg().label, '| IPv4', v4on(), '| qualidade', resCfg().label);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
+})();
+));
+  if(!key)return;const first=root[key]?.current||root[key];
+  if(first!==nimboFiberRoot||nimboFiberIndex>=nimboFiberQueue.length){nimboFiberRoot=first;nimboFiberQueue=[first];nimboFiberIndex=0;}
+  const start=performance.now();let steps=0;
+  while(nimboFiberIndex<nimboFiberQueue.length&&nimboFiberQueue.length<40000){
+    if((steps++&63)===0&&performance.now()-start>5)return;
+    const fiber=nimboFiberQueue[nimboFiberIndex++];if(!fiber)continue;
+    let state=fiber.memoizedState;
+    for(let depth=0;state&&depth<10;depth++,state=state.next){
+      const candidate=state.memoizedState?.data?._session;
+      if(candidate&&!candidate.isShutdown&&typeof candidate.onVirtualMouseInput==='function'&&typeof candidate.updateInputConfigurationAsync==='function'){
+        nimboCapture(candidate);nimboFiberQueue=[];nimboFiberIndex=0;return;
+      }
+    }
+    if(fiber.child)nimboFiberQueue.push(fiber.child);if(fiber.sibling)nimboFiberQueue.push(fiber.sibling);
+  }
+}
+
+
+// Only explicit stop restores configuration. Opening the HUD editor temporarily pauses input.
+const stop= NimboPlayControls.prototype.stop;
+NimboPlayControls.prototype.stop=function(...args){
+ const owner=nimboTransport;
+ try{return stop.apply(this,args);}finally{
+  queueMicrotask(()=>{if(this.wanted||!owner)return;owner.restore().catch(e=>NimboDiag.add('entrada','Falha ao restaurar a sessão',e.message));});
+ }
+};
+const start=NimboPlayControls.prototype.start;
+NimboPlayControls.prototype.start=async function(...args){
+ const result=await start.apply(this,args);
+ if(this.active){this.reparent();this.applyAllGeometry();requestAnimationFrame(()=>{if(this.active)this.applyAllGeometry();});}
+ return result;
+};
+function pollSession(){
+ try{
+  if(nimboGameStream?.session)nimboCapture(nimboGameStream.session);
+  if(nimboCandidate&&!nimboCandidate.isShutdown&&nimboCandidate.connectionState==='Connected')nimboCapture(nimboCandidate);
+  if(nimboTransport&&!nimboTransport.connected()){
+   ui?.stop();const old=nimboTransport;nimboTransport=null;api.streamSession=null;api.inputChannel=null;STATES.isPlaying=false;old.dispose().catch(()=>{});
+  }
+  // Bounded React traversal is a fallback for sessions created before the module hook.
+  if(!nimboTransport?.connected())nimboFindReactSession();
+  syncTouchVisibility();touchPanel.refresh();
+ }catch(e){NimboDiag.add('sessão','Não foi possível localizar a sessão',e.message);}
+}
+function boot(){
+ if(!document.documentElement||!document.body)return;
+ try{
+  ui=new NimboPlayControls();ui.loadUnified();ui.loadProfiles();ui.mount();syncTouchVisibility();touchPanel.mount();
+  document.addEventListener('fullscreenchange',()=>{touchPanel.reparent();ui.reparent();ui.applyAllGeometry();});
+  window.addEventListener('resize',()=>{if(ui.root)ui.applyAllGeometry();});
+  document.addEventListener('pointerdown',()=>{if(ui.wanted&&!ui.active&&!ui.busy&&!document.hidden){ui.focused=true;ui.retryAt=0;ui.ensureResumeWatch();}},true);
+  window.addEventListener('pagehide',()=>ui.stop());
+  pollSession();setInterval(pollSession,1500);
+ }catch(e){NimboDiag.add('inicialização','Falha ao iniciar Nimbo Touch',e.message);const notice=document.createElement('div');notice.textContent='Nimbo Touch não iniciou: '+e.message;notice.style.cssText='position:fixed;top:8px;left:8px;z-index:2147483647;background:#331a1a;color:white;padding:12px';document.documentElement.append(notice);}
+}
+// Public integration point for a future host. No Better xCloud globals are read or overwritten.
+window.NimboTouch=Object.freeze({version:VERSION,attachSession:nimboCapture,open:()=>touchPanel.open(),stop:()=>ui?.stop(),diagnostic});
+
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+
+function syncTouchVisibility(){
+ if(ui?.root)ui.root.hidden=!(ui.active||ui.editingHud);
+}
+for(const method of ['start','stop','pause','editHud','finishEditing']){
+ const original=NimboPlayControls.prototype[method];
+ NimboPlayControls.prototype[method]=function(...args){
+  try{const result=original.apply(this,args);if(result?.then)return result.finally(syncTouchVisibility);return result;}
+  finally{syncTouchVisibility();}
+ };
+}
+
+})();
+/* FIM NX TOUCH HUD */
+
 (function () {
   'use strict';
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.29';
+  const VER = '4.12.30';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
