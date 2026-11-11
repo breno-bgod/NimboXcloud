@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.23
+// @version      4.11.24
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.23';
+  const VER = '4.11.24';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -810,7 +810,8 @@
       if (typeof original !== 'function') return;
       RTCPeerConnection.prototype.setLocalDescription = function(description) {
         const limit = bitrateCfg().mbps;
-        if (!limit || !description || typeof description.sdp !== 'string') {
+        if (!limit || !description || typeof description.sdp !== 'string' ||
+            !/^(?:offer|answer)$/i.test(description.type || '')) {
           return original.apply(this, arguments);
         }
         try {
@@ -831,7 +832,9 @@
             out.push(line);
           }
           if (video && !inserted) out.push('b=AS:' + Math.round(limit * 1000));
-          const patched = { type: description.type, sdp: out.join('\r\n') };
+          const patchedSdp = out.join('\r\n');
+          if (patchedSdp === description.sdp) return original.apply(this, arguments);
+          const patched = { type: description.type, sdp: patchedSdp };
           return original.call(this, patched);
         } catch (e) { S.lastErr = 'Bitrate SDP: ' + String(e); }
         return original.apply(this, arguments);
@@ -885,7 +888,7 @@
     if (qosBusy || typeof pc.getStats !== 'function') return;
     qosBusy = true;
     PCQos(pc).then(function (q) {
-      if (q && S.lastPc === pc) {
+      if (q && S.lastPc === pc && pc.connectionState !== 'closed' && pc.signalingState !== 'closed') {
         S.qos = q; S.qosAt = Date.now();
         S.qosHistory.push({ at: Date.now(), fps: q.fps || q.decodedFps || 0, kbps: q.kbps || 0, rtt: q.rtt, loss: q.instLoss == null ? q.loss : q.instLoss, dropped: q.dropped || 0, dropRate: q.dropRate == null ? null : q.dropRate });
         if (S.qosHistory.length > 90) S.qosHistory.shift();
@@ -909,7 +912,7 @@
     }).catch(function (err) {
       S.lastErr = 'QoS: ' + String(err && err.message || err);
       schedule();
-    }).then(function () { qosBusy = false; });
+    }).then(function () { qosBusy = false; }, function () { qosBusy = false; });
   }
 
   function PCQos(pc) {
