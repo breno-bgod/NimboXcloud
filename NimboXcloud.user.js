@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.15
+// @version      4.12.16
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.15';
+  const VER = '4.12.16';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2433,8 +2433,12 @@
     nxHudNativeOriginal.forEach(function (style, node) {
       try {
         if (node && node.style) {
-          node.style.transform = style.transform;
-          node.style.transformOrigin = style.transformOrigin;
+          // Preserve changes made by the game or other scripts after our transform.
+          if (node.style.transform === style.appliedTransform &&
+              node.style.transformOrigin === style.appliedTransformOrigin) {
+            node.style.transform = style.transform;
+            node.style.transformOrigin = style.transformOrigin;
+          }
         }
       } catch (_) {}
     });
@@ -2493,6 +2497,9 @@
         node.style.transformOrigin = 'center center';
         node.style.transform = 'translate(' + Math.round(dx) + 'px,' + Math.round(dy) +
           'px) scale(' + scale + ') ' + (nxHudNativeOriginal.get(node).transform || '');
+        const owned = nxHudNativeOriginal.get(node);
+        owned.appliedTransform = node.style.transform;
+        owned.appliedTransformOrigin = node.style.transformOrigin;
         applied++;
       } catch (_) {}
     });
