@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.0.6
+// @version      4.1.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.0.6';
+  const VER = '4.1.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2237,6 +2237,22 @@
           setPref(NX_GYRO_INVERT_Y_KEY, nxGyroInvertY() ? '0' : '1');
           renderBody();
         }, 'Inverter eixo vertical')));
+      gyroGroup.add(infoRow('Eixos virtuais simulados', function () {
+        const g = nxGyroPreviewState();
+        return g.axisX.toFixed(2) + ' / ' + g.axisY.toFixed(2);
+      }, 'Valores normalizados entre -1 e 1; não enviados ao jogo.'));
+      gyroGroup.add(setRow('Sensibilidade da prévia', 'Somente simulação dos eixos; não modifica o controle físico.',
+        chips([{ k: '0.5', label: 'Baixa' }, { k: '1', label: 'Normal' }, { k: '2', label: 'Alta' }],
+          getPref(NX_GYRO_SENS_KEY, '1'), function (k) {
+            setPref(NX_GYRO_SENS_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(setRow('Zona morta da prévia', 'Ignora pequenas inclinações para reduzir tremores.',
+        chips([{ k: '0', label: 'Nenhuma' }, { k: '0.04', label: 'Normal' }, { k: '0.1', label: 'Alta' }],
+          getPref(NX_GYRO_DEADZONE_KEY, '0.04'), function (k) {
+            setPref(NX_GYRO_DEADZONE_KEY, k);
+            renderBody();
+          }), true));
       gyroGroup.add(setRow('Suavização da leitura', 'Afeta apenas a prévia local. Não modifica a mira.',
         chips([{ k: '0.1', label: 'Suave' }, { k: '0.25', label: 'Equilibrada' }, { k: '0.7', label: 'Rápida' }],
           getPref(NX_GYRO_SMOOTH_KEY, '0.25'), function (k) {
@@ -2950,6 +2966,23 @@
   const NX_GYRO_INVERT_Y_KEY = 'nx.gyro.previewInvertY.v1';
   function nxGyroInvertX() { return getPref(NX_GYRO_INVERT_X_KEY, '0') === '1'; }
   function nxGyroInvertY() { return getPref(NX_GYRO_INVERT_Y_KEY, '0') === '1'; }
+  const NX_GYRO_SENS_KEY = 'nx.gyro.previewSensitivity.v1';
+  const NX_GYRO_DEADZONE_KEY = 'nx.gyro.previewDeadzone.v1';
+  function nxGyroSensitivity() {
+    const value = Number(getPref(NX_GYRO_SENS_KEY, '1'));
+    return Number.isFinite(value) ? Math.max(0.25, Math.min(3, value)) : 1;
+  }
+  function nxGyroDeadzone() {
+    const value = Number(getPref(NX_GYRO_DEADZONE_KEY, '0.04'));
+    return Number.isFinite(value) ? Math.max(0, Math.min(0.2, value)) : 0.04;
+  }
+  function nxGyroAxisPreview(degrees, range) {
+    if (!Number.isFinite(degrees)) return 0;
+    const normalized = Math.max(-1, Math.min(1, degrees / range * nxGyroSensitivity()));
+    const deadzone = nxGyroDeadzone();
+    if (Math.abs(normalized) <= deadzone) return 0;
+    return Math.sign(normalized) * (Math.abs(normalized) - deadzone) / (1 - deadzone);
+  }
   const NX_GYRO_SMOOTH_KEY = 'nx.gyro.previewSmoothing.v1';
   function nxGyroSmoothFactor() {
     const raw = Number(getPref(NX_GYRO_SMOOTH_KEY, '0.25'));
@@ -3050,6 +3083,11 @@
       tiltY: g.filteredY === null ? null : Math.round((nxGyroInvertY() ? -1 : 1) * g.filteredY * 10) / 10,
       invertX: nxGyroInvertX(), invertY: nxGyroInvertY(),
       smoothing: nxGyroSmoothFactor(),
+      sensitivity: nxGyroSensitivity(), deadzone: nxGyroDeadzone(),
+      axisX: !g.enabled || Date.now() - g.lastAt > 2000 || g.filteredX === null ? 0 :
+        Math.round(nxGyroAxisPreview((nxGyroInvertX() ? -1 : 1) * g.filteredX, 45) * 1000) / 1000,
+      axisY: !g.enabled || Date.now() - g.lastAt > 2000 || g.filteredY === null ? 0 :
+        Math.round(nxGyroAxisPreview((nxGyroInvertY() ? -1 : 1) * g.filteredY, 60) * 1000) / 1000,
       screenAngle: g.screenAngle, orientationChanges: g.orientationChanges,
       autoPauseOnHidden: true,
       error: g.error, gameplayInput: false };
@@ -3142,6 +3180,12 @@
     check('ângulo de tela normalizado', nxScreenAngle() >= 0 && nxScreenAngle() < 360);
     check('inversão horizontal booleana', typeof nxGyroInvertX() === 'boolean');
     check('inversão vertical booleana', typeof nxGyroInvertY() === 'boolean');
+    check('eixo virtual neutro', nxGyroAxisPreview(0, 45) === 0);
+    check('eixo virtual positivo limitado', nxGyroAxisPreview(999, 45) === 1);
+    check('eixo virtual negativo limitado', nxGyroAxisPreview(-999, 45) === -1);
+    check('eixo virtual inválido neutro', nxGyroAxisPreview(NaN, 45) === 0);
+    check('zona morta válida', nxGyroDeadzone() >= 0 && nxGyroDeadzone() <= 0.2);
+    check('sensibilidade válida', nxGyroSensitivity() >= 0.25 && nxGyroSensitivity() <= 3);
     return { passed: tests.filter(function (t) { return t.pass; }).length,
       total: tests.length, tests: tests, note: 'Autoteste matemático e estrutural; não substitui teste de streaming.' };
   }
