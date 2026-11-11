@@ -105,3 +105,17 @@ test('HUD-003 native positioning is opt-in, reversible and rejects duplicate lab
   assert.match(native, /nxHudNativeOriginal\.clear\(\);/);
   assert.doesNotMatch(native, /dispatchEvent\(/);
 });
+
+test('HUD-006 native sync is tied to route monitoring and detects remounted nodes', () => {
+  assert.match(src, /function nxHudRouteMonitor\(\) \{[\s\S]*?nxHudAutoLoadGame\(\);\s*nxHudNativeSync\(\);/);
+  const start = src.indexOf('  function nxHudNativeSync() {');
+  const end = src.indexOf('  function nxHudNativeSetEnabled(', start);
+  assert.ok(start > 0 && end > start);
+  const sync = src.slice(start, end);
+  assert.match(sync, /nxHudNativeCandidates\(\)/);
+  assert.match(sync, /nxHudReadLayout\(\)/);
+  assert.match(sync, /nxHudPreviewScale\(\)/);
+  assert.match(sync, /nxHudCurrentGameId\(\)/);
+  assert.match(sync, /nxHudNativeNodes\[id\]/);
+  assert.match(sync, /nxHudNativeApply\(\)/);
+});
