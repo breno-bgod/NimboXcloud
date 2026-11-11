@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.37
+// @version      3.6.38
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -1151,6 +1151,43 @@
     return b;
   }
 
+  // Encontra a faixa compacta de controles do xCloud no canto superior esquerdo.
+  // Não altera botões nativos: só acrescenta o acesso NX quando a estrutura é reconhecível.
+  function findInGameToolbar() {
+    const candidates = document.querySelectorAll('button,[role="button"]');
+    for (const node of candidates) {
+      if (node.id === 'nimboxcloud-library-button' || node.closest('#__xcu_panel__')) continue;
+      const r = node.getBoundingClientRect();
+      if (r.width < 22 || r.width > 90 || r.height < 22 || r.height > 90 ||
+          r.left < 0 || r.left > 170 || r.top < 0 || r.top > 105) continue;
+      let parent = node.parentElement;
+      for (let depth = 0; parent && depth < 3; depth++, parent = parent.parentElement) {
+        if (parent.id === '__xcu_panel__' || parent === document.body) break;
+        const pr = parent.getBoundingClientRect();
+        if (pr.left > 170 || pr.top > 110 || pr.width < 80 || pr.width > 360 ||
+            pr.height < 28 || pr.height > 125) continue;
+        const buttons = Array.from(parent.querySelectorAll('button,[role="button"]'))
+          .filter(function (b) {
+            if (b.id === 'nimboxcloud-library-button') return false;
+            const br = b.getBoundingClientRect();
+            return br.width >= 22 && br.height >= 22 && br.left >= pr.left - 2 &&
+              br.right <= pr.right + 2 && br.top >= pr.top - 2 && br.bottom <= pr.bottom + 2;
+          });
+        if (buttons.length < 2 || buttons.length > 5) continue;
+        // O grupo deve conter o controle Xbox/guia ou um botão de mais opções.
+        const labels = buttons.map(function (b) {
+          return [b.getAttribute('aria-label'), b.getAttribute('title'),
+            b.getAttribute('data-testid'), b.textContent].filter(Boolean).join(' ').toLowerCase();
+        }).join(' ');
+        const hasXbox = /xbox|guide|guia|menu|more|mais|options|opções|opcoes/.test(labels);
+        const hasIcons = buttons.filter(function (b) { return b.querySelector('svg,img'); }).length >= 2;
+        if (!hasXbox && !hasIcons) continue;
+        return buttons[buttons.length - 1];
+      }
+    }
+    return null;
+  }
+
   function syncNXPlacement() {
     if (!wrap || !wrap.isConnected) return;
     const playing = isInGame();
@@ -1162,16 +1199,37 @@
       if (pickEl) pickEl.style.display = 'none';
     }
     if (playing) {
-      // Durante a partida: somente a pílula flutuante.
-      if (nxLibraryButton) nxLibraryButton.style.display = 'none';
-      wrap.style.display = 'flex';
-      wrap.style.position = 'fixed';
-      wrap.style.transform = 'none';
-      wrap.style.left = 'auto';
-      wrap.style.right = '12px';
-      wrap.style.top = '12px';
-      wrap.style.alignItems = 'flex-end';
-      if (pillEl) { pillEl.style.cursor = 'pointer'; pillEl.style.display = 'inline-flex'; }
+      const gameAnchor = findInGameToolbar();
+      if (gameAnchor && gameAnchor.parentElement) {
+        if (!nxLibraryButton) nxLibraryButton = buildLibraryButton();
+        if (nxLibraryButton.parentElement !== gameAnchor.parentElement ||
+            nxLibraryButton.previousElementSibling !== gameAnchor) gameAnchor.after(nxLibraryButton);
+        nxLibraryButton.style.display = 'inline-flex';
+        nxLibraryButton.title = 'Abrir NimboXcloud durante a partida';
+        wrap.style.display = 'flex';
+        wrap.style.position = 'fixed';
+        wrap.style.transform = 'none';
+        wrap.style.left = 'auto';
+        wrap.style.right = '12px';
+        wrap.style.top = Math.min(innerHeight - 48,
+          Math.max(44, nxLibraryButton.getBoundingClientRect().bottom + 8)) + 'px';
+        wrap.style.alignItems = 'flex-end';
+        const br = nxLibraryButton.getBoundingClientRect();
+        const visible = br.width >= 18 && br.height >= 18 && br.top >= 0 &&
+          br.bottom <= innerHeight && br.left >= 0 && br.right <= innerWidth;
+        if (pillEl) pillEl.style.display = visible ? 'none' : 'inline-flex';
+      } else {
+        // O xCloud muda seu DOM com frequência; mantém acesso se a barra não for encontrada.
+        if (nxLibraryButton) nxLibraryButton.style.display = 'none';
+        wrap.style.display = 'flex';
+        wrap.style.position = 'fixed';
+        wrap.style.transform = 'none';
+        wrap.style.left = 'auto';
+        wrap.style.right = '12px';
+        wrap.style.top = '12px';
+        wrap.style.alignItems = 'flex-end';
+        if (pillEl) pillEl.style.display = 'inline-flex';
+      }
       return;
     }
     const placement = findProfileAnchor();
