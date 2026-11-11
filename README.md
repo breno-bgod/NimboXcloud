@@ -7,25 +7,27 @@
 
 **[Português](./README.md) · [English](./README_EN.md)**
 
-**Criado para a nova experiência do Xbox Cloud Gaming — [play.xbox.com](https://play.xbox.com/)**
+**Em desenvolvimento (Alpha) para a nova experiência do Xbox Cloud Gaming — [play.xbox.com](https://play.xbox.com/)**
 
-[**Instalar userscript**](./NimboXcloud.user.js) · [**Reportar problema**](./../../issues) · [**Plano de desenvolvimento**](./DEVELOPMENT_ROADMAP.md)
+[**Testar versão Alpha**](./NimboXcloud.user.js) · [**Reportar problema**](./../../issues) · [**Plano de desenvolvimento**](./DEVELOPMENT_ROADMAP.md)
 
 </div>
 
 ---
 
-## Uma nova experiência merece novas possibilidades
+## Um projeto pessoal em fase Alpha
 
-O Xbox Cloud Gaming está mudando. Enquanto muitas ferramentas de personalização nasceram para a interface anterior, o **NimboXcloud foi desenvolvido com foco na nova experiência web, em `play.xbox.com`** — não na antiga página `xbox.com/play`.
+Sou **KReight**, criador e único desenvolvedor do **NimboXcloud**. Este é um projeto pessoal, pequeno e independente, que estou construindo e testando aos poucos. **Ainda não é um produto pronto ou uma versão estável.**
 
-Nossa proposta é levar à nova versão recursos de controle e personalização semelhantes aos que jogadores conhecem de outras ferramentas, explorar novas possibilidades e tornar a experiência de streaming mais transparente e ajustável.
+O Xbox Cloud Gaming está mudando. Enquanto muitas ferramentas de personalização nasceram para a interface anterior, **estou desenvolvendo o NimboXcloud para a nova experiência web, em `play.xbox.com`** — não para a antiga página `xbox.com/play`.
 
-**O NimboXcloud é um userscript independente e de código aberto.** Ele funciona sobre o site oficial do Xbox Cloud Gaming; não hospeda jogos, não substitui o serviço e não garante acesso ou recursos que dependem da Microsoft.
+Minha intenção é estudar como levar à nova versão recursos de controle, acessibilidade e personalização semelhantes aos que jogadores conhecem de outras ferramentas, testar novas ideias e melhorar gradualmente a experiência de streaming. Nem tudo o que planejo já funciona.
 
-## O que você encontra no NimboXcloud
+**O NimboXcloud é um userscript experimental e de código aberto.** Estou desenvolvendo-o para funcionar sobre o site oficial do Xbox Cloud Gaming; ele não hospeda jogos, não substitui o serviço e não garante acesso ou recursos que dependem da Microsoft.
 
-| Área | O que o sistema oferece |
+## O que estou implementando e testando
+
+| Área | Recursos presentes no código Alpha |
 | --- | --- |
 | **Streaming e conexão** | Perfis de negociação de qualidade, limites de bitrate, escolha de data center, preferência baseada em latência e opção de priorizar IPv4. |
 | **Imagem** | Perfis visuais, contraste e saturação, ajustes de enquadramento, tela cheia e captura de quadros. |
@@ -38,15 +40,15 @@ Nossa proposta é levar à nova versão recursos de controle e personalização 
 
 > **Importante:** a tabela descreve recursos presentes no código, não uma garantia de que todos estejam funcionando em qualquer sessão. A qualidade real do streaming e as permissões de acesso continuam sob controle do serviço.
 
-## O painel NX
+## O painel NX (em desenvolvimento)
 
-O **NX** reúne configurações e informações em uma única interface. A ideia é que o jogador possa entender o que está acontecendo na sessão, testar ajustes e recuperar configurações sem depender de ferramentas de diagnóstico externas.
+Estou construindo o **NX** para reunir configurações e informações em uma única interface. A ideia é ajudar o jogador a entender a sessão, testar ajustes e recuperar preferências sem depender de ferramentas de diagnóstico externas.
 
-O projeto prioriza **preservar os controles nativos**, inclusive o toque e os controles físicos, em vez de substituir indiscriminadamente os mecanismos do site.
+Minha prioridade é **preservar os controles nativos**, inclusive o toque e os controles físicos, em vez de substituir indiscriminadamente os mecanismos do site.
 
-## Em que estágio estamos?
+## Estado atual: Alpha / testes
 
-O NimboXcloud está **em desenvolvimento ativo**. Transparência faz parte do projeto:
+**Esta é uma versão Alpha de um projeto mantido por uma pessoa.** Existem recursos escritos no código, mas ainda estou verificando integração, compatibilidade e funcionamento em partidas reais. Não considero o sistema finalizado:
 
 | Situação | Exemplos |
 | --- | --- |
@@ -58,17 +60,17 @@ O NimboXcloud está **em desenvolvimento ativo**. Transparência faz parte do pr
 
 Acompanhe as prioridades e os testes pendentes no [plano de desenvolvimento](./DEVELOPMENT_ROADMAP.md). O [histórico de alterações](./CHANGELOG.md) registra as mudanças documentadas.
 
-## Instalação
+## Como testar a versão Alpha
 
 1. Instale um gerenciador de userscripts compatível, como o **Tampermonkey**.
 2. Abra **[NimboXcloud.user.js](./NimboXcloud.user.js)** e escolha **Raw** para importar o arquivo.
 3. Ative o script e acesse **[play.xbox.com](https://play.xbox.com/)**.
 
-O script foi configurado para a **nova interface** (`https://play.xbox.com/*`). Ele não foi desenvolvido para executar na página antiga. A compatibilidade depende das mudanças do site, do navegador e das permissões disponíveis.
+O script está sendo desenvolvido para a **nova interface** (`https://play.xbox.com/*`), não para a página antiga. **Use por sua conta e risco: podem ocorrer falhas, incompatibilidades e mudanças de comportamento durante os testes.** A compatibilidade depende das mudanças do site, do navegador e das permissões disponíveis.
 
-## Por que código aberto?
+## Quem está criando o projeto?
 
-O NimboXcloud é um projeto independente de **KReight**, criado para aprender, experimentar e construir alternativas com a comunidade. Sugestões, análises de código, relatórios de problemas e contribuições são bem-vindos.
+Sou **KReight**, o criador e único responsável pelo desenvolvimento atual do NimboXcloud. Estou aprendendo, planejando, programando e testando suas funcionalidades gradualmente; não há uma equipe ou empresa por trás dele. Sugestões, análises de código, relatórios de problemas e contribuições são bem-vindos.
 
 O código está disponível sob a **licença MIT**, com preservação dos avisos aplicáveis às partes reutilizadas. A base técnica deriva de [xbox-cloud-unlock, de RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock); entre as referências de engenharia estão [Better xCloud, de redphx](https://github.com/redphx/better-xcloud) e [Xbox Cloud Gaming Optimizer, de darkchaox](https://github.com/darkchaox/xbox-cloud-gaming-optimizer). Referências e créditos **não significam parceria ou endosso**.
 
@@ -89,6 +91,6 @@ Este é um projeto **não oficial**, sem afiliação à Microsoft ou ao Xbox. Al
 
 **NimboXcloud — Seu xCloud. Mais controle.**
 
-*Desenvolvido por KReight · Open source · MIT · Focado em play.xbox.com*
+*Projeto pessoal de KReight · Alpha / em desenvolvimento · Open source · MIT · play.xbox.com*
 
 </div>
