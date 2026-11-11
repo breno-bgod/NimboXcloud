@@ -51,7 +51,7 @@ Microsoft introduced a [new Xbox Cloud Gaming web experience](https://news.xbox.
 3. Use GitHub's **Raw** option to download or import the script.
 4. Enable the script and visit [play.xbox.com](https://play.xbox.com/).
 
-The script runs at `document-start`. Browser support and permissions vary. **Automatic updates are not yet configured.** While the repository is private, downloading requires GitHub authorization; after publication, the Raw file can be accessed publicly.
+The script runs at `document-start`. Browser support and permissions vary. **Update metadata is configured** (`@updateURL` and `@downloadURL` point to the `main` branch), but **automatic updates cannot work normally while this repository is private** because the Raw endpoint requires authorized access. Until the script is publicly accessible, update manually. Do not change repository visibility without reviewing the published content.
 
 ## Contributing
 
