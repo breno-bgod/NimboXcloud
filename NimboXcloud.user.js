@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.10.8
+// @version      4.10.9
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.10.8';
+  const VER = '4.10.9';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2108,6 +2108,29 @@
     layout[id] = [x, y];
     return true;
   }
+  // Read-only discovery: accessibility labels are hints, not verified gameplay controls.
+  // Never reposition, intercept events, or retain DOM references from this probe.
+  function nxHudDomProbe() {
+    const result = { scanned: 0, candidates: 0, shadowRoots: 0, inaccessibleFrames: 0 };
+    const pending = [document];
+    const pattern = /(?:^|\\b)(?:left stick|right stick|joystick|thumbstick|d.pad|trigger|bumper|touch control|virtual controller)(?:\\b|$)/i;
+    while (pending.length && result.scanned < 1500) {
+      const root = pending.shift();
+      let elements;
+      try { elements = root.querySelectorAll('*'); } catch (_) { continue; }
+      for (const el of elements) {
+        if (result.scanned++ >= 1500) break;
+        if (el.shadowRoot) { result.shadowRoots++; pending.push(el.shadowRoot); }
+        if (el.tagName === 'IFRAME') {
+          try { if (el.contentDocument) pending.push(el.contentDocument); else result.inaccessibleFrames++; }
+          catch (_) { result.inaccessibleFrames++; }
+        }
+        const label = (el.getAttribute('aria-label') || el.getAttribute('data-testid') || '').slice(0, 100);
+        if (pattern.test(label)) result.candidates++;
+      }
+    }
+    return result;
+  }
   function nxHudEditor() {
     const layout = nxHudReadLayout();
     const outer = mk('div', 'display:flex;flex-direction:column;gap:8px;width:100%');
@@ -2647,6 +2670,10 @@
 
       const hudEditorGroup = group('Editor de HUD — prévia arrastável',
         'Arraste os botões para montar um layout e salve perfis locais por jogo. Ainda não altera o HUD do xCloud.');
+      hudEditorGroup.add(infoRow('Sinais de controles na página', function () {
+        const probe = nxHudDomProbe();
+        return probe.candidates + ' candidatos / ' + probe.scanned + ' elementos examinados';
+      }, 'Inspeção somente leitura de rótulos de acessibilidade; não confirma controles reais nem altera o HUD. Limite de 1500 elementos.'));
       hudEditorGroup.add(setRow('Carregar perfil automaticamente',
         'Desativado por padrão: evita substituir posições editadas quando você navega entre jogos. Afeta apenas a prévia.',
         toggle(nxHudAutoEnabled(), function () {
