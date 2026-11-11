@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.4
+// @version      4.12.5
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -120,7 +120,14 @@
       const ua = nxConsoleLabProfile === 'xboxone'
         ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; Xbox; Xbox One) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36 Edge/17.17115'
         : nxConsoleLabProfile === 'xbox'
-        ? nxConsoleNativeUA.replace(/\\sXbox;/g, '') + ' Xbox;'
+        ? (function () {
+          // O token Xbox deve ficar dentro dos comentarios de plataforma do UA.
+          // Acrescenta-lo apos Safari/Edg produz um UA malformado.
+          const match = nxConsoleNativeUA.match(/^([^()]*)\(([^)]*)\)(.*)$/);
+          if (!match) return nxConsoleNativeUA;
+          const platform = match[2].replace(/;?\s*Xbox(?: One)?\s*;?/gi, '').replace(/;\s*$/, '');
+          return match[1] + '(' + platform + '; Xbox)' + match[3];
+        })()
         : nxConsoleLabProfile === 'smarttv' ? 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 7.0) AppleWebKit/537.36 (KHTML, like Gecko) 94.0.4606.31/7.0 TV Safari/537.36' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0';
       Object.defineProperty(navigator, 'userAgent', { configurable: true, get: function () { return ua; } });
       nxConsoleLabState.applied = navigator.userAgent === ua;
