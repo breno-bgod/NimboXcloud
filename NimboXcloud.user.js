@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.8
+// @version      4.11.9
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.8';
+  const VER = '4.11.9';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3709,9 +3709,13 @@
       nxInputEvent('source', name);
       nxInputEventLastAt[name] = now;
     }
-    if (name !== 'gamepad') {
+    // Apenas pares touch/mouse indicam possível duplicação de evento.
+    // Teclado + toque ou teclado + mouse são combinações legítimas.
+    if (name === 'touch' || name === 'mouse') {
       const other = name === 'touch' ? 'mouse' : 'touch';
-      if (now - nxInputSources[other].lastAt < 300 && now - nxInputSources.lastConflictAt > 500) {
+      const lastOther = nxInputSources[other].lastAt;
+      if (lastOther > 0 && now - lastOther >= 0 && now - lastOther < 300 &&
+          now - nxInputSources.lastConflictAt > 500) {
         nxInputSources.simultaneous++;
         nxInputSources.lastConflictAt = now;
         nxInputEvent('overlap', name + '/' + other);
