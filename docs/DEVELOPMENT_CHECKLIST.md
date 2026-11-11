@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-030 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
+**Edição:** PM-031 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
 
 ## Regras permanentes
 
@@ -389,3 +389,11 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `016b38bb`: v4.12.0, MEDIA-001 restaura ajustes no vídeo anterior quando o xCloud substitui o elemento; MEDIA-002 preserva o filtro inline do host e permite bypass.
 - `24171983`: testes estáticos MEDIA-001/002; auditoria em `docs/P04_MEDIA_AUDIT.md`.
 - **MEDIA-001/002 parciais; MEDIA-003..006 pendentes; AUD-04 aberta.** Sem testes reais ou suíte Node completa nesta execução.
+
+
+## P04 — Segunda etapa: perfis visuais (2026-11-11)
+- `db301c36` v4.12.1: MEDIA-003 perfis Original, Equilibrado, Vívido e Manual.
+- `a8c1e98e` v4.12.2: preservar preferências legadas; `d9d9490e` v4.12.3: reaplicar perfis se host redefinir filtro.
+- `12f749b2`: testes estáticos de perfis; `9b671e57`: auditoria atualizada.
+- **MEDIA-003:** código implementado, homologação pendente. **MEDIA-001/002:** código parcial, revisão e testes pendentes. **MEDIA-004..006:** pendentes. **AUD-04:** aberta.
+- Verificação sintática JS concluída; suíte Node completa e testes reais não executados.
