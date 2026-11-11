@@ -25,6 +25,8 @@ test('INPUT-003 relative mouse sampling ignores synthetic and non-mouse events',
   assert.equal(state.distance, 5);
   sample({ isTrusted: true, pointerType: 'mouse', movementX: NaN, movementY: 1 });
   assert.equal(state.invalid, 1);
+  sample({ isTrusted: true, pointerType: 'mouse' });
+  assert.equal(state.invalid, 2);
 });
 test('INPUT-004 physical gamepad wrapper remains explicitly opt-in', () => {
   assert.match(src, /function nxGameBridgeRequested\(\) \{ return nxInputEnabled\(\) \|\| nxGyroGameEnabled\(\); \}/);
