@@ -192,7 +192,7 @@ const touchPanel={isOpen:false,element:null,launcher:null,
 #nimbo-touch-panel,#nimbo-touch-launcher{font:14px system-ui,sans-serif;box-sizing:border-box;color:#f4f4f4}
 #nimbo-touch-launcher{position:fixed;top:8px;right:8px;z-index:10000;border:1px solid #f3cf55;border-radius:12px;background:#202126;padding:10px 14px;touch-action:manipulation;cursor:pointer}
 #nimbo-touch-panel{position:fixed;inset:12px;max-width:620px;max-height:calc(100dvh - 24px);margin:auto;overflow:auto;z-index:10010;background:#181b20f5;border:1px solid #66604a;border-radius:16px;padding:18px;overscroll-behavior:contain}
-#nimbo-touch-panel[hidden]{display:none!important}#nimbo-touch-panel h2{margin:0;font-size:20px}#nimbo-touch-panel p{line-height:1.5;color:#cdd0d5}
+html:has(#__xcu_panel__) #nimbo-touch-launcher{display:none!important}\n#nimbo-touch-panel[hidden]{display:none!important}#nimbo-touch-panel h2{margin:0;font-size:20px}#nimbo-touch-panel p{line-height:1.5;color:#cdd0d5}
 #nimbo-touch-panel button,#nimbo-touch-panel select{min-height:44px;border:1px solid #555b66;background:#292d35;color:#fff;border-radius:8px;padding:8px 12px;font:inherit}
 #nimbo-touch-panel .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0}#nimbo-touch-panel label{display:block;margin:12px 0}#nimbo-touch-panel input[type=range]{width:100%;accent-color:#ffd43b}
 #nimbo-touch-panel .primary{background:#ffd43b;color:#171a20;border-color:#ffd43b}#nimbo-touch-panel pre{white-space:pre-wrap;font-size:12px;max-height:120px;overflow:auto}
