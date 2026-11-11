@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.19
+// @version      4.11.20
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.19';
+  const VER = '4.11.20';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2169,6 +2169,94 @@
     result.truncated = result.scanned >= 1500;
     return result;
   }
+  // HUD nativo: aplicação conservadora, reversível e estritamente opt-in.
+  // Elementos sem rótulo inequívoco não são alterados.
+  const NX_HUD_NATIVE_KEY = 'nx.hud.native.enabled.v1';
+  const nxHudNativeOriginal = new Map();
+  const NX_HUD_NATIVE_LABELS = Object.freeze({
+    stickL: /^(?:left stick|left joystick|left thumbstick)$/i,
+    stickR: /^(?:right stick|right joystick|right thumbstick)$/i,
+    a: /^(?:a button|button a)$/i,
+    b: /^(?:b button|button b)$/i,
+    x: /^(?:x button|button x)$/i,
+    y: /^(?:y button|button y)$/i,
+    lt: /^(?:left trigger|lt button|button lt)$/i,
+    rt: /^(?:right trigger|rt button|button rt)$/i
+  });
+  function nxHudNativeEnabled() { return getPref(NX_HUD_NATIVE_KEY, '0') === '1'; }
+  function nxHudNativeRestore() {
+    nxHudNativeOriginal.forEach(function (style, node) {
+      try {
+        if (node && node.style) {
+          node.style.transform = style.transform;
+          node.style.transformOrigin = style.transformOrigin;
+        }
+      } catch (_) {}
+    });
+    nxHudNativeOriginal.clear();
+  }
+  function nxHudNativeCandidates() {
+    const found = Object.create(null);
+    const roots = [document];
+    let scanned = 0;
+    while (roots.length && scanned < 1800) {
+      const root = roots.shift();
+      let walker;
+      try { walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT); }
+      catch (_) { continue; }
+      let node;
+      while ((node = walker.nextNode()) && scanned++ < 1800) {
+        if (node.shadowRoot) roots.push(node.shadowRoot);
+        if (node.closest && node.closest('#__xcu_panel__')) continue;
+        const label = (node.getAttribute('aria-label') || '').trim();
+        if (!label || label.length > 60) continue;
+        Object.keys(NX_HUD_NATIVE_LABELS).forEach(function (id) {
+          if (!NX_HUD_NATIVE_LABELS[id].test(label)) return;
+          // Rejeitar identificadores duplicados; não há destino inequívoco.
+          if (found[id]) found[id] = null;
+          else if (!Object.prototype.hasOwnProperty.call(found, id)) found[id] = node;
+        });
+      }
+    }
+    return found;
+  }
+  function nxHudNativeApply() {
+    nxHudNativeRestore();
+    if (!nxHudNativeEnabled() || !isInGame()) return { applied: 0, reason: 'inactive' };
+    const candidates = nxHudNativeCandidates();
+    const layout = nxHudReadLayout();
+    const scale = nxHudPreviewScale() / 100;
+    let applied = 0;
+    Object.keys(layout).forEach(function (id) {
+      const node = candidates[id];
+      if (!node || !node.style || !node.isConnected) return;
+      try {
+        const rect = node.getBoundingClientRect();
+        const viewportW = Math.max(1, window.innerWidth);
+        const viewportH = Math.max(1, window.innerHeight);
+        if (!rect.width || !rect.height) return;
+        // CSS transform desloca também a área de hit-test; não sintetiza eventos.
+        const dx = viewportW * layout[id][0] / 100 - (rect.left + rect.width / 2);
+        const dy = viewportH * layout[id][1] / 100 - (rect.top + rect.height / 2);
+        nxHudNativeOriginal.set(node, {
+          transform: node.style.transform, transformOrigin: node.style.transformOrigin
+        });
+        node.style.transformOrigin = 'center center';
+        node.style.transform = 'translate(' + Math.round(dx) + 'px,' + Math.round(dy) +
+          'px) scale(' + scale + ') ' + (nxHudNativeOriginal.get(node).transform || '');
+        applied++;
+      } catch (_) {}
+    });
+    return { applied: applied, reason: applied ? 'mapped' : 'no-safe-match' };
+  }
+  function nxHudNativeSetEnabled(enabled) {
+    try {
+      setPref(NX_HUD_NATIVE_KEY, enabled ? '1' : '0');
+      if (!enabled) nxHudNativeRestore();
+      else nxHudNativeApply();
+      return nxHudNativeEnabled() === !!enabled;
+    } catch (_) { nxHudNativeRestore(); return false; }
+  }
   const NX_HUD_PREVIEW_SCALE_KEY = 'nx.hud.editor.previewScale.v1';
   function nxHudPreviewScale() {
     const value = Number(getPref(NX_HUD_PREVIEW_SCALE_KEY, '100'));
@@ -2313,6 +2401,21 @@
     outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
       'EDITOR DE PRÉVIA — as posições abaixo ainda não movem os botões reais do Xbox Cloud Gaming.'));
     outer.appendChild(stage);
+    const nativeStatus = mk('div', 'font-size:11px;color:' + C.dim,
+      'HUD nativo: integração experimental por rótulos de acessibilidade. Sem correspondência segura, nenhum botão será alterado.');
+    outer.appendChild(nativeStatus);
+    outer.appendChild(actBtn(nxHudNativeEnabled() ? 'Desativar integração nativa' : 'Ativar integração nativa (experimental)', function () {
+      const next = !nxHudNativeEnabled();
+      if (next && !window.confirm('Ativar reposicionamento experimental dos botões nativos identificados? A opção pode ser desativada para restaurar o layout original.')) return;
+      if (!nxHudNativeSetEnabled(next)) { toast('Falha ao alterar integração nativa'); return; }
+      const status = next ? nxHudNativeApply() : { applied: 0, reason: 'inactive' };
+      toast(next ? 'HUD nativo: ' + status.applied + ' controles identificados' : 'HUD nativo restaurado');
+      renderBody();
+    }, 'ghost'));
+    if (nxHudNativeEnabled()) outer.appendChild(actBtn('Aplicar posições ao HUD nativo', function () {
+      const status = nxHudNativeApply();
+      toast(status.applied ? status.applied + ' controles reposicionados' : 'Nenhum controle nativo identificado com segurança');
+    }, 'ghost'));
     outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
       'Acessibilidade: selecione um botão e use as setas para mover 1%; Shift + setas move 5%. Arrastos cancelados são revertidos.'));
     const reset = actBtn('Restaurar posições', function () {
