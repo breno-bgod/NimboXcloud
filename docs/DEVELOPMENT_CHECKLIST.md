@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-017 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.12 com opt-out reversível de Pointer Lock
+**Edição:** PM-018 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.13 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -277,3 +277,11 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - **P01 restante:** INPUT-001..006 PARCIAIS, INPUT-007 NÃO TESTADO, AUD-01 ABERTA.
 - **P00 restante:** CORE-001/002/004/005/006/AUD-00.
 - **P03–P07 restante:** NET-001..006/AUD-03; MEDIA-001..006/AUD-04; DIAG-001..010/AUD-05; ACC-001..006/AUD-06; REL-001..006/AUD-07.
+
+
+## P01 — separar código de testes reais (2026-11-11)
+- **Implementação pendente (não pode ser adiada como 'teste real'):** INPUT-001 arbitragem/roteamento ativo seguro; INPUT-003 ajuste efetivo de sensibilidade quando aplicável ao modo de entrada; INPUT-005 integração funcional de teclado virtual; INPUT-004 integração real touch/controle quando código próprio for necessário; INPUT-002/006 corrigir defeitos encontrados na revisão estática.
+- **Validação real posterior:** INPUT-002 ESC/F9/Pointer Lock/foco; INPUT-003 resposta no jogo; INPUT-004 multitouch/controle; INPUT-005 teclado virtual no xCloud; INPUT-006 hotplug/reconexão; INPUT-007 matriz Chrome/Edge Android/desktop.
+- `eb313961`: v4.11.13, INPUT-006 limpa estado obsoleto de gamepad quando a leitura nativa falha.
+- `dd923a25`: teste de regressão de estado obsoleto (verificação estática; Node/CI não confirmados).
+- **P01 permanece aberto por código E por validação real**; AUD-01 não aprovada. P02 HUD-001..007/AUD-02 também aberto; P00 e P03..P07 sem mudança.
