@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.10.2
+// @version      4.10.3
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.10.2';
+  const VER = '4.10.3';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1866,14 +1866,20 @@
     const profiles = nxHudProfilesRead();
     if (!Object.prototype.hasOwnProperty.call(profiles, clean) && Object.keys(profiles).length >= 20) return false;
     profiles[clean] = nxHudReadLayout();
-    setPref(NX_HUD_PROFILES_KEY, JSON.stringify(profiles));
-    return true;
+    const value = JSON.stringify(profiles);
+    try {
+      localStorage.setItem(NX_HUD_PROFILES_KEY, value);
+      return localStorage.getItem(NX_HUD_PROFILES_KEY) === value;
+    } catch (_) { return false; }
   }
   function nxHudProfileLoad(name) {
     const profiles = nxHudProfilesRead();
     if (!Object.prototype.hasOwnProperty.call(profiles, name)) return false;
-    nxHudSaveLayout(profiles[name]);
-    return true;
+    const value = JSON.stringify(nxHudValidateLayout(profiles[name]));
+    try {
+      localStorage.setItem(NX_HUD_LAYOUT_KEY, value);
+      return localStorage.getItem(NX_HUD_LAYOUT_KEY) === value;
+    } catch (_) { return false; }
   }
   function nxHudProfileDelete(name) {
     // Remoção transacional de melhor esforço: perfis e associações devem permanecer coerentes.
@@ -1947,15 +1953,21 @@
     const bindings = nxHudGameBindings();
     if (!Object.prototype.hasOwnProperty.call(bindings, id) && Object.keys(bindings).length >= 100) return false;
     bindings[id] = profileName;
-    setPref(NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(bindings));
-    return true;
+    const value = JSON.stringify(bindings);
+    try {
+      localStorage.setItem(NX_HUD_GAME_BINDINGS_KEY, value);
+      return localStorage.getItem(NX_HUD_GAME_BINDINGS_KEY) === value;
+    } catch (_) { return false; }
   }
   function nxHudUnbindGame(gameId) {
     const id = nxHudGameId(gameId), bindings = nxHudGameBindings();
     if (!id || !Object.prototype.hasOwnProperty.call(bindings, id)) return false;
     delete bindings[id];
-    setPref(NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(bindings));
-    return true;
+    const value = JSON.stringify(bindings);
+    try {
+      localStorage.setItem(NX_HUD_GAME_BINDINGS_KEY, value);
+      return localStorage.getItem(NX_HUD_GAME_BINDINGS_KEY) === value;
+    } catch (_) { return false; }
   }
   const NX_HUD_AUTO_KEY = 'nx.hud.editor.autoLoad.v1';
   function nxHudAutoEnabled() { return getPref(NX_HUD_AUTO_KEY, '0') === '1'; }
