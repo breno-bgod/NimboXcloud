@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.39
+// @version      4.12.40
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.39';
+  const VER = '4.12.40';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1661,7 +1661,7 @@
   function nxDockPanel() {
     if (!wrap || !cardEl) return;
     const isMobile = /Android|iPhone|iPad/i.test(nxConsoleNativeUA) && !(window.matchMedia && matchMedia('(pointer:fine) and (min-width:1000px)').matches);
-    const width = isMobile ? Math.min(460, Math.max(260, Math.round(innerWidth * .68))) : Math.min(580, Math.max(340, Math.round(innerWidth * .43)));
+    const width = isMobile ? Math.min(520, Math.round(innerWidth * .94)) : Math.min(640, Math.max(400, Math.round(innerWidth * .43)));
     wrap.style.left='auto';wrap.style.right='0';wrap.style.top='0';wrap.style.bottom='0';
     wrap.style.width=Math.min(innerWidth,width)+'px';wrap.style.maxWidth='100vw';wrap.style.height='100dvh';
     wrap.style.alignItems='stretch';wrap.style.display='flex';
@@ -1881,15 +1881,14 @@
   }
 
   function setRow(label, desc, ctrl, stacked) {
-    const r = mk('div', 'padding:11px 0;display:flex;flex-direction:' + (stacked ? 'column' : 'row') +
-      ';gap:' + (stacked ? '9px' : '12px') + ';align-items:' + (stacked ? 'stretch' : 'center') + ';justify-content:space-between');
-    const t = mk('div', 'min-width:0;flex:1');
+    const r = mk('div', 'padding:12px 0;display:flex;flex-direction:column;gap:9px;align-items:stretch;justify-content:flex-start;min-width:0');
+    const t = mk('div', 'min-width:0;width:100%;flex:0 0 auto');
     t.appendChild(mk('div', 'font-size:13px;font-weight:600;color:' + C.text, label));
     const d = mk('div', 'font-size:11px;color:' + C.dim + ';margin-top:2px;line-height:1.4;word-break:break-word', desc || '');
     if (!desc) d.style.display = 'none';
     t.appendChild(d);
     r.appendChild(t);
-    if (ctrl) r.appendChild(ctrl);
+    if (ctrl) { ctrl.style.maxWidth='100%';ctrl.style.minWidth='0';ctrl.style.alignSelf='flex-start';r.appendChild(ctrl); }
     r._desc = d;
     return r;
   }
@@ -1903,7 +1902,7 @@
   }
 
   function infoRow(label, getter, desc) {
-    const v = mk('div', 'font-size:12.5px;font-weight:600;color:' + C.text + ';text-align:right;max-width:58%;' +
+    const v = mk('div', 'font-size:12.5px;font-weight:600;color:' + C.text + ';text-align:left;max-width:100%;' +
       'word-break:break-word;font-variant-numeric:tabular-nums', '—');
     liveFns.push(function () { v.textContent = String(getter()); });
     return setRow(label, desc, v);
@@ -4142,6 +4141,22 @@
       item.button.style.boxShadow=active?'inset 3px 0 '+C.accent:'none';});
   }
 
+  // Ações destrutivas/de restauração ficam após os ajustes da página.
+  function nxMoveRecoveryActionsToEnd(root) {
+    if (!root || tabId==='overview') return;
+    const rows=[];
+    root.querySelectorAll('div').forEach(function(node){
+      if (!node._desc || !node.parentElement) return;
+      const label=node.firstElementChild && node.firstElementChild.firstElementChild;
+      const name=label ? (label.textContent||'').trim() : '';
+      if (/^(restaurar|redefinir|resetar|limpar|excluir|apagar|remover)\\b/i.test(name)) rows.push(node);
+    });
+    if (!rows.length) return;
+    const section=group('Restaurar e limpar','Ações para desfazer ajustes ou limpar dados. Use somente quando necessário.');
+    rows.forEach(function(node){node.remove();section.add(node);});
+    root.appendChild(section.root);
+  }
+
   function renderBody(resetScroll) {
     if (!el.body) return;
     const keep = el.body.scrollTop;
@@ -4149,7 +4164,7 @@
     el.body.textContent = '';
     const title=TABS.find(function(t){return t.id===tabId;});
     el.body.appendChild(mk('div','font-size:16px;font-weight:750;margin:0 0 14px',title?title.label:'Início'));
-    try { TAB_BUILDERS[tabId](el.body); }
+    try { TAB_BUILDERS[tabId](el.body); nxMoveRecoveryActionsToEnd(el.body); }
     catch (err) {
       S.lastErr = 'Painel: ' + String(err && err.message || err);
       el.body.appendChild(mk('div', 'color:' + C.bad + ';font-size:12px;padding:8px', 'Erro ao montar esta aba: ' + S.lastErr));
@@ -4267,10 +4282,10 @@
     home.addEventListener('click',function (e) { e.stopPropagation(); setTab('overview'); }); navBar.appendChild(home);
     navBar.style.display='none';
     cardEl.insertBefore(navBar,el.body);
-    const rail=mk('div','flex:0 0 54px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;background:#101419;border-right:1px solid '+C.line+';overflow-y:auto');
+    const rail=mk('div','flex:0 0 48px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;background:#101419;border-right:1px solid '+C.line+';overflow-y:auto');
     el.nxRailButtons=[];
     [['overview','Início'],['video','Vídeo'],['stream','Streaming'],['audio','Áudio'],['controls','Controles'],['voice','Voz'],['region','Servidores'],['personalize','Personalizar'],['compatibility','Compatibilidade'],['advanced','Sistema']].forEach(function(item){
-      const btn=mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;border-radius:8px;color:'+C.dim);
+      const btn=mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 42px;width:40px;border-radius:8px;color:'+C.dim);
       btn.title=item[1];btn.setAttribute('aria-label',item[1]);btn.appendChild(ico(ICONS[item[0]]||ICONS.overview,22));
       btn.addEventListener('click',function(e){e.stopPropagation();setTab(item[0]);});rail.appendChild(btn);
       el.nxRailButtons.push({id:item[0],button:btn});
