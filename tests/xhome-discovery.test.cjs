@@ -152,3 +152,16 @@ test('malformed region objects: fail gracefully without additional requests',asy
   assert.equal(api.state.status,'Falha na consulta');
   assert.equal(api.state.consoles.length,0);
 });
+
+test('default region sorts before malformed entries without crashing',async()=>{
+  const requests=[];
+  const api=harness(async (url)=>{
+    requests.push(url);
+    if(requests.length===1)return ok({...login,offeringSettings:{regions:[null,{baseUri:'https://wus.xboxlive.com',isDefault:true}]}});
+    return ok({results:[]});
+  });
+  await api.discover();
+  assert.equal(requests.length,2);
+  assert.equal(api.state.status,'Nenhum console vinculado encontrado');
+  assert.equal(api.state.error,'');
+});
