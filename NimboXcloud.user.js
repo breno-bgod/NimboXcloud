@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.12
+// @version      4.12.13
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.12';
+  const VER = '4.12.13';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -249,6 +249,25 @@
       throw err;
     });
   }
+  function nxCompatibilityVerdict() {
+    const health = nxSessionHealth();
+    const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
+    const playing = !!(video && video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2 && !video.paused);
+    const offers = Array.from(new Set(nxOfferingTrace.map(function (e) { return e.offering; })));
+    let state = 'waiting', label = 'Aguardando teste', detail = 'Inicie um jogo para avaliar a conexão.';
+    if (playing || health.state === 'streaming') {
+      state = 'streaming'; label = 'Streaming observado';
+      detail = 'Vídeo detectado. Isso não comprova autorização como console.';
+    } else if (['access-rejected','request-rejected','network-error','rate-limited','server-error'].includes(health.state)) {
+      state = 'failed'; label = 'Falha detectada'; detail = health.explanation;
+    } else if (health.state === 'session-accepted') {
+      state = 'accepted'; label = 'Sessão aceita'; detail = 'Aguardando evidência de vídeo reproduzido.';
+    } else if (health.state === 'pending') {
+      state = 'pending'; label = 'Conexão iniciada'; detail = health.explanation;
+    }
+    return {state:state,label:label,detail:detail,consoleCompatibility:'não comprovada',offerings:offers,
+      sessionState:health.state,videoPlaying:playing,observedAt:new Date().toISOString()};
+  }
   function nxConsoleLabReport() {
     const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
     const note = (function () { try { return localStorage.getItem(LS_CONSOLE_NOTES) || ''; } catch (_) { return ''; } })();
@@ -264,7 +283,7 @@
        clientHintsExperiment: { enabled: nxClientHintsMode, applied: nxClientHintsApplied, note: 'Somente navigator.userAgentData JS; nao altera cabecalhos HTTP' },
       offeringTrace: nxOfferingTrace.slice(), offeringTraceNotice: 'Somente host, metodo, status e duracao; sem credenciais.',
        sessionTrace: nxSessionTrace.slice(),
-      sessionHealth: nxSessionHealth(),
+      sessionHealth: nxSessionHealth(), compatibilityVerdict: nxCompatibilityVerdict(),
       capabilities: nxConsoleLabCapabilities(),
       events: nxConsoleLabEvents.slice(),
       fullscreenActive: !!(document.fullscreenElement || document.webkitFullscreenElement),
@@ -3432,6 +3451,16 @@
       root.appendChild(g3.root);
 
       const lab = group('Plataforma e modo console', 'Perfis Xbox e TV preservam a identidade nativa para iniciar jogos. Tela cheia e orientação horizontal dependem de permissão do navegador e de uma ação do usuário.');
+      lab.add(infoRow('Resultado do teste', function () { return nxCompatibilityVerdict().label; }));
+      lab.add(infoRow('Detalhes do teste', function () { return nxCompatibilityVerdict().detail; }));
+      lab.add(infoRow('Compatibilidade de console', function () { return nxCompatibilityVerdict().consoleCompatibility; }));
+      lab.add(setRow('Verificar conexão agora', 'Avalia os eventos de sessão e o vídeo disponíveis. Não envia requisições extras nem altera autenticação.',
+        actBtn('Verificar', function () {
+          const v = nxCompatibilityVerdict();
+          nxConsoleLabEvent('compatibility-check', v.state + ': ' + v.detail);
+          toast(v.label);
+          renderBody();
+        }, 'primary')));
       lab.add(infoRow('Entrada preferencial', function () { return nxPlatformProfile.input; }));
       lab.add(infoRow('Oferta xCloud observada', function () { const e = nxOfferingTrace[nxOfferingTrace.length-1]; return e ? e.offering + ' · HTTP ' + e.status : 'Aguardando autenticação'; }));
       lab.add(infoRow('Ofertas observadas', function () { return nxOfferingTrace.length ? Array.from(new Set(nxOfferingTrace.map(function(e){return e.offering;}))).join(', ') : 'Nenhuma'; }));
