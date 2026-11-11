@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.9.1
+// @version      4.10.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.9.1';
+  const VER = '4.10.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1971,6 +1971,44 @@
   window.addEventListener('popstate', nxHudRouteMonitor, { passive: true });
   window.addEventListener('hashchange', nxHudRouteMonitor, { passive: true });
   window.setInterval(nxHudRouteMonitor, 1500);
+  function nxHudExportBackup() {
+    return JSON.stringify({ format: 'nimboxcloud-hud-backup-v1',
+      layout: nxHudReadLayout(), profiles: nxHudProfilesRead(),
+      gameBindings: nxHudGameBindings() }, null, 2);
+  }
+  function nxHudImportBackup(raw) {
+    if (typeof raw !== 'string' || raw.length > 65536) return false;
+    let data;
+    try { data = JSON.parse(raw); } catch (_) { return false; }
+    if (!data || data.format !== 'nimboxcloud-hud-backup-v1' ||
+        !data.layout || typeof data.layout !== 'object' || Array.isArray(data.layout) ||
+        !data.profiles || typeof data.profiles !== 'object' || Array.isArray(data.profiles) ||
+        !data.gameBindings || typeof data.gameBindings !== 'object' || Array.isArray(data.gameBindings)) return false;
+    const ids = Object.keys(NX_HUD_DEFAULT);
+    function validLayout(layout) {
+      return layout && typeof layout === 'object' && !Array.isArray(layout) &&
+        Object.keys(layout).length === ids.length && ids.every(function (id) {
+          const p = layout[id];
+          return Array.isArray(p) && p.length === 2 && p.every(function (v) {
+            return Number.isFinite(v) && v >= 5 && v <= 95;
+          });
+        });
+    }
+    const names = Object.keys(data.profiles), gameIds = Object.keys(data.gameBindings);
+    if (!validLayout(data.layout) || names.length > 20 || gameIds.length > 100 ||
+        !names.every(function (name) {
+          return nxHudProfileName(name) === name && validLayout(data.profiles[name]);
+        }) || !gameIds.every(function (id) {
+          return nxHudGameId(id) === id && typeof data.gameBindings[id] === 'string' &&
+            Object.prototype.hasOwnProperty.call(data.profiles, data.gameBindings[id]);
+        })) return false;
+    // Transação lógica: nenhuma preferência é modificada até a validação integral.
+    setPref(NX_HUD_PROFILES_KEY, JSON.stringify(data.profiles));
+    setPref(NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(data.gameBindings));
+    nxHudSaveLayout(data.layout);
+    nxHudLastRoute = null;
+    return true;
+  }
   function nxHudReadLayout() {
     try { return nxHudValidateLayout(JSON.parse(getPref(NX_HUD_LAYOUT_KEY, '{}'))); }
     catch (_) { return nxHudValidateLayout(null); }
@@ -2116,6 +2154,22 @@
         if (nxHudProfileDelete(selection.value)) { renderBody(); toast('Perfil excluído'); }
       }, 'danger'));
     }
+    outer.appendChild(actBtn('Exportar backup completo', function () {
+      const value = nxHudExportBackup();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(function () {
+          toast('Backup de HUD copiado');
+        }).catch(function () { window.prompt('Copie o backup JSON:', value); });
+      } else window.prompt('Copie o backup JSON:', value);
+    }));
+    outer.appendChild(actBtn('Restaurar backup completo', function () {
+      const value = window.prompt('Cole o backup JSON de HUD (substitui layout, perfis e associações):');
+      if (value === null) return;
+      if (!window.confirm('Substituir todos os perfis, associações e posições atuais de HUD?')) return;
+      if (!nxHudImportBackup(value)) { toast('Backup inválido; nenhuma alteração realizada'); return; }
+      renderBody();
+      toast('Backup de HUD restaurado');
+    }, 'danger'));
     const exportButton = actBtn('Exportar layout', function () {
       const value = nxHudExportLayout();
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -3608,6 +3662,10 @@
     check('HUD teclado move posição', nxHudNudge(nudgeLayout, 'a', 1, 0) === true);
     check('HUD teclado rejeita botão desconhecido', nxHudNudge(nudgeLayout, 'invalid', 1, 0) === false);
     check('HUD teclado rejeita movimento inválido', nxHudNudge(nudgeLayout, 'a', NaN, 0) === false);
+    check('backup HUD rejeita JSON inválido', !nxHudImportBackup('{'));
+    check('backup HUD rejeita formato desconhecido', !nxHudImportBackup('{"format":"outro"}'));
+    check('backup HUD exportado tem formato correto',
+      JSON.parse(nxHudExportBackup()).format === 'nimboxcloud-hud-backup-v1');
     check('identificador de jogo rejeita caminho', nxHudGameId('../bad') === '');
     check('identificador de jogo normalizado', nxHudGameId('GAME_123') === 'game_123');
     check('nome de perfil de HUD válido', nxHudProfileName('Corrida 1') === 'Corrida 1');
