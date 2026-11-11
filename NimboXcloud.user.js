@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.39
+// @version      3.6.40
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.39';
+  const VER = '3.6.40';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1780,7 +1780,20 @@
       const mic = setRow('Microfone', 'Solicita permissão e mede a entrada local. O envio de voz ao jogo continua dependendo do chat de voz nativo do xCloud.', micButtons);
       g3.add(mic);
       liveDesc(mic, function () { return S.micStatus; });
-      const vib = setRow('Vibração', '', actBtn('Testar', function () { testVibration(); }, 'ghost'));
+      const vibControls = mk('div', 'display:flex;gap:6px;flex-wrap:wrap;align-items:center');
+      const vibLevel = document.createElement('select');
+      vibLevel.setAttribute('aria-label', 'Intensidade do teste de vibração');
+      vibLevel.style.cssText = 'background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:6px';
+      [0,25,50,75,100].forEach(function (v) {
+        const opt = document.createElement('option'); opt.value = String(v); opt.textContent = v + '%';
+        vibLevel.appendChild(opt);
+      });
+      vibLevel.value = String(Math.round(Number(getPref(LS_VIBRATION, '0.5')) * 100));
+      vibLevel.addEventListener('change', function () { setPref(LS_VIBRATION, String(Number(vibLevel.value) / 100)); });
+      vibControls.appendChild(vibLevel);
+      vibControls.appendChild(actBtn('Testar controle', function () { testVibration(); }, 'ghost'));
+      vibControls.appendChild(actBtn('Testar celular', function () { testPhoneVibration(); }, 'ghost'));
+      const vib = setRow('Vibração', 'Teste local do motor do controle ou do celular. Não altera automaticamente a vibração enviada pelo xCloud.', vibControls);
       g3.add(vib);
       liveDesc(vib, function () { return S.vibrationStatus; });
       root.appendChild(g3.root);
@@ -2379,26 +2392,47 @@
       update();
     }
   }
-  function testVibration() {
-    let pads = [];
+  function testPhoneVibration() {
+    if (typeof navigator.vibrate !== 'function') {
+      S.vibrationStatus = 'Vibração do celular indisponível neste navegador'; update(); return;
+    }
+    const strength = Math.max(0, Math.min(1, Number(getPref(LS_VIBRATION, '0.5')) || 0));
+    // Vibration API permite duração, não intensidade física.
+    const ok = navigator.vibrate(strength > 0 ? [Math.round(80 + 170 * strength), 70, Math.round(80 + 170 * strength)] : 0);
+    S.vibrationStatus = ok ? 'Comando enviado ao celular (intensidade física não configurável)' : 'Navegador recusou vibração do celular';
+    update();
+  }
+  async function testVibration() {
+    let pads;
     try { pads = typeof navigator.getGamepads === 'function' ? Array.from(navigator.getGamepads() || []).filter(Boolean) : []; }
     catch (err) { S.vibrationStatus = 'Acesso aos controles bloqueado: ' + String(err && err.name || err); update(); return; }
-    const pad = pads.find(function (p) { return (p.vibrationActuator && typeof p.vibrationActuator.playEffect === 'function') || (p.vibrationActuator && typeof p.vibrationActuator.pulse === 'function') || (p.hapticActuators && p.hapticActuators[0] && typeof p.hapticActuators[0].pulse === 'function'); });
-    if (!pad) { S.vibrationStatus = 'Sem atuador compatível detectado'; update(); return; }
-    const levels = [0, 0.3, 0.6, 1];
-    const current = Number(getPref(LS_VIBRATION, '0'));
-    const next = levels[(levels.indexOf(current) + 1) % levels.length];
-    setPref(LS_VIBRATION, String(next));
-    S.vibrationStatus = 'Teste local ' + Math.round(next * 100) + '% (não altera rumble do xCloud)';
-    if (!next) { update(); return; }
+    if (!pads.length) { S.vibrationStatus = 'Nenhum controle detectado. Pressione um botão do controle e tente novamente.'; update(); return; }
+    const pad = pads.find(function (p) {
+      return (p.vibrationActuator && (typeof p.vibrationActuator.playEffect === 'function' || typeof p.vibrationActuator.pulse === 'function')) ||
+        (p.hapticActuators && p.hapticActuators[0] && typeof p.hapticActuators[0].pulse === 'function');
+    });
+    if (!pad) { S.vibrationStatus = 'Controle conectado, mas sem API de vibração exposta pelo navegador'; update(); return; }
+    const strength = Math.max(0, Math.min(1, Number(getPref(LS_VIBRATION, '0.5')) || 0));
+    if (!strength) { S.vibrationStatus = 'Intensidade 0%: selecione um valor acima de zero'; update(); return; }
+    S.vibrationStatus = 'Enviando teste para ' + (pad.id || 'controle') + '…'; update();
     try {
-      Promise.resolve(pad.vibrationActuator && typeof pad.vibrationActuator.playEffect === 'function'
-        ? pad.vibrationActuator.playEffect('dual-rumble', { duration: 180, strongMagnitude: next, weakMagnitude: next })
-        : (pad.vibrationActuator && typeof pad.vibrationActuator.pulse === 'function'
-          ? pad.vibrationActuator.pulse(next, 180)
-          : pad.hapticActuators[0].pulse(next, 180)))
-        .then(function () { update(); }, function (err) { S.vibrationStatus = 'Teste não suportado: ' + String(err); update(); });
-    } catch (err) { S.vibrationStatus = 'Teste não suportado: ' + String(err); }
+      let result;
+      if (pad.vibrationActuator && typeof pad.vibrationActuator.playEffect === 'function') {
+        result = await pad.vibrationActuator.playEffect('dual-rumble', {
+          startDelay: 0, duration: 400, strongMagnitude: strength, weakMagnitude: strength
+        });
+      } else if (pad.vibrationActuator && typeof pad.vibrationActuator.pulse === 'function') {
+        result = await pad.vibrationActuator.pulse(strength, 400);
+      } else {
+        result = await pad.hapticActuators[0].pulse(strength, 400);
+      }
+      const accepted = result === true || result === 'complete' || result === undefined;
+      S.vibrationStatus = accepted
+        ? 'Teste solicitado ao controle (' + Math.round(strength * 100) + '%). Confirme se vibrou fisicamente.'
+        : 'Teste não executado pelo navegador: ' + String(result);
+    } catch (err) {
+      S.vibrationStatus = 'Falha na vibração do controle: ' + String(err && (err.name || err.message) || err);
+    }
     update();
   }
   function applyVideoAdjustments(video) {
@@ -2490,7 +2524,7 @@
       'RTT: apenas sessões usadas; sondagem ativa não implementada',
       'Contraste adicional: filtro CSS, não é nitidez real nem CAS',
       'Microfone: teste de captura local com permissão; transmissão ao jogo depende do xCloud',
-      'Vibração: teste local, sem remapeamento do feedback do streaming',
+      'Vibração: testes locais de controle e celular; sem remapeamento do feedback do streaming',
       'Remote Play: diagnóstico de indisponibilidade; protocolo não integrado'
     ];
     S.deviceDetected = detectedDeviceProfile();
