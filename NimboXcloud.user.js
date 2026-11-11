@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.47
+// @version      3.6.48
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.47';
+  const VER = '3.6.48';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -91,6 +91,14 @@
   const LS_AUDIO_MID = 'xcu.audioMid';
   const LS_AUDIO_TREBLE = 'xcu.audioTreble';
   const LS_AUDIO_COMP = 'xcu.audioCompressor';
+  const LS_AUDIO_FX = 'xcu.audioFx';
+  const LS_AUDIO_BANDS = 'xcu.audioBands10';
+  const LS_AUDIO_PRESET = 'xcu.audioPreset';
+  const LS_AUDIO_LIMIT = 'xcu.audioLimit';
+  const LS_AUDIO_NORMAL = 'xcu.audioNormal';
+  const LS_AUDIO_DIALOG = 'xcu.audioDialog';
+  const LS_AUDIO_MONO = 'xcu.audioMono';
+  const LS_AUDIO_BALANCE = 'xcu.audioBalance';
   const LS_SHARPNESS = 'xcu.sharpness';
   const LS_VIDEO_COLOR = 'xcu.videoColor';
 
@@ -1788,21 +1796,49 @@
       g1.add(setRow('Saída de áudio', 'Troca de fones/alto-falantes quando o navegador oferece setSinkId.', audioOutputs, true));
       g1.add(setRow('Dispositivos', 'Atualiza a lista de saídas disponíveis.', actBtn('Atualizar saídas', refreshOutputs, 'ghost')));
       refreshOutputs();
-      [['Graves', LS_AUDIO_BASS], ['Médios', LS_AUDIO_MID], ['Agudos', LS_AUDIO_TREBLE]].forEach(function (cfg) {
-        const range = document.createElement('input'); range.type = 'range'; range.min = '-12'; range.max = '12'; range.step = '1';
-        range.value = getPref(cfg[1], '0'); range.style.width = '100%';
-        range.addEventListener('input', function () { setPref(cfg[1], range.value); applyAudioProcessing(); });
-        g1.add(setRow(cfg[0], 'Equalização local do som recebido, em dB.', range, true));
+      const presets = {
+        original: [0,0,0,0,0,0,0,0,0,0], fps: [-3,-2,-1,0,1,2,3,3,1,0],
+        corrida: [3,2,1,0,0,0,1,1,1,0], cinema: [3,2,1,0,0,1,2,2,1,1],
+        musica: [2,1,0,0,0,0,0,1,1,2], dialogos: [-3,-2,-1,0,2,3,3,2,0,-1]
+      };
+      const fx = document.createElement('input'); fx.type = 'checkbox'; fx.checked = getPref(LS_AUDIO_FX, '0') === '1';
+      fx.addEventListener('change', function () { setPref(LS_AUDIO_FX, fx.checked ? '1' : '0'); applyAudioProcessing(); });
+      g1.add(setRow('Processamento', 'Desligado por padrão. Habilita os efeitos locais.', fx));
+      const profile = document.createElement('select'); profile.style.cssText = 'width:100%;background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:7px';
+      Object.keys(presets).concat(['personalizado']).forEach(function (k) { const o = document.createElement('option'); o.value = k; o.textContent = k[0].toUpperCase() + k.slice(1); profile.appendChild(o); });
+      profile.value = getPref(LS_AUDIO_PRESET, 'original');
+      profile.addEventListener('change', function () {
+        setPref(LS_AUDIO_PRESET, profile.value);
+        if (presets[profile.value]) setPref(LS_AUDIO_BANDS, JSON.stringify(presets[profile.value]));
+        setPref(LS_AUDIO_FX, profile.value === 'original' ? '0' : '1'); applyAudioProcessing(); renderBody();
       });
-      const comp = document.createElement('input'); comp.type = 'checkbox'; comp.checked = getPref(LS_AUDIO_COMP, '0') === '1';
-      comp.addEventListener('change', function () { setPref(LS_AUDIO_COMP, comp.checked ? '1' : '0'); applyAudioProcessing(); });
-      g1.add(setRow('Compressor', 'Reduz picos do áudio recebido; não modifica o chat transmitido.', comp));
-      g1.add(setRow('Processamento', 'Ativa o equalizador somente quando solicitado; pode aumentar uso de CPU.',
-        actBtn('Aplicar ao áudio atual', function () { applyAudioProcessing(); applyAudioOutput(); }, 'ghost')));
-      g1.add(setRow('Áudio espacial', 'Utilize o recurso espacial do sistema operacional/fone. Não há API universal para forçá-lo no xCloud.',
-        mk('span', 'font-size:11px', 'Controlado pelo dispositivo')));
-      g1.add(setRow('Voz x jogo', 'Separação de volumes indisponível quando o xCloud entrega um único fluxo misturado.',
-        mk('span', 'font-size:11px', 'Depende de fluxos separados')));
+      g1.add(setRow('Perfil de áudio', 'FPS, corrida, cinema, música, diálogos e personalizado.', profile, true));
+      const eq = mk('div', 'display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;width:100%');
+      const values = getAudioBands();
+      [32,64,125,250,500,1000,2000,4000,8000,16000].forEach(function (hz,i) {
+        const label = mk('label', 'display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px');
+        label.appendChild(mk('span','',hz >= 1000 ? hz / 1000 + 'k' : String(hz)));
+        const range = document.createElement('input'); range.type = 'range'; range.min = '-12'; range.max = '12'; range.step = '1'; range.value = String(values[i]); range.style.width = '100%';
+        const value = mk('span','',range.value + 'dB');
+        range.addEventListener('input',function () { values[i] = Number(range.value); value.textContent = range.value + 'dB'; setPref(LS_AUDIO_BANDS,JSON.stringify(values)); setPref(LS_AUDIO_PRESET,'personalizado'); setPref(LS_AUDIO_FX,'1'); applyAudioProcessing(); });
+        label.appendChild(range); label.appendChild(value); eq.appendChild(label);
+      });
+      g1.add(setRow('Equalizador 10 bandas','32 Hz a 16 kHz; -12 a +12 dB.',eq,true));
+      [['Compressor',LS_AUDIO_COMP,'Reduz a dinâmica de volume.'],['Normalização',LS_AUDIO_NORMAL,'Compressão leve para suavizar diferenças de volume.'],
+       ['Limitador',LS_AUDIO_LIMIT,'Reduz picos, sem garantir um limite absoluto.'],['Destacar diálogos',LS_AUDIO_DIALOG,'Realça frequências de voz, sem isolar falas.'],
+       ['Mono',LS_AUDIO_MONO,'Combina os canais esquerdo e direito.']].forEach(function (cfg) {
+        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = getPref(cfg[1],'0') === '1';
+        check.addEventListener('change',function () { setPref(cfg[1],check.checked ? '1' : '0'); setPref(LS_AUDIO_FX,'1'); applyAudioProcessing(); });
+        g1.add(setRow(cfg[0],cfg[2],check));
+      });
+      const balance = document.createElement('input'); balance.type = 'range'; balance.min = '-100'; balance.max = '100'; balance.step = '5'; balance.value = getPref(LS_AUDIO_BALANCE,'0'); balance.style.width = '100%';
+      balance.addEventListener('input',function () { setPref(LS_AUDIO_BALANCE,balance.value); setPref(LS_AUDIO_FX,'1'); applyAudioProcessing(); });
+      g1.add(setRow('Balanço L/R','Esquerda (-100), centro (0), direita (+100).',balance,true));
+      g1.add(setRow('Áudio original','Desativa os efeitos e mantém a reprodução sem equalização.',actBtn('Restaurar áudio original',function () { setPref(LS_AUDIO_FX,'0'); setPref(LS_AUDIO_PRESET,'original'); applyAudioProcessing(); renderBody(); },'ghost')));
+      const diagnosis = setRow('Diagnóstico','Estado da reprodução e do processamento.',mk('span','font-size:11px','Áudio local'));
+      g1.add(diagnosis); liveDesc(diagnosis,function () { const m = activeStreamAudio(); return !m ? 'Fluxo não detectado' : (m.paused ? 'Pausado' : 'Reproduzindo') + ' · ' + (m.muted ? 'Mudo' : Math.round(m.volume*100)+'%') + ' · ' + (nxAudioGraph && nxAudioGraph.media === m ? 'Web Audio conectado' : 'Sem filtros'); });
+      g1.add(setRow('Áudio espacial','Depende do jogo, sistema e dispositivo; sem controle universal.',mk('span','font-size:11px','Sistema / jogo')));
+      g1.add(setRow('Chat x jogo','Controle independente exige fluxos separados do xCloud.',mk('span','font-size:11px','Não disponível em fluxo misto')));
       root.appendChild(g1.root);
 
       const g2 = group('Imagem', 'Ajustes visuais locais em CSS. Não são nitidez real, CAS nem upscaling.');
@@ -2695,54 +2731,71 @@
     } catch (err) { S.lastErr = 'Captura: ' + String(err && err.message || err); schedule(); }
   }
   let nxAudioGraph = null;
+  function getAudioBands() {
+    try { const a = JSON.parse(getPref(LS_AUDIO_BANDS,'[0,0,0,0,0,0,0,0,0,0]'));
+      if (Array.isArray(a) && a.length === 10) return a.map(function (n) { return Math.max(-12,Math.min(12,Number(n)||0)); });
+    } catch (e) {} return [0,0,0,0,0,0,0,0,0,0];
+  }
   function applyAudioOutput() {
-    const media = activeStreamAudio();
-    const sink = getPref(LS_AUDIO_OUTPUT, '');
-    if (!media || typeof media.setSinkId !== 'function') { S.lastErr = 'Seleção de saída não suportada neste navegador'; return; }
-    if (nxAudioGraph && nxAudioGraph.media === media) {
-      if (typeof nxAudioGraph.ctx.setSinkId === 'function') {
-        Promise.resolve(nxAudioGraph.ctx.setSinkId(sink || '')).catch(function (e) { S.lastErr = 'Saída Web Audio: ' + String(e && e.name || e); });
-      } else {
-        S.lastErr = 'Troca de saída indisponível com equalizador ativo neste navegador';
-      }
+    const media = activeStreamAudio(); if (!media) return;
+    const sink = getPref(LS_AUDIO_OUTPUT,'');
+    const graph = nxAudioGraph && nxAudioGraph.media === media ? nxAudioGraph : null;
+    if (graph) {
+      if (typeof graph.ctx.setSinkId === 'function') Promise.resolve(graph.ctx.setSinkId(sink)).catch(function (e) { S.lastErr = 'Saída Web Audio: '+String(e && e.name || e); });
+      else if (sink) S.lastErr = 'Seleção de saída não suportada com processamento ativo';
       return;
     }
-    Promise.resolve(media.setSinkId(sink)).catch(function (e) { S.lastErr = 'Saída de áudio: ' + String(e && e.name || e); });
+    if (typeof media.setSinkId === 'function') Promise.resolve(media.setSinkId(sink)).catch(function (e) { S.lastErr = 'Saída: '+String(e && e.name || e); });
+    else if (sink) S.lastErr = 'Seleção de saída indisponível neste navegador';
   }
   function applyAudioProcessing() {
-    const media = activeStreamAudio();
-    if (!media) return;
-    const vals = [LS_AUDIO_BASS, LS_AUDIO_MID, LS_AUDIO_TREBLE].map(function (k) { return Number(getPref(k, '0')) || 0; });
-    const compress = getPref(LS_AUDIO_COMP, '0') === '1';
-    if (!nxAudioGraph && vals.every(function (v) { return v === 0; }) && !compress) return;
+    const media = activeStreamAudio(); if (!media) return;
     if (nxAudioGraph && nxAudioGraph.media !== media) {
-      nxAudioGraph.ctx.close().catch(function () {});
+      try { nxAudioGraph.ctx.close().catch(function () {}); } catch (e) {}
       nxAudioGraph = null;
     }
+    const enabled = getPref(LS_AUDIO_FX,'0') === '1';
+    if (!enabled && !nxAudioGraph) return;
     try {
       if (!nxAudioGraph) {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-        const ctx = new AudioCtx();
-        const source = ctx.createMediaElementSource(media);
-        const bass = ctx.createBiquadFilter(); bass.type = 'lowshelf'; bass.frequency.value = 180;
-        const mid = ctx.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = 1100; mid.Q.value = 0.8;
-        const treble = ctx.createBiquadFilter(); treble.type = 'highshelf'; treble.frequency.value = 3500;
-        const compressor = ctx.createDynamicsCompressor(); compressor.threshold.value = -22; compressor.ratio.value = 3;
-        const dry = ctx.createGain(); const wet = ctx.createGain();
-        source.connect(bass); bass.connect(mid); mid.connect(treble);
-        treble.connect(dry); treble.connect(compressor); compressor.connect(wet);
-        dry.connect(ctx.destination); wet.connect(ctx.destination);
-        nxAudioGraph = { media: media, ctx: ctx, bass: bass, mid: mid, treble: treble, dry: dry, wet: wet };
-        const sink = getPref(LS_AUDIO_OUTPUT, '');
-        if (sink && typeof ctx.setSinkId === 'function') {
-          Promise.resolve(ctx.setSinkId(sink)).catch(function (e) { S.lastErr = 'Saída Web Audio: ' + String(e && e.name || e); });
-        } else if (sink) S.lastErr = 'Equalizador usa saída padrão: seleção de saída Web Audio indisponível';
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) { S.lastErr = 'Web Audio não suportado'; return; }
+        const ctx = new AC(), source = ctx.createMediaElementSource(media);
+        const filters = [32,64,125,250,500,1000,2000,4000,8000,16000].map(function (hz,i) {
+          const n = ctx.createBiquadFilter(); n.type = i === 0 ? 'lowshelf' : i === 9 ? 'highshelf' : 'peaking';
+          n.frequency.value = Math.min(hz,ctx.sampleRate*0.45); n.Q.value = 1; return n;
+        });
+        const dialogue = ctx.createBiquadFilter(); dialogue.type = 'peaking'; dialogue.frequency.value = 2400; dialogue.Q.value = 0.75;
+        const monoSplitter = ctx.createChannelSplitter(2), monoMix = ctx.createGain(); monoMix.gain.value = 0.5;
+        const monoMerger = ctx.createChannelMerger(2), stereoGain = ctx.createGain(), monoGain = ctx.createGain();
+        const pan = ctx.createStereoPanner(), compressor = ctx.createDynamicsCompressor(), limiter = ctx.createDynamicsCompressor();
+        limiter.threshold.value = -4; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.003;
+        const bypass = ctx.createGain(), compressed = ctx.createGain(), limited = ctx.createGain();
+        let prev = source; filters.forEach(function (node) { prev.connect(node); prev = node; }); prev.connect(dialogue);
+        dialogue.connect(stereoGain); stereoGain.connect(pan);
+        dialogue.connect(monoSplitter); monoSplitter.connect(monoMix,0); monoSplitter.connect(monoMix,1);
+        monoMix.connect(monoMerger,0,0); monoMix.connect(monoMerger,0,1); monoMerger.connect(monoGain); monoGain.connect(pan);
+        pan.connect(bypass); bypass.connect(ctx.destination);
+        pan.connect(compressor); compressor.connect(compressed); compressed.connect(ctx.destination);
+        pan.connect(limiter); limiter.connect(limited); limited.connect(ctx.destination);
+        nxAudioGraph = {media:media,ctx:ctx,filters:filters,dialogue:dialogue,pan:pan,compressor:compressor,limiter:limiter,
+          stereoGain:stereoGain,monoGain:monoGain,bypass:bypass,compressed:compressed,limited:limited};
+        applyAudioOutput();
       }
-      nxAudioGraph.bass.gain.value = vals[0]; nxAudioGraph.mid.gain.value = vals[1]; nxAudioGraph.treble.gain.value = vals[2];
-      nxAudioGraph.dry.gain.value = compress ? 0 : 1; nxAudioGraph.wet.gain.value = compress ? 1 : 0;
-      Promise.resolve(nxAudioGraph.ctx.resume()).catch(function () {});
-    } catch (e) { S.lastErr = 'Processamento de áudio indisponível: ' + String(e && e.name || e); }
+      const g = nxAudioGraph;
+      getAudioBands().forEach(function (n,i) { g.filters[i].gain.value = enabled ? n : 0; });
+      g.dialogue.gain.value = enabled && getPref(LS_AUDIO_DIALOG,'0') === '1' ? 4 : 0;
+      const mono = enabled && getPref(LS_AUDIO_MONO,'0') === '1'; g.stereoGain.gain.value = mono ? 0 : 1; g.monoGain.gain.value = mono ? 1 : 0;
+      g.pan.pan.value = enabled ? Math.max(-1,Math.min(1,Number(getPref(LS_AUDIO_BALANCE,'0'))/100)) : 0;
+      const compress = enabled && (getPref(LS_AUDIO_COMP,'0') === '1' || getPref(LS_AUDIO_NORMAL,'0') === '1');
+      const limit = enabled && getPref(LS_AUDIO_LIMIT,'0') === '1';
+      g.compressor.threshold.value = getPref(LS_AUDIO_NORMAL,'0') === '1' ? -30 : -24;
+      g.compressor.ratio.value = getPref(LS_AUDIO_NORMAL,'0') === '1' ? 2 : 3;
+      g.bypass.gain.value = !compress && !limit ? 1 : 0;
+      g.compressed.gain.value = compress && !limit ? 1 : 0;
+      g.limited.gain.value = limit ? 1 : 0;
+      Promise.resolve(g.ctx.resume()).catch(function () {});
+    } catch (e) { S.lastErr = 'Web Audio: '+String(e && e.name || e); }
   }
   function activeStreamAudio() {
     const media = Array.from(document.querySelectorAll('video,audio'));
@@ -2801,6 +2854,7 @@
         if (Number.isFinite(stored)) audio.volume = Math.max(0, Math.min(1, stored));
       }
       if (audio && nxAudioGraph && nxAudioGraph.media !== audio) applyAudioProcessing();
+      if (audio && getPref(LS_AUDIO_FX,'0') === '1' && !nxAudioGraph) applyAudioProcessing();
       const video = activeStreamVideo();
       if (video && video !== lastAdjustedVideo) { lastAdjustedVideo = video; applyVideoAdjustments(video); }
     }, 2500);
