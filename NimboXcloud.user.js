@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.41
+// @version      3.6.42
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.41';
+  const VER = '3.6.42';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -75,6 +75,7 @@
   const LS_NX_SHORTCUT = 'xcu.nxShortcut';
   const LS_RTT_HISTORY = 'xcu.rttHistory.v1';
   const LS_VIBRATION = 'xcu.vibrationLevel';
+  const LS_MIC_ENABLED = 'xcu.microphoneDesired';
   const LS_SHARPNESS = 'xcu.sharpness';
   const LS_VIDEO_COLOR = 'xcu.videoColor';
 
@@ -1231,6 +1232,7 @@
       if (pickEl) pickEl.style.display = 'none';
     }
     if (playing) {
+      if (micTestStream) stopMicrophoneTest(); // Nunca manter a captura de diagnóstico durante a sessão.
       const gameAnchor = findInGameToolbar();
       if (gameAnchor && gameAnchor.parentElement) {
         if (!nxLibraryButton) nxLibraryButton = buildLibraryButton();
@@ -1800,9 +1802,17 @@
 
       const g3 = group('Acessórios');
       const micButtons = mk('div', 'display:flex;gap:6px;flex-wrap:wrap');
+      const micToggle = actBtn(getPref(LS_MIC_ENABLED, '0') === '1' ? 'Microfone: ativado' : 'Microfone: desativado', function () {
+        const enabled = getPref(LS_MIC_ENABLED, '0') !== '1';
+        setPref(LS_MIC_ENABLED, enabled ? '1' : '0');
+        if (!enabled) stopMicrophoneTest();
+        S.micStatus = enabled ? 'Preferência ativa. Teste a entrada; a voz no jogo depende do xCloud.' : 'Microfone desativado nas preferências NX.';
+        renderBody(); update();
+      }, 'ghost');
+      micButtons.appendChild(micToggle);
       micButtons.appendChild(actBtn('Testar microfone', function () { inspectMicrophone(); }, 'ghost'));
       micButtons.appendChild(actBtn('Parar teste', function () { stopMicrophoneTest(); }, 'ghost'));
-      const mic = setRow('Microfone', 'Solicita permissão e mede a entrada local. O envio de voz ao jogo continua dependendo do chat de voz nativo do xCloud.', micButtons);
+      const mic = setRow('Microfone', 'Preferência NX salva. Teste a voz antes de jogar; a integração com o chat de voz nativo ainda não está confirmada.', micButtons);
       g3.add(mic);
       liveDesc(mic, function () { return S.micStatus; });
       const vibControls = mk('div', 'display:flex;gap:6px;flex-wrap:wrap;align-items:center');
@@ -1814,7 +1824,7 @@
         vibLevel.appendChild(opt);
       });
       vibLevel.value = String(Math.round(Number(getPref(LS_VIBRATION, '0.5')) * 100));
-      vibLevel.addEventListener('change', function () { setPref(LS_VIBRATION, String(Number(vibLevel.value) / 100)); });
+      vibLevel.addEventListener('change', function () { setPref(LS_VIBRATION, String(Number(vibLevel.value) / 100)); S.vibrationStatus = 'Intensidade salva para testes: ' + vibLevel.value + '%. Ajuste automático durante a partida ainda não integrado.'; update(); });
       vibControls.appendChild(vibLevel);
       vibControls.appendChild(actBtn('Testar controle', function () { testVibration(); }, 'ghost'));
       vibControls.appendChild(actBtn('Testar celular', function () { testPhoneVibration(); }, 'ghost'));
@@ -2383,6 +2393,7 @@
     update();
   }
   async function inspectMicrophone() {
+    if (getPref(LS_MIC_ENABLED, '0') !== '1') { S.micStatus = 'Ative a preferência de microfone antes do teste.'; update(); return; }
     stopMicrophoneTest();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       S.micStatus = 'Captura indisponível: confira HTTPS e permissões do navegador'; update(); return;
