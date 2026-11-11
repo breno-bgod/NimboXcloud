@@ -1,100 +1,92 @@
 # NimboXcloud
 
-**More control over browser-based cloud gaming.**
+**More control over Xbox Cloud Gaming, directly in your browser.**
 
 **[Leia em português](./README.md)**
 
-**NimboXcloud — Developed by KReight.**
+**NimboXcloud** is an open-source userscript that adds a control center to [Xbox Cloud Gaming](https://play.xbox.com/). It provides streaming preferences, local video and audio adjustments, controller-layout tools, and connection diagnostics while continuing to use the official service.
 
-NimboXcloud is an unofficial, open-source userscript for [Xbox Cloud Gaming](https://play.xbox.com/). It experiments with local region settings, streaming data-center preferences, video quality negotiation, IPv4 filtering, and connection diagnostics, with particular attention to **Android, Samsung DeX, and Windows**. It runs on the official website and **is not an independent cloud gaming service**.
+> **Verified code version:** 4.12.16. Under development. A feature's presence in code does not guarantee successful operation in every session; experimental features are labeled below.
 
-> **Audited code version:** **4.12.16**, experimental. Implemented code does not guarantee compatibility with every xCloud release. End-to-end streaming tests on different devices have not yet been documented.
+## What NimboXcloud does
 
-## About the developer
+### Streaming and network
+- Video negotiation profiles for **720p, 1080p and experimental 1080p HQ**.
+- Automatic bitrate or configurable SDP-requested limits.
+- Data-center selection and preference based on historical RTT.
+- Optional IPv4 preference through filtering IPv6 WebRTC ICE candidates.
+- Experimental market and territory adjustments.
 
-I am **KReight**, a self-taught JavaScript student and independent developer in training. I learn at home through courses, tutorials from various YouTube channels, and free learning resources available online. I study code and open-source projects to understand how they work and put that knowledge into practice.
+Actual quality, service availability and game access remain under Xbox Cloud Gaming's control.
 
-**NimboXcloud is a personal learning experiment.** I use it to test what I have learned so far, understand mistakes, and build my own solutions. I am not a company or a professional development team. **Advice, feedback, bug reports, code reviews, suggestions, and contributions are welcome**, regardless of experience level.
+### Video and display
+- **Original, Balanced, Vivid and Custom** visual profiles.
+- Local contrast, color and saturation adjustments.
+- Fit modes, fullscreen, PNG frame capture and reduced background-tab visual processing.
 
-## Open source, forks, and credits
+The “sharpness” setting adjusts contrast; it is **not CAS, FSR, DLSS or true upscaling**.
 
-NimboXcloud is **open-source software under the MIT License**. You may read, study, copy, modify, fork, redistribute, and use the code in your own projects, including commercial ones, subject to the license terms.
+### Audio
+- Volume, mute and output selection where supported.
+- **10-band equalizer** (32 Hz–16 kHz).
+- **FPS, racing, cinema, music and dialogue** presets.
+- Compression, normalization, limiter, dialogue enhancement, mono and L/R balance.
 
-**My request:** if NimboXcloud helps or inspires your work, please acknowledge **KReight / NimboXcloud** in your credits or acknowledgments and, if possible, link to this repository. This is a **courtesy request**, not an additional legal requirement beyond the MIT License.
+### Controls and HUD
+- Diagnostics for **physical controllers, touch, mouse and keyboard**, including simultaneous activity.
+- Draggable layout preview, button scaling, per-game presets, import/export and backups.
+- **Experimental native HUD integration:** safely matched controls may be repositioned through CSS without synthesizing touch input.
+- **Experimental analog-stick response curves** and native-input restoration.
 
-**License requirement:** copies and substantial portions of the software must retain applicable copyright and MIT license notices, including notices for reused third-party code. Acknowledgment does not transfer authorship of the original code or imply endorsement by its authors. See [LICENSE](./LICENSE).
+### Gyroscope — experimental
+- Sensor readings, calibration and axis preview.
+- Preview inversion, deadzone and smoothing.
+- Experimental gamepad-axis contribution with selectable strength and always-on or LT-held activation.
 
-## Features identified in code (v4.12.16)
+Some settings affect **only the preview**, not actual gameplay. In-game output still requires validation.
 
-**Status:** code presence does not imply successful real-world streaming. Experimental items are labeled; the service controls actual video quality and entitlements.
+### Microphone and vibration
+- Microphone selection and testing, input meter, noise suppression, echo cancellation, automatic gain, mute and push-to-talk preference.
+- Local controller and device vibration tests where supported.
 
-| Area | Present in code | Limitations |
-| --- | --- | --- |
-| Streaming/network | 720p, 1080p/Windows, experimental HQ/Tizen; automatic or SDP bitrate caps; data-center selection, historical RTT preference, optional IPv4-only ICE candidates | Delivered quality is not guaranteed; HQ/Tizen may affect native touch |
-| Region | Experimental market/territory and cookie adjustments | Does not guarantee access or catalog entitlements |
-| Video | Original/Balanced/Vivid/Custom, contrast, saturation, fit modes, fullscreen, PNG screenshot, background-tab filter savings | “Sharpness” is contrast, **not** CAS/FSR/DLSS/upscaling |
-| Audio | Volume/mute, output selection where supported, 10-band EQ, FPS/racing/cinema/music/dialogue presets, compressor, normalization, limiter, dialogue boost, mono, L/R balance | Separate game/chat volume unavailable for a mixed stream |
-| Inputs/HUD | Gamepad/touch/mouse/keyboard diagnostics, experimental analog curves, draggable layout preview, per-game presets, backup/import/export, experimental native HUD CSS repositioning | Native HUD matching is best-effort; no independent virtual keyboard/mouse confirmed |
-| Gyroscope | Sensor preview, calibration, inversion/smoothing/deadzone, experimental gamepad-axis contribution, LT/always activation | Preview-only settings are distinct from game output; gameplay validation pending |
-| Microphone/haptics | Microphone selection/test, meter, noise/echo/AGC, mute, push-to-talk; local phone/controller vibration tests | Voice requires xCloud support; tests do not control server rumble |
-| Xbox lab | Original/Android/Desktop/Xbox/Smart TV profiles, session/identity diagnostics, experimental Xbox Shell, report export | Xbox/TV profiles preserve native identity; **no real Xbox hardware/authentication emulation or console catalog unlock** |
-| Telemetry/UI | NX panel, FPS/RTT/jitter/loss/bitrate/resolution/codec/dropped frames/server stats, logs, shortcuts, recovery and local settings | Metrics and session outcomes require authenticated testing |
+Voice chat and in-game haptics depend on the service and device capabilities.
 
-### Not completed or not demonstrated
+### Real-time diagnostics
+The **NX panel** displays available **FPS, RTT, jitter, packet loss, received bitrate, resolution, codec, dropped frames, freezes and server** metrics. It also includes session diagnostics, error history and structured reports.
 
-- Full new-xCloud compatibility and reproducible Android/DeX/Windows streaming tests.
-- Stable in-game gyro and universal native touch-HUD repositioning.
-- Full touch keyboard/mouse overlay, steering-wheel pedals, contextual aim assist: **not confirmed in this userscript**.
-- Real CAS/FSR/DLSS upscaling, frame generation, universal spatial audio: **not implemented**.
-- Working integrated Remote Play: **not confirmed**.
-- Real Xbox device identity, server authorization, or console-only catalog access: **not demonstrated**.
+### Compatibility lab — experimental
+Platform-experience profiles, session negotiation observations, browser capability checks, protocol reports and an experimental **Xbox Shell** interface help investigate compatibility. They **do not emulate real Xbox hardware or server authentication, and do not unlock console-only games**.
 
-## Features
+## Development status
 
-| Feature | Description |
-| --- | --- |
-| Video profiles | 1080p/Windows default, experimental 1080p HQ/Tizen, and manual 720p |
-| Bitrate | Automatic or configurable limits; higher requested values do not guarantee server delivery |
-| Region | Experimental adjustments to market and territory information |
-| Data center | Preference among streaming regions supported by the script |
-| Connectivity | Optional filtering of IPv6 ICE candidates to prefer IPv4 |
-| Diagnostics | Expandable NX panel with RTT, packet loss, bitrate, resolution, and dropped frames |
-| Input | The userscript does not force priority between touch, controller, and keyboard/mouse |
+**Present in code:** streaming preferences, visual filters, audio processing, layout editor, NX panel and diagnostic tools.
 
-**Important:** HQ/Tizen is an experimental negotiation profile, not a promise of 1440p or guaranteed 1080p. Actual video quality depends on the service and WebRTC session. The current default is 1080p/Windows to avoid interfering with native touch controls.
+**Experimental or not yet validated in real gameplay:** native HUD integration, applied analog curves, gyroscope game output, compatibility profiles and end-to-end operation across environments.
 
-## Why this project exists
+**Not implemented or not demonstrated in this userscript:** frame generation, true CAS/FSR/DLSS upscaling, full touch-based virtual keyboard/mouse, virtual steering wheel with pedals, contextual aim assist, integrated Remote Play and real Xbox-console authentication.
 
-Microsoft introduced a [new Xbox Cloud Gaming web experience](https://news.xbox.com/en-us/2026/01/26/try-the-new-xbox-cloud-gaming-web-experience-now-in-public-preview/) in 2026. The older `xbox.com/play` and newer `play.xbox.com` experiences differ, and extensions and userscripts may need adaptation. This project explores ways to improve the newer website while learning from existing open-source work.
-
-**The project is still experimental.** Planned features should not be treated as finished or verified.
+The goal is to **improve the player experience without promising capabilities that the browser or service cannot provide**.
 
 ## Installation
 
-1. Install a compatible userscript manager, such as Tampermonkey.
-2. Open [xbox-cloud-unlock-ptbr.user.js](./NimboXcloud.user.js).
-3. Use GitHub's **Raw** option to download or import the script.
-4. Enable the script and visit [play.xbox.com](https://play.xbox.com/).
+1. Install a compatible userscript manager such as Tampermonkey.
+2. Open [NimboXcloud.user.js](./NimboXcloud.user.js) and use **Raw** to import it.
+3. Enable the script and visit [play.xbox.com](https://play.xbox.com/).
 
-The script runs at `document-start`. Browser support and permissions vary. **Update metadata is configured** (`@updateURL` and `@downloadURL` point to the `main` branch), but **automatic updates cannot work normally while this repository is private** because the Raw endpoint requires authorized access. Until the script is publicly accessible, update manually. Do not change repository visibility without reviewing the published content.
+The script runs at document start. **If the repository is private**, Raw access requires authorization and automatic userscript updates may not work; import new versions manually.
 
-## Contributing
+## About and credits
 
-**Help of any kind is welcome.** Open an issue to share an idea, ask a question, describe a bug, or suggest an improvement. Pull requests are also welcome. Please do not include access tokens, cookies, account identifiers, or other sensitive data in reports.
+**Developed by KReight.** NimboXcloud is an independent learning and development project; feedback, bug reports, code reviews and contributions are welcome.
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md), [CHANGELOG.md](./CHANGELOG.md), [Architecture](./docs/ARQUITETURA.md), and [Roadmap](./docs/ROADMAP.md).
+Distributed under the **MIT License**, with applicable third-party license notices preserved. Its technical foundation derives from [xbox-cloud-unlock (RoyLiu04)](https://github.com/RoyLiu04/xbox-cloud-unlock), with engineering references including [Better xCloud (redphx)](https://github.com/redphx/better-xcloud) and [Xbox Cloud Gaming Optimizer (darkchaox)](https://github.com/darkchaox/xbox-cloud-gaming-optimizer). These references do not imply endorsement or partnership.
 
-## Acknowledgments and code origins
+NimboXcloud **is not affiliated with Microsoft or Xbox**. Region adjustments may fail or conflict with service terms.
 
-- [**RoyLiu04 / xbox-cloud-unlock**](https://github.com/RoyLiu04/xbox-cloud-unlock): original MIT-licensed technical base of this userscript. The original copyright and license notice are preserved in [LICENSE](./LICENSE).
-- [**redphx / better-xcloud**](https://github.com/redphx/better-xcloud): inspiration and technical reference for streaming controls, quality profiles, and architecture.
-- [**redphx / better-xcloud-android**](https://github.com/redphx/better-xcloud-android): reference for mobile experiences.
-- [**darkchaox / xbox-cloud-gaming-optimizer**](https://github.com/darkchaox/xbox-cloud-gaming-optimizer): historical reference for region-related approaches.
+## Documentation and contributions
 
-These acknowledgments **do not imply affiliation, partnership, or endorsement**.
-
-## Limitations and legal notice
-
-NimboXcloud is **unofficial** and is not affiliated with Microsoft, Xbox, or the referenced developers. Service APIs and behavior can change without notice. Region-related adjustments may not work and may conflict with service terms. No setting guarantees a specific resolution, bitrate, latency, or availability. Real-device compatibility testing is still needed.
-
-**Maintainer:** KReight · **License:** MIT · **Status:** Experimental / educational.
+- [Changelog](./CHANGELOG.md)
+- [Development roadmap and pending tests](./DEVELOPMENT_ROADMAP.md)
+- [Architecture and technical limitations](./docs/ARQUITETURA.md)
+- [Contributing](./CONTRIBUTING.md)
+- [Portuguese README](./README.md)
