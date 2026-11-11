@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.9.5
+// @version      4.0.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.9.5';
+  const VER = '4.0.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2183,6 +2183,10 @@
       coordination.add(infoRow('Fontes simultâneas', function () {
         return nxCoordState().mixed ? nxCoordState().activeSources.join(' + ') : 'Não detectadas';
       }, 'Janela de observação de 2 segundos; uso simultâneo pode ser intencional.'));
+      coordination.add(infoRow('Fontes virtuais registradas', function () {
+        const v = nxVirtualInputState();
+        return v.count ? v.kinds.join(', ') : 'Nenhuma';
+      }, 'Registro interno preparado para HUD, giroscópio e teclado/mouse virtuais. Ainda não controla o jogo.'));
       coordination.add(infoRow('Interferência no jogo', function () { return 'Nenhuma (somente diagnóstico)'; }));
       coordination.add(infoRow('Autoteste de entradas', function () {
         const result = nxInputSelfCheck();
@@ -2847,6 +2851,30 @@
     nxInputEvents.push({ at: new Date().toISOString(), kind: kind, detail: String(detail || '').slice(0, 90) });
     if (nxInputEvents.length > NX_INPUT_EVENTS_MAX) nxInputEvents.shift();
   }
+  // Registro de entradas virtuais interno: não injeta Gamepad nem intercepta eventos do jogo.
+  const nxVirtualInputs = Object.create(null);
+  const NX_VIRTUAL_INPUT_TTL = 2000;
+  const NX_VIRTUAL_INPUT_LIMIT = 8;
+  function nxRegisterVirtualInput(id, kind, active) {
+    if (typeof id !== 'string' || !/^[a-z0-9_-]{1,32}$/i.test(id)) return false;
+    if (kind !== 'touch-hud' && kind !== 'gyro' && kind !== 'virtual-keyboard' && kind !== 'virtual-mouse') return false;
+    if (active === false) {
+      delete nxVirtualInputs[id];
+      return true;
+    }
+    if (!Object.prototype.hasOwnProperty.call(nxVirtualInputs, id) && Object.keys(nxVirtualInputs).length >= NX_VIRTUAL_INPUT_LIMIT) return false;
+    nxVirtualInputs[id] = { kind: kind, at: Date.now() };
+    return true;
+  }
+  function nxVirtualInputState() {
+    const now = Date.now();
+    Object.keys(nxVirtualInputs).forEach(function (id) {
+      if (now - nxVirtualInputs[id].at > NX_VIRTUAL_INPUT_TTL) delete nxVirtualInputs[id];
+    });
+    const kinds = Object.keys(nxVirtualInputs).map(function (id) { return nxVirtualInputs[id].kind; });
+    return { count: kinds.length, kinds: Array.from(new Set(kinds)), injectionEnabled: false,
+      note: 'Registro interno de atividade virtual; nenhuma entrada é enviada ao xCloud.' };
+  }
   const nxInputSources = {
     touch: { count: 0, lastAt: 0 }, mouse: { count: 0, lastAt: 0 },
     keyboard: { count: 0, lastAt: 0 }, gamepad: { count: 0, lastAt: 0 },
@@ -2888,9 +2916,11 @@
     const active = configured !== 'auto' ? configured : (priority.filter(function (k) { return recent[k]; })
       .sort(function (a, b) { return nxInputSources[b].lastAt - nxInputSources[a].lastAt; })[0] || 'none');
     const simultaneous = priority.filter(function (k) { return recent[k]; });
+    const virtual = nxVirtualInputState();
     return {
       configured: configured, suggested: active,
       activeSources: simultaneous, mixed: simultaneous.length > 1,
+      virtualSources: virtual.kinds, virtualCount: virtual.count,
       outputModified: false,
       note: 'Arbitragem apenas diagnóstica. Não bloqueia eventos, não emula controles e não interfere no HUD nativo.'
     };
@@ -2921,6 +2951,9 @@
     const state = nxCoordState();
     check('coordenação não invasiva', state.outputModified === false);
     check('histórico limitado', nxInputEvents.length <= NX_INPUT_EVENTS_MAX);
+    check('registro virtual rejeita identificador inválido', !nxRegisterVirtualInput('../bad', 'gyro', true));
+    check('registro virtual rejeita tipo inválido', !nxRegisterVirtualInput('test', 'unknown', true));
+    check('registro virtual não injeta comandos', nxVirtualInputState().injectionEnabled === false);
     return { passed: tests.filter(function (t) { return t.pass; }).length,
       total: tests.length, tests: tests, note: 'Autoteste matemático e estrutural; não substitui teste de streaming.' };
   }
@@ -2932,6 +2965,7 @@
     nxInputSources.simultaneous = 0;
     nxInputSources.lastConflictAt = 0;
     nxInputEvents.length = 0;
+    Object.keys(nxVirtualInputs).forEach(function (id) { delete nxVirtualInputs[id]; });
     nxGamepadMonitor.errors = 0;
     nxGamepadMonitor.lastChange = null;
     nxGamepadMonitor.lastSignature = undefined;
@@ -3040,6 +3074,7 @@
       inputBridgeHealth: nxInputBridgeStatus(),
       inputSelfCheck: nxInputSelfCheck(),
       inputCoordination: nxCoordState(),
+      virtualInputs: nxVirtualInputState(),
       gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), rightStickProfile: nxRightStickProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback, foreignOverride: nxInputBridge.foreignOverride, restored: nxInputBridge.restored } },
       inputNegotiation: lastInputNegotiation,
       touchSession: touchSessionDiagnostics,
