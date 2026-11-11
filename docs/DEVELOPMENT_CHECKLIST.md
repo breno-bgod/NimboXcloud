@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-014 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.6 com opt-out reversível de Pointer Lock
+**Edição:** PM-015 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.8 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -244,3 +244,14 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - **CORE-004 continua EM_ANDAMENTO:** execução real de `node --test` e GitHub Actions não confirmada.
 - **P00 restante:** CORE-001 (teardown), CORE-002 (diff por função), CORE-004 (CI), CORE-005 (flags gerais), CORE-006 (licenças), AUD-00.
 - **P01–P07 restante:** INPUT-001..007/AUD-01; HUD-001..007/AUD-02; NET-001..006/AUD-03; MEDIA-001..006/AUD-04; DIAG-001..010/AUD-05; ACC-001..006/AUD-06; REL-001..006/AUD-07.
+
+
+## P01 — lote concentrado 1/2 (2026-11-11)
+- `741d15a0`: v4.11.7, observadores globais de entrada idempotentes.
+- `e8b0c4a1`: v4.11.8, observação de mouse relativo sem injeção e sem registrar coordenadas.
+- `a2d24e10`: testes `tests/input-p01.test.cjs` para idempotência, mouse relativo, ponte opt-in e privacidade.
+- `ba78ff8d`: `docs/P01_INPUT_AUDIT.md` registra evidências e pendências de INPUT-001..007/AUD-01.
+- **P01 ainda não concluído:** coordenador não invasivo não equivale a roteamento de entradas; mouse virtual/teclado virtual jogáveis e testes reais não demonstrados. AUD-01 permanece ABERTA.
+- **P00 restante:** CORE-001, CORE-002, CORE-004, CORE-005, CORE-006, AUD-00.
+- **P01 restante:** INPUT-001..007 (aceite funcional), AUD-01.
+- **P02–P07 restantes:** HUD-001..007/AUD-02; NET-001..006/AUD-03; MEDIA-001..006/AUD-04; DIAG-001..010/AUD-05; ACC-001..006/AUD-06; REL-001..006/AUD-07.
