@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-010 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.4 com opt-out reversível de Pointer Lock
+**Edição:** PM-011 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.4 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -214,3 +214,10 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - Commit `83e945b6`: `docs/P00_HOOK_LIFECYCLE.md` mapeia 3 interceptores diretos, 80 inscrições de eventos, 7 intervalos, 3 timeouts e 22 escritas em localStorage. Análise lexical, não prova de funcionamento.
 - **P00 pendente:** CORE-001 (teardown e dependências), CORE-002 (diff por função), CORE-004 (execução CI/lint), CORE-005 (flags gerais), CORE-006 (licença por arquivo); AUD-00 exige validação e correção.
 - **P01–P07 pendentes:** INPUT-001..007, HUD-001..007, NET-001..006, MEDIA-001..006, DIAG-001..010, ACC-001..006, REL-001..006, e AUD-01..07. Nenhum destes foi marcado concluído.
+
+
+## AUD-00.7 — segurança da ponte de gamepad (2026-11-11)
+- Commit `9d6ad2a1`: suíte `tests/gamepad-bridge.test.cjs` com cenários de ponte desativada, restauração nativa e wrapper concorrente.
+- Verificação adicional: três cenários equivalentes foram executados em sandbox JavaScript isolado contra o trecho da v4.11.4: **3/3 passaram**. Não foi execução Node nem teste real no xCloud.
+- Commit `648acfc6`: `docs/P00_GAMEPAD_BRIDGE_AUDIT.md` com mapa de ownership, rollback e riscos.
+- Runtime mantido em v4.11.4. **P00/AUD-00 abertos.** Pendências principais: execução CI, auditoria de teardown e efeitos colaterais do status da Gamepad API, flags e licenças por arquivo, testes reais.
