@@ -2,12 +2,17 @@
 
 Este documento reúne prioridades de trabalho, **não** funcionalidades já entregues.
 
+## Estado atual
+- Script principal: `NimboXcloud.user.js` (3.6.37).
+- Verificações de documentação não substituem testes reais em navegadores.
+
 ## Prioridade alta
 - [ ] Validar em sessão real do xCloud os perfis de qualidade 1080p HQ, 1080p e 720p.
 - [ ] Verificar a resolução efetiva recebida em Android, Samsung DeX e Windows, em janela e tela cheia.
 - [ ] Investigar negociações que ainda resultem em aproximadamente 640p.
 - [ ] Confirmar que toque e gamepad continuam operando sem regressões.
-- [x] Corrigir consistência de versão e prevenção de inicialização duplicada no código (v3.4.0).\n- [ ] Testar alternância dinâmica entre toque, gamepad e teclado/mouse em sessões reais.
+- [x] Corrigir consistência de versão e prevenção de inicialização duplicada no código (v3.4.0).
+- [ ] Testar alternância dinâmica entre toque, gamepad e teclado/mouse em sessões reais.
 
 ## Prioridade média
 - [ ] Melhorar mensagens de erro e diagnóstico de negociação WebRTC.
