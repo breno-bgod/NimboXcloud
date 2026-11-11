@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.25
+// @version      4.12.26
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -128,13 +128,15 @@
       // Xbox One / Series permanecem no código para pesquisa futura, mas estão suspensos.
       // Sessões antigas migram para o perfil genérico sem expor seletores específicos.
       if (p === 'xboxone' || p === 'xboxseries') { localStorage.setItem(LS_CONSOLE_LAB, 'xbox'); return 'xbox'; }
-      return ['off','android','xbox','windows','smarttv'].includes(p) ? p : 'off'; }
+      // Smart TV foi descontinuado: voltar à identificação nativa automática.
+      if (p === 'smarttv') { localStorage.setItem(LS_CONSOLE_LAB, 'off'); return 'off'; }
+      return ['off','android','xbox','windows'].includes(p) ? p : 'off'; }
     catch (_) { return 'off'; }
   })();
   const nxConsoleLabState = { profile: nxConsoleLabProfile, applied: false, error: '', nativeUA: nxConsoleNativeUA, startedAt: new Date().toISOString() };
   // Compatibilidade conservadora: perfis Xbox/TV não falsificam UA.
   // A interface mantém o perfil escolhido, mas o navegador negocia como dispositivo real.
-  const nxCompatibilityProfiles = ['xbox', 'xboxone', 'xboxseries', 'smarttv'];
+  const nxCompatibilityProfiles = ['xbox', 'xboxone', 'xboxseries'];
   const nxCompatibilityMode = nxCompatibilityProfiles.includes(nxConsoleLabProfile);
   nxConsoleLabState.identityMode = nxCompatibilityMode ? 'native-compatible' : 'legacy-profile';
   nxConsoleLabState.applied = false; // Seleção não comprova identidade Xbox.
@@ -142,7 +144,8 @@
     nxConsoleLabState.note = 'Perfil de experiência ativo; identidade nativa preservada para compatibilidade de sessão';
   } else if (nxConsoleLabProfile !== 'off') {
     try {
-      const ua = nxConsoleLabProfile === 'android' ? nxConsoleNativeUA
+      const ua = nxConsoleLabProfile === 'android'
+        ? (/Android/i.test(nxConsoleNativeUA) ? nxConsoleNativeUA : 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36 EdgA/140.0.0.0')
         : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0';
       Object.defineProperty(navigator, 'userAgent', { configurable: true, get: function () { return ua; } });
       nxConsoleLabState.applied = navigator.userAgent === ua;
@@ -365,7 +368,7 @@
     };
   }
   function nxConsoleLabSetProfile(profile) {
-    if (!['off','android','xbox','windows','smarttv'].includes(profile)) return;
+    if (!['off','android','xbox','windows'].includes(profile)) return;
     try { localStorage.setItem(LS_CONSOLE_LAB, profile); } catch (_) {}
     // Reiniciar a página é necessário para negociar desde o document-start.
     location.reload();
@@ -3964,10 +3967,10 @@
       lab.add(infoRow('Aviso de incompatibilidade', function () { return nxConsoleLabWarning() ? 'Detectado' : 'Não detectado'; }));
       lab.add(infoRow('WebRTC / H.264 MSE', function () { const c = nxConsoleLabCapabilities(); return (c.webRTC ? 'Sim' : 'Não') + ' / ' + (c.mediaSourceH264 === null ? 'Indefinido' : c.mediaSourceH264 ? 'Sim' : 'Não'); }));
       lab.add(infoRow('Tela cheia', function () { return document.fullscreenElement || document.webkitFullscreenElement ? 'Ativa' : 'Desativada'; }));
-      lab.add(setRow('Tela cheia e horizontal', 'Ative após selecionar Xbox ou Smart TV. O navegador exige um toque ou clique para entrar em tela cheia; a orientação horizontal é solicitada quando suportada.',
+      lab.add(setRow('Tela cheia e horizontal', 'O navegador exige um toque ou clique para entrar em tela cheia; a orientação horizontal é solicitada quando suportada.',
         actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'primary')));
-      lab.add(setRow('Perfil de plataforma', 'Console é um perfil genérico experimental. Xbox One e Series X|S estão suspensos e preservados apenas no código; nenhum perfil comprova identidade ou autorização de hardware.',
-        chips([{k:'off',label:'Original'},{k:'android',label:'Android'},{k:'windows',label:'Desktop'},{k:'xbox',label:'Console'},{k:'smarttv',label:'Smart TV'}],
+      lab.add(setRow('Perfil de plataforma', 'Automático preserva a identidade nativa do dispositivo. Android e Desktop solicitam experiências específicas quando o cliente permite; Console permanece experimental. A escolha não garante reconhecimento pelo servidor.',
+        chips([{k:'off',label:'Automático'},{k:'android',label:'Android'},{k:'windows',label:'Desktop'},{k:'xbox',label:'Console'}],
           nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
       lab.add(setRow('Fortnite: experiência de console (experimental)',
         'Inspirado no Better xCloud: desativa a sinalização de toque na configuração da sessão do Fortnite. Não muda User-Agent, não emula Xbox e pode não alterar a experiência no cliente novo. Requer reiniciar a sessão.',
