@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-020 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.13 com opt-out reversível de Pointer Lock
+**Edição:** PM-021 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
 
 ## Regras permanentes
 
@@ -302,3 +302,10 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - **P02 código corrigido:** editor de prévia e persistência; ainda **não** existe prova de integração com controles jogáveis do xCloud (HUD-003/HUD-004).
 - **P02 pendente:** HUD-001/002/005/006 parciais; HUD-003/004 pendentes; HUD-007 teste real; AUD-02 aberta.
 - **P01:** adiado para o final conforme decisão do usuário. **P00, P03–P07:** sem mudança.
+
+
+## P02 — manutenção de perfis e segurança (2026-11-11)
+- `5b85f6b2`: v4.11.18 rejeita nomes de perfil que colidem com chaves especiais de objetos JS e invalida o cache de carregamento automático quando a associação do jogo muda.
+- `643d9290`: regressões para nomes especiais e invalidação do cache.
+- Verificações executadas: sintaxe JS do runtime e dos testes; execução isolada do validador de nomes (6 casos passaram). **Suíte Node/CI e gameplay não executados nesta rodada.**
+- **P02 ainda aberto:** integração com HUD jogável do xCloud (HUD-003/004), layout responsivo e testes reais. P01 segue reservado para revisão final, conforme preferência do usuário.
