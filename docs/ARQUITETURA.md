@@ -1,10 +1,10 @@
 # Arquitetura técnica
 
 ## Escopo
-O arquivo `xbox-cloud-unlock-ptbr.user.js` é um userscript executado pelo Tampermonkey em `https://play.xbox.com/*`, com `@run-at document-start` e `@grant none`. Ele não é um cliente independente do Xbox Cloud Gaming.
+O arquivo `NimboXcloud.user.js` é um userscript executado pelo Tampermonkey em `https://play.xbox.com/*`, com `@run-at document-start` e `@grant none`. Ele não é um cliente independente do Xbox Cloud Gaming.
 
 ## Fluxo principal
-1. Carrega preferências locais por `localStorage` (região, data center, IPv4, qualidade, bitrate e toque).
+1. Carrega preferências locais por `localStorage` (região, data center, IPv4, qualidade, bitrate e preferências de interface).
 2. Intercepta operações relevantes de rede feitas pela página, por meio de mecanismos de `fetch` e XHR.
 3. Ajusta determinadas respostas e requisições relacionadas à identificação de mercado e à escolha do data center.
 4. Aplica preferências de negociação do streaming, incluindo `osName` para os perfis de qualidade e ajustes relacionados a WebRTC/SDP.
@@ -13,10 +13,12 @@ O arquivo `xbox-cloud-unlock-ptbr.user.js` é um userscript executado pelo Tampe
 ## Perfis de qualidade
 | Preferência | Identificação usada na negociação | Objetivo |
 | --- | --- | --- |
-| Máxima / Auto | `tizen` | Solicitar perfil 1080p HQ |
-| 1080p HQ | `tizen` | Solicitar perfil 1080p HQ |
+| Automático / padrão | `windows` | Solicitar perfil 1080p |
+| 1080p HQ (experimental) | `tizen` | Solicitar perfil 1080p HQ |
 | 1080p | `windows` | Solicitar perfil 1080p |
 | 720p | `android` | Solicitar perfil 720p |
+
+O perfil padrão atual prioriza 1080p/Windows para preservar a experiência nativa de toque. HQ/Tizen permanece experimental.
 
 Essas identificações são utilizadas no contexto de negociação de streaming; não significam que o navegador ou o sistema operacional foi realmente alterado. **Não há garantia de 1080p efetivos, 1440p ou bitrate fixo**, pois a entrega depende do serviço, dispositivo, navegador e rede.
 
