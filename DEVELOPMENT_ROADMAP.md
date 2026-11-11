@@ -290,3 +290,8 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Pipeline opt-in WebGL2 renderiza video em canvas sobreposto sem alterar a fonte, com brilho/contraste/saturacao e curvas suaves independentes de sombras/realces; fallback para video nativo em erro de captura/contexto, desativacao e aba oculta. Remove CSS NX enquanto GPU ativa; restaura CSS ao desativar. Controles em NX > Midia > Imagem.
 - Testes estaticos de regressao adicionados; sintaxe do script validada. **Ainda sem teste real de captura de video, desempenho, fullscreen ou compatibilidade com DRM/CORS**. Se houver video preto ou atraso, desligar GPU no painel ou ajustar `localStorage['nx.visual.gpu.v1']='0'` e recarregar.
 - Proximos passos: teste real Chrome/Edge Android/desktop, medir FPS/latencia, otimizar uploads, LUTs, curvas RGB, nitidez e upscale somente apos validacao.
+
+## 2026-11-11 — Audio Web Audio v4.12.22
+- Commits `e8dd13e1c6f695d140aff7a987bcc4bb4ee9945a`, `75ef5e43e1f9fc12fe70ebc03b4fd96889cf413b`.
+- Seleciona audio tracks WebRTC vivos e fontes em reproducao, adiciona botao de ativacao por gesto para AudioContext.resume, informa estado real running/suspended/closed no diagnostico, neutraliza grafos antigos ao trocar elemento de streaming e evita reinicializacao desnecessaria no polling.
+- Sintaxe JS verificada; testes estaticos adicionados, mas validacao auditiva real no Chrome/Edge, compatibilidade com audio separado em outras fontes e comportamento de bypass de MediaElementSource permanecem pendentes. Nao afirmar que equalizacao ja foi ouvida e confirmada.
