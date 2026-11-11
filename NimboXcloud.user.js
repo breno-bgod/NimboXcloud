@@ -2828,7 +2828,7 @@
     if(nxRemotePlay.abortController) nxRemotePlay.abortController.abort();
     nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
     nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';nxRemotePlay.regionShortName='';nxRemotePlay.checkedAt=0;nxRemotePlay.attempts=[];
-    nxRemotePlay.status='Consulta cancelada';nxRemotePlay.error='';
+    nxRemotePlay.status=nxRemotePlay.sessionStatus==='authenticating'||nxRemotePlay.sessionStatus==='requesting'?'Operação cancelada':'Consulta cancelada';nxRemotePlay.error='';nxRemotePlay.sessionStatus='cancelled';nxRemotePlay.sessionId='';
     if(tabId==='remote') renderBody();
   }
   async function nxRemoteDiscover() {
