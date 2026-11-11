@@ -1355,7 +1355,7 @@
     const css = document.createElement('style');
     css.id = 'nx-console-shell-css';
     css.textContent = [
-      '#__xcu_panel__.nx-console-shell.nx-shell-open{left:50%!important;right:auto!important;top:50%!important;transform:translate(-50%,-50%)!important;width:min(960px,calc(100vw - 28px))!important;max-width:none!important;align-items:stretch!important}',
+      '#__xcu_panel__.nx-console-shell.nx-shell-open{left:auto!important;right:12px!important;top:12px!important;transform:none!important;width:min(380px,calc(100vw - 24px))!important;max-width:calc(100vw - 24px)!important;align-items:stretch!important}',
       '#__xcu_panel__.nx-console-shell.nx-shell-open [aria-label="Painel NimboXcloud"]{width:100%!important;max-height:calc(100dvh - 28px)!important;border-radius:18px!important;box-shadow:0 22px 90px #000b!important}',
       '#__xcu_panel__.nx-console-shell button:focus-visible,#__xcu_panel__.nx-console-shell select:focus-visible,#__xcu_panel__.nx-console-shell input:focus-visible{outline:3px solid #80dfff!important;outline-offset:2px!important}',
       '#__xcu_panel__.nx-console-shell button{min-height:34px}',
