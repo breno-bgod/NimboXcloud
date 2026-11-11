@@ -13,7 +13,7 @@ Forks e adaptações são permitidos nos termos da licença MIT. É um pedido de
 1. Faça uma alteração por objetivo, preferencialmente em branch própria.
 2. Preserve a funcionalidade existente: toque, gamepad, configurações e painel.
 3. Não transforme automaticamente dispositivos móveis em controles de teclado e mouse.
-4. Execute `node --check xbox-cloud-unlock-ptbr.user.js`.
+4. Execute `node --check NimboXcloud.user.js`.
 5. Descreva o que foi testado de verdade e o que continua sem validação.
 6. Atualize `CHANGELOG.md` ao modificar comportamento visível.
 
