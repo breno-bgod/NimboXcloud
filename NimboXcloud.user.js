@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.16';
+  const VER = '4.12.17';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2823,7 +2823,10 @@
   }
   async function nxRemoteDiscover() {
     if(nxRemotePlay.busy) return;
-    nxRemotePlay.busy=true;nxRemotePlay.error='';nxRemotePlay.attempts=[];nxRemotePlay.region='';nxRemotePlay.status='Consultando consoles vinculados…';
+    nxRemotePlay.busy=true;nxRemotePlay.error='';nxRemotePlay.attempts=[];nxRemotePlay.region='';
+    // Invalidate stale consoles before any authentication/network request.
+    nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.checkedAt=0;
+    nxRemotePlay.status='Consultando consoles vinculados…';
     if(tabId==='remote') renderBody();
     try {
       const token=nxRemoteGssvToken();
@@ -2852,7 +2855,11 @@
       nxRemotePlay.status=nxRemotePlay.consoles.length?nxRemotePlay.consoles.length+' console(s) encontrado(s)':'Nenhum console vinculado encontrado';
       if(!nxRemotePlay.consoles.some(function(c){return c.id===nxRemotePlay.selectedId;})) nxRemotePlay.selectedId='';
       nxRemotePlay.checkedAt=Date.now();
-    } catch(e) { nxRemotePlay.error=String(e && e.message||e);nxRemotePlay.status='Falha na consulta'; }
+    } catch(e) {
+      // Never retain a previously discovered console after an auth or network failure.
+      nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';
+      nxRemotePlay.error=String(e && e.message||e);nxRemotePlay.status='Falha na consulta';
+    }
     finally {nxRemotePlay.busy=false;if(tabId==='remote')renderBody();}
   }
   const TAB_BUILDERS = {
