@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.9.3
+// @version      3.9.4
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.9.3';
+  const VER = '3.9.4';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2771,9 +2771,10 @@
     setPref(NX_INPUT_APPLY_KEY, '0');
     if (nxNativeGetGamepads) {
       try {
-        if (navigator.getGamepads !== nxInputBridge.wrapper && nxInputBridge.installed) {
+        if (nxInputBridge.wrapper && navigator.getGamepads !== nxInputBridge.wrapper) {
           nxInputBridge.foreignOverride = true;
           nxInputBridge.error += '; outro script alterou a Gamepad API; não sobrescrito';
+          nxInputBridge.installed = false;
           return;
         }
         if (nxOriginalGamepadDescriptor) {
@@ -2789,6 +2790,11 @@
   function nxInstallInputBridge() {
     nxInputBridge.enabled = nxInputEnabled();
     if (!nxInputBridge.enabled || !nxNativeGetGamepads) return;
+    if (nxInputBridge.foreignOverride) {
+      nxInputBridge.enabled = false;
+      nxInputBridge.error = 'Outro script controla a Gamepad API';
+      return;
+    }
     if (Object.prototype.hasOwnProperty.call(navigator, 'getGamepads') && nxOriginalGamepadDescriptor && !nxOriginalGamepadDescriptor.configurable) {
       nxInputBridge.error = 'Gamepad API não configurável; processamento ignorado';
       return;
