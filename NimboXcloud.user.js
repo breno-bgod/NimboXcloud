@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.2
+// @version      4.11.3
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.2';
+  const VER = '4.11.3';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1055,7 +1055,13 @@
   let f9Released = false;
   let f9RelockPending = false;
   const originalRequestPointerLock = Element.prototype.requestPointerLock;
-  if (typeof originalRequestPointerLock === 'function') {
+  // Opt-out reversivel do bloqueio legado de recaptura. Padrao preservado.
+  // Defina localStorage['nx.pointerLockLegacyF9'] = '0' e recarregue para desativar.
+  const nxPointerLockLegacyF9 = (function () {
+    try { return localStorage.getItem('nx.pointerLockLegacyF9') !== '0'; }
+    catch (_) { return true; }
+  })();
+  if (nxPointerLockLegacyF9 && typeof originalRequestPointerLock === 'function') {
     Element.prototype.requestPointerLock = function () {
       if (!f9Released) return originalRequestPointerLock.apply(this, arguments);
       touchFullscreenPolicy.suppressed++;
