@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.20
+// @version      4.12.21
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.20';
+  const VER = '4.12.21';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -111,6 +111,9 @@
   const LS_VIDEO_SATURATION='xcu.videoSaturation.v2';
   const LS_VISUAL_LIBRARY='nx.visual.library.v1';
   const LS_VISUAL_ACTIVE='nx.visual.active.v1';
+  const LS_NX_GPU='nx.visual.gpu.v1';
+  const LS_NX_SHADOWS='nx.visual.shadows.v1';
+  const LS_NX_HIGHLIGHTS='nx.visual.highlights.v1';
 
   // Laboratório Xbox: experimental, desativado por padrão. Apenas identidade JS local;
   // não altera cabeçalhos HTTP, autenticação, tokens, gamepad ou autorização do servidor.
@@ -3423,6 +3426,25 @@
         actBtn('Restaurar original',function(){
           setPref(LS_VIDEO_PROFILE,'original');applyVideoAdjustments(activeStreamVideo());renderBody();
         },'ghost')));
+      const gpuGroup=group('GPU experimental','WebGL2: curvas simples de sombras e realces. Pode aumentar consumo e latencia; se falhar, retorna ao video nativo.');
+      gpuGroup.add(setRow('Processamento GPU','Desativado por padrao. Ative somente durante uma partida.',
+        chips([{k:'0',label:'Desligado'},{k:'1',label:'WebGL2'}],getPref(LS_NX_GPU,'0'),function(k){
+          setPref(LS_NX_GPU,k);nxGpuSync();renderBody();
+        }),true));
+      function gpuToneSlider(label,key){
+        const row=mk('div','display:flex;align-items:center;gap:8px');
+        const slider=mk('input','flex:1;accent-color:'+C.accent);slider.type='range';slider.min='-100';slider.max='100';slider.step='1';
+        slider.value=String(Math.round((Number(getPref(key,'0'))||0)*100));
+        const value=mk('span','min-width:35px;text-align:right',slider.value);
+        slider.addEventListener('input',function(){value.textContent=slider.value;setPref(key,String(Number(slider.value)/100));});
+        row.appendChild(slider);row.appendChild(value);
+        gpuGroup.add(setRow(label,'Curva tonal local, sem alterar o stream original.',row,true));
+      }
+      gpuToneSlider('Sombras',LS_NX_SHADOWS);
+      gpuToneSlider('Realces',LS_NX_HIGHLIGHTS);
+      gpuGroup.add(setRow('Restaurar GPU','Desativa shader e remove a camada de apresentacao.',
+        actBtn('Desativar GPU',function(){setPref(LS_NX_GPU,'0');nxGpuSync();renderBody();},'ghost')));
+      root.appendChild(gpuGroup.root);
       const gVisual=group('Biblioteca de perfis', 'Compartilhe ajustes NX em JSON. Importacao validada e limitada a 16 KB; nenhuma instrucao de codigo e executada.');
       gVisual.add(setRow('Salvar configuracao','Armazena ate 24 perfis neste navegador.',
         actBtn('Salvar perfil',function(){
@@ -5525,11 +5547,132 @@
       saturation:clamp(LS_VIDEO_SATURATION,75,125,100)
     };
   }
+  // GPU opt-in: canvas WebGL2 de apresentacao, sem modificar o stream original.
+  // Falhas de CORS, DRM ou contexto grafico restauram o video nativo.
+  let nxGpu=null;
+  function nxGpuStop(){
+    const state=nxGpu;nxGpu=null;
+    if(!state)return;
+    state.running=false;
+    if(state.raf)cancelAnimationFrame(state.raf);
+    if(state.video && state.video.style.opacity===state.appliedOpacity){
+      if(state.originalOpacity)state.video.style.setProperty('opacity',state.originalOpacity,state.opacityPriority);
+      else state.video.style.removeProperty('opacity');
+    }
+    if(state.canvas)state.canvas.remove();
+    if(state.gl){
+      try{state.gl.deleteTexture(state.texture);state.gl.deleteBuffer(state.buffer);
+        state.gl.deleteProgram(state.program);}catch(_){}
+    }
+  }
+  function nxGpuCompile(gl,type,source){
+    const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);
+    if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+      const reason=gl.getShaderInfoLog(shader)||'Shader invalido';gl.deleteShader(shader);throw new Error(reason);
+    }
+    return shader;
+  }
+  function nxGpuStart(video){
+    if(!video || !video.videoWidth || !video.videoHeight)return;
+    if(nxGpu && nxGpu.video===video)return;
+    nxGpuStop();
+    const canvas=document.createElement('canvas');
+    canvas.setAttribute('aria-hidden','true');
+    canvas.style.cssText='position:fixed;pointer-events:none;display:block;z-index:100;object-fit:fill;';
+    const host=fullscreenHost()||document.body;
+    if(!host)return;
+    const gl=canvas.getContext('webgl2',{alpha:false,antialias:false,preserveDrawingBuffer:false});
+    if(!gl){S.lastErr='GPU: WebGL2 indisponivel';return;}
+    let program,texture,buffer;
+    try{
+      const vert=nxGpuCompile(gl,gl.VERTEX_SHADER,`#version 300 es
+in vec2 a_pos;out vec2 v_uv;
+void main(){v_uv=vec2((a_pos.x+1.0)*0.5,1.0-(a_pos.y+1.0)*0.5);gl_Position=vec4(a_pos,0.0,1.0);}`);
+      const frag=nxGpuCompile(gl,gl.FRAGMENT_SHADER,`#version 300 es
+precision mediump float;
+uniform sampler2D u_tex;uniform float u_shadows;uniform float u_highlights;
+uniform vec3 u_adjust;in vec2 v_uv;out vec4 outColor;
+void main(){
+ vec3 c=texture(u_tex,v_uv).rgb;
+ float l=dot(c,vec3(0.2126,0.7152,0.0722));
+ float shadows=(1.0-smoothstep(0.08,0.55,l))*u_shadows*0.22;
+ float highlights=smoothstep(0.45,0.95,l)*u_highlights*0.20;
+ c=clamp(c+vec3(shadows+highlights),0.0,1.0);
+ c=clamp((c-0.5)*u_adjust.y+0.5,0.0,1.0)*u_adjust.x;
+ float grey=dot(c,vec3(0.2126,0.7152,0.0722));
+ c=clamp(mix(vec3(grey),c,u_adjust.z),0.0,1.0);
+ outColor=vec4(c,1.0);
+}`);
+      program=gl.createProgram();gl.attachShader(program,vert);gl.attachShader(program,frag);gl.linkProgram(program);
+      gl.deleteShader(vert);gl.deleteShader(frag);
+      if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program)||'Link shader falhou');
+      buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+      gl.useProgram(program);
+      const attr=gl.getAttribLocation(program,'a_pos');gl.enableVertexAttribArray(attr);gl.vertexAttribPointer(attr,2,gl.FLOAT,false,0,0);
+      texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+      gl.uniform1i(gl.getUniformLocation(program,'u_tex'),0);
+      const state={video,canvas,gl,program,buffer,texture,host,running:true,raf:0,
+        originalOpacity:video.style.getPropertyValue('opacity'),
+        opacityPriority:video.style.getPropertyPriority('opacity'),appliedOpacity:'0'};
+      nxGpu=state;host.appendChild(canvas);
+      const render=function(){
+        if(!state.running || nxGpu!==state)return;
+        if(getPref(LS_NX_GPU,'0')!=='1' || document.visibilityState==='hidden' ||
+           !video.isConnected || !video.videoWidth || !video.videoHeight){
+          nxGpuStop();return;
+        }
+        const parent=fullscreenHost()||document.body;
+        if(parent!==state.host){state.host=parent;parent.appendChild(canvas);}
+        const rect=video.getBoundingClientRect();
+        if(rect.width<10||rect.height<10){state.raf=requestAnimationFrame(render);return;}
+        const hostRect=parent===document.body?{left:0,top:0}:parent.getBoundingClientRect();
+        canvas.style.left=(rect.left-hostRect.left)+'px';
+        canvas.style.top=(rect.top-hostRect.top)+'px';
+        canvas.style.width=rect.width+'px';canvas.style.height=rect.height+'px';
+        const w=Math.min(1920,Math.max(1,Math.round(rect.width)));
+        const h=Math.min(1080,Math.max(1,Math.round(rect.height)));
+        if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
+        try{
+          gl.bindTexture(gl.TEXTURE_2D,texture);
+          gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,video);
+          const cal=nxVideoCalibration();
+          gl.uniform3f(gl.getUniformLocation(program,'u_adjust'),cal.brightness/100,cal.contrast/100,cal.saturation/100);
+          const clamp=function(key){const n=Number(getPref(key,'0'));return Number.isFinite(n)?Math.max(-1,Math.min(1,n)):0;};
+          gl.uniform1f(gl.getUniformLocation(program,'u_shadows'),clamp(LS_NX_SHADOWS));
+          gl.uniform1f(gl.getUniformLocation(program,'u_highlights'),clamp(LS_NX_HIGHLIGHTS));
+          gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+          if(video.style.opacity!==state.appliedOpacity)video.style.setProperty('opacity','0',state.opacityPriority);
+        }catch(e){
+          S.lastErr='GPU desativada: '+String(e&&e.message||e);
+          setPref(LS_NX_GPU,'0');nxGpuStop();return;
+        }
+        state.raf=requestAnimationFrame(render);
+      };
+      canvas.addEventListener('webglcontextlost',function(e){e.preventDefault();setPref(LS_NX_GPU,'0');nxGpuStop();});
+      state.raf=requestAnimationFrame(render);
+    }catch(e){
+      S.lastErr='GPU: '+String(e&&e.message||e);
+      try{if(texture)gl.deleteTexture(texture);if(buffer)gl.deleteBuffer(buffer);if(program)gl.deleteProgram(program);}catch(_){}
+      canvas.remove();
+    }
+  }
+  function nxGpuSync(){
+    const video=activeStreamVideo();
+    if(getPref(LS_NX_GPU,'0')==='1' && video && document.visibilityState!=='hidden')nxGpuStart(video);
+    else nxGpuStop();
+    if(video)applyVideoAdjustments(video);
+  }
   function applyVideoAdjustments(video) {
     if(!video)return;
     if(getPref(LS_VIDEO_ECO,'1')==='1' && document.visibilityState==='hidden'){
       restoreVideoAdjustments(video);return;
     }
+    if(getPref(LS_NX_GPU,'0')==='1' && nxGpu && nxGpu.video===video){restoreVideoAdjustments(video);return;}
     const cal=nxVideoCalibration();
     if(cal.brightness===100 && cal.contrast===100 && cal.saturation===100){
       restoreVideoAdjustments(video);return;
@@ -5750,6 +5893,8 @@
       if (audio && nxAudioGraph && nxAudioGraph.media !== audio) applyAudioProcessing();
       if (audio && getPref(LS_AUDIO_FX,'0') === '1' && !nxAudioGraph) applyAudioProcessing();
       const video = activeStreamVideo();
+      if(getPref(LS_NX_GPU,'0')==='1' && video)nxGpuStart(video);
+      else if(nxGpu)nxGpuStop();
       if (video !== lastAdjustedVideo) {
         restoreVideoAdjustments(lastAdjustedVideo);
         restoreVideoFit(lastAdjustedVideo);
@@ -5767,6 +5912,7 @@
     document.addEventListener('visibilitychange', function () {
       const video = activeStreamVideo();
       if (video) applyVideoAdjustments(video);
+      nxGpuSync();
     });
     buildUI();
     update();
