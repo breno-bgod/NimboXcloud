@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.0.0
+// @version      4.0.1
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.0.0';
+  const VER = '4.0.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2203,6 +2203,40 @@
         }, 'ghost')));
       root.appendChild(coordination.root);
 
+      const gyroGroup = group('Giroscópio — calibração experimental',
+        'Leitura local dos sensores para diagnóstico. Não controla a câmera do jogo.');
+      gyroGroup.add(infoRow('Sensor', function () {
+        const g = nxGyroPreviewState();
+        return g.enabled ? (g.receiving ? 'Recebendo dados' : 'Aguardando movimento') : g.permission;
+      }));
+      gyroGroup.add(infoRow('Inclinação horizontal', function () {
+        const x = nxGyroPreviewState().tiltX;
+        return x === null ? 'Calibre após ativar' : x + '°';
+      }));
+      gyroGroup.add(infoRow('Inclinação vertical', function () {
+        const y = nxGyroPreviewState().tiltY;
+        return y === null ? 'Calibre após ativar' : y + '°';
+      }));
+      gyroGroup.add(setRow('Leitura de sensores', 'Solicita permissão apenas após toque no botão.',
+        actBtn(nxGyroPreview.enabled ? 'Desativar' : 'Ativar', function () {
+          if (nxGyroPreview.enabled) {
+            nxStopGyroPreview();
+            renderBody();
+            return;
+          }
+          nxStartGyroPreview().then(function (ok) {
+            renderBody();
+            toast(ok ? 'Sensor ativado; mova o aparelho e calibre' : 'Sensor indisponível ou permissão negada');
+          });
+        }, 'primary')));
+      gyroGroup.add(setRow('Definir posição central', 'Mantenha o aparelho na posição de jogo antes de calibrar.',
+        actBtn('Calibrar', function () {
+          const ok = nxCalibrateGyroPreview();
+          renderBody();
+          toast(ok ? 'Centro do sensor definido' : 'Ative o sensor e aguarde uma leitura');
+        })));
+      root.appendChild(gyroGroup.root);
+
       const inputPreview = group('Perfis de analógico',
         'Simulação por padrão. Aplicação experimental opcional com recarregamento e retorno imediato ao modo nativo.');
       inputPreview.add(setRow('Aplicar curvas ao jogo (experimental)',
@@ -2875,6 +2909,62 @@
     return { count: kinds.length, kinds: Array.from(new Set(kinds)), injectionEnabled: false,
       note: 'Registro interno de atividade virtual; nenhuma entrada é enviada ao xCloud.' };
   }
+  // Giroscópio em modo de observação: exige ativação explícita e nunca move o jogo.
+  const nxGyroPreview = { enabled: false, permission: 'não solicitada', samples: 0, lastAt: 0,
+    alpha: null, beta: null, gamma: null, originBeta: null, originGamma: null, error: '' };
+  function nxGyroOnOrientation(e) {
+    if (!nxGyroPreview.enabled) return;
+    if (!Number.isFinite(e.beta) || !Number.isFinite(e.gamma)) return;
+    nxGyroPreview.samples++;
+    nxGyroPreview.lastAt = Date.now();
+    nxGyroPreview.alpha = Number.isFinite(e.alpha) ? e.alpha : null;
+    nxGyroPreview.beta = e.beta;
+    nxGyroPreview.gamma = e.gamma;
+    nxRegisterVirtualInput('nx-gyro-preview', 'gyro', true);
+  }
+  async function nxStartGyroPreview() {
+    if (nxGyroPreview.enabled) return true;
+    if (typeof DeviceOrientationEvent === 'undefined') {
+      nxGyroPreview.permission = 'indisponível';
+      nxGyroPreview.error = 'DeviceOrientationEvent não disponível';
+      return false;
+    }
+    try {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        nxGyroPreview.permission = permission;
+        if (permission !== 'granted') return false;
+      } else nxGyroPreview.permission = 'API disponível';
+      nxGyroPreview.enabled = true;
+      nxGyroPreview.error = '';
+      window.addEventListener('deviceorientation', nxGyroOnOrientation, { passive: true });
+      return true;
+    } catch (err) {
+      nxGyroPreview.permission = 'erro';
+      nxGyroPreview.error = String(err && err.message || err).slice(0, 120);
+      return false;
+    }
+  }
+  function nxStopGyroPreview() {
+    nxGyroPreview.enabled = false;
+    window.removeEventListener('deviceorientation', nxGyroOnOrientation);
+    nxRegisterVirtualInput('nx-gyro-preview', 'gyro', false);
+  }
+  function nxCalibrateGyroPreview() {
+    if (!Number.isFinite(nxGyroPreview.beta) || !Number.isFinite(nxGyroPreview.gamma)) return false;
+    nxGyroPreview.originBeta = nxGyroPreview.beta;
+    nxGyroPreview.originGamma = nxGyroPreview.gamma;
+    return true;
+  }
+  function nxGyroPreviewState() {
+    const g = nxGyroPreview;
+    return { enabled: g.enabled, permission: g.permission, samples: g.samples,
+      receiving: g.enabled && Date.now() - g.lastAt < 2000,
+      calibrated: g.originBeta !== null && g.originGamma !== null,
+      tiltX: g.gamma === null || g.originGamma === null ? null : Math.round((g.gamma - g.originGamma) * 10) / 10,
+      tiltY: g.beta === null || g.originBeta === null ? null : Math.round((g.beta - g.originBeta) * 10) / 10,
+      error: g.error, gameplayInput: false };
+  }
   const nxInputSources = {
     touch: { count: 0, lastAt: 0 }, mouse: { count: 0, lastAt: 0 },
     keyboard: { count: 0, lastAt: 0 }, gamepad: { count: 0, lastAt: 0 },
@@ -2954,6 +3044,7 @@
     check('registro virtual rejeita identificador inválido', !nxRegisterVirtualInput('../bad', 'gyro', true));
     check('registro virtual rejeita tipo inválido', !nxRegisterVirtualInput('test', 'unknown', true));
     check('registro virtual não injeta comandos', nxVirtualInputState().injectionEnabled === false);
+    check('giroscópio não injeta comandos', nxGyroPreviewState().gameplayInput === false);
     return { passed: tests.filter(function (t) { return t.pass; }).length,
       total: tests.length, tests: tests, note: 'Autoteste matemático e estrutural; não substitui teste de streaming.' };
   }
@@ -3075,6 +3166,7 @@
       inputSelfCheck: nxInputSelfCheck(),
       inputCoordination: nxCoordState(),
       virtualInputs: nxVirtualInputState(),
+      gyroPreview: nxGyroPreviewState(),
       gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), rightStickProfile: nxRightStickProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback, foreignOverride: nxInputBridge.foreignOverride, restored: nxInputBridge.restored } },
       inputNegotiation: lastInputNegotiation,
       touchSession: touchSessionDiagnostics,
