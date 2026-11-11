@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.4.1
+// @version      4.5.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.4.1';
+  const VER = '4.5.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1827,6 +1827,78 @@
   }
 
   // ----- Abas -----
+  // Editor de layout local: não cria botões de gameplay nem modifica o HUD nativo.
+  const NX_HUD_LAYOUT_KEY = 'nx.hud.editor.layout.v1';
+  const NX_HUD_DEFAULT = Object.freeze({
+    stickL: [17, 65], stickR: [80, 65], a: [88, 42], b: [74, 45],
+    x: [78, 28], y: [91, 25], lt: [12, 16], rt: [88, 16]
+  });
+  function nxHudValidateLayout(value) {
+    const result = {};
+    Object.keys(NX_HUD_DEFAULT).forEach(function (id) {
+      const pos = value && Object.prototype.hasOwnProperty.call(value, id) ? value[id] : null;
+      result[id] = Array.isArray(pos) && pos.length === 2 && pos.every(Number.isFinite) ?
+        pos.map(function (n) { return Math.max(5, Math.min(95, Math.round(n))); }) :
+        NX_HUD_DEFAULT[id].slice();
+    });
+    return result;
+  }
+  function nxHudReadLayout() {
+    try { return nxHudValidateLayout(JSON.parse(getPref(NX_HUD_LAYOUT_KEY, '{}'))); }
+    catch (_) { return nxHudValidateLayout(null); }
+  }
+  function nxHudSaveLayout(layout) {
+    const clean = nxHudValidateLayout(layout);
+    setPref(NX_HUD_LAYOUT_KEY, JSON.stringify(clean));
+    return clean;
+  }
+  function nxHudEditor() {
+    const layout = nxHudReadLayout();
+    const outer = mk('div', 'display:flex;flex-direction:column;gap:8px;width:100%');
+    const stage = mk('div', 'position:relative;width:100%;aspect-ratio:16/9;min-height:175px;touch-action:none;user-select:none;overflow:hidden;border-radius:10px;border:1px solid ' + C.line + ';background:rgba(80,120,130,.12)');
+    const labels = { stickL:'L', stickR:'R', a:'A', b:'B', x:'X', y:'Y', lt:'LT', rt:'RT' };
+    Object.keys(layout).forEach(function (id) {
+      const node = mk('button', 'position:absolute;transform:translate(-50%,-50%);min-width:35px;height:35px;border-radius:50%;border:1px solid ' + C.accent + ';background:rgba(15,28,30,.85);color:' + C.text + ';font-size:11px;font-weight:700;touch-action:none;cursor:grab', labels[id]);
+      node.type = 'button';
+      node.style.left = layout[id][0] + '%';
+      node.style.top = layout[id][1] + '%';
+      node.setAttribute('aria-label', 'Mover ' + labels[id]);
+      node.addEventListener('pointerdown', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (!e.isPrimary) return;
+        node.setPointerCapture(e.pointerId);
+        node.style.cursor = 'grabbing';
+      });
+      node.addEventListener('pointermove', function (e) {
+        if (!node.hasPointerCapture(e.pointerId)) return;
+        const bounds = stage.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return;
+        const x = Math.max(5, Math.min(95, Math.round((e.clientX - bounds.left) / bounds.width * 100)));
+        const y = Math.max(5, Math.min(95, Math.round((e.clientY - bounds.top) / bounds.height * 100)));
+        layout[id] = [x, y];
+        node.style.left = x + '%';
+        node.style.top = y + '%';
+      });
+      function finish(e) {
+        if (!node.hasPointerCapture(e.pointerId)) return;
+        node.releasePointerCapture(e.pointerId);
+        node.style.cursor = 'grab';
+        nxHudSaveLayout(layout);
+      }
+      node.addEventListener('pointerup', finish);
+      node.addEventListener('pointercancel', finish);
+      stage.appendChild(node);
+    });
+    outer.appendChild(stage);
+    const reset = actBtn('Restaurar posições', function () {
+      nxHudSaveLayout(NX_HUD_DEFAULT);
+      renderBody();
+      toast('Layout de prévia restaurado');
+    }, 'ghost');
+    outer.appendChild(reset);
+    return outer;
+  }
   const TAB_BUILDERS = {
     overview: function (root) {
       const intro = mk('div','font-size:19px;font-weight:750;letter-spacing:-.025em;margin:0 0 3px','Central de controle');
@@ -2202,6 +2274,12 @@
           toast('Diagnóstico de entradas limpo');
         }, 'ghost')));
       root.appendChild(coordination.root);
+
+      const hudEditorGroup = group('Editor de HUD — prévia arrastável',
+        'Arraste os botões para montar um layout. As posições ficam salvas neste navegador. Ainda não altera o HUD do xCloud.');
+      hudEditorGroup.add(setRow('Posições dos botões', 'Toque ou use o mouse para arrastar os elementos da prévia.',
+        nxHudEditor(), true));
+      root.appendChild(hudEditorGroup.root);
 
       const gyroGroup = group('Giroscópio — calibração experimental',
         'Leitura local dos sensores para diagnóstico. Não controla a câmera do jogo.');
@@ -3281,6 +3359,9 @@
     check('idade máxima do sensor limitada', NX_GYRO_MAX_AGE_MS <= 250);
     check('controle alvo válido', nxGyroTargetIndex() >= 0 && nxGyroTargetIndex() <= 3);
     check('linha do tempo com limite de eventos', NX_INPUT_EVENTS_MAX === 30);
+    check('layout de HUD tem oito elementos', Object.keys(nxHudReadLayout()).length === 8);
+    check('layout de HUD limita coordenadas', nxHudValidateLayout({ a: [999, -5] }).a.join(',') === '95,5');
+    check('layout de HUD recupera dados inválidos', nxHudValidateLayout({ a: [NaN, 5] }).a.join(',') === NX_HUD_DEFAULT.a.join(','));
     check('controle secundário preservado',
       nxMergeGyroAxes([0, 0, 0.2, 0.1], [], nxGyroTargetIndex() === 0 ? 1 : 0).join(',') === '0,0,0.2,0.1');
     check('zona morta válida', nxGyroDeadzone() >= 0 && nxGyroDeadzone() <= 0.2);
@@ -3411,6 +3492,7 @@
       inputCoordination: nxCoordState(),
       virtualInputs: nxVirtualInputState(),
       gyroPreview: nxGyroPreviewState(),
+      hudEditor: { layout: nxHudReadLayout(), gameplayApplied: false },
       gyroGame: { enabled: nxGyroGameEnabled(), activation: nxGyroActivationMode(),
         blend: nxGyroBlend(), targetGamepadIndex: nxGyroTargetIndex(),
         maxSensorAgeMs: NX_GYRO_MAX_AGE_MS,
