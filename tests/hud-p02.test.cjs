@@ -72,3 +72,24 @@ test('HUD-006 binding changes invalidate the current autoload route', () => {
   const code = src.slice(begin, end);
   assert.equal((code.match(/if \(saved\) \{ nxHudLastRoute = null; nxHudLastAppliedProfile = ''; \}/g) || []).length, 2);
 });
+
+test('HUD-005 preview scale is bounded and persisted independently from positions', () => {
+  const start = src.indexOf("  const NX_HUD_PREVIEW_SCALE_KEY = ");
+  const end = src.indexOf('  function nxHudEditor() {', start);
+  assert.ok(start > 0 && end > start);
+  const data = {};
+  const ctx = {
+    Number, Math, String,
+    getPref: (key, fallback) => Object.hasOwn(data, key) ? data[key] : fallback,
+    localStorage: { setItem: (k, v) => { data[k] = v; }, getItem: k => data[k] ?? null }
+  };
+  vm.runInNewContext(src.slice(start, end) +
+    '\n globalThis.readScale = nxHudPreviewScale; globalThis.saveScale = nxHudSavePreviewScale;', ctx);
+  assert.equal(ctx.readScale(), 100);
+  assert.equal(ctx.saveScale(125), true);
+  assert.equal(ctx.readScale(), 125);
+  assert.equal(ctx.saveScale(200), false);
+  assert.equal(ctx.readScale(), 125);
+  data['nx.hud.editor.previewScale.v1'] = 'not-a-number';
+  assert.equal(ctx.readScale(), 100);
+});
