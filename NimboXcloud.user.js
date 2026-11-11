@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.7.3
+// @version      3.7.4
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.7.3';
+  const VER = '3.7.4';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -108,7 +108,7 @@
   // não altera cabeçalhos HTTP, autenticação, tokens, gamepad ou autorização do servidor.
   const nxConsoleNativeUA = navigator.userAgent;
   const nxConsoleLabProfile = (function () {
-    try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off'; return ['off','xbox','windows'].includes(p) ? p : 'off'; }
+    try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off'; return ['off','xbox','windows','smarttv'].includes(p) ? p : 'off'; }
     catch (_) { return 'off'; }
   })();
   const nxConsoleLabState = { profile: nxConsoleLabProfile, applied: false, error: '', nativeUA: nxConsoleNativeUA, startedAt: new Date().toISOString() };
@@ -116,7 +116,7 @@
     try {
       const ua = nxConsoleLabProfile === 'xbox'
         ? nxConsoleNativeUA.replace(/\\sXbox;/g, '') + ' Xbox;'
-        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0';
+        : nxConsoleLabProfile === 'smarttv' ? 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 7.0) AppleWebKit/537.36 (KHTML, like Gecko) 94.0.4606.31/7.0 TV Safari/537.36' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0';
       Object.defineProperty(navigator, 'userAgent', { configurable: true, get: function () { return ua; } });
       nxConsoleLabState.applied = navigator.userAgent === ua;
     } catch (err) { nxConsoleLabState.error = String(err && err.message || err); }
@@ -155,7 +155,13 @@
       videoCodecs: codecs, touchPoints: navigator.maxTouchPoints || 0,
       pointerFine: !!(window.matchMedia && matchMedia('(any-pointer:fine)').matches),
       fullscreenSupported: !!document.fullscreenEnabled,
-      userAgentDataPlatform: navigator.userAgentData ? navigator.userAgentData.platform : null
+      userAgentDataPlatform: navigator.userAgentData ? navigator.userAgentData.platform : null,
+      platform: navigator.platform || null, language: navigator.language || null,
+      hardwareConcurrency: navigator.hardwareConcurrency || null,
+      mediaDevices: !!navigator.mediaDevices, mediaCapabilities: !!navigator.mediaCapabilities,
+      h264Decode: document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"'),
+      screen: {width: screen.width, height: screen.height, dpr: devicePixelRatio},
+      gamepadAPI: typeof navigator.getGamepads === 'function'
     };
   }
   function nxConsoleLabFullScreen() {
@@ -191,7 +197,7 @@
     };
   }
   function nxConsoleLabSetProfile(profile) {
-    if (!['off','xbox','windows'].includes(profile)) return;
+    if (!['off','xbox','windows','smarttv'].includes(profile)) return;
     try { localStorage.setItem(LS_CONSOLE_LAB, profile); } catch (_) {}
     // Reiniciar a página é necessário para negociar desde o document-start.
     location.reload();
@@ -1705,7 +1711,43 @@
     } catch (e) { }
     fail();
   }
-  function copyReport() { copyText(buildReport(), '[NX report]', 'Relatório copiado'); }
+  function nxUnifiedReport() {
+    let general = {};
+    try { general = JSON.parse(buildReport()); } catch (e) { general = { error: String(e) }; }
+    const full = {
+      schema: 'nimboxcloud-unified-v1', version: VER, capturedAt: new Date().toISOString(),
+      consoleLab: nxConsoleLabReport(), gameAndInput: general,
+      system: { server: srvCfg().name || 'auto', quality: resCfg().label,
+        bitrate: bitrateCfg().mbps || 'auto', qos: S.qos, latencyByServer: S.latencyByServer,
+        recoveries: S.nxRecoveries, warnings: S.diagnosticsWarnings,
+        micStatus: S.micStatus, vibrationStatus: S.vibrationStatus,
+        remotePlayStatus: S.remotePlayStatus, lastError: S.lastErr },
+      history: { samples: S.qosHistory, diagnosis: S.lastDiagnosis }
+    };
+    function sanitize(v, key, depth) {
+      if (depth > 15) return '[limit]';
+      if (/token|authorization|cookie|secret|credential|xuid|user.?id|account|email|session.?id|subscriptionContext/i.test(key)) return '[redacted]';
+      if (typeof v === 'string') {
+        let value = v.replace(/xuid\(\d+\)/gi, 'xuid([redacted])')
+          .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[ip]')
+          .replace(/([?&](?:token|sig|auth|code|key|id)=)[^&\s]+/gi, '$1[redacted]');
+        if (value.includes('?')) value = value.split('?')[0] + '?[query-redacted]';
+        return value.slice(0, 1000);
+      }
+      if (Array.isArray(v)) return v.slice(0, 110).map(function (x) { return sanitize(x, key, depth + 1); });
+      if (v && typeof v === 'object') {
+        const out = {};
+        Object.keys(v).slice(0, 90).forEach(function (k) { out[k] = sanitize(v[k], k, depth + 1); });
+        return out;
+      }
+      return v;
+    }
+    return sanitize(full, '', 0);
+  }
+  function copyUnifiedReport() {
+    copyText(JSON.stringify(nxUnifiedReport(), null, 2), '[NX unified]', 'Diagnóstico completo copiado');
+  }
+  function copyReport() { copyUnifiedReport(); }
   function copyHistory() {
     copyText(JSON.stringify({ version: VER, samples: S.qosHistory, diagnosis: S.lastDiagnosis }, null, 2), '[NX history]', 'Histórico copiado');
   }
@@ -2162,7 +2204,7 @@
       lab.add(setRow('Modo console em tela cheia', 'Expande a página inteira mantendo o painel NX acessível. Não altera a autorização ou o sistema operacional.',
         actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'primary')));
       lab.add(setRow('Identidade de teste', 'Padrão é desligado. Teste cada perfil na mesma conta e no mesmo jogo.',
-        chips([{k:'off',label:'Original'},{k:'xbox',label:'Xbox JS'},{k:'windows',label:'Windows JS'}],
+        chips([{k:'off',label:'Original'},{k:'xbox',label:'Xbox JS'},{k:'windows',label:'Windows JS'},{k:'smarttv',label:'Smart TV'}],
           nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
       lab.add(setRow('Registrar observação', 'Anote o jogo, se apareceu no catálogo, se iniciou e eventuais mensagens de erro.',
         actBtn('Anotar', function () {
@@ -2172,10 +2214,8 @@
           try { localStorage.setItem(LS_CONSOLE_NOTES, value.slice(0, 500)); } catch (_) {}
           toast('Observação salva');
         }, 'ghost')));
-      lab.add(setRow('Relatório do experimento', 'Copia um JSON local sem cookies, tokens ou respostas de autenticação.',
-        actBtn('Copiar teste', function () {
-          copyText(JSON.stringify(nxConsoleLabReport(), null, 2), '[NX console lab]', 'Relatório copiado');
-        }, 'primary')));
+      lab.add(setRow('Diagnóstico completo', 'Copia todos os registros em um JSON, ocultando identificadores sensíveis.',
+        actBtn('Copiar tudo', copyUnifiedReport, 'primary')));
       root.appendChild(lab.root);
 
       const g4 = group('Sistema');
@@ -2187,9 +2227,7 @@
 
       const g5 = group('Ferramentas');
       const tools = mk('div', 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px 0');
-      tools.appendChild(actBtn('Copiar relatório', copyReport, 'primary'));
-      tools.appendChild(actBtn('Copiar diagnóstico', copyDiag, 'ghost'));
-      tools.appendChild(actBtn('Copiar histórico', copyHistory, 'ghost'));
+      tools.appendChild(actBtn('Copiar tudo', copyUnifiedReport, 'primary'));
       tools.appendChild(actBtn('Limpar cache', hardReload, 'danger'));
       g5.card.appendChild(tools);
       root.appendChild(g5.root);
