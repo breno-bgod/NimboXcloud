@@ -4218,17 +4218,39 @@
     if(!openUI || (wrap&&e.target&&wrap.contains(e.target)))return;
     e.preventDefault();e.stopImmediatePropagation();
   },true);
+  // Gerenciamento de foco independente do Pointer Lock: nunca recapturar automaticamente.
+  let nxFocusBeforePanel = null;
   function setOpen(v, byUser) {
+    const wasOpen = openUI;
     openUI = !!v;
     if (byUser) userTouched = true;
     if (!cardEl) buildUI();
     if (!cardEl) return;
     cardEl.style.display = openUI ? 'flex' : 'none';
     if (nxShellEnabled && wrap) { wrap.classList.toggle('nx-shell-open', openUI); if (openUI) nxShellNeedsRelease = true; }
-    if(openUI && document.pointerLockElement){
-      try{document.exitPointerLock();}catch(_){}
+    if(openUI && !wasOpen){
+      nxFocusBeforePanel = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+      if(document.pointerLockElement){
+        try{document.exitPointerLock();}catch(_){}
+      }
     }
-    if (openUI) { syncNXPlacement(); fitCard(); renderBody(); update(); }
+    if (openUI) {
+      syncNXPlacement(); fitCard(); renderBody(); update();
+      if(!wasOpen){
+        // Teclado e controle podem operar o menu sem enviar comandos ao jogo.
+        if(!cardEl.hasAttribute('tabindex'))cardEl.setAttribute('tabindex','-1');
+        try{cardEl.focus({preventScroll:true});}catch(_){}
+      }
+    }else if(wasOpen){
+      const previous=nxFocusBeforePanel;
+      nxFocusBeforePanel=null;
+      // Restaurar foco nao significa restaurar Pointer Lock; o jogador decide quando retomar.
+      if(previous && previous.isConnected && typeof previous.focus==='function'){
+        try{previous.focus({preventScroll:true});}catch(_){}
+      }else if(document.activeElement && wrap && wrap.contains(document.activeElement)){
+        try{document.activeElement.blur();}catch(_){}
+      }
+    }
     if (wrap) wrap.style.display = 'flex';
   }
 
