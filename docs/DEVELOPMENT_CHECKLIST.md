@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-003 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime não modificado
+**Edição:** PM-004 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime não modificado
 
 ## Regras permanentes
 
@@ -30,7 +30,7 @@
 | CORE-001 | Inventariar módulos, hooks, eventos, timers e armazenamento do script atual | NimboXcloud | mapa de dependências com donos e conflitos | EM_ANDAMENTO |
 | CORE-002 | Identificar quais mudanças noturnas alteraram comportamento real versus somente diagnóstico | commits GitHub | matriz por commit com impacto e rollback | EM_ANDAMENTO |
 | CORE-003 | Registrar baseline de reprodução de erros de mouse, Pointer Lock e touchscreen | relatos + navegador | cenários reproduzíveis documentados | IMPLEMENTADO |
-| CORE-004 | Criar suite de lint, parse e smoke tests sem conta | Xperience/build | comandos reproduzíveis com saída e falha CI | IMPLEMENTADO (lint pendente) |
+| CORE-004 | Criar suite de lint, parse e smoke tests sem conta | Xperience/build | comandos reproduzíveis com saída e falha CI | EM_ANDAMENTO (parse verificado; lint/CI pendentes) |
 | CORE-005 | Criar configuração de feature flags e rollback de módulos experimentais | NimboXcloud | desligar recursos sem reinstalar script | PENDENTE |
 | CORE-006 | Verificar licença, atribuição e proveniência de cada módulo adaptado | MIT/AGPL | inventário de proveniência revisado | PENDENTE |
 
@@ -151,3 +151,10 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `docs/P00_BASELINE.md`: cenários de reprodução e riscos CORE-001.F01/F02/F03.
 - **Verificação ainda pendente:** execução efetiva do workflow no GitHub e testes reais no navegador; nenhum deles é presumido aprovado.
 - CORE-004 permanece parcialmente atendido até adicionar lint e verificar CI; `IMPLEMENTADO` indica artefatos criados, não validação.
+
+
+## AUD-00 — verificação parcial P00.1 (2026-11-11)
+- Verificação estática direta no código obtido da branch main: **6/6 verificações PASS** (parse do userscript, @match, @run-at, consistência de versão, presença da interceptação Pointer Lock, parse do teste). Isso **não é** execução do workflow Node no GitHub.
+- `tests/baseline.test.cjs` atualizado para não confundir detecção da interceptação com teste de funcionamento; três testes de navegador/xCloud marcados explicitamente como TODO.
+- GitHub Actions: consulta de execuções associadas ao commit anterior não retornou execuções; status do workflow **não confirmado**.
+- **AUD-00 não concluída**; CORE-004 continua em andamento, aguardando lint, execução do CI e cenários reais. Runtime preservado.
