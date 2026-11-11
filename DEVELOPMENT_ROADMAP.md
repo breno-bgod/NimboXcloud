@@ -284,3 +284,9 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Biblioteca de ate 24 perfis locais, salvar perfil, exportar JSON e importar arquivo JSON limitado a 16 KB, esquema `nx-visual-preset` v1 validado com allowlist numerica. Aplicacao de perfil usa filtros CSS unicos existentes; reset original continua disponivel. Sem codigo executavel nos arquivos.
 - Adicionados testes de regressao do schema e rejeicao de entradas invalidas. Sintaxe do userscript verificada e sanitizacao exercitada com dados validos/invalidos; execucao completa do workflow e teste de interface ainda nao confirmados.
 - Proximas etapas: curvas RGB e sombras/realces por shader, LUTs 3D, nitidez espacial (CAS/unsharp), GPU upscale experimental, preview antes/depois, e integracao comunitaria via site futuro. Nao anunciar estes recursos como implementados.
+
+## 2026-11-11 — GPU experimental WebGL2 v4.12.21
+- Commits `4d3ab15b51c22bfc10e06c6ca09a9a955b8da326`, `22382ef18ed83ed04ea83d78d7331dbdf47ef894`, `7e0ae35f182b10e86575ffeb26febb325229a688`.
+- Pipeline opt-in WebGL2 renderiza video em canvas sobreposto sem alterar a fonte, com brilho/contraste/saturacao e curvas suaves independentes de sombras/realces; fallback para video nativo em erro de captura/contexto, desativacao e aba oculta. Remove CSS NX enquanto GPU ativa; restaura CSS ao desativar. Controles em NX > Midia > Imagem.
+- Testes estaticos de regressao adicionados; sintaxe do script validada. **Ainda sem teste real de captura de video, desempenho, fullscreen ou compatibilidade com DRM/CORS**. Se houver video preto ou atraso, desligar GPU no painel ou ajustar `localStorage['nx.visual.gpu.v1']='0'` e recarregar.
+- Proximos passos: teste real Chrome/Edge Android/desktop, medir FPS/latencia, otimizar uploads, LUTs, curvas RGB, nitidez e upscale somente apos validacao.
