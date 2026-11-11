@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.9.2
+// @version      3.9.3
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.9.2';
+  const VER = '3.9.3';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2223,10 +2223,17 @@
       inputPreview.add(infoRow('Processamento de entradas', function () {
         return nxInputBridgeStatus();
       }));
-      inputPreview.add(setRow('Perfil de teste', 'Escolha uma curva para visualizar o comportamento dos eixos.',
+      inputPreview.add(setRow('Analógico esquerdo', 'Curva dos eixos 0 e 1 (movimentação, conforme o jogo).',
         chips(Object.keys(nxInputProfiles).map(function (k) { return { k: k, label: nxInputProfiles[k].label }; }),
           nxInputProfileName(), function (k) {
             setPref(NX_INPUT_PROFILE_KEY, k);
+            nxSampleGamepads();
+            renderBody();
+          }), true));
+      inputPreview.add(setRow('Analógico direito', 'Curva dos eixos 2 e 3 (câmera, conforme o jogo).',
+        chips(Object.keys(nxInputProfiles).map(function (k) { return { k: k, label: nxInputProfiles[k].label }; }),
+          nxRightStickProfileName(), function (k) {
+            setPref(NX_RIGHT_STICK_PROFILE_KEY, k);
             nxSampleGamepads();
             renderBody();
           }), true));
@@ -2724,6 +2731,15 @@
     const name = getPref(NX_INPUT_PROFILE_KEY, 'default');
     return Object.prototype.hasOwnProperty.call(nxInputProfiles, name) ? name : 'default';
   }
+  const NX_RIGHT_STICK_PROFILE_KEY = 'nx.input.rightStickProfile.v1';
+  function nxRightStickProfileName() {
+    const name = getPref(NX_RIGHT_STICK_PROFILE_KEY, 'default');
+    return Object.prototype.hasOwnProperty.call(nxInputProfiles, name) ? name : 'default';
+  }
+  function nxTransformStickAxis(value, index) {
+    const name = index < 2 ? nxInputProfileName() : nxRightStickProfileName();
+    return nxPreviewAxis(value, nxInputProfiles[name]);
+  }
   function nxPreviewAxis(value, profile) {
     if (!Number.isFinite(value)) return 0;
     const x = Math.max(-1, Math.min(1, value));
@@ -2784,12 +2800,11 @@
           pads = nxNativeGetGamepads();
           nxInputBridge.nativeReads++;
           if (!pads) return pads;
-          const profile = nxInputProfiles[nxInputProfileName()];
           const result = Array.from(pads, function (pad) {
             if (!pad || !pad.connected || !pad.axes || !pad.axes.length || pad.mapping !== 'standard') return pad;
             // Apenas eixos padrão dos sticks. Eixos adicionais ficam intactos.
             const axes = Array.from(pad.axes, function (v, i) {
-              return i < 4 ? nxPreviewAxis(v, profile) : v;
+              return i < 4 ? nxTransformStickAxis(v, i) : v;
             });
             // Evita criar um novo objeto se não houver diferença perceptível.
             if (axes.every(function (v, i) { return Object.is(v, pad.axes[i]); })) return pad;
@@ -2899,7 +2914,6 @@
     try { pads = nxNativeGetGamepads ? nxNativeGetGamepads() : []; }
     catch (err) { nxGamepadMonitor.errors++; nxInputEvent('gamepad-error', err && err.name || 'read'); return; }
     const next = [];
-    const profile = nxInputProfiles[nxInputProfileName()];
     try {
       for (let i = 0; i < (pads ? pads.length : 0); i++) {
         const pad = pads[i];
@@ -2911,7 +2925,7 @@
           buttons: buttons.length, axes: axes.length,
           pressed: buttons.reduce(function (n, b) { return n + (b && b.pressed ? 1 : 0); }, 0),
           movingAxes: axes.filter(function (v) { return Number.isFinite(v) && Math.abs(v) > 0.18; }).length,
-          axisPreview: axes.slice(0, 4).map(function (v) { return Math.round(nxPreviewAxis(v, profile) * 100) / 100; })
+          axisPreview: axes.slice(0, 4).map(function (v, i) { return Math.round(nxTransformStickAxis(v, i) * 100) / 100; })
         });
       }
     } catch (err) {
@@ -2997,7 +3011,7 @@
       inputEventHistory: nxInputEvents.slice(),
       inputBridgeHealth: nxInputBridgeStatus(),
       inputCoordination: nxCoordState(),
-      gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback, foreignOverride: nxInputBridge.foreignOverride, restored: nxInputBridge.restored } },
+      gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), rightStickProfile: nxRightStickProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback, foreignOverride: nxInputBridge.foreignOverride, restored: nxInputBridge.restored } },
       inputNegotiation: lastInputNegotiation,
       touchSession: touchSessionDiagnostics,
       touchFullscreenPolicy: touchFullscreenPolicy,
