@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.19
+// @version      4.12.20
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.19';
+  const VER = '4.12.20';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -109,6 +109,8 @@
   const LS_VIDEO_BRIGHTNESS='xcu.videoBrightness.v2';
   const LS_VIDEO_CONTRAST='xcu.videoContrast.v2';
   const LS_VIDEO_SATURATION='xcu.videoSaturation.v2';
+  const LS_VISUAL_LIBRARY='nx.visual.library.v1';
+  const LS_VISUAL_ACTIVE='nx.visual.active.v1';
 
   // Laboratório Xbox: experimental, desativado por padrão. Apenas identidade JS local;
   // não altera cabeçalhos HTTP, autenticação, tokens, gamepad ou autorização do servidor.
@@ -3421,6 +3423,31 @@
         actBtn('Restaurar original',function(){
           setPref(LS_VIDEO_PROFILE,'original');applyVideoAdjustments(activeStreamVideo());renderBody();
         },'ghost')));
+      const gVisual=group('Biblioteca de perfis', 'Compartilhe ajustes NX em JSON. Importacao validada e limitada a 16 KB; nenhuma instrucao de codigo e executada.');
+      gVisual.add(setRow('Salvar configuracao','Armazena ate 24 perfis neste navegador.',
+        actBtn('Salvar perfil',function(){
+          const name=prompt('Nome do perfil visual (ate 64 caracteres):','Meu perfil NX');
+          if(name===null)return;
+          try{nxVisualSave(name);toast('Perfil salvo');renderBody();}
+          catch(e){toast(String(e.message||e));}
+        },'ghost')));
+      gVisual.add(setRow('Exportar configuracao','Gera um arquivo JSON portatil.',
+        actBtn('Exportar JSON',function(){
+          const cal=nxVideoCalibration();
+          nxVisualExport({format:NX_VISUAL_FORMAT,version:1,name:getPref(LS_VISUAL_ACTIVE,'Meu perfil NX'),
+            author:'Local',settings:{brightness:cal.brightness,contrast:cal.contrast,saturation:cal.saturation}});
+        },'ghost')));
+      const importInput=mk('input','max-width:100%;font-size:11px');
+      importInput.type='file';importInput.accept='.json,application/json';
+      importInput.addEventListener('change',function(){if(importInput.files&&importInput.files[0])nxVisualImport(importInput.files[0]);});
+      gVisual.add(setRow('Importar JSON','Aceita apenas perfis NX v1, sem scripts nem URLs externas.',importInput,true));
+      const saved=nxVisualLibrary();
+      if(saved.length){
+        const options=saved.map(function(p,i){return {k:String(i),label:p.name};});
+        gVisual.add(setRow('Perfis salvos','Selecione um perfil local para aplicar.',
+          chips(options,'',function(k){nxVisualApply(saved[Number(k)]);renderBody();}),true));
+      }
+      root.appendChild(gVisual.root);
       g2.add(setRow('Enquadramento', 'Original preserva o site; Conter evita cortes; Preencher ocupa a tela, podendo cortar bordas.',
         chips([{ k: 'original', label: 'Original' }, { k: 'contain', label: 'Conter' }, { k: 'cover', label: 'Preencher' }], getPref(LS_VIDEO_FIT, 'original'), function (k) {
           setPref(LS_VIDEO_FIT, k); applyVideoFit(activeStreamVideo()); renderBody();
@@ -5405,6 +5432,81 @@
   // Uma unica cadeia de filtros substituida a cada ajuste; nunca empilhar camadas.
   // Brilho/contraste/saturacao sao controles CSS, nao equalizacao independente de
   // brancos/pretos nem sharpening real.
+  // Perfis portateis: somente dados numericos e metadados, nunca codigo executavel.
+  const NX_VISUAL_FORMAT='nx-visual-preset';
+  const NX_VISUAL_DEFAULT={brightness:100,contrast:100,saturation:100};
+  function nxVisualSanitize(input){
+    if(!input || typeof input!=='object' || Array.isArray(input))throw new Error('Perfil invalido');
+    if(input.format!==NX_VISUAL_FORMAT || input.version!==1)throw new Error('Formato de perfil incompativel');
+    const name=String(input.name||'').trim();
+    if(!name || name.length>64)throw new Error('Nome deve ter entre 1 e 64 caracteres');
+    const author=String(input.author||'Comunidade').trim().slice(0,48);
+    const values=input.settings;
+    if(!values || typeof values!=='object' || Array.isArray(values))throw new Error('Ajustes ausentes');
+    const limits={brightness:[85,115],contrast:[85,115],saturation:[75,125]};
+    const clean={};
+    for(const key of Object.keys(limits)){
+      const n=values[key];
+      if(typeof n!=='number' || !Number.isFinite(n) || n<limits[key][0] || n>limits[key][1])
+        throw new Error('Valor invalido: '+key);
+      clean[key]=Math.round(n);
+    }
+    return {format:NX_VISUAL_FORMAT,version:1,name,author,settings:clean};
+  }
+  function nxVisualLibrary(){
+    try{
+      const parsed=JSON.parse(getPref(LS_VISUAL_LIBRARY,'[]'));
+      if(!Array.isArray(parsed))return [];
+      return parsed.slice(0,24).map(function(x){try{return nxVisualSanitize(x);}catch(_){return null;}}).filter(Boolean);
+    }catch(_){return [];}
+  }
+  function nxVisualApply(preset){
+    const safe=nxVisualSanitize(preset);
+    setPref(LS_VIDEO_BRIGHTNESS,String(safe.settings.brightness));
+    setPref(LS_VIDEO_CONTRAST,String(safe.settings.contrast));
+    setPref(LS_VIDEO_SATURATION,String(safe.settings.saturation));
+    setPref(LS_VIDEO_PROFILE,'custom');
+    setPref(LS_VISUAL_ACTIVE,safe.name);
+    applyVideoAdjustments(activeStreamVideo());
+    return safe;
+  }
+  function nxVisualSave(name){
+    const cal=nxVideoCalibration();
+    const safe=nxVisualSanitize({format:NX_VISUAL_FORMAT,version:1,name,
+      author:'Local',settings:{brightness:cal.brightness,contrast:cal.contrast,saturation:cal.saturation}});
+    const library=nxVisualLibrary().filter(function(x){return x.name!==safe.name;});
+    library.unshift(safe);
+    setPref(LS_VISUAL_LIBRARY,JSON.stringify(library.slice(0,24)));
+    setPref(LS_VISUAL_ACTIVE,safe.name);
+    return safe;
+  }
+  function nxVisualExport(preset){
+    const safe=nxVisualSanitize(preset);
+    const blob=new Blob([JSON.stringify(safe,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download='nx-visual-'+safe.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.json';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+  }
+  function nxVisualImport(file){
+    if(!file || file.size>16384){toast('Arquivo invalido ou maior que 16 KB');return;}
+    const reader=new FileReader();
+    reader.onload=function(){
+      try{
+        const parsed=JSON.parse(String(reader.result||''));
+        const safe=nxVisualSanitize(parsed);
+        const library=nxVisualLibrary().filter(function(x){return x.name!==safe.name;});
+        library.unshift(safe);
+        setPref(LS_VISUAL_LIBRARY,JSON.stringify(library.slice(0,24)));
+        nxVisualApply(safe);
+        toast('Perfil importado: '+safe.name);
+        renderBody();
+      }catch(e){toast('Importacao rejeitada: '+String(e.message||e));}
+    };
+    reader.onerror=function(){toast('Falha ao ler arquivo');};
+    reader.readAsText(file);
+  }
   function nxVideoCalibration(){
     const profile=getPref(LS_VIDEO_PROFILE,'original');
     const presets={
