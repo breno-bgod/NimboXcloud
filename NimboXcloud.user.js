@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.10.1
+// @version      4.10.2
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.10.1';
+  const VER = '4.10.2';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1876,18 +1876,33 @@
     return true;
   }
   function nxHudProfileDelete(name) {
+    // Remoção transacional de melhor esforço: perfis e associações devem permanecer coerentes.
     const profiles = nxHudProfilesRead();
     if (!Object.prototype.hasOwnProperty.call(profiles, name)) return false;
+    const bindings = nxHudGameBindings();
     delete profiles[name];
-    setPref(NX_HUD_PROFILES_KEY, JSON.stringify(profiles));
-    // Remover associações órfãs ao excluir o perfil.
+    Object.keys(bindings).forEach(function (id) {
+      if (bindings[id] === name) delete bindings[id];
+    });
+    const writes = [
+      [NX_HUD_PROFILES_KEY, JSON.stringify(profiles)],
+      [NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(bindings)]
+    ];
+    const previous = [];
     try {
-      const raw = JSON.parse(getPref('nx.hud.editor.gameBindings.v1', '{}'));
-      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-        Object.keys(raw).forEach(function (id) { if (raw[id] === name) delete raw[id]; });
-        setPref('nx.hud.editor.gameBindings.v1', JSON.stringify(raw));
-      }
-    } catch (_) {}
+      writes.forEach(function (pair) { previous.push([pair[0], localStorage.getItem(pair[0])]); });
+      writes.forEach(function (pair) { localStorage.setItem(pair[0], pair[1]); });
+    } catch (_) {
+      previous.forEach(function (pair) {
+        try {
+          if (pair[1] === null) localStorage.removeItem(pair[0]);
+          else localStorage.setItem(pair[0], pair[1]);
+        } catch (_) {}
+      });
+      return false;
+    }
+    nxHudLastRoute = null;
+    nxHudLastAppliedProfile = '';
     return true;
   }
   const NX_HUD_GAME_BINDINGS_KEY = 'nx.hud.editor.gameBindings.v1';
