@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.5.1
+// @version      4.6.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.5.1';
+  const VER = '4.6.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1843,6 +1843,45 @@
     });
     return result;
   }
+  const NX_HUD_PROFILES_KEY = 'nx.hud.editor.profiles.v1';
+  function nxHudProfileName(name) {
+    return typeof name === 'string' && /^[\\p{L}\\p{N} _-]{1,32}$/u.test(name.trim()) ? name.trim() : '';
+  }
+  function nxHudProfilesRead() {
+    try {
+      const parsed = JSON.parse(getPref(NX_HUD_PROFILES_KEY, '{}'));
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      const result = {};
+      Object.keys(parsed).slice(0, 20).forEach(function (name) {
+        const clean = nxHudProfileName(name);
+        if (clean && parsed[name] && typeof parsed[name] === 'object' && !Array.isArray(parsed[name]))
+          result[clean] = nxHudValidateLayout(parsed[name]);
+      });
+      return result;
+    } catch (_) { return {}; }
+  }
+  function nxHudProfileSave(name) {
+    const clean = nxHudProfileName(name);
+    if (!clean) return false;
+    const profiles = nxHudProfilesRead();
+    if (!Object.prototype.hasOwnProperty.call(profiles, clean) && Object.keys(profiles).length >= 20) return false;
+    profiles[clean] = nxHudReadLayout();
+    setPref(NX_HUD_PROFILES_KEY, JSON.stringify(profiles));
+    return true;
+  }
+  function nxHudProfileLoad(name) {
+    const profiles = nxHudProfilesRead();
+    if (!Object.prototype.hasOwnProperty.call(profiles, name)) return false;
+    nxHudSaveLayout(profiles[name]);
+    return true;
+  }
+  function nxHudProfileDelete(name) {
+    const profiles = nxHudProfilesRead();
+    if (!Object.prototype.hasOwnProperty.call(profiles, name)) return false;
+    delete profiles[name];
+    setPref(NX_HUD_PROFILES_KEY, JSON.stringify(profiles));
+    return true;
+  }
   function nxHudReadLayout() {
     try { return nxHudValidateLayout(JSON.parse(getPref(NX_HUD_LAYOUT_KEY, '{}'))); }
     catch (_) { return nxHudValidateLayout(null); }
@@ -1917,6 +1956,31 @@
       toast('Layout de prévia restaurado');
     }, 'ghost');
     outer.appendChild(reset);
+    outer.appendChild(actBtn('Salvar perfil', function () {
+      const name = window.prompt('Nome do perfil de HUD (até 32 caracteres):');
+      if (name === null) return;
+      toast(nxHudProfileSave(name) ? 'Perfil salvo' : 'Nome inválido ou limite de 20 perfis atingido');
+      renderBody();
+    }));
+    const profiles = nxHudProfilesRead();
+    const names = Object.keys(profiles).sort();
+    if (names.length) {
+      const selection = mk('select', 'width:100%;padding:9px;border-radius:8px;background:' + C.panel + ';color:' + C.text + ';border:1px solid ' + C.line);
+      names.forEach(function (name) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        selection.appendChild(option);
+      });
+      outer.appendChild(selection);
+      outer.appendChild(actBtn('Carregar perfil', function () {
+        if (nxHudProfileLoad(selection.value)) { renderBody(); toast('Perfil carregado'); }
+      }));
+      outer.appendChild(actBtn('Excluir perfil', function () {
+        if (!window.confirm('Excluir o perfil "' + selection.value + '"?')) return;
+        if (nxHudProfileDelete(selection.value)) { renderBody(); toast('Perfil excluído'); }
+      }, 'danger'));
+    }
     const exportButton = actBtn('Exportar layout', function () {
       const value = nxHudExportLayout();
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -2312,13 +2376,13 @@
       root.appendChild(coordination.root);
 
       const hudEditorGroup = group('Editor de HUD — prévia arrastável',
-        'Arraste os botões para montar um layout. As posições ficam salvas neste navegador. Ainda não altera o HUD do xCloud.');
+        'Arraste os botões para montar um layout e salve perfis locais por jogo. Ainda não altera o HUD do xCloud.');
       hudEditorGroup.add(setRow('Posições dos botões', 'Toque ou use o mouse para arrastar os elementos da prévia.',
         nxHudEditor(), true));
       root.appendChild(hudEditorGroup.root);
 
       const gyroGroup = group('Giroscópio — calibração experimental',
-        'Leitura local dos sensores para diagnóstico. Não controla a câmera do jogo.');
+        'Leitura e calibração dos sensores. A integração com a câmera é experimental e precisa ser ativada separadamente.');
       gyroGroup.add(infoRow('Orientação da tela', function () {
         const g = nxGyroPreviewState();
         return g.screenAngle === null ? 'Aguardando sensor' : g.screenAngle + '°';
@@ -3395,6 +3459,8 @@
     check('idade máxima do sensor limitada', NX_GYRO_MAX_AGE_MS <= 250);
     check('controle alvo válido', nxGyroTargetIndex() >= 0 && nxGyroTargetIndex() <= 3);
     check('linha do tempo com limite de eventos', NX_INPUT_EVENTS_MAX === 30);
+    check('nome de perfil de HUD válido', nxHudProfileName('Corrida 1') === 'Corrida 1');
+    check('nome de perfil de HUD inválido rejeitado', nxHudProfileName('../bad') === '');
     check('layout de HUD tem oito elementos', Object.keys(nxHudReadLayout()).length === 8);
     check('layout de HUD limita coordenadas', nxHudValidateLayout({ a: [999, -5] }).a.join(',') === '95,5');
     check('layout de HUD exportado tem versão', nxHudExportLayout().includes('nimboxcloud-hud-v1'));
@@ -3530,7 +3596,7 @@
       inputCoordination: nxCoordState(),
       virtualInputs: nxVirtualInputState(),
       gyroPreview: nxGyroPreviewState(),
-      hudEditor: { layout: nxHudReadLayout(), gameplayApplied: false },
+      hudEditor: { layout: nxHudReadLayout(), savedProfileNames: Object.keys(nxHudProfilesRead()), gameplayApplied: false },
       gyroGame: { enabled: nxGyroGameEnabled(), activation: nxGyroActivationMode(),
         blend: nxGyroBlend(), targetGamepadIndex: nxGyroTargetIndex(),
         maxSensorAgeMs: NX_GYRO_MAX_AGE_MS,
