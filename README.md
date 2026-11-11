@@ -46,6 +46,29 @@ Estou construindo o **NX** para reunir configurações e informações em uma ú
 
 Minha prioridade é **preservar os controles nativos**, inclusive o toque e os controles físicos, em vez de substituir indiscriminadamente os mecanismos do site.
 
+## Nova experiência NX — interface minimalista (em desenvolvimento)
+
+O **NX** está sendo reorganizado para mostrar menos elementos durante a jogatina, sem remover as ferramentas avançadas. A tela inicial do painel agora agrupa os acessos em **Transmissão, Controles, Personalização e Avançado**, com seções recolhíveis. As páginas de áudio, voz, servidores, gráficos e diagnóstico continuam acessíveis dentro dessas áreas.
+
+### NX Stream Monitor
+
+Uma sobreposição opcional, separada do painel principal, está presente no código para acompanhar a transmissão enquanto o menu fica fechado:
+
+- **Métricas configuráveis:** FPS decodificado, RTT WebRTC, bitrate recebido, perda de pacotes, resolução e jitter, conforme disponibilidade dos dados.
+- **Layouts:** horizontal, vertical, compacto e automático de acordo com a largura da tela.
+- **Aparência:** fundo de transparente a preto, quatro cores de texto e escala ajustável.
+- **Posição:** quatro cantos da tela ou arrastar para reposicionar.
+- **Região:** bandeiras para datacenters conhecidos quando identificados; uma seleção de região não prova que o streaming esteja fisicamente naquele país.
+- **Preferências locais:** configurações mantidas no navegador.
+
+O monitor reutiliza a telemetria WebRTC do script; **RTT não equivale ao ping interno do jogo**. A visualização e o posicionamento ainda exigem testes em sessões reais e em diferentes tamanhos de tela.
+
+### Comparação de regiões: limite atual
+
+O código mantém **histórico de RTT de datacenters efetivamente utilizados** em partidas anteriores. Uma comparação em tempo real entre todos os servidores, com sondagens periódicas em segundo plano, **ainda não foi implementada**. Resultados históricos não devem ser apresentados como ping atual.
+
+Para detalhes técnicos e pendências, consulte [Arquitetura](./docs/ARQUITETURA.md) e [Plano de desenvolvimento](./DEVELOPMENT_ROADMAP.md).
+
 ## Estado atual: em desenvolvimento
 
 **Este é um projeto em desenvolvimento, mantido por uma pessoa.** Existem recursos escritos no código, mas ainda estou verificando integração, compatibilidade e funcionamento em partidas reais. Não considero o sistema finalizado:
