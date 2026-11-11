@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.34
+// @version      4.12.35
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.34';
+  const VER = '4.12.35';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -128,10 +128,10 @@
     try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off';
       // Xbox One / Series permanecem no código para pesquisa futura, mas estão suspensos.
       // Sessões antigas migram para o perfil genérico sem expor seletores específicos.
-      if (p === 'xboxone' || p === 'xboxseries') { localStorage.setItem(LS_CONSOLE_LAB, 'xbox'); return 'xbox'; }
+      if (p === 'xboxone' || p === 'xboxseries' || p === 'xbox') { localStorage.setItem(LS_CONSOLE_LAB, 'off'); return 'off'; }
       // Smart TV foi descontinuado: voltar à identificação nativa automática.
       if (p === 'smarttv') { localStorage.setItem(LS_CONSOLE_LAB, 'off'); return 'off'; }
-      return ['off','android','xbox','windows'].includes(p) ? p : 'off'; }
+      return ['off','android','windows'].includes(p) ? p : 'off'; }
     catch (_) { return 'off'; }
   })();
   const nxConsoleLabState = { profile: nxConsoleLabProfile, applied: false, error: '', nativeUA: nxConsoleNativeUA, startedAt: new Date().toISOString() };
@@ -369,7 +369,7 @@
     };
   }
   function nxConsoleLabSetProfile(profile) {
-    if (!['off','android','xbox','windows'].includes(profile)) return;
+    if (!['off','android','windows'].includes(profile)) return;
     try { localStorage.setItem(LS_CONSOLE_LAB, profile); } catch (_) {}
     // Reiniciar a página é necessário para negociar desde o document-start.
     location.reload();
@@ -3989,7 +3989,7 @@
         }, 'ghost')));
       root.appendChild(g3.root);
 
-      const lab = group('Plataforma e modo console', 'Perfis Xbox e TV preservam a identidade nativa para iniciar jogos. Tela cheia e orientação horizontal dependem de permissão do navegador e de uma ação do usuário.');
+      const lab = group('Compatibilidade de dispositivo', 'Console congelado: o navegador não pode comprovar identidade Xbox. Mobile e Desktop são opções experimentais; Automático preserva a identidade nativa.');
       lab.add(infoRow('Identidade observada', function () { const e=nxProtocolEvidence(); return e.observed.javascriptIdentity.platform+' · '+(e.configured.jsUserAgentChanged?'UA JS alterado':'UA JS nativo'); }));
       lab.add(infoRow('Client Hints', function () { const h=nxProtocolEvidence().observed.javascriptIdentity.clientHints; return h ? (h.platform || 'sem plataforma')+' · '+(h.mobile?'mobile':'desktop') : 'Não disponível via JavaScript'; }));
       lab.add(infoRow('Modelo de hardware Xbox', function () { return 'Não verificável por userscript'; }));
@@ -4024,7 +4024,7 @@
       lab.add(setRow('Tela cheia e horizontal', 'O navegador exige um toque ou clique para entrar em tela cheia; a orientação horizontal é solicitada quando suportada.',
         actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'primary')));
       lab.add(setRow('Identidade experimental (avançado)', 'Não é o perfil do aparelho: altera a identidade JS/experiência solicitada ao serviço. Automático preserva o navegador nativo. Pode causar incompatibilidades.',
-        chips([{k:'off',label:'Automático'},{k:'android',label:'Android'},{k:'windows',label:'Desktop'},{k:'xbox',label:'Console'}],
+        chips([{k:'off',label:'Automático'},{k:'android',label:'Mobile'},{k:'windows',label:'Desktop'}],
           nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
       lab.add(setRow('Fortnite: experiência de console (experimental)',
         'Inspirado no Better xCloud: desativa a sinalização de toque na configuração da sessão do Fortnite. Não muda User-Agent, não emula Xbox e pode não alterar a experiência no cliente novo. Requer reiniciar a sessão.',
@@ -4114,14 +4114,14 @@
     const temp = document.createElement('div'); buildLegacyControls(temp);
     if (temp.children[2]) root.appendChild(temp.children[2]);
   };
-  TAB_BUILDERS.stream = (function (original) { return function (root) {
-    original(root);
-    const temp = document.createElement('div'); buildLegacyMedia(temp);
-    Array.from(temp.children).slice(1).forEach(function (node) { root.appendChild(node); });
-  }; })(TAB_BUILDERS.stream);
+  TAB_BUILDERS.video = function(root) {
+    const temp=document.createElement('div');buildLegacyMedia(temp);
+    Array.from(temp.children).slice(1).forEach(function(node){root.appendChild(node);});
+  };
+  TABS.push({id:'video',label:'Vídeo',desc:'Filtros, renderização e ajustes locais'});
   TAB_BUILDERS.controls = function (root) {
     const temp = document.createElement('div'); buildLegacyControls(temp);
-    Array.from(temp.children).slice(0,2).forEach(function (node) { root.appendChild(node); });
+    Array.from(temp.children).forEach(function (node) { root.appendChild(node); });
   };
 
   function setTab(id) {
@@ -4268,7 +4268,7 @@
     cardEl.insertBefore(navBar,el.body);
     const rail=mk('div','flex:0 0 54px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;background:#101419;border-right:1px solid '+C.line+';overflow-y:auto');
     el.nxRailButtons=[];
-    [['overview','Início'],['stream','Vídeo'],['audio','Áudio'],['controls','Controles'],['voice','Voz'],['region','Rede'],['personalize','Personalizar'],['compatibility','Compatibilidade'],['advanced','Sistema']].forEach(function(item){
+    [['overview','Início'],['video','Vídeo'],['stream','Streaming'],['audio','Áudio'],['controls','Controles'],['voice','Voz'],['region','Servidores'],['personalize','Personalizar'],['compatibility','Compatibilidade'],['advanced','Sistema']].forEach(function(item){
       const btn=mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;border-radius:8px;color:'+C.dim);
       btn.title=item[1];btn.setAttribute('aria-label',item[1]);btn.appendChild(ico(ICONS[item[0]]||ICONS.overview,22));
       btn.addEventListener('click',function(e){e.stopPropagation();setTab(item[0]);});rail.appendChild(btn);
@@ -4404,8 +4404,8 @@
       metrics.textContent='FPS '+fmtN(q.decodedFps||q.fps)+'  ·  RTT '+fmtN(q.rtt,' ms')+'  ·  '+(S.serverActual||'Servidor automático');
     });
     const groups=[
-      {title:'Transmissão',sub:'Qualidade, servidores e estatísticas',icon:ICONS.stream,links:[['stream','Imagem e transmissão'],['region','Rede e servidores'],['dashboard','Dashboard e gráficos']]},
-      {title:'Controles',sub:'Gamepad, toque, áudio e acessórios',icon:ICONS.controls,links:[['controls','Controle e HUD'],['audio','Áudio'],['voice','Voz e acessórios']]},
+      {title:'Transmissão',sub:'Vídeo, qualidade, servidores e estatísticas',icon:ICONS.stream,links:[['video','Imagem e filtros'],['stream','Streaming e WebRTC'],['region','Servidores e regiões'],['dashboard','Dashboard e gráficos']]},
+      {title:'Controles',sub:'Gamepad, teclado, mouse e HUD',icon:ICONS.controls,links:[['controls','Gamepad e HUD'],['audio','Áudio'],['voice','Voz e acessórios']]},
       {title:'Personalização',sub:'Monitor, transparência e layout',icon:ICONS.overview,links:[['personalize','Configurar NX Stream Monitor']]},
       {title:'Sistema',sub:'Diagnósticos e manutenção',icon:ICONS.advanced,links:[['compatibility','Compatibilidade e identidade'],['advanced','Diagnósticos do sistema']]}
     ];
