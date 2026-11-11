@@ -18,6 +18,6 @@ jobs:
       - name: Syntax check
         run: node --check NimboXcloud.user.js
       - name: Baseline tests
-        run: node --test tests/baseline.test.cjs
+        run: node --test tests/*.test.cjs
       - name: Static risk report
         run: node tools/static-risk-report.cjs
