@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.8
+// @version      4.12.9
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.4';
+  const VER = '4.12.9';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1255,6 +1255,63 @@
   let openUI = false, userTouched = false, autoFolded = false, pending = false;
   let nxLibraryButton = null, nxLibraryDot = null, nxLibraryAnchor = null, nxMode = '';
   const el = {};
+
+  // Xbox Shell experimental: apresentação independente da identidade de rede.
+  const nxShellEnabled = nxConsoleLabProfile === 'xbox';
+  let nxShellLastInput = 0, nxShellPrevButtons = [], nxShellPrevAxis = 0;
+  function nxShellInstall() {
+    if (!nxShellEnabled || document.getElementById('nx-console-shell-css')) return;
+    const css = document.createElement('style');
+    css.id = 'nx-console-shell-css';
+    css.textContent = [
+      '#__xcu_panel__.nx-console-shell{left:50%!important;right:auto!important;top:50%!important;transform:translate(-50%,-50%)!important;width:min(960px,calc(100vw - 28px))!important;max-width:none!important;align-items:stretch!important}',
+      '#__xcu_panel__.nx-console-shell [aria-label="Painel NimboXcloud"]{width:100%!important;max-height:calc(100dvh - 28px)!important;border-radius:18px!important;box-shadow:0 22px 90px #000b!important}',
+      '#__xcu_panel__.nx-console-shell button:focus-visible,#__xcu_panel__.nx-console-shell select:focus-visible,#__xcu_panel__.nx-console-shell input:focus-visible{outline:3px solid #80dfff!important;outline-offset:2px!important}',
+      '#__xcu_panel__.nx-console-shell button{min-height:34px}',
+      '@media (orientation:landscape) and (min-width:700px){#__xcu_panel__.nx-console-shell [aria-label="Painel NimboXcloud"]{max-height:calc(100dvh - 20px)!important}}'
+    ].join('');
+    (document.head || document.documentElement).appendChild(css);
+  }
+  function nxShellFocusable() {
+    if (!cardEl || !openUI) return [];
+    return Array.from(cardEl.querySelectorAll('button,select,input:not([type="hidden"]),textarea,[role="button"],[tabindex]'))
+      .filter(function (n) { return !n.disabled && n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden'; });
+  }
+  function nxShellMove(direction) {
+    const nodes = nxShellFocusable();
+    if (!nodes.length) return;
+    const active = document.activeElement;
+    const index = nodes.indexOf(active);
+    const next = nodes[(index < 0 ? (direction > 0 ? 0 : nodes.length - 1) : (index + direction + nodes.length) % nodes.length)];
+    if (next) { next.focus({preventScroll:true}); next.scrollIntoView({block:'nearest',behavior:'instant'}); }
+  }
+  function nxShellGamepadPoll() {
+    if (!nxShellEnabled || !navigator.getGamepads) return;
+    let pads;
+    try { pads = Array.from(navigator.getGamepads()).filter(Boolean); } catch (_) { return; }
+    const pad = pads[0];
+    if (!pad) { nxShellPrevButtons = []; nxShellPrevAxis = 0; return; }
+    const pressed = (pad.buttons || []).map(function (b) { return !!(b && b.pressed); });
+    const axis = pad.axes && Math.abs(pad.axes[1] || 0) > .65 ? Math.sign(pad.axes[1]) : 0;
+    const edge = function (i) { return pressed[i] && !nxShellPrevButtons[i]; };
+    const now = Date.now();
+    if (openUI && now - nxShellLastInput > 125) {
+      if (edge(12) || (axis < 0 && nxShellPrevAxis >= 0)) { nxShellMove(-1); nxShellLastInput = now; }
+      else if (edge(13) || (axis > 0 && nxShellPrevAxis <= 0)) { nxShellMove(1); nxShellLastInput = now; }
+      else if (edge(0)) {
+        const active = document.activeElement;
+        if (cardEl && cardEl.contains(active) && active.matches('button,[role="button"]')) active.click();
+        else nxShellMove(1);
+        nxShellLastInput = now;
+      } else if (edge(1)) { if (tabId !== 'overview') setTab('overview'); else setOpen(false,true); nxShellLastInput = now; }
+    }
+    nxShellPrevButtons = pressed;
+    nxShellPrevAxis = axis;
+  }
+  if (nxShellEnabled) {
+    nxShellInstall();
+    setInterval(nxShellGamepadPoll, 90);
+  }
 
   function readPos() {
     try {
@@ -3315,6 +3372,7 @@
 
       const lab = group('Plataforma e modo console', 'Perfis Xbox e TV preservam a identidade nativa para iniciar jogos. Tela cheia e orientação horizontal dependem de permissão do navegador e de uma ação do usuário.');
       lab.add(infoRow('Entrada preferencial', function () { return nxPlatformProfile.input; }));
+       if (nxShellEnabled) lab.add(infoRow('Xbox Shell', function () { return 'Ativo · layout amplo + navegação A/B/direcional no painel'; }));
        lab.add(infoRow('SO da sessão solicitado', function () { return nxProfileSessionState.lastRequestedOs || 'Original / não observado'; }));
        lab.add(infoRow('Perfil desta sessão', function () { return nxConsoleLabState.profile + (nxConsoleLabState.applied ? ' · aplicado' : ' · original'); }));
       lab.add(infoRow('Identidade contém Xbox;', function () { return navigator.userAgent.includes('Xbox;') ? 'Sim' : 'Não'; }));
@@ -3437,6 +3495,7 @@
       'font:12px/1.5 ' + UI_FONT, 'color:' + C.text, 'text-align:left'
     ].join(';'));
     wrap.id = '__xcu_panel__';
+    if (nxShellEnabled) wrap.classList.add('nx-console-shell');
 
     // Pílula flutuante (usada só durante a partida): ícone + pontinho + perda de pacotes
     pillEl = mk('div', [
