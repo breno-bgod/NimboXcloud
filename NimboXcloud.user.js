@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.16
+// @version      4.12.17
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -901,15 +901,15 @@
             at: nowStr(),
             method: (init && init.method) || (input instanceof Request ? input.method : 'GET'),
             host: u.host,
-            path: u.pathname + u.search,
+            path: u.pathname,
             status: res.status,
             type: res.type
           };
           addCap(rec);
         }, function (err) {
           addCap({
-            at: nowStr(), host: u.host, path: u.pathname + u.search,
-            status: 0, type: 'failed', note: String((err && err.message) || err)
+            at: nowStr(), host: u.host, path: u.pathname,
+            status: 0, type: 'failed', note: 'network-failure'
           });
         });
       }
@@ -1287,7 +1287,7 @@
           if (!CAP_RE.test(u.host)) return;
           addCap({
             at: nowStr(), method: 'XHR', host: u.host,
-            path: u.pathname + u.search, status: xhr.status, type: 'xhr'
+            path: u.pathname, status: xhr.status, type: 'xhr'
           });
         } catch (e) { }
       });
