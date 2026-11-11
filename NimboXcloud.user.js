@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.26
+// @version      4.11.27
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.26';
+  const VER = '4.11.27';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -659,6 +659,11 @@
   function patchPlayRequest(input, init) {
     const r = resCfg();
     if (!r.osName) return Promise.resolve({ input: input, init: init });
+    // An aborted request must not be parsed/rebuilt before reaching native fetch.
+    if ((init && init.signal && init.signal.aborted) ||
+        (input instanceof Request && input.signal.aborted)) {
+      return Promise.resolve({ input: input, init: init });
+    }
     try {
       const raw = typeof input === 'string' ? input
         : (input instanceof URL ? input.href : (input && input.url) || '');
@@ -835,7 +840,8 @@
           for (const line of lines) {
             if (line.startsWith('m=')) {
               if (video && !inserted) out.push('b=AS:' + Math.round(limit * 1000));
-              video = line.startsWith('m=video ');
+              // Rejected (port 0) video sections must not be rewritten.
+              video = /^m=video\s+(?!0(?:\s|$))\d+/i.test(line);
               inserted = false;
             }
             if (video && /^b=(AS|TIAS):/.test(line)) continue;
@@ -847,8 +853,11 @@
           }
           if (video && !inserted) out.push('b=AS:' + Math.round(limit * 1000));
           const patchedSdp = out.join('\r\n');
-          if (patchedSdp === description.sdp) return original.apply(this, arguments);
-          const patched = { type: description.type, sdp: patchedSdp };
+          // Keep original newline convention to avoid rewriting SDP unnecessarily.
+          const normalizedSdp = description.sdp.indexOf('\r\n') >= 0
+            ? patchedSdp : patchedSdp.replace(/\r\n/g, '\n');
+          if (normalizedSdp === description.sdp) return original.apply(this, arguments);
+          const patched = { type: description.type, sdp: normalizedSdp };
           return original.call(this, patched);
         } catch (e) { S.lastErr = 'Bitrate SDP: ' + String(e); }
         return original.apply(this, arguments);
