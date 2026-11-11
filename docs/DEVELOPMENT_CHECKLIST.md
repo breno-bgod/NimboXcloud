@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-011 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.4 com opt-out reversível de Pointer Lock
+**Edição:** PM-012 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.5 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -221,3 +221,11 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - Verificação adicional: três cenários equivalentes foram executados em sandbox JavaScript isolado contra o trecho da v4.11.4: **3/3 passaram**. Não foi execução Node nem teste real no xCloud.
 - Commit `648acfc6`: `docs/P00_GAMEPAD_BRIDGE_AUDIT.md` com mapa de ownership, rollback e riscos.
 - Runtime mantido em v4.11.4. **P00/AUD-00 abertos.** Pendências principais: execução CI, auditoria de teardown e efeitos colaterais do status da Gamepad API, flags e licenças por arquivo, testes reais.
+
+
+## AUD-00.8 — status de Gamepad API sem efeitos colaterais (2026-11-11)
+- `ffd7afb8`: runtime v4.11.5; `nxInputBridgeStatus()` deixa de gravar preferências ao observar substituição externa da Gamepad API.
+- `570f58a3`: regressão estática/dinâmica isolada adicionada à suíte de gamepad.
+- Verificação isolada adicional em sandbox JavaScript: modo desativado e modo ativo com wrapper externo; **2/2 cenários preservaram preferências e API de terceiros**. Não houve teste em navegador ou sessão xCloud.
+- **Pendências P00:** CORE-001 inventário completo/teardown; CORE-002 diff por função; CORE-004 CI/lint; CORE-005 flags/rollback geral; CORE-006 licenças por arquivo; AUD-00 validação.
+- **Próximos pacotes pendentes:** P01 INPUT-001..007/AUD-01; P02 HUD-001..007/AUD-02; P03 NET-001..006/AUD-03; P04 MEDIA-001..006/AUD-04; P05 DIAG-001..010/AUD-05; P06 ACC-001..006/AUD-06; P07 REL-001..006/AUD-07.
