@@ -46,6 +46,29 @@ I'm building **NX** to bring settings and diagnostics into one interface. The ai
 
 My priority is **preserving native inputs**, including touch and physical controllers, rather than indiscriminately replacing the website's input systems.
 
+## The new NX experience — minimal interface (in development)
+
+The **NX** panel is being reorganized to reduce clutter during gameplay without removing advanced tools. Its home screen now provides four collapsible categories: **Streaming, Controls, Personalization, and Advanced**. Audio, voice, server, graph, and diagnostic pages remain accessible through these groups.
+
+### NX Stream Monitor
+
+An optional overlay, independent from the main panel, is present in the code for use while the panel is closed:
+
+- **Selectable metrics:** decoded FPS, WebRTC RTT, received bitrate, packet loss, resolution, and jitter, when available.
+- **Layouts:** horizontal, vertical, compact, and automatic based on viewport width.
+- **Appearance:** transparent-to-black background, four text colors, and adjustable scale.
+- **Placement:** four screen corners or drag-to-position.
+- **Region:** flags for known identified streaming datacenters; selecting a region does not prove the physical streaming location.
+- **Local preferences:** settings are stored in the browser.
+
+The monitor reuses existing WebRTC telemetry; **RTT is not the game's internal ping**. Real gameplay and cross-device layout validation remain pending.
+
+### Region comparison: current limitations
+
+The code stores **historical RTT for datacenters actually used in past sessions**. Live probing of all alternative regions, including periodic background checks, **has not been implemented**. Historical values must not be represented as current ping.
+
+See the [architecture](./docs/ARQUITETURA.md) and [development roadmap](./DEVELOPMENT_ROADMAP.md) for technical status and remaining work.
+
 ## Current status: in development
 
 **This project is under development and maintained by one person.** Some features are written in code, but I'm still testing their integration, compatibility, and behavior in real gameplay. The system is not finished:
