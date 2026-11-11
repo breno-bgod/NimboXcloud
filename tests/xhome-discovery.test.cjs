@@ -123,3 +123,32 @@ test('cancel during region fetch: late console list is ignored',async()=>{
   assert.equal(api.state.region,'');
   assert.equal(api.state.checkedAt,0);
 });
+
+test('empty successful region: no consoles is a valid result',async()=>{
+  let n=0;
+  const api=harness(async()=>++n===1?ok(login):ok({results:[]}));
+  await api.discover();
+  assert.equal(n,2);
+  assert.equal(api.state.status,'Nenhum console vinculado encontrado');
+  assert.equal(api.state.error,'');
+  assert.equal(api.state.consoles.length,0);
+});
+test('all regions fail: report failure instead of claiming no linked consoles',async()=>{
+  let n=0;
+  const api=harness(async()=>++n===1?ok(login):{ok:false,status:503});
+  await api.discover();
+  assert.equal(api.state.status,'Falha na consulta');
+  assert.match(api.state.error,/nenhuma região xHome/i);
+  assert.equal(api.state.consoles.length,0);
+});
+test('malformed region objects: fail gracefully without additional requests',async()=>{
+  let n=0;
+  const api=harness(async()=>{
+    n++;
+    return ok({...login,offeringSettings:{regions:[null,{},'not a region']}});
+  });
+  await api.discover();
+  assert.equal(n,1);
+  assert.equal(api.state.status,'Falha na consulta');
+  assert.equal(api.state.consoles.length,0);
+});
