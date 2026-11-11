@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.44
+// @version      3.6.45
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.44';
+  const VER = '3.6.45';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -82,6 +82,15 @@
   const LS_MIC_TREBLE = 'xcu.micTreble';
   const LS_MIC_NOISE = 'xcu.micNoise';
   const LS_MIC_ECHO = 'xcu.micEcho';
+  const LS_MIC_AGC = 'xcu.micAgc';
+  const LS_MIC_MUTE = 'xcu.micMute';
+  const LS_MIC_PTT = 'xcu.micPtt';
+  const LS_MIC_GATE = 'xcu.micGate';
+  const LS_AUDIO_OUTPUT = 'xcu.audioOutput';
+  const LS_AUDIO_BASS = 'xcu.audioBass';
+  const LS_AUDIO_MID = 'xcu.audioMid';
+  const LS_AUDIO_TREBLE = 'xcu.audioTreble';
+  const LS_AUDIO_COMP = 'xcu.audioCompressor';
   const LS_SHARPNESS = 'xcu.sharpness';
   const LS_VIDEO_COLOR = 'xcu.videoColor';
 
@@ -1762,6 +1771,38 @@
         muteBtn.textContent = v && v.muted ? 'Reativar som' : 'Silenciar';
         muteBtn.style.opacity = v ? '1' : '.45';
       });
+      const audioOutputs = document.createElement('select');
+      audioOutputs.setAttribute('aria-label', 'Dispositivo de saída');
+      audioOutputs.style.cssText = 'width:100%;background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:7px';
+      const refreshOutputs = async function () {
+        audioOutputs.replaceChildren();
+        const def = document.createElement('option'); def.value = ''; def.textContent = 'Saída padrão do sistema'; audioOutputs.appendChild(def);
+        if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+          try { (await navigator.mediaDevices.enumerateDevices()).filter(function (d) { return d.kind === 'audiooutput' && d.deviceId; }).forEach(function (d, i) {
+            const opt = document.createElement('option'); opt.value = d.deviceId; opt.textContent = d.label || ('Saída ' + (i + 1)); audioOutputs.appendChild(opt);
+          }); } catch (e) { /* A lista pode exigir permissão. */ }
+        }
+        audioOutputs.value = Array.from(audioOutputs.options).some(function (o) { return o.value === getPref(LS_AUDIO_OUTPUT, ''); }) ? getPref(LS_AUDIO_OUTPUT, '') : '';
+      };
+      audioOutputs.addEventListener('change', function () { setPref(LS_AUDIO_OUTPUT, audioOutputs.value); applyAudioOutput(); });
+      g1.add(setRow('Saída de áudio', 'Troca de fones/alto-falantes quando o navegador oferece setSinkId.', audioOutputs, true));
+      g1.add(setRow('Dispositivos', 'Atualiza a lista de saídas disponíveis.', actBtn('Atualizar saídas', refreshOutputs, 'ghost')));
+      refreshOutputs();
+      [['Graves', LS_AUDIO_BASS], ['Médios', LS_AUDIO_MID], ['Agudos', LS_AUDIO_TREBLE]].forEach(function (cfg) {
+        const range = document.createElement('input'); range.type = 'range'; range.min = '-12'; range.max = '12'; range.step = '1';
+        range.value = getPref(cfg[1], '0'); range.style.width = '100%';
+        range.addEventListener('input', function () { setPref(cfg[1], range.value); applyAudioProcessing(); });
+        g1.add(setRow(cfg[0], 'Equalização local do som recebido, em dB.', range, true));
+      });
+      const comp = document.createElement('input'); comp.type = 'checkbox'; comp.checked = getPref(LS_AUDIO_COMP, '0') === '1';
+      comp.addEventListener('change', function () { setPref(LS_AUDIO_COMP, comp.checked ? '1' : '0'); applyAudioProcessing(); });
+      g1.add(setRow('Compressor', 'Reduz picos do áudio recebido; não modifica o chat transmitido.', comp));
+      g1.add(setRow('Processamento', 'Ativa o equalizador somente quando solicitado; pode aumentar uso de CPU.',
+        actBtn('Aplicar ao áudio atual', function () { applyAudioProcessing(); applyAudioOutput(); }, 'ghost')));
+      g1.add(setRow('Áudio espacial', 'Utilize o recurso espacial do sistema operacional/fone. Não há API universal para forçá-lo no xCloud.',
+        mk('span', 'font-size:11px', 'Controlado pelo dispositivo')));
+      g1.add(setRow('Voz x jogo', 'Separação de volumes indisponível quando o xCloud entrega um único fluxo misturado.',
+        mk('span', 'font-size:11px', 'Depende de fluxos separados')));
       root.appendChild(g1.root);
 
       const g2 = group('Imagem', 'Ajustes visuais locais em CSS. Não são nitidez real, CAS nem upscaling.');
@@ -1827,6 +1868,15 @@
       micDevice.addEventListener('change', function () { setPref(LS_MIC_DEVICE, micDevice.value); if (micTestStream) inspectMicrophone(); });
       micDeviceControl = micDevice;
       micButtons.appendChild(micDevice);
+      [['Redução de ruído', LS_MIC_NOISE], ['Cancelamento de eco', LS_MIC_ECHO],
+        ['Ganho automático', LS_MIC_AGC], ['Silenciar voz enviada', LS_MIC_MUTE],
+        ['Apertar V para falar (teclado)', LS_MIC_PTT]].forEach(function (cfg) {
+        const label = document.createElement('label'); label.style.cssText = 'display:flex;gap:7px;align-items:center;width:100%;font-size:12px';
+        const check = document.createElement('input'); check.type = 'checkbox';
+        check.checked = getPref(cfg[1], cfg[1] === LS_MIC_MUTE || cfg[1] === LS_MIC_PTT ? '0' : '1') === '1';
+        check.addEventListener('change', function () { setPref(cfg[1], check.checked ? '1' : '0'); applyVoiceMute(); });
+        label.appendChild(check); label.appendChild(document.createTextNode(cfg[0])); micButtons.appendChild(label);
+      });
       const micMeter = document.createElement('progress'); micMeter.max = 100; micMeter.value = 0;
       micMeter.style.cssText = 'width:100%;height:12px'; micMeter.setAttribute('aria-label', 'Nível de entrada do microfone');
       micLevelControl = micMeter; micButtons.appendChild(micMeter);
@@ -2404,6 +2454,18 @@
     pushLog('shortcut', 'Atalho NX: Ctrl+Shift+' + next.slice(3));
   }
   // Respeita o pedido de áudio feito pelo próprio xCloud. Não inicia chat nem cria conexão.
+  const nxVoiceTracks = new Set();
+  let nxPttHeld = false;
+  function applyVoiceMute() {
+    const allowed = getPref(LS_MIC_MUTE, '0') !== '1' && (getPref(LS_MIC_PTT, '0') !== '1' || nxPttHeld);
+    nxVoiceTracks.forEach(function (track) { if (track.readyState === 'live') track.enabled = allowed; });
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.code !== 'KeyV' || e.repeat || e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    nxPttHeld = true; applyVoiceMute();
+  }, true);
+  document.addEventListener('keyup', function (e) { if (e.code === 'KeyV') { nxPttHeld = false; applyVoiceMute(); } }, true);
+  window.addEventListener('blur', function () { nxPttHeld = false; applyVoiceMute(); });
   function installMicDeviceRouting() {
     if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') return;
     const media = navigator.mediaDevices;
@@ -2412,15 +2474,19 @@
     const routed = function (constraints) {
       const selected = getPref(LS_MIC_DEVICE, '');
       const enabled = getPref(LS_MIC_ENABLED, '0') === '1';
-      if (!enabled || !selected || !constraints || !constraints.audio) return original(constraints);
+      if (!enabled || !constraints || !constraints.audio) return original(constraints);
       const audio = constraints.audio === true ? {} : Object.assign({}, constraints.audio);
       // A escolha do usuário substitui somente o dispositivo, mantendo demais opções do site.
-      audio.deviceId = { ideal: selected };
+      if (selected) audio.deviceId = { ideal: selected };
+      audio.noiseSuppression = getPref(LS_MIC_NOISE, '1') === '1';
+      audio.echoCancellation = getPref(LS_MIC_ECHO, '1') === '1';
+      audio.autoGainControl = getPref(LS_MIC_AGC, '1') === '1';
       const requested = Object.assign({}, constraints, { audio: audio });
       return original(requested).then(function (stream) {
         const track = stream.getAudioTracks()[0];
+        if (track) { nxVoiceTracks.add(track); track.addEventListener('ended', function () { nxVoiceTracks.delete(track); }); applyVoiceMute(); }
         const settings = track && typeof track.getSettings === 'function' ? track.getSettings() : {};
-        if (settings.deviceId && settings.deviceId !== selected) {
+        if (selected && settings.deviceId && settings.deviceId !== selected) {
           S.micStatus = 'O navegador escolheu outro microfone; dispositivo solicitado indisponível.';
         } else {
           S.micStatus = 'Captura solicitada pelo xCloud com o microfone selecionado. Envio de voz ao jogo não verificado.';
@@ -2486,7 +2552,8 @@
       const deviceId = getPref(LS_MIC_DEVICE, '');
       const constraints = {
         echoCancellation: getPref(LS_MIC_ECHO, '1') === '1',
-        noiseSuppression: getPref(LS_MIC_NOISE, '1') === '1'
+        noiseSuppression: getPref(LS_MIC_NOISE, '1') === '1',
+        autoGainControl: getPref(LS_MIC_AGC, '1') === '1'
       };
       if (deviceId) constraints.deviceId = { ideal: deviceId };
       const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints, video: false });
@@ -2623,6 +2690,41 @@
         a.click(); setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
       }, 'image/png');
     } catch (err) { S.lastErr = 'Captura: ' + String(err && err.message || err); schedule(); }
+  }
+  let nxAudioGraph = null;
+  function applyAudioOutput() {
+    const media = activeStreamAudio();
+    const sink = getPref(LS_AUDIO_OUTPUT, '');
+    if (!media || typeof media.setSinkId !== 'function') { S.lastErr = 'Seleção de saída não suportada neste navegador'; return; }
+    Promise.resolve(media.setSinkId(sink)).catch(function (e) { S.lastErr = 'Saída de áudio: ' + String(e && e.name || e); });
+  }
+  function applyAudioProcessing() {
+    const media = activeStreamAudio();
+    if (!media) return;
+    const vals = [LS_AUDIO_BASS, LS_AUDIO_MID, LS_AUDIO_TREBLE].map(function (k) { return Number(getPref(k, '0')) || 0; });
+    const compress = getPref(LS_AUDIO_COMP, '0') === '1';
+    if (!nxAudioGraph && vals.every(function (v) { return v === 0; }) && !compress) return;
+    if (nxAudioGraph && nxAudioGraph.media !== media) { S.lastErr = 'Processamento associado a outro elemento; recarregue para trocar o fluxo'; return; }
+    try {
+      if (!nxAudioGraph) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const source = ctx.createMediaElementSource(media);
+        const bass = ctx.createBiquadFilter(); bass.type = 'lowshelf'; bass.frequency.value = 180;
+        const mid = ctx.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = 1100; mid.Q.value = 0.8;
+        const treble = ctx.createBiquadFilter(); treble.type = 'highshelf'; treble.frequency.value = 3500;
+        const compressor = ctx.createDynamicsCompressor(); compressor.threshold.value = -22; compressor.ratio.value = 3;
+        const dry = ctx.createGain(); const wet = ctx.createGain();
+        source.connect(bass); bass.connect(mid); mid.connect(treble);
+        treble.connect(dry); treble.connect(compressor); compressor.connect(wet);
+        dry.connect(ctx.destination); wet.connect(ctx.destination);
+        nxAudioGraph = { media: media, ctx: ctx, bass: bass, mid: mid, treble: treble, dry: dry, wet: wet };
+      }
+      nxAudioGraph.bass.gain.value = vals[0]; nxAudioGraph.mid.gain.value = vals[1]; nxAudioGraph.treble.gain.value = vals[2];
+      nxAudioGraph.dry.gain.value = compress ? 0 : 1; nxAudioGraph.wet.gain.value = compress ? 1 : 0;
+      Promise.resolve(nxAudioGraph.ctx.resume()).catch(function () {});
+    } catch (e) { S.lastErr = 'Processamento de áudio indisponível: ' + String(e && e.name || e); }
   }
   function activeStreamAudio() {
     const media = Array.from(document.querySelectorAll('video,audio'));
