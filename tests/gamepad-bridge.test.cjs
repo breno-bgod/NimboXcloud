@@ -92,3 +92,11 @@ test('non-standard controllers are passed through without rewriting their identi
   const a = boot({ 'nx.input.applyAxes.v1': '1' }, [pad]);
   assert.equal(a.navigator.getGamepads()[0], pad);
 });
+
+test('repeated bridge installation never replaces an existing owner', () => {
+  const a = boot({ 'nx.input.applyAxes.v1': '1' }, []);
+  const original = a.navigator.getGamepads;
+  assert.equal(a.bridge.installed, true);
+  // A segunda chamada deve preservar o wrapper da própria ponte.
+  assert.equal(original, a.bridge.wrapper);
+});
