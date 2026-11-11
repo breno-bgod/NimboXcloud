@@ -2847,14 +2847,17 @@
       const auth=await fetch('https://xhome.gssv-play-prod.xboxlive.com/v2/login/user',{
         method:'POST',headers:{'Content-Type':'application/json; charset=utf-8'},
         body:JSON.stringify({offeringId:'xhome',token:token}),signal:controller.signal,redirect:'error'});
+      if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
       if(!auth.ok) throw new Error('Login xHome recusado (HTTP '+auth.status+').');
       const login=await auth.json();
+      if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
       if(!login.gsToken || !login.offeringSettings || !Array.isArray(login.offeringSettings.regions))
         throw new Error('Resposta xHome incompleta.');
       const regions=login.offeringSettings.regions.slice().sort(function(a,b){return Number(!!(b && b.isDefault))-Number(!!(a && a.isDefault));});
       let found=[];
       let successfulRegions=0;
       for(const region of regions) {
+        if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
         if(!region || typeof region.baseUri!=='string') {nxRemotePlay.attempts.push('Região ignorada: configuração inválida');continue;}
         // Do not send the xHome bearer token to an untrusted origin from a malformed region response.
         let regionOrigin;
@@ -2862,14 +2865,16 @@
         catch (_) {nxRemotePlay.attempts.push('Região ignorada: endereço inválido');continue;}
         try { const res=await fetch(regionOrigin+'/v6/servers/home?mr=50',{
           headers:{Authorization:'Bearer '+login.gsToken},signal:controller.signal,redirect:'error'});
+          if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
           if(res.status===401 || res.status===403) throw new Error('Acesso xHome negado (HTTP '+res.status+'). Faça login novamente na conta Xbox.');
           if(!res.ok) {nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': HTTP '+res.status);continue;}
           const json=await res.json();
+          if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
           if(!json || !Array.isArray(json.results)) {nxRemotePlay.attempts.push('Resposta sem lista de consoles');continue;}
           successfulRegions++;
           nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': '+json.results.length+' console(s)');
           if(json.results.length){found=json.results;nxRemotePlay.region=String(region.name||region.shortName||region.baseUri);break;}
-        } catch (e) {if(controller.signal.aborted || (e && /^Acesso xHome negado/.test(String(e.message)))) throw e;nxRemotePlay.attempts.push('Região indisponível: '+String(e && e.name||'erro'));}
+        } catch (e) {if(requestId!==nxRemotePlay.requestId || controller.signal.aborted || (e && /^Acesso xHome negado/.test(String(e.message)))) throw e;nxRemotePlay.attempts.push('Região indisponível: '+String(e && e.name||'erro'));}
       }
       if(requestId!==nxRemotePlay.requestId || controller.signal.aborted) throw new Error('Consulta encerrada antes da conclusão.');
       if(!successfulRegions) throw new Error('Não foi possível consultar nenhuma região xHome. Verifique conexão, CORS e autenticação.');
