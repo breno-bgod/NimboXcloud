@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.40
+// @version      4.12.41
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.40';
+  const VER = '4.12.41';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -4230,6 +4230,7 @@
       '-webkit-backdrop-filter:blur(14px)', 'backdrop-filter:blur(14px)'
     ].join(';'));
     cardEl.style.maxWidth='min(360px,calc(100vw - 16px))';
+    nxPanelApply();
     cardEl.setAttribute('role', 'dialog');
     cardEl.setAttribute('aria-label', 'Painel NimboXcloud');
     cardEl.addEventListener('pointerdown', stopEv);
@@ -4398,7 +4399,59 @@
   const nxMonitorSettingsPage=TAB_BUILDERS.overview;
   TABS.push({id:'personalize',label:'Personalização',desc:'Monitor, aparência e posição'});
   TABS.push({id:'dashboard',label:'Dashboard',desc:'Gráficos e indicadores detalhados'});
+  // Aparência independente do NX Stream Monitor; persistência local.
+  const NX_PANEL_APPEARANCE='nx.panel.appearance.v1';
+  const nxPanelDefaults={opacity:90,tone:'dark',text:'default',icons:'default'};
+  const nxPanelColors={default:null,white:'#f5f7fb',gray:'#b5bfcb',green:'#80e5a4',blue:'#75c3ff',amber:'#ffd184'};
+  function nxPanelLoad(){
+    try {const o=JSON.parse(localStorage.getItem(NX_PANEL_APPEARANCE)||'{}');
+      return {opacity:Number.isFinite(Number(o.opacity))?Math.max(15,Math.min(100,Number(o.opacity))):90,
+        tone:['dark','black','slate'].includes(o.tone)?o.tone:'dark',
+        text:Object.prototype.hasOwnProperty.call(nxPanelColors,o.text)?o.text:'default',
+        icons:Object.prototype.hasOwnProperty.call(nxPanelColors,o.icons)?o.icons:'default'};
+    }catch(_){return Object.assign({},nxPanelDefaults);}
+  }
+  let nxPanelAppearance=nxPanelLoad();
+  function nxPanelApply(){
+    if(!cardEl)return;
+    const p=nxPanelAppearance;
+    const rgb=({dark:'12,16,22',black:'0,0,0',slate:'32,42,55'})[p.tone]||'12,16,22';
+    cardEl.style.background='rgba('+rgb+','+(p.opacity/100)+')';
+    cardEl.style.setProperty('--nx-panel-text',nxPanelColors[p.text]||C.text);
+    cardEl.style.setProperty('--nx-panel-icon',nxPanelColors[p.icons]||C.dim);
+    cardEl.dataset.nxPanelText=p.text==='default'?'default':'custom';
+    cardEl.dataset.nxPanelIcons=p.icons==='default'?'default':'custom';
+    if(!document.getElementById('nx-panel-appearance-style')){
+      const st=document.createElement('style');st.id='nx-panel-appearance-style';
+      st.textContent='#__xcu_panel__ [data-nx-panel-text="custom"] :is(div,span,p,label,button){color:var(--nx-panel-text)!important}'+
+        '#__xcu_panel__ [data-nx-panel-icons="custom"] svg{color:var(--nx-panel-icon)!important;stroke:currentColor!important}';
+      (document.head||document.documentElement).appendChild(st);
+    }
+  }
+  function nxPanelSettingsPage(root){
+    const g=group('Aparência do painel NX','Essas opções modificam somente o painel de configurações. O NX Stream Monitor mantém seus próprios ajustes.');
+    const slider=document.createElement('input');slider.type='range';slider.min='15';slider.max='100';slider.step='5';
+    slider.value=String(nxPanelAppearance.opacity);slider.style.cssText='width:100%;max-width:280px;accent-color:'+C.accent;
+    const percent=mk('span','font-size:12px;color:'+C.dim,nxPanelAppearance.opacity+'%');
+    const controls=mk('div','display:flex;align-items:center;gap:12px;max-width:100%');controls.appendChild(slider);controls.appendChild(percent);
+    slider.addEventListener('input',function(){nxPanelAppearance.opacity=Number(slider.value);percent.textContent=slider.value+'%';nxPanelApply();});
+    slider.addEventListener('change',function(){nxPanelSave();});
+    g.add(setRow('Transparência do fundo','15% deixa o jogo mais visível; 100% cria um fundo opaco.',controls));
+    function choice(title,key,opts){
+      g.add(setRow(title,'',chips(opts,nxPanelAppearance[key],function(value){nxPanelAppearance[key]=value;nxPanelSave();renderBody();}),true));
+    }
+    choice('Cor do fundo','tone',[{k:'dark',label:'Escuro'},{k:'black',label:'Preto'},{k:'slate',label:'Cinza azulado'}]);
+    const colors=[{k:'default',label:'Original'},{k:'white',label:'Branco'},{k:'gray',label:'Cinza'},{k:'green',label:'Verde'},{k:'blue',label:'Azul'},{k:'amber',label:'Âmbar'}];
+    choice('Cor dos textos','text',colors);
+    choice('Cor dos ícones','icons',colors);
+    root.appendChild(g.root);
+    const reset=group('Restaurar aparência');
+    reset.add(setRow('Voltar à aparência original','Não altera as configurações de vídeo nem do monitor.',actBtn('Restaurar painel',function(){nxPanelAppearance=Object.assign({},nxPanelDefaults);nxPanelSave();renderBody();},'ghost')));
+    root.appendChild(reset.root);
+  }
+  function nxPanelSave(){try{localStorage.setItem(NX_PANEL_APPEARANCE,JSON.stringify(nxPanelAppearance));}catch(_){}nxPanelApply();}
   TAB_BUILDERS.personalize=function(root){
+    nxPanelSettingsPage(root);
     const temp=document.createElement('div');
     nxMonitorSettingsPage(temp);
     if(temp.firstElementChild)root.appendChild(temp.firstElementChild);
