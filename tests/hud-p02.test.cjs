@@ -52,3 +52,23 @@ test('HUD-005 drag events are owned by one pointer and released before capture l
   assert.match(editor, /if \(activePointerId !== e\.pointerId \|\| !node\.hasPointerCapture\(e\.pointerId\)\) return;/);
   assert.match(editor, /activePointerId = null;\s*if \(node\.hasPointerCapture\(e\.pointerId\)\) node\.releasePointerCapture/);
 });
+
+test('HUD-006 profile names reject prototype-related keys', () => {
+  const begin = src.indexOf('  function nxHudProfileName(name) {');
+  const end = src.indexOf('  function nxHudProfilesRead()', begin);
+  assert.ok(begin > 0 && end > begin);
+  const context = {};
+  vm.runInNewContext(src.slice(begin, end) + '\n globalThis.validate = nxHudProfileName;', context);
+  for (const name of ['__proto__', 'constructor', 'prototype', 'CONSTRUCTOR']) {
+    assert.equal(context.validate(name), '');
+  }
+  assert.equal(context.validate('FPS 1'), 'FPS 1');
+});
+
+test('HUD-006 binding changes invalidate the current autoload route', () => {
+  const begin = src.indexOf('  function nxHudBindGame(gameId, profileName) {');
+  const end = src.indexOf('  const NX_HUD_AUTO_KEY = ', begin);
+  assert.ok(begin > 0 && end > begin);
+  const code = src.slice(begin, end);
+  assert.equal((code.match(/if \(saved\) \{ nxHudLastRoute = null; nxHudLastAppliedProfile = ''; \}/g) || []).length, 2);
+});
