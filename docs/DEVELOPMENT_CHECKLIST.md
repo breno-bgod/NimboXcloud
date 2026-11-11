@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-006 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime não modificado
+**Edição:** PM-007 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.3 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -31,7 +31,7 @@
 | CORE-002 | Identificar quais mudanças noturnas alteraram comportamento real versus somente diagnóstico | commits GitHub | matriz por commit com impacto e rollback | EM_ANDAMENTO |
 | CORE-003 | Registrar baseline de reprodução de erros de mouse, Pointer Lock e touchscreen | relatos + navegador | cenários reproduzíveis documentados | IMPLEMENTADO |
 | CORE-004 | Criar suite de lint, parse e smoke tests sem conta | Xperience/build | comandos reproduzíveis com saída e falha CI | EM_ANDAMENTO (parse verificado; lint/CI pendentes) |
-| CORE-005 | Criar configuração de feature flags e rollback de módulos experimentais | NimboXcloud | desligar recursos sem reinstalar script | PENDENTE |
+| CORE-005 | Criar configuração de feature flags e rollback de módulos experimentais | NimboXcloud | desligar recursos sem reinstalar script | EM_ANDAMENTO (opt-out Pointer Lock implementado) |
 | CORE-006 | Verificar licença, atribuição e proveniência de cada módulo adaptado | MIT/AGPL | inventário de proveniência revisado | EM_ANDAMENTO (matriz inicial publicada) |
 
 ### P01 — Entrada: mouse, teclado, gamepad e Pointer Lock (prioridade crítica)
@@ -181,3 +181,11 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - Corrigido para `node --test tests/*.test.cjs` (commit `0ce903468c817b8fddb5b2884fd05141a59f43f7`).
 - **Validação limitada:** revisão do conteúdo do workflow. Execução real do GitHub Actions ainda não confirmada; CORE-004 e AUD-00 permanecem em andamento.
 - Não houve alteração no userscript v4.11.2. Tentativa de clone externo no ambiente de teste falhou por ausência de resolução DNS; não equivale a falha do repositório.
+
+
+## P00 — atualização de segurança Pointer Lock (2026-11-11)
+- v4.11.3: flag `nx.pointerLockLegacyF9`, valor `'0'` desativa o override de `Element.prototype.requestPointerLock` e o interceptador F9 **após recarregar**. Ausência da chave preserva comportamento legado.
+- Commits `2f5be9de`, `ebd5cf24`, `f76d4cd7`: implementação, correção da tecla F9, teste de regressão estático.
+- Sintaxe do userscript e do teste verificada estaticamente. **Não foi executado teste real no xCloud**, nem confirmado GitHub Actions.
+- **Risco conhecido:** outros caminhos do script ainda podem alterar o ciclo de captura; esta flag não comprova correção do mouse. CORE-005 permanece parcial e AUD-00 aberta.
+- Rollback operacional sem reinstalar: `localStorage.setItem('nx.pointerLockLegacyF9', '0'); location.reload()` no contexto da página, somente para teste consciente. Para restaurar: `localStorage.removeItem('nx.pointerLockLegacyF9'); location.reload()`.
