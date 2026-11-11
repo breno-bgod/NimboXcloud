@@ -177,3 +177,11 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Validação real nesta execução: Node.js v22.16.0 disponível localmente; tentativa de baixar arquivos por raw.githubusercontent.com falhou por DNS (`Could not resolve host`). Testes Node **não executados** e status de GitHub Actions **não verificado**. Não afirmar aprovação até obter logs reais. Não foram feitos testes Xbox/Chrome/Edge.
 - Pendências: conferir status do novo workflow no GitHub, corrigir testes caso falhem; testar mocks de rede e redirecionamento; validar credenciais/CORS xHome no navegador; mapear handshake de sessão e WebRTC sem interferir no xCloud.
 - Próxima tarefa concreta: consultar a execução do workflow no GitHub Actions e corrigir falhas verificadas. Critério de aceite: `node --check` e cinco testes com resultado verde registrado pelo CI; então iniciar implementação segura do fluxo de sessão xHome.
+
+## 2026-11-11 — xHome: cobertura de segurança ampliada
+- HEAD inicial `2ba6e8cdfaf94d39446ece75a8121d94fb8db6f3`; commit de testes `2e8f37cc9aa5f4e28d59272540705b2bfb75414f`; HEAD final será o commit deste registro.
+- Arquivo modificado `tests/xhome-discovery.test.cjs`: adicionados casos 403, rejeição de redirecionamento no login GSSV e rejeição de redirecionamento na consulta com bearer. Total de oito cenários definidos; não confundir testes escritos com testes aprovados.
+- Inspeção GitHub: consulta de workflow runs para commit `c89ba8eb154796d08a72017c314147d01e82f341` retornou lista vazia; API utilizada só retorna execuções de pull request, portanto **não prova ausência de execuções push**. Estado real do GitHub Actions não confirmado.
+- Validações: revisão estática de arquivos de teste e do userscript; nenhum teste Node executado nesta execução, nenhum teste de navegador ou Xbox.
+- Bloqueio: conector disponível não oferece listagem geral de workflow runs por push e os arquivos do GitHub não foram materializados no container nesta execução.
+- Próxima tarefa concreta: obter execução GitHub Actions por push (ou executar arquivos em Node local após materialização), corrigir falhas dos oito testes e registrar logs reais. Critério: oito testes PASS e `node --check` PASS; depois seguir para handshake xHome e sessão.
