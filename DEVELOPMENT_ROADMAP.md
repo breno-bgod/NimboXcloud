@@ -295,3 +295,8 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Commits `e8dd13e1c6f695d140aff7a987bcc4bb4ee9945a`, `75ef5e43e1f9fc12fe70ebc03b4fd96889cf413b`.
 - Seleciona audio tracks WebRTC vivos e fontes em reproducao, adiciona botao de ativacao por gesto para AudioContext.resume, informa estado real running/suspended/closed no diagnostico, neutraliza grafos antigos ao trocar elemento de streaming e evita reinicializacao desnecessaria no polling.
 - Sintaxe JS verificada; testes estaticos adicionados, mas validacao auditiva real no Chrome/Edge, compatibilidade com audio separado em outras fontes e comportamento de bypass de MediaElementSource permanecem pendentes. Nao afirmar que equalizacao ja foi ouvida e confirmada.
+
+## 2026-11-11 — Bluetooth Android e diagnostico de sinal v4.12.23
+- Commits `0f3e02f02dbe36838beecab76d1d23b5ac6160af` e `4f83e40ae925766d8d303878545f8194525e1f2d`.
+- Saida padrao do sistema e explicitamente indicada como rota Bluetooth no Android; selecao manual fica desabilitada se `setSinkId` nao for suportado, com status explicativo. Um AnalyserNode entre a fonte Web Audio e as dez bandas mede o sinal de entrada e diferencia silencio/ausencia de sinal, AudioContext suspenso e equalizador desconectado. Testes estaticos adicionados.
+- **Nao comprovado em dispositivo real**: o navegador pode nao expor dispositivos Bluetooth nem permitir capturar audio do xCloud em MediaElementSource. O analisador identifica ausencia de sinal, mas nao contorna restricoes de DRM/CORS nem garante que o som passa pelo grafo.
