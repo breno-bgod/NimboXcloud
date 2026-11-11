@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.8.0
+// @version      4.9.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.8.0';
+  const VER = '4.9.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1991,6 +1991,15 @@
     setPref(NX_HUD_LAYOUT_KEY, JSON.stringify(clean));
     return clean;
   }
+  function nxHudNudge(layout, id, dx, dy) {
+    if (!layout || !Object.prototype.hasOwnProperty.call(NX_HUD_DEFAULT, id) ||
+        !Array.isArray(layout[id]) || !Number.isFinite(dx) || !Number.isFinite(dy)) return false;
+    const x = Math.max(5, Math.min(95, layout[id][0] + dx));
+    const y = Math.max(5, Math.min(95, layout[id][1] + dy));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    layout[id] = [x, y];
+    return true;
+  }
   function nxHudEditor() {
     const layout = nxHudReadLayout();
     const outer = mk('div', 'display:flex;flex-direction:column;gap:8px;width:100%');
@@ -2001,11 +2010,28 @@
       node.type = 'button';
       node.style.left = layout[id][0] + '%';
       node.style.top = layout[id][1] + '%';
-      node.setAttribute('aria-label', 'Mover ' + labels[id]);
+      node.setAttribute('aria-label', 'Mover ' + labels[id] + ' com as setas do teclado');
+      node.setAttribute('title', 'Setas: 1% | Shift + setas: 5%');
+      let dragStart = null;
+      node.addEventListener('keydown', function (e) {
+        const moves = { ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+          ArrowUp: [0, -1], ArrowDown: [0, 1] };
+        if (!Object.prototype.hasOwnProperty.call(moves, e.key)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const step = e.shiftKey ? 5 : 1;
+        const delta = moves[e.key];
+        if (nxHudNudge(layout, id, delta[0] * step, delta[1] * step)) {
+          node.style.left = layout[id][0] + '%';
+          node.style.top = layout[id][1] + '%';
+          nxHudSaveLayout(layout);
+        }
+      });
       node.addEventListener('pointerdown', function (e) {
         e.stopPropagation();
         e.preventDefault();
         if (!e.isPrimary) return;
+        dragStart = layout[id].slice();
         node.setPointerCapture(e.pointerId);
         node.style.cursor = 'grabbing';
       });
@@ -2023,13 +2049,20 @@
         if (!node.hasPointerCapture(e.pointerId)) return;
         node.releasePointerCapture(e.pointerId);
         node.style.cursor = 'grab';
-        nxHudSaveLayout(layout);
+        if (e.type === 'pointercancel' && dragStart) {
+          layout[id] = dragStart;
+          node.style.left = dragStart[0] + '%';
+          node.style.top = dragStart[1] + '%';
+        } else nxHudSaveLayout(layout);
+        dragStart = null;
       }
       node.addEventListener('pointerup', finish);
       node.addEventListener('pointercancel', finish);
       stage.appendChild(node);
     });
     outer.appendChild(stage);
+    outer.appendChild(mk('div', 'font-size:11px;color:' + C.dim,
+      'Acessibilidade: selecione um botão e use as setas para mover 1%; Shift + setas move 5%. Arrastos cancelados são revertidos.'));
     const reset = actBtn('Restaurar posições', function () {
       nxHudSaveLayout(NX_HUD_DEFAULT);
       renderBody();
@@ -3555,6 +3588,10 @@
     check('controle alvo válido', nxGyroTargetIndex() >= 0 && nxGyroTargetIndex() <= 3);
     check('linha do tempo com limite de eventos', NX_INPUT_EVENTS_MAX === 30);
     check('rota de jogo não assume página genérica', nxHudGameId('../bad') === '');
+    const nudgeLayout = nxHudValidateLayout(null);
+    check('HUD teclado move posição', nxHudNudge(nudgeLayout, 'a', 1, 0) === true);
+    check('HUD teclado rejeita botão desconhecido', nxHudNudge(nudgeLayout, 'invalid', 1, 0) === false);
+    check('HUD teclado rejeita movimento inválido', nxHudNudge(nudgeLayout, 'a', NaN, 0) === false);
     check('identificador de jogo rejeita caminho', nxHudGameId('../bad') === '');
     check('identificador de jogo normalizado', nxHudGameId('GAME_123') === 'game_123');
     check('nome de perfil de HUD válido', nxHudProfileName('Corrida 1') === 'Corrida 1');
