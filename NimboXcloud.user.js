@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.50
+// @version      3.7.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.50';
+  const VER = '3.7.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1226,7 +1226,7 @@
   function positionNXCard(anchor) {
     if (!wrap || !anchor) return;
     const r = anchor.getBoundingClientRect();
-    const width = Math.min(348, Math.max(240, innerWidth - 16));
+    const width = Math.min(380, Math.max(240, innerWidth - 16));
     const left = Math.max(8, Math.min(innerWidth - width - 8, r.left));
     const below = r.bottom + 10;
     const above = r.top - 10;
@@ -1275,7 +1275,7 @@
         wrap.style.display = openUI ? 'flex' : 'none';
         if (openUI) {
           wrap.style.left = '8px'; wrap.style.right = 'auto'; wrap.style.top = '58px';
-          wrap.style.width = Math.min(348, innerWidth - 16) + 'px';
+          wrap.style.width = Math.min(380, innerWidth - 16) + 'px';
           wrap.style.alignItems = 'stretch';
           if (cardEl) cardEl.style.maxHeight = Math.max(160, innerHeight - 70) + 'px';
         }
@@ -1342,12 +1342,13 @@
     close: 'M18 6L6 18 M6 6l12 12'
   };
   const TABS = [
-    { id: 'overview', label: 'Geral' },
-    { id: 'stream', label: 'Streaming' },
-    { id: 'media', label: 'Mídia' },
-    { id: 'controls', label: 'Controles' },
-    { id: 'region', label: 'Região' },
-    { id: 'advanced', label: 'Avançado' }
+    { id: 'overview', label: 'Início', desc: 'Resumo da sessão e acesso rápido' },
+    { id: 'stream', label: 'Streaming', desc: 'Qualidade, conexão e imagem' },
+    { id: 'audio', label: 'Áudio', desc: 'Volume, equalizador e reprodução' },
+    { id: 'voice', label: 'Voz e acessórios', desc: 'Microfone e vibração' },
+    { id: 'controls', label: 'Controles', desc: 'Entrada, gamepad e toque' },
+    { id: 'region', label: 'Rede e região', desc: 'Servidores e disponibilidade' },
+    { id: 'advanced', label: 'Sistema', desc: 'Diagnóstico e ferramentas' }
   ];
   const PRESETS = [
     { name: 'Máximo', res: 'hq', br: 'auto', sub: 'Melhor imagem' },
@@ -1612,6 +1613,20 @@
   // ----- Abas -----
   const TAB_BUILDERS = {
     overview: function (root) {
+      const intro = mk('div','font-size:19px;font-weight:750;letter-spacing:-.025em;margin:0 0 3px','Central de controle');
+      root.appendChild(intro);
+      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:16px','Escolha o que deseja ajustar. Recursos avançados ficam dentro de cada área.'));
+      const nav = mk('div','display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:18px');
+      TABS.filter(function (t) { return t.id !== 'overview'; }).forEach(function (t) {
+        const btn = mk('button','all:unset;box-sizing:border-box;cursor:pointer;min-height:95px;padding:13px 12px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;border-radius:13px;background:rgba(255,255,255,.045);border:1px solid '+C.line+';color:'+C.text+';-webkit-tap-highlight-color:transparent');
+        btn.setAttribute('aria-label','Abrir '+t.label);
+        btn.appendChild(ico(ICONS[t.id] || ICONS.advanced,20));
+        btn.appendChild(mk('span','font-size:13px;font-weight:700',t.label));
+        btn.appendChild(mk('span','font-size:10.5px;line-height:1.3;color:'+C.dim,t.desc));
+        btn.addEventListener('click',function (e) { e.stopPropagation(); setTab(t.id); });
+        nav.appendChild(btn);
+      });
+      root.appendChild(nav);
       const ban = mk('div', 'display:flex;align-items:center;gap:11px;padding:12px;border-radius:12px;border:1px solid ' + C.line + ';background:' + C.panel);
       const bdot = mk('span', 'width:10px;height:10px;border-radius:50%;flex:0 0 auto');
       const btxt = mk('div', 'min-width:0;flex:1');
@@ -2043,6 +2058,27 @@
     }
   };
 
+  // Páginas temáticas reutilizam os controles originais sem duplicar suas rotinas.
+  const buildLegacyMedia = TAB_BUILDERS.media;
+  const buildLegacyControls = TAB_BUILDERS.controls;
+  TAB_BUILDERS.audio = function (root) {
+    const temp = document.createElement('div'); buildLegacyMedia(temp);
+    if (temp.firstElementChild) root.appendChild(temp.firstElementChild);
+  };
+  TAB_BUILDERS.voice = function (root) {
+    const temp = document.createElement('div'); buildLegacyControls(temp);
+    if (temp.children[2]) root.appendChild(temp.children[2]);
+  };
+  TAB_BUILDERS.stream = (function (original) { return function (root) {
+    original(root);
+    const temp = document.createElement('div'); buildLegacyMedia(temp);
+    Array.from(temp.children).slice(1).forEach(function (node) { root.appendChild(node); });
+  }; })(TAB_BUILDERS.stream);
+  TAB_BUILDERS.controls = function (root) {
+    const temp = document.createElement('div'); buildLegacyControls(temp);
+    Array.from(temp.children).slice(0,2).forEach(function (node) { root.appendChild(node); });
+  };
+
   function setTab(id) {
     if (!TAB_BUILDERS[id]) id = 'overview';
     tabId = id;
@@ -2050,15 +2086,10 @@
   }
 
   function renderTabs() {
-    if (!el.tabBtns) return;
-    TABS.forEach(function (t) {
-      const b = el.tabBtns[t.id];
-      if (!b) return;
-      const on = t.id === tabId;
-      b.style.color = on ? C.accent : C.dim;
-      b.style.borderTop = '2px solid ' + (on ? C.accent : 'transparent');
-      b.setAttribute('aria-selected', on ? 'true' : 'false');
-    });
+    if (!el.navTitle) return;
+    const current = TABS.find(function (t) { return t.id === tabId; }) || TABS[0];
+    el.navTitle.textContent = current.label;
+    if (el.navBack) el.navBack.style.visibility = tabId === 'overview' ? 'hidden' : 'visible';
   }
 
   function renderBody(resetScroll) {
@@ -2095,7 +2126,7 @@
     wrap = mk('div', [
       'position:fixed', 'right:12px', 'top:12px',
       'z-index:' + ZBASE, 'pointer-events:none',
-      'width:348px', 'max-width:calc(100vw - 16px)',
+      'width:380px', 'max-width:calc(100vw - 16px)',
       'display:flex', 'flex-direction:column', 'align-items:flex-end',
       'font:12px/1.5 ' + UI_FONT, 'color:' + C.text, 'text-align:left'
     ].join(';'));
@@ -2126,7 +2157,7 @@
     cardEl = mk('div', [
       'pointer-events:auto', 'display:none', 'flex-direction:column', 'position:relative', 'margin-top:6px',
       'width:100%', 'box-sizing:border-box', 'overflow:hidden',
-      'background:' + C.bg, 'border:1px solid rgba(255,255,255,.12)', 'border-radius:18px',
+      'background:' + C.bg, 'border:1px solid rgba(255,255,255,.10)', 'border-radius:16px',
       'box-shadow:0 20px 56px rgba(0,0,0,.65)',
       '-webkit-backdrop-filter:blur(14px)', 'backdrop-filter:blur(14px)'
     ].join(';'));
@@ -2169,22 +2200,17 @@
       'max-width:90%;overflow:hidden;text-overflow:ellipsis;transition:opacity .18s,transform .18s;box-shadow:0 6px 18px rgba(0,0,0,.5)');
     cardEl.appendChild(el.toast);
 
-    // Barra de abas
-    const bar = mk('div', 'display:flex;flex:0 0 auto;border-top:1px solid ' + C.line + ';background:rgba(0,0,0,.25)');
-    bar.setAttribute('role', 'tablist');
-    el.tabBtns = {};
-    TABS.forEach(function (t) {
-      const b = mk('button', 'all:unset;box-sizing:border-box;flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;' +
-        'gap:3px;padding:8px 2px 9px;cursor:pointer;font-size:10px;font-weight:600;letter-spacing:.01em;' +
-        'border-top:2px solid transparent;color:' + C.dim + ';-webkit-tap-highlight-color:transparent');
-      b.setAttribute('role', 'tab');
-      b.appendChild(ico(ICONS[t.id], 19));
-      b.appendChild(mk('span', 'max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', t.label));
-      b.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); setTab(t.id); });
-      el.tabBtns[t.id] = b;
-      bar.appendChild(b);
-    });
-    cardEl.appendChild(bar);
+    // Navegação contextual: título e retorno ao início, sem seis abas comprimidas.
+    const navBar = mk('div','display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid '+C.line+';background:rgba(255,255,255,.025);flex:0 0 auto');
+    el.navBack = mk('button','all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.055);color:'+C.text);
+    el.navBack.setAttribute('aria-label','Voltar ao início'); el.navBack.appendChild(ico('M15 18l-6-6 6-6',18));
+    el.navBack.addEventListener('click',function (e) { e.stopPropagation(); setTab('overview'); });
+    el.navTitle = mk('span','font-size:13px;font-weight:700;flex:1','Início');
+    navBar.appendChild(el.navBack); navBar.appendChild(el.navTitle);
+    const home = mk('button','all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;width:34px;height:34px;color:'+C.dim);
+    home.title = 'Central de controle'; home.setAttribute('aria-label','Central de controle'); home.appendChild(ico('M3 10l9-7 9 7 M5 9v12h14V9 M9 21v-8h6v8',18));
+    home.addEventListener('click',function (e) { e.stopPropagation(); setTab('overview'); }); navBar.appendChild(home);
+    cardEl.insertBefore(navBar,el.body);
 
     wrap.appendChild(cardEl);
     host.appendChild(wrap);
