@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.5.0
+// @version      4.5.1
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.5.0';
+  const VER = '4.5.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1847,6 +1847,26 @@
     try { return nxHudValidateLayout(JSON.parse(getPref(NX_HUD_LAYOUT_KEY, '{}'))); }
     catch (_) { return nxHudValidateLayout(null); }
   }
+  function nxHudExportLayout() {
+    return JSON.stringify({ format: 'nimboxcloud-hud-v1', layout: nxHudReadLayout() }, null, 2);
+  }
+  function nxHudImportLayout(raw) {
+    if (typeof raw !== 'string' || raw.length > 4096) return false;
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch (_) { return false; }
+    if (!parsed || parsed.format !== 'nimboxcloud-hud-v1' ||
+        !parsed.layout || typeof parsed.layout !== 'object' || Array.isArray(parsed.layout)) return false;
+    const ids = Object.keys(NX_HUD_DEFAULT);
+    if (Object.keys(parsed.layout).length !== ids.length ||
+        !ids.every(function (id) {
+          const pos = parsed.layout[id];
+          return Array.isArray(pos) && pos.length === 2 && pos.every(function (n) {
+            return Number.isFinite(n) && n >= 0 && n <= 100;
+          });
+        })) return false;
+    nxHudSaveLayout(parsed.layout);
+    return true;
+  }
   function nxHudSaveLayout(layout) {
     const clean = nxHudValidateLayout(layout);
     setPref(NX_HUD_LAYOUT_KEY, JSON.stringify(clean));
@@ -1897,6 +1917,22 @@
       toast('Layout de prévia restaurado');
     }, 'ghost');
     outer.appendChild(reset);
+    const exportButton = actBtn('Exportar layout', function () {
+      const value = nxHudExportLayout();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(function () {
+          toast('Layout copiado para a área de transferência');
+        }).catch(function () { window.prompt('Copie o layout JSON:', value); });
+      } else window.prompt('Copie o layout JSON:', value);
+    });
+    outer.appendChild(exportButton);
+    outer.appendChild(actBtn('Importar layout', function () {
+      const value = window.prompt('Cole o layout JSON exportado:');
+      if (value === null) return;
+      if (!nxHudImportLayout(value)) { toast('Layout inválido; nenhuma alteração realizada'); return; }
+      renderBody();
+      toast('Layout importado');
+    }));
     return outer;
   }
   const TAB_BUILDERS = {
@@ -3361,6 +3397,8 @@
     check('linha do tempo com limite de eventos', NX_INPUT_EVENTS_MAX === 30);
     check('layout de HUD tem oito elementos', Object.keys(nxHudReadLayout()).length === 8);
     check('layout de HUD limita coordenadas', nxHudValidateLayout({ a: [999, -5] }).a.join(',') === '95,5');
+    check('layout de HUD exportado tem versão', nxHudExportLayout().includes('nimboxcloud-hud-v1'));
+    check('layout de HUD rejeita importação inválida', nxHudImportLayout('{"format":"unknown"}') === false);
     check('layout de HUD recupera dados inválidos', nxHudValidateLayout({ a: [NaN, 5] }).a.join(',') === NX_HUD_DEFAULT.a.join(','));
     check('controle secundário preservado',
       nxMergeGyroAxes([0, 0, 0.2, 0.1], [], nxGyroTargetIndex() === 0 ? 1 : 0).join(',') === '0,0,0.2,0.1');
