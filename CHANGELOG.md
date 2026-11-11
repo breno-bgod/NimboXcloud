@@ -1,5 +1,12 @@
 # Histórico de alterações
 
+## [3.6.37] — 2026-11-10
+- Versão atual identificada no cabeçalho e no código do userscript `NimboXcloud.user.js`.
+- Documentação alinhada ao nome do arquivo principal, links de instalação e perfil padrão 1080p/Windows.
+- Arquivo legado `xbox-cloud-unlock-ptbr.user.js` removido do repositório.
+- O histórico detalhado das versões 3.6.7 a 3.6.37 não foi reconstruído sem evidências; consultar commits para mudanças intermediárias.
+- Testes reais de streaming, controles e compatibilidade continuam pendentes.
+
 ## [3.6.6] — 2026-11-10
 - Diagnóstico de Pointer Lock, foco, visibilidade, fullscreen, redimensionamento, touch, ponteiro, teclado e conexão de gamepad, ativo no catálogo e na partida.
 - Eventos em buffer circular de até 100 entradas, sem registrar teclas digitadas ou coordenadas exatas (toques agrupados em zonas 4x4).
