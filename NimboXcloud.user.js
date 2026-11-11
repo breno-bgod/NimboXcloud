@@ -2808,7 +2808,7 @@
   nxHudAutoLoadGame();
   // Descoberta xHome: utiliza somente credenciais locais da sessão Xbox autenticada.
   // Não substitui a negociação WebRTC/ICE nem cria uma sessão Remote Play.
-  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p'};
+  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0};
   function nxRemoteGssvToken() {
     try { const v=JSON.parse(localStorage.getItem('xboxcom_xbl_user_info')||'null');
       const t=v && v.tokens && v.tokens['http://gssv.xboxlive.com/']; if(t && t.token) return t.token; } catch (_) {}
@@ -2821,8 +2821,21 @@
       }
     }} catch (_) {} return '';
   }
+  function nxRemoteCancel() {
+    if(!nxRemotePlay.busy) return;
+    nxRemotePlay.requestId++;
+    if(nxRemotePlay.abortController) nxRemotePlay.abortController.abort();
+    nxRemotePlay.abortController=null;nxRemotePlay.busy=false;
+    nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';
+    nxRemotePlay.status='Consulta cancelada';nxRemotePlay.error='';
+    if(tabId==='remote') renderBody();
+  }
   async function nxRemoteDiscover() {
     if(nxRemotePlay.busy) return;
+    const requestId=++nxRemotePlay.requestId;
+    const controller=new AbortController();
+    nxRemotePlay.abortController=controller;
+    const timeout=setTimeout(function(){controller.abort();},15000);
     nxRemotePlay.busy=true;nxRemotePlay.error='';nxRemotePlay.attempts=[];nxRemotePlay.region='';
     // Invalidate stale consoles before any authentication/network request.
     nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.checkedAt=0;
@@ -2833,7 +2846,7 @@
       if(!token) throw new Error('Credencial Xbox GSSV não encontrada. Entre na sua conta Xbox e recarregue.');
       const auth=await fetch('https://xhome.gssv-play-prod.xboxlive.com/v2/login/user',{
         method:'POST',headers:{'Content-Type':'application/json; charset=utf-8'},
-        body:JSON.stringify({offeringId:'xhome',token:token})});
+        body:JSON.stringify({offeringId:'xhome',token:token}),signal:controller.signal});
       if(!auth.ok) throw new Error('Login xHome recusado (HTTP '+auth.status+').');
       const login=await auth.json();
       if(!login.gsToken || !login.offeringSettings || !Array.isArray(login.offeringSettings.regions))
@@ -2843,24 +2856,26 @@
       for(const region of regions) {
         if(!region.baseUri || !/^https:\/\//i.test(region.baseUri)) continue;
         try { const res=await fetch(region.baseUri.replace(/\/$/,'')+'/v6/servers/home?mr=50',{
-          headers:{Authorization:'Bearer '+login.gsToken}});
+          headers:{Authorization:'Bearer '+login.gsToken},signal:controller.signal});
           if(!res.ok) {nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': HTTP '+res.status);continue;}
           const json=await res.json();
           if(!Array.isArray(json.results)) {nxRemotePlay.attempts.push('Resposta sem lista de consoles');continue;}
           nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': '+json.results.length+' console(s)');
           if(json.results.length){found=json.results;nxRemotePlay.region=String(region.name||region.shortName||region.baseUri);break;}
-        } catch (e) {nxRemotePlay.attempts.push('Região indisponível: '+String(e && e.name||'erro'));}
+        } catch (e) {if(controller.signal.aborted) throw e;nxRemotePlay.attempts.push('Região indisponível: '+String(e && e.name||'erro'));}
       }
+      if(requestId!==nxRemotePlay.requestId) return;
       nxRemotePlay.consoles=found.filter(function(c){return c && typeof c.serverId==='string' && c.serverId.length>0;}).map(function(c){return {id:c.serverId,name:String(c.deviceName||c.name||c.serverName||'Xbox'),type:String(c.consoleType||'Xbox'),state:String(c.powerState||c.state||'Unknown')};});
       nxRemotePlay.status=nxRemotePlay.consoles.length?nxRemotePlay.consoles.length+' console(s) encontrado(s)':'Nenhum console vinculado encontrado';
       if(!nxRemotePlay.consoles.some(function(c){return c.id===nxRemotePlay.selectedId;})) nxRemotePlay.selectedId='';
       nxRemotePlay.checkedAt=Date.now();
     } catch(e) {
+      if(requestId!==nxRemotePlay.requestId) return;
       // Never retain a previously discovered console after an auth or network failure.
       nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';
-      nxRemotePlay.error=String(e && e.message||e);nxRemotePlay.status='Falha na consulta';
+      nxRemotePlay.error=controller.signal.aborted?'Tempo limite de 15 segundos excedido.':String(e && e.message||e);nxRemotePlay.status='Falha na consulta';
     }
-    finally {nxRemotePlay.busy=false;if(tabId==='remote')renderBody();}
+    finally {clearTimeout(timeout);if(requestId===nxRemotePlay.requestId){nxRemotePlay.busy=false;nxRemotePlay.abortController=null;if(tabId==='remote')renderBody();}}
   }
   const TAB_BUILDERS = {
     remote: function(root) {
@@ -2868,6 +2883,7 @@
       root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:14px','Consulta seus consoles vinculados usando a autenticação Xbox atual. A transmissão Remote Play ainda não está implementada.'));
       const btn=mk('button','cursor:pointer;padding:10px 14px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.busy?'Consultando…':'Buscar meus consoles');
       btn.disabled=nxRemotePlay.busy;btn.addEventListener('click',function(e){e.stopPropagation();nxRemoteDiscover();});root.appendChild(btn);
+      if(nxRemotePlay.busy){const cancel=mk('button','cursor:pointer;padding:10px 14px;margin-left:8px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,'Cancelar');cancel.addEventListener('click',function(e){e.stopPropagation();nxRemoteCancel();});root.appendChild(cancel);}
       root.appendChild(mk('div','font-size:12px;margin:12px 0;color:'+(nxRemotePlay.error?C.bad:C.dim),nxRemotePlay.error||nxRemotePlay.status));
       if(nxRemotePlay.region) root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:5px','Região xHome: '+nxRemotePlay.region));
       if(nxRemotePlay.checkedAt) root.appendChild(mk('div','font-size:10px;color:'+C.dim+';margin-bottom:8px','Última consulta: '+new Date(nxRemotePlay.checkedAt).toLocaleTimeString()));
