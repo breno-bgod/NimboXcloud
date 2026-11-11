@@ -49,6 +49,18 @@ O NimboXcloud é um userscript independente para a nova experiência de Xbox Clo
 | Filtros simples de imagem | **Manter** | Disponíveis | Preservar opção de restaurar original e medir custo. |
 | Diagnóstico e relatórios | **Manter / simplificar interface** | Disponíveis | Não expor credenciais, cookies, identificadores sensíveis nem dados privados. |
 
+## Funcionalidades aprovadas para estudo e implementação futura
+
+Estas frentes foram solicitadas pelo mantenedor e **não devem ser descritas como prontas**:
+
+| Frente | Objetivo | Estado e próximos passos |
+| --- | --- | --- |
+| Controles virtuais na tela | HUD de botões Xbox por toque, além de teclado virtual e touchpad/mouse; permitir teste em celular e com controle físico | **Planejado / validar base existente**. Inventariar HUD e entradas, definir gerenciador único sem wrappers concorrentes, verificar compatibilidade com novo xCloud e restauração de controles nativos. |
+| Nitidez estilo Clarity Boost | Oferecer aprimoramento visual local ajustável, inspirado na abordagem AMD CAS do Better xCloud, sem depender de APIs exclusivas do Edge | **Planejado / investigar**. Auditar CAS e GPU existentes, estudar implementação de referência e licenças, evitar duplicar filtros, medir FPS, latência, bateria e fallback. Não alegar equivalência ao Clarity Boost nativo. |
+| Multiplayer local (dois controles) | Permitir dois jogadores na mesma sessão quando o jogo e o serviço suportarem | **Planejado / investigar**. Estudar a implementação do Better xCloud e o protocolo de entrada do cliente atual; testar com dois gamepads físicos. O xCloud pode não suportar jogos que exigem segundo perfil Xbox. Não confundir detectar dois controles com entregar dois jogadores. |
+
+**Regra:** incorporar essas frentes no planejamento, mas não apresentá-las como recursos disponíveis ou homologados até haver implementação, testes automatizados e partida real validada.
+
 ## Pendências imediatas de implementação
 
 1. **P0 — Estabilizar testes/CI:** corrigir testes desatualizados sem eliminar cobertura útil; validar `node --check`, `node --test tests/*.test.cjs` e relatório de risco. Última falha de CI observada durante auditoria anterior; consultar a execução atual.
