@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.10.4
+// @version      4.10.5
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.10.4';
+  const VER = '4.10.5';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2110,6 +2110,7 @@
       node.setAttribute('aria-label', 'Mover ' + labels[id] + ' com as setas do teclado');
       node.setAttribute('title', 'Setas: 1% | Shift + setas: 5%');
       let dragStart = null;
+      let pointerStart = null;
       node.addEventListener('keydown', function (e) {
         const moves = { ArrowLeft: [-1, 0], ArrowRight: [1, 0],
           ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -2129,6 +2130,7 @@
         e.preventDefault();
         if (!e.isPrimary) return;
         dragStart = layout[id].slice();
+        pointerStart = [e.clientX, e.clientY];
         node.setPointerCapture(e.pointerId);
         node.style.cursor = 'grabbing';
       });
@@ -2136,8 +2138,10 @@
         if (!node.hasPointerCapture(e.pointerId)) return;
         const bounds = stage.getBoundingClientRect();
         if (!bounds.width || !bounds.height) return;
-        const x = Math.max(5, Math.min(95, Math.round((e.clientX - bounds.left) / bounds.width * 100)));
-        const y = Math.max(5, Math.min(95, Math.round((e.clientY - bounds.top) / bounds.height * 100)));
+        // Move relative to the initial pointer position, preserving the button's grab offset.
+        if (!dragStart || !pointerStart) return;
+        const x = Math.max(5, Math.min(95, Math.round(dragStart[0] + (e.clientX - pointerStart[0]) / bounds.width * 100)));
+        const y = Math.max(5, Math.min(95, Math.round(dragStart[1] + (e.clientY - pointerStart[1]) / bounds.height * 100)));
         layout[id] = [x, y];
         node.style.left = x + '%';
         node.style.top = y + '%';
@@ -2152,6 +2156,7 @@
           node.style.top = dragStart[1] + '%';
         } else nxHudSaveLayout(layout);
         dragStart = null;
+        pointerStart = null;
       }
       node.addEventListener('pointerup', finish);
       node.addEventListener('pointercancel', finish);
