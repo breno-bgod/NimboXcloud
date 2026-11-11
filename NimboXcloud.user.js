@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.18
+// @version      4.11.19
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.18';
+  const VER = '4.11.19';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2169,14 +2169,56 @@
     result.truncated = result.scanned >= 1500;
     return result;
   }
+  const NX_HUD_PREVIEW_SCALE_KEY = 'nx.hud.editor.previewScale.v1';
+  function nxHudPreviewScale() {
+    const value = Number(getPref(NX_HUD_PREVIEW_SCALE_KEY, '100'));
+    return Number.isFinite(value) ? Math.max(60, Math.min(160, Math.round(value))) : 100;
+  }
+  function nxHudSavePreviewScale(value) {
+    const scale = Number(value);
+    if (!Number.isFinite(scale) || scale < 60 || scale > 160) return false;
+    const stored = String(Math.round(scale));
+    try {
+      localStorage.setItem(NX_HUD_PREVIEW_SCALE_KEY, stored);
+      return localStorage.getItem(NX_HUD_PREVIEW_SCALE_KEY) === stored;
+    } catch (_) { return false; }
+  }
   function nxHudEditor() {
     const layout = nxHudReadLayout();
     const outer = mk('div', 'display:flex;flex-direction:column;gap:8px;width:100%');
     const stage = mk('div', 'position:relative;width:100%;aspect-ratio:16/9;min-height:175px;touch-action:none;user-select:none;overflow:hidden;border-radius:10px;border:1px solid ' + C.line + ';background:rgba(80,120,130,.12)');
+    const scaleRow = mk('div', 'display:flex;align-items:center;gap:10px;flex-wrap:wrap');
+    const scaleLabel = mk('label', 'font-size:12px;color:' + C.dim, 'Tamanho da prévia: ' + nxHudPreviewScale() + '%');
+    const scaleInput = document.createElement('input');
+    scaleInput.type = 'range';
+    scaleInput.min = '60';
+    scaleInput.max = '160';
+    scaleInput.step = '5';
+    scaleInput.value = String(nxHudPreviewScale());
+    scaleInput.setAttribute('aria-label', 'Tamanho dos botões na prévia');
+    scaleRow.appendChild(scaleLabel);
+    scaleRow.appendChild(scaleInput);
+    outer.appendChild(scaleRow);
+    const previewNodes = [];
+    scaleInput.addEventListener('change', function () {
+      if (!nxHudSavePreviewScale(scaleInput.value)) {
+        scaleInput.value = String(nxHudPreviewScale());
+        toast('Não foi possível salvar o tamanho da prévia');
+      }
+      const scale = nxHudPreviewScale();
+      scaleLabel.textContent = 'Tamanho da prévia: ' + scale + '%';
+      previewNodes.forEach(function (node) {
+        node.style.width = Math.round(35 * scale / 100) + 'px';
+        node.style.height = Math.round(35 * scale / 100) + 'px';
+      });
+    });
     const labels = { stickL:'L', stickR:'R', a:'A', b:'B', x:'X', y:'Y', lt:'LT', rt:'RT' };
     Object.keys(layout).forEach(function (id) {
       const node = mk('button', 'position:absolute;transform:translate(-50%,-50%);min-width:35px;height:35px;border-radius:50%;border:1px solid ' + C.accent + ';background:rgba(15,28,30,.85);color:' + C.text + ';font-size:11px;font-weight:700;touch-action:none;cursor:grab', labels[id]);
       node.type = 'button';
+      node.style.width = Math.round(35 * nxHudPreviewScale() / 100) + 'px';
+      node.style.height = Math.round(35 * nxHudPreviewScale() / 100) + 'px';
+      previewNodes.push(node);
       node.style.left = layout[id][0] + '%';
       node.style.top = layout[id][1] + '%';
       node.setAttribute('aria-label', 'Mover ' + labels[id] + ' com as setas do teclado');
