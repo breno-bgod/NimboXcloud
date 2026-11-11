@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.9.0
+// @version      4.9.1
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.9.0';
+  const VER = '4.9.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1942,9 +1942,18 @@
     setPref(NX_HUD_GAME_BINDINGS_KEY, JSON.stringify(bindings));
     return true;
   }
+  const NX_HUD_AUTO_KEY = 'nx.hud.editor.autoLoad.v1';
+  function nxHudAutoEnabled() { return getPref(NX_HUD_AUTO_KEY, '0') === '1'; }
+  function nxHudSetAutoEnabled(enabled) {
+    setPref(NX_HUD_AUTO_KEY, enabled ? '1' : '0');
+    nxHudLastRoute = null;
+    nxHudLastAppliedProfile = '';
+    if (enabled) nxHudAutoLoadGame();
+  }
   let nxHudLastRoute = null;
   let nxHudLastAppliedProfile = '';
   function nxHudAutoLoadGame() {
+    if (!nxHudAutoEnabled()) return false;
     const id = nxHudCurrentGameId();
     if (id === nxHudLastRoute) return false;
     nxHudLastRoute = id;
@@ -2505,6 +2514,12 @@
 
       const hudEditorGroup = group('Editor de HUD — prévia arrastável',
         'Arraste os botões para montar um layout e salve perfis locais por jogo. Ainda não altera o HUD do xCloud.');
+      hudEditorGroup.add(setRow('Carregar perfil automaticamente',
+        'Desativado por padrão: evita substituir posições editadas quando você navega entre jogos. Afeta apenas a prévia.',
+        toggle(nxHudAutoEnabled(), function () {
+          nxHudSetAutoEnabled(!nxHudAutoEnabled());
+          renderBody();
+        }, 'Carregar perfil de HUD automaticamente')));
       hudEditorGroup.add(setRow('Posições dos botões', 'Toque ou use o mouse para arrastar os elementos da prévia.',
         nxHudEditor(), true));
       root.appendChild(hudEditorGroup.root);
@@ -3589,6 +3604,7 @@
     check('linha do tempo com limite de eventos', NX_INPUT_EVENTS_MAX === 30);
     check('rota de jogo não assume página genérica', nxHudGameId('../bad') === '');
     const nudgeLayout = nxHudValidateLayout(null);
+    check('HUD auto-carregamento booleano', typeof nxHudAutoEnabled() === 'boolean');
     check('HUD teclado move posição', nxHudNudge(nudgeLayout, 'a', 1, 0) === true);
     check('HUD teclado rejeita botão desconhecido', nxHudNudge(nudgeLayout, 'invalid', 1, 0) === false);
     check('HUD teclado rejeita movimento inválido', nxHudNudge(nudgeLayout, 'a', NaN, 0) === false);
@@ -3732,7 +3748,7 @@
       virtualInputs: nxVirtualInputState(),
       gyroPreview: nxGyroPreviewState(),
       hudEditor: { layout: nxHudReadLayout(), savedProfileNames: Object.keys(nxHudProfilesRead()),
-        currentGameId: nxHudCurrentGameId(), lastRoute: nxHudLastRoute,
+        currentGameId: nxHudCurrentGameId(), autoLoadEnabled: nxHudAutoEnabled(), lastRoute: nxHudLastRoute,
         lastAppliedProfile: nxHudLastAppliedProfile, gameBindings: nxHudGameBindings(), gameplayApplied: false },
       gyroGame: { enabled: nxGyroGameEnabled(), activation: nxGyroActivationMode(),
         blend: nxGyroBlend(), targetGamepadIndex: nxGyroTargetIndex(),
