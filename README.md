@@ -8,6 +8,8 @@
 
 **Mais controle sobre o Xbox Cloud Gaming, diretamente no navegador.**
 
+**Feito para a nova experiência do Xbox Cloud Gaming:** o NimboXcloud tem como alvo **[play.xbox.com](https://play.xbox.com/)**, e não a interface antiga em **xbox.com/play**. Nosso objetivo é levar à nova versão do xCloud recursos de personalização e controle semelhantes aos encontrados em ferramentas desenvolvidas para a experiência anterior, além de explorar novas possibilidades. A compatibilidade com a nova interface continua em desenvolvimento e deve ser validada recurso por recurso.
+
 O **NimboXcloud** é um userscript de código aberto que adiciona uma central de controle ao [Xbox Cloud Gaming](https://play.xbox.com/). Ele permite personalizar a experiência de streaming, ajustar imagem e áudio, organizar controles e acompanhar a qualidade da conexão — sem substituir o serviço oficial.
 
 > **Versão do código verificada:** 4.12.16. Projeto em desenvolvimento: a presença de um recurso no código não garante que funcione em todas as sessões. Funções experimentais estão identificadas abaixo.
