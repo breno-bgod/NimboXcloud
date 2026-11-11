@@ -7,15 +7,15 @@
 
 **[Português](./README.md) · [English](./README_EN.md)**
 
-**Em desenvolvimento (Alpha) para a nova experiência do Xbox Cloud Gaming — [play.xbox.com](https://play.xbox.com/)**
+**Em desenvolvimento para a nova experiência do Xbox Cloud Gaming — [play.xbox.com](https://play.xbox.com/)**
 
-[**Testar versão Alpha**](./NimboXcloud.user.js) · [**Reportar problema**](./../../issues) · [**Plano de desenvolvimento**](./DEVELOPMENT_ROADMAP.md)
+[**Testar versão em desenvolvimento**](./NimboXcloud.user.js) · [**Reportar problema**](./../../issues) · [**Plano de desenvolvimento**](./DEVELOPMENT_ROADMAP.md)
 
 </div>
 
 ---
 
-## Um projeto pessoal em fase Alpha
+## Um projeto pessoal em desenvolvimento
 
 Sou **KReight**, criador e único desenvolvedor do **NimboXcloud**. Este é um projeto pessoal, pequeno e independente, que estou construindo e testando aos poucos. **Ainda não é um produto pronto ou uma versão estável.**
 
@@ -27,7 +27,7 @@ Minha intenção é estudar como levar à nova versão recursos de controle, ace
 
 ## O que estou implementando e testando
 
-| Área | Recursos presentes no código Alpha |
+| Área | Recursos presentes no código |
 | --- | --- |
 | **Streaming e conexão** | Perfis de negociação de qualidade, limites de bitrate, escolha de data center, preferência baseada em latência e opção de priorizar IPv4. |
 | **Imagem** | Perfis visuais, contraste e saturação, ajustes de enquadramento, tela cheia e captura de quadros. |
@@ -46,9 +46,9 @@ Estou construindo o **NX** para reunir configurações e informações em uma ú
 
 Minha prioridade é **preservar os controles nativos**, inclusive o toque e os controles físicos, em vez de substituir indiscriminadamente os mecanismos do site.
 
-## Estado atual: Alpha / testes
+## Estado atual: em desenvolvimento
 
-**Esta é uma versão Alpha de um projeto mantido por uma pessoa.** Existem recursos escritos no código, mas ainda estou verificando integração, compatibilidade e funcionamento em partidas reais. Não considero o sistema finalizado:
+**Este é um projeto em desenvolvimento, mantido por uma pessoa.** Existem recursos escritos no código, mas ainda estou verificando integração, compatibilidade e funcionamento em partidas reais. Não considero o sistema finalizado:
 
 | Situação | Exemplos |
 | --- | --- |
@@ -60,7 +60,7 @@ Minha prioridade é **preservar os controles nativos**, inclusive o toque e os c
 
 Acompanhe as prioridades e os testes pendentes no [plano de desenvolvimento](./DEVELOPMENT_ROADMAP.md). O [histórico de alterações](./CHANGELOG.md) registra as mudanças documentadas.
 
-## Como testar a versão Alpha
+## Como testar o projeto
 
 1. Instale um gerenciador de userscripts compatível, como o **Tampermonkey**.
 2. Abra **[NimboXcloud.user.js](./NimboXcloud.user.js)** e escolha **Raw** para importar o arquivo.
@@ -91,6 +91,6 @@ Este é um projeto **não oficial**, sem afiliação à Microsoft ou ao Xbox. Al
 
 **NimboXcloud — Seu xCloud. Mais controle.**
 
-*Projeto pessoal de KReight · Alpha / em desenvolvimento · Open source · MIT · play.xbox.com*
+*Projeto pessoal de KReight · Em desenvolvimento · Open source · MIT · play.xbox.com*
 
 </div>
