@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-023 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
+**Edição:** PM-024 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
 
 ## Regras permanentes
 
@@ -337,3 +337,12 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `3cfb9a82`: auditoria atualizada.
 - **P02 ainda não encerrado:** HUD-001/002/003/004/005/006 PARCIAIS, HUD-007 NÃO TESTADO, AUD-02 ABERTA. Falta compatibilidade comprovada com HUD real, reaplicação em remontagem e associação de perfis com HUD nativo.
 - **P01:** implementação parcial e validação real pendentes. **P00, P03–P07:** inalterados.
+
+
+## P02 — sincronização automática de HUD (2026-11-11)
+- `2ef9c7a8`: v4.11.22 sincroniza perfil por jogo, layout, escala e remount de elementos nativos pelo monitor SPA existente.
+- `5efbe97b`: regressão automatizada escrita para sincronização.
+- `10f6a803`: auditoria P02 atualizada.
+- **Código de sincronização e autoaplicação de perfis: implementado**, sujeito à identificação estrita dos controles e às flags opt-in.
+- **P02 aceite final pendente:** HUD-002/003/004/005/007 exigem comprovação no xCloud real; AUD-02 aberta. Não declarar HUD jogável validado sem sessão real.
+- **P01 e demais pacotes:** sem mudança de status.
