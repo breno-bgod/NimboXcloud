@@ -233,3 +233,10 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Atualizado teste de criação para três chamadas (login, play, state), mais um teste de estado terminal `Failed`; 22 cenários escritos no total. Parse integral JavaScript via `new Function` PASS; testes Node/CI não confirmados.
 - Fonte técnica: https://github.com/Geocld/XStreaming/blob/main/docs/3.Stream.md, seção 3.2. Implementação própria, sem copiar código de terceiros.
 - PENDENTE: integração WebRTC real (SDP/ICE, RTCPeerConnection, render de vídeo/áudio, canais de controle/input, keepalive, encerramento DELETE), testes autenticados e validação CI. Nenhuma conexão jogável demonstrada.
+
+## 2026-11-11 — xHome: negociação SDP experimental via WebRTC
+- Commits `8ffb9741baa0103c006587f338be65e7cabc8c27` e `0c0481b3b0264d34bb8d5050e988ed390a70fbd1`.
+- Depois do estado `Provisioned`, se RTCPeerConnection estiver disponível: cria peer isolado, transceivers recvonly áudio/vídeo e datachannel input, gera offer SDP, envia POST `/v5/sessions/home/{sessionId}/sdp` com configuração de canais e busca GET `/sdp` até obter `exchangeResponse` com SDP answer. Aplica `setRemoteDescription` e sinaliza `sdp-ready` (não equivale a conectado).
+- Limpeza de peer em cancelamento/falha. Adicionado teste mockado de oferta e resposta SDP, total 23 cenários escritos. Parse do userscript via `new Function` PASS; execução dos testes Node e conexão Xbox real não confirmadas.
+- Fonte técnica: https://github.com/Geocld/XStreaming/blob/main/docs/3.Stream.md, seções 3.4–3.7. Implementação própria, sem copiar código AGPL.
+- PENDENTE para jogabilidade: ICE candidates (POST/GET `/ice`), monitoramento de estado da conexão, renderização vídeo/áudio, canais de entrada, keepalive e encerramento de sessão; testes autenticados em Chrome/Edge e CI.
