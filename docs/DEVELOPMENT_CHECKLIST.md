@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-031 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
+**Edição:** PM-032 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.18; P02 HUD prioritário
 
 ## Regras permanentes
 
@@ -397,3 +397,10 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `12f749b2`: testes estáticos de perfis; `9b671e57`: auditoria atualizada.
 - **MEDIA-003:** código implementado, homologação pendente. **MEDIA-001/002:** código parcial, revisão e testes pendentes. **MEDIA-004..006:** pendentes. **AUD-04:** aberta.
 - Verificação sintática JS concluída; suíte Node completa e testes reais não executados.
+
+
+## P04 — Tela cheia e economia visual (2026-11-11)
+- `f8edfa9b` v4.12.4: MEDIA-004 controle fullscreen e enquadramento reversível; MEDIA-006 suspensão de filtros locais com aba oculta e reaplicação ao voltar.
+- `f9bfd0e5`: testes estáticos; `3e05ff6a`: auditoria atualizada.
+- **MEDIA-004/006:** implementação de código concluída, homologação pendente. **MEDIA-005:** revisão de áudio adiada para a etapa final. **AUD-04:** aberta.
+- Sintaxe JS verificada; suíte Node completa e testes reais não executados nesta execução.
