@@ -100,3 +100,25 @@ test('discovery request rejects redirects while sending bearer token',async()=>{
   assert.equal(calls[1].opts.redirect,'error');
   assert.equal(api.state.consoles.length,0);
 });
+
+test('cancel during region fetch: late console list is ignored',async()=>{
+  let resolveRegion;
+  let n=0;
+  const api=harness(async()=>{
+    n++;
+    if(n===1)return ok(login);
+    return new Promise(resolve=>{resolveRegion=resolve;});
+  });
+  const pending=api.discover();
+  // Allow the login response to resolve and region discovery to start.
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(n,2);
+  api.cancel();
+  resolveRegion(ok({results:[{serverId:'late-console',deviceName:'Late Xbox'}]}));
+  await pending;
+  assert.equal(api.state.status,'Consulta cancelada');
+  assert.equal(api.state.consoles.length,0);
+  assert.equal(api.state.region,'');
+  assert.equal(api.state.checkedAt,0);
+});
