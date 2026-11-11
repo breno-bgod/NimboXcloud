@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.7.2
+// @version      3.7.3
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.7.2';
+  const VER = '3.7.3';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1307,6 +1307,21 @@
     return null;
   }
 
+  function nxNativeToolbarOpen(anchor) {
+    if (!anchor || !anchor.parentElement) return false;
+    // O menu compacto pode manter um botão visível enquanto oculta o resto da barra.
+    // Exigir pelo menos dois controles NATIVOS visíveis no mesmo grupo.
+    const parent = anchor.parentElement;
+    const buttons = Array.from(parent.querySelectorAll('button,[role="button"]')).filter(function (b) {
+      if (b === nxLibraryButton || b.id === 'nimboxcloud-library-button' || b.closest('#__xcu_panel__')) return false;
+      const r = b.getBoundingClientRect();
+      if (r.width < 20 || r.height < 20 || r.left < 0 || r.right > innerWidth ||
+          r.top < 0 || r.bottom > innerHeight) return false;
+      const st = getComputedStyle(b);
+      return st.display !== 'none' && st.visibility !== 'hidden' && Number(st.opacity) >= 0.15;
+    });
+    return buttons.length >= 2;
+  }
   function toolbarExpanded(anchor) {
     if (!anchor || !anchor.isConnected) return false;
     let n = anchor;
@@ -1356,10 +1371,11 @@
         if (!nxLibraryButton) nxLibraryButton = buildLibraryButton();
         if (nxLibraryButton.parentElement !== gameAnchor.parentElement ||
             nxLibraryButton.previousElementSibling !== gameAnchor) gameAnchor.after(nxLibraryButton);
-        const expanded = toolbarExpanded(gameAnchor);
+        const expanded = toolbarExpanded(gameAnchor) && nxNativeToolbarOpen(gameAnchor);
         nxLibraryButton.style.display = expanded ? 'inline-flex' : 'none';
         nxLibraryButton.title = 'Abrir NimboXcloud durante a partida';
         // O botão NX deve recolher junto com a barra nativa. Painel aberto permanece acessível.
+        if (!expanded && openUI) { openUI = false; if (cardEl) cardEl.style.display = 'none'; }
         wrap.style.display = openUI ? 'flex' : 'none';
         if (pillEl) pillEl.style.display = 'none';
         if (openUI) positionNXCard(nxLibraryButton);
@@ -2594,10 +2610,7 @@
       syncNXPlacement();
     } catch (e) { S.lastErr = 'NX tick: ' + String(e && e.message || e); }
 
-    // Um dialogo do xCloud nao pode esconder a interface do NimboXcloud.
-    // A visibilidade depende somente da acao do usuario. A exibição da pílula
-    // (oculta na biblioteca quando o botão da barra está visível) é decidida
-    // exclusivamente por syncNXPlacement; aqui só garantimos que ela seja clicável.
+    // Não reabrir o painel quando a barra nativa do xCloud estiver recolhida.
     if (cardEl) cardEl.style.display = openUI ? 'flex' : 'none';
     if (pillEl) {
       pillEl.style.opacity = '1';
