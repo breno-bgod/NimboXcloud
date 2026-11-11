@@ -185,3 +185,9 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Validações: revisão estática de arquivos de teste e do userscript; nenhum teste Node executado nesta execução, nenhum teste de navegador ou Xbox.
 - Bloqueio: conector disponível não oferece listagem geral de workflow runs por push e os arquivos do GitHub não foram materializados no container nesta execução.
 - Próxima tarefa concreta: obter execução GitHub Actions por push (ou executar arquivos em Node local após materialização), corrigir falhas dos oito testes e registrar logs reais. Critério: oito testes PASS e `node --check` PASS; depois seguir para handshake xHome e sessão.
+
+## 2026-11-11 — xHome: cancelamento durante descoberta regional
+- HEAD inicial `f688126367cc2aaf09480c6567b89442cd87c86c`; commits de teste `b623c6d57b0e67c8d18b52d1cb23d6626af13cfa` e `66ee85ed415dde65cc1f189170c574a116ad7f28`; HEAD final será commit de documentação.
+- `tests/xhome-discovery.test.cjs`: adicionado nono cenário que aguarda explicitamente início da requisição regional, cancela e libera uma resposta atrasada, validando que consoles/região/horário não reaparecem. Handshake por Promise substitui dependência frágil de microtasks.
+- Validação: revisão estática do teste. `node -v` local reportou v22.16.0, mas raw.githubusercontent.com continua inacessível por DNS; não foi possível executar os testes Node com arquivos do repositório neste ambiente. Sem validação real Chrome/Edge, console ou sessão WebRTC.
+- Próxima tarefa: verificar resultados do workflow de CI pelo GitHub Actions e corrigir quaisquer falhas dos nove testes; em seguida mapear com fonte verificável a negociação de sessão xHome e sua integração com mídia/controles. Critério: testes verdes comprovados antes de marcar a etapa concluída.
