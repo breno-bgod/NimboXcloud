@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.21
+// @version      4.12.22
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.21';
+  const VER = '4.12.22';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3363,6 +3363,18 @@
         setPref(LS_AUDIO_FX, profile.value === 'original' ? '0' : '1'); applyAudioProcessing(); renderBody();
       });
       g1.add(setRow('Perfil de áudio', 'FPS, corrida, cinema, música, diálogos e personalizado.', profile, true));
+      g1.add(setRow('Ativar audio','Executa AudioContext.resume por clique direto. Necessario em navegadores com bloqueio de reproducao automatica.',
+        actBtn('Ativar processamento',function(){
+          setPref(LS_AUDIO_FX,'1');
+          applyAudioProcessing();
+          if(nxAudioGraph){
+            Promise.resolve(nxAudioGraph.ctx.resume()).then(function(){
+              toast(nxAudioGraph.ctx.state==='running'?'Audio ativo':'Audio ainda suspenso');
+              renderBody();
+            }).catch(function(e){S.lastErr='Audio: '+String(e&&e.message||e);renderBody();});
+          }else{toast('Fluxo de audio indisponivel');renderBody();}
+        },'ghost')));
+
       const eq = mk('div', 'display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;width:100%');
       const values = getAudioBands();
       [32,64,125,250,500,1000,2000,4000,8000,16000].forEach(function (hz,i) {
@@ -3386,7 +3398,7 @@
       g1.add(setRow('Balanço L/R','Esquerda (-100), centro (0), direita (+100).',balance,true));
       g1.add(setRow('Áudio original','Desativa os efeitos e mantém a reprodução sem equalização.',actBtn('Restaurar áudio original',function () { setPref(LS_AUDIO_FX,'0'); setPref(LS_AUDIO_PRESET,'original'); applyAudioProcessing(); renderBody(); },'ghost')));
       const diagnosis = setRow('Diagnóstico','Estado da reprodução e do processamento.',mk('span','font-size:11px','Áudio local'));
-      g1.add(diagnosis); liveDesc(diagnosis,function () { const m = activeStreamAudio(); return !m ? 'Fluxo não detectado' : (m.paused ? 'Pausado' : 'Reproduzindo') + ' · ' + (m.muted ? 'Mudo' : Math.round(m.volume*100)+'%') + ' · ' + (nxAudioGraph && nxAudioGraph.media === m ? 'Web Audio conectado' : 'Sem filtros'); });
+      g1.add(diagnosis); liveDesc(diagnosis,function () { const m = activeStreamAudio(); return !m ? 'Fluxo não detectado' : (m.paused ? 'Pausado' : 'Reproduzindo') + ' · ' + (m.muted ? 'Mudo' : Math.round(m.volume*100)+'%') + ' · ' + (nxAudioGraph && nxAudioGraph.media === m ? 'Web Audio: '+nxAudioGraph.ctx.state+(getPref(LS_AUDIO_FX,'0')==='1'?' · EQ ligado':' · bypass') : 'Web Audio desconectado'); });
       g1.add(setRow('Áudio espacial','Depende do jogo, sistema e dispositivo; sem controle universal.',mk('span','font-size:11px','Sistema / jogo')));
       g1.add(setRow('Chat x jogo','Controle independente exige fluxos separados do xCloud.',mk('span','font-size:11px','Não disponível em fluxo misto')));
       root.appendChild(g1.root);
@@ -5766,7 +5778,14 @@ void main(){
   }
   function applyAudioProcessing() {
     const media = activeStreamAudio(); if (!media) return;
-    if (nxAudioGraph && nxAudioGraph.media !== media) nxAudioGraph = nxAudioGraphs.get(media) || null;
+    if(nxAudioGraph && nxAudioGraph.media!==media){
+      const previous=nxAudioGraph;
+      // O MediaElementSource continua ligado ao destino para nao silenciar a fonte antiga.
+      previous.filters.forEach(function(node){node.gain.value=0;});
+      previous.dialogue.gain.value=0;
+      previous.bypass.gain.value=1;previous.compressed.gain.value=0;previous.limited.gain.value=0;
+      nxAudioGraph=nxAudioGraphs.get(media)||null;
+    }
     const enabled = getPref(LS_AUDIO_FX,'0') === '1';
     if (!enabled && !nxAudioGraph) return;
     try {
@@ -5813,17 +5832,21 @@ void main(){
       g.limited.gain.value = limit ? 1 : 0;
       g.compToLimit.gain.value = limit && compress ? 1 : 0;
       g.directToLimit.gain.value = limit && !compress ? 1 : 0;
-      Promise.resolve(g.ctx.resume()).catch(function () {});
+      Promise.resolve(g.ctx.resume()).then(function(){
+        if(g.ctx.state!=='running')S.lastErr='Audio suspenso: toque em Ativar audio no painel NX';
+      }).catch(function(e){S.lastErr='Audio suspenso: '+String(e&&e.message||e);});
     } catch (e) { S.lastErr = 'Web Audio: '+String(e && e.name || e); }
   }
   function activeStreamAudio() {
-    const media = Array.from(document.querySelectorAll('video,audio'));
-    const candidates = media.filter(function (v) {
-      const stream = v.srcObject;
-      if (stream && typeof stream.getAudioTracks === 'function') return stream.getAudioTracks().length > 0;
+    const media=Array.from(document.querySelectorAll('video,audio'));
+    const candidates=media.filter(function(v){
+      const stream=v.srcObject;
+      if(stream && typeof stream.getAudioTracks==='function')return stream.getAudioTracks().some(function(t){return t.readyState==='live';});
       return !!(v.currentSrc && v.currentSrc.startsWith('blob:'));
     });
-    return candidates.find(function (v) { return v.readyState >= 2 && !v.paused; }) || candidates[0] || null;
+    const playable=candidates.filter(function(v){return !v.paused && !v.ended && v.readyState>=2;});
+    return playable.find(function(v){return v.srcObject && v.srcObject.getAudioTracks && v.srcObject.getAudioTracks().length;})
+      || playable[0] || candidates[0] || null;
   }
   function activeStreamVideo() {
     const videos = Array.from(document.querySelectorAll('video'));
@@ -5892,8 +5915,7 @@ void main(){
         const stored = Number(getPref(LS_VOLUME, '1'));
         if (Number.isFinite(stored)) audio.volume = Math.max(0, Math.min(1, stored));
       }
-      if (audio && nxAudioGraph && nxAudioGraph.media !== audio) applyAudioProcessing();
-      if (audio && getPref(LS_AUDIO_FX,'0') === '1' && !nxAudioGraph) applyAudioProcessing();
+      if(audio && getPref(LS_AUDIO_FX,'0')==='1' && (!nxAudioGraph || nxAudioGraph.media!==audio))applyAudioProcessing();
       const video = activeStreamVideo();
       if(getPref(LS_NX_GPU,'0')==='1' && video)nxGpuStart(video);
       else if(nxGpu)nxGpuStop();
