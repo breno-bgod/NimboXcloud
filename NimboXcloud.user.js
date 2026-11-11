@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.14
+// @version      4.11.15
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.14';
+  const VER = '4.11.15';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2176,6 +2176,7 @@
       node.setAttribute('title', 'Setas: 1% | Shift + setas: 5%');
       let dragStart = null;
       let pointerStart = null;
+      let activePointerId = null;
       node.addEventListener('keydown', function (e) {
         const moves = { ArrowLeft: [-1, 0], ArrowRight: [1, 0],
           ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -2197,9 +2198,9 @@
         }
       });
       node.addEventListener('pointerdown', function (e) {
+        if (!e.isPrimary || activePointerId !== null) return;
         e.stopPropagation();
         e.preventDefault();
-        if (!e.isPrimary) return;
         dragStart = layout[id].slice();
         pointerStart = [e.clientX, e.clientY];
         try { node.setPointerCapture(e.pointerId); }
@@ -2209,10 +2210,11 @@
           pointerStart = null;
           return;
         }
+        activePointerId = e.pointerId;
         node.style.cursor = 'grabbing';
       });
       node.addEventListener('pointermove', function (e) {
-        if (!node.hasPointerCapture(e.pointerId)) return;
+        if (activePointerId !== e.pointerId || !node.hasPointerCapture(e.pointerId)) return;
         const bounds = stage.getBoundingClientRect();
         if (!bounds.width || !bounds.height) return;
         // Move relative to the initial pointer position, preserving the button's grab offset.
@@ -2224,8 +2226,10 @@
         node.style.top = y + '%';
       });
       function finish(e) {
-        if (!node.hasPointerCapture(e.pointerId)) return;
-        node.releasePointerCapture(e.pointerId);
+        if (activePointerId !== e.pointerId) return;
+        // Finaliza o estado antes de liberar a captura: lostpointercapture pode disparar logo depois.
+        activePointerId = null;
+        if (node.hasPointerCapture(e.pointerId)) node.releasePointerCapture(e.pointerId);
         node.style.cursor = 'grab';
         if (e.type === 'pointercancel' && dragStart) {
           layout[id] = dragStart;
@@ -2246,7 +2250,8 @@
       node.addEventListener('pointercancel', finish);
       node.addEventListener('lostpointercapture', function () {
         // Perda inesperada de captura não deve persistir um arrasto incompleto.
-        if (!dragStart) return;
+        if (!dragStart || activePointerId === null) return;
+        activePointerId = null;
         layout[id] = dragStart.slice();
         node.style.left = dragStart[0] + '%';
         node.style.top = dragStart[1] + '%';
