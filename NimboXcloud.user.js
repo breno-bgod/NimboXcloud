@@ -2854,8 +2854,11 @@
       const regions=login.offeringSettings.regions.slice().sort(function(a,b){return Number(!!b.isDefault)-Number(!!a.isDefault);});
       let found=[];
       for(const region of regions) {
-        if(!region.baseUri || !/^https:\/\//i.test(region.baseUri)) continue;
-        try { const res=await fetch(region.baseUri.replace(/\/$/,'')+'/v6/servers/home?mr=50',{
+        // Do not send the xHome bearer token to an untrusted origin from a malformed region response.
+        let regionOrigin;
+        try { const u=new URL(region.baseUri);if(u.protocol!=='https:' || u.username || u.password || !/(^|\\.)xboxlive\\.com$/i.test(u.hostname)) {nxRemotePlay.attempts.push('Região ignorada: origem não autorizada');continue;}regionOrigin=u.origin; }
+        catch (_) {nxRemotePlay.attempts.push('Região ignorada: endereço inválido');continue;}
+        try { const res=await fetch(regionOrigin+'/v6/servers/home?mr=50',{
           headers:{Authorization:'Bearer '+login.gsToken},signal:controller.signal});
           if(!res.ok) {nxRemotePlay.attempts.push('Região '+String(region.name||region.shortName||'padrão')+': HTTP '+res.status);continue;}
           const json=await res.json();
