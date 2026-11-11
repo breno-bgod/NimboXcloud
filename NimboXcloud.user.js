@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.6.45
+// @version      3.6.46
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.6.45';
+  const VER = '3.6.46';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2455,6 +2455,7 @@
   }
   // Respeita o pedido de áudio feito pelo próprio xCloud. Não inicia chat nem cria conexão.
   const nxVoiceTracks = new Set();
+  let nxMicDiagnosticRequest = false;
   let nxPttHeld = false;
   function applyVoiceMute() {
     const allowed = getPref(LS_MIC_MUTE, '0') !== '1' && (getPref(LS_MIC_PTT, '0') !== '1' || nxPttHeld);
@@ -2474,7 +2475,7 @@
     const routed = function (constraints) {
       const selected = getPref(LS_MIC_DEVICE, '');
       const enabled = getPref(LS_MIC_ENABLED, '0') === '1';
-      if (!enabled || !constraints || !constraints.audio) return original(constraints);
+      if (nxMicDiagnosticRequest || !enabled || !constraints || !constraints.audio) return original(constraints);
       const audio = constraints.audio === true ? {} : Object.assign({}, constraints.audio);
       // A escolha do usuário substitui somente o dispositivo, mantendo demais opções do site.
       if (selected) audio.deviceId = { ideal: selected };
@@ -2489,7 +2490,7 @@
         if (selected && settings.deviceId && settings.deviceId !== selected) {
           S.micStatus = 'O navegador escolheu outro microfone; dispositivo solicitado indisponível.';
         } else {
-          S.micStatus = 'Captura solicitada pelo xCloud com o microfone selecionado. Envio de voz ao jogo não verificado.';
+          S.micStatus = 'Captura de áudio iniciada com as preferências NX. Chat de voz não confirmado.';
         }
         return stream;
       });
@@ -2556,7 +2557,10 @@
         autoGainControl: getPref(LS_MIC_AGC, '1') === '1'
       };
       if (deviceId) constraints.deviceId = { ideal: deviceId };
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints, video: false });
+      let stream;
+      nxMicDiagnosticRequest = true;
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: constraints, video: false }); }
+      finally { nxMicDiagnosticRequest = false; }
       if (request !== micRequestId || isInGame()) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
       micTestStream = stream;
       await refreshMicDevices();
@@ -2696,6 +2700,14 @@
     const media = activeStreamAudio();
     const sink = getPref(LS_AUDIO_OUTPUT, '');
     if (!media || typeof media.setSinkId !== 'function') { S.lastErr = 'Seleção de saída não suportada neste navegador'; return; }
+    if (nxAudioGraph && nxAudioGraph.media === media) {
+      if (typeof nxAudioGraph.ctx.setSinkId === 'function') {
+        Promise.resolve(nxAudioGraph.ctx.setSinkId(sink || '')).catch(function (e) { S.lastErr = 'Saída Web Audio: ' + String(e && e.name || e); });
+      } else {
+        S.lastErr = 'Troca de saída indisponível com equalizador ativo neste navegador';
+      }
+      return;
+    }
     Promise.resolve(media.setSinkId(sink)).catch(function (e) { S.lastErr = 'Saída de áudio: ' + String(e && e.name || e); });
   }
   function applyAudioProcessing() {
@@ -2704,7 +2716,10 @@
     const vals = [LS_AUDIO_BASS, LS_AUDIO_MID, LS_AUDIO_TREBLE].map(function (k) { return Number(getPref(k, '0')) || 0; });
     const compress = getPref(LS_AUDIO_COMP, '0') === '1';
     if (!nxAudioGraph && vals.every(function (v) { return v === 0; }) && !compress) return;
-    if (nxAudioGraph && nxAudioGraph.media !== media) { S.lastErr = 'Processamento associado a outro elemento; recarregue para trocar o fluxo'; return; }
+    if (nxAudioGraph && nxAudioGraph.media !== media) {
+      nxAudioGraph.ctx.close().catch(function () {});
+      nxAudioGraph = null;
+    }
     try {
       if (!nxAudioGraph) {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -2720,6 +2735,10 @@
         treble.connect(dry); treble.connect(compressor); compressor.connect(wet);
         dry.connect(ctx.destination); wet.connect(ctx.destination);
         nxAudioGraph = { media: media, ctx: ctx, bass: bass, mid: mid, treble: treble, dry: dry, wet: wet };
+        const sink = getPref(LS_AUDIO_OUTPUT, '');
+        if (sink && typeof ctx.setSinkId === 'function') {
+          Promise.resolve(ctx.setSinkId(sink)).catch(function (e) { S.lastErr = 'Saída Web Audio: ' + String(e && e.name || e); });
+        } else if (sink) S.lastErr = 'Equalizador usa saída padrão: seleção de saída Web Audio indisponível';
       }
       nxAudioGraph.bass.gain.value = vals[0]; nxAudioGraph.mid.gain.value = vals[1]; nxAudioGraph.treble.gain.value = vals[2];
       nxAudioGraph.dry.gain.value = compress ? 0 : 1; nxAudioGraph.wet.gain.value = compress ? 1 : 0;
@@ -2782,6 +2801,7 @@
         const stored = Number(getPref(LS_VOLUME, '1'));
         if (Number.isFinite(stored)) audio.volume = Math.max(0, Math.min(1, stored));
       }
+      if (audio && nxAudioGraph && nxAudioGraph.media !== audio) applyAudioProcessing();
       const video = activeStreamVideo();
       if (video && video !== lastAdjustedVideo) { lastAdjustedVideo = video; applyVideoAdjustments(video); }
     }, 2500);
