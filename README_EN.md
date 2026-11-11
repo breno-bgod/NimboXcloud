@@ -7,15 +7,15 @@
 
 **[Português](./README.md) · [English](./README_EN.md)**
 
-**Alpha / under development for the new Xbox Cloud Gaming experience — [play.xbox.com](https://play.xbox.com/)**
+**Under development for the new Xbox Cloud Gaming experience — [play.xbox.com](https://play.xbox.com/)**
 
-[**Try the Alpha userscript**](./NimboXcloud.user.js) · [**Report an issue**](./../../issues) · [**Development roadmap**](./DEVELOPMENT_ROADMAP.md)
+[**Try the userscript**](./NimboXcloud.user.js) · [**Report an issue**](./../../issues) · [**Development roadmap**](./DEVELOPMENT_ROADMAP.md)
 
 </div>
 
 ---
 
-## A solo project in Alpha
+## A solo project in development
 
 I'm **KReight**, the creator and sole developer of **NimboXcloud**. This is a small, independent personal project that I'm building and testing step by step. **It is not a finished product or a stable release.**
 
@@ -27,7 +27,7 @@ My goal is to explore how to bring comparable control, accessibility, and custom
 
 ## What I'm implementing and testing
 
-| Area | Features currently present in the Alpha code |
+| Area | Features currently present in the code |
 | --- | --- |
 | **Streaming and network** | Video-quality negotiation profiles, bitrate limits, data-center selection, latency-based preferences, and an option to prioritize IPv4. |
 | **Video** | Visual presets, contrast and saturation controls, fit modes, fullscreen, and frame capture. |
@@ -46,9 +46,9 @@ I'm building **NX** to bring settings and diagnostics into one interface. The ai
 
 My priority is **preserving native inputs**, including touch and physical controllers, rather than indiscriminately replacing the website's input systems.
 
-## Current status: Alpha / testing
+## Current status: in development
 
-**This is an Alpha release of a project maintained by one person.** Some features are written in code, but I'm still testing their integration, compatibility, and behavior in real gameplay. The system is not finished:
+**This project is under development and maintained by one person.** Some features are written in code, but I'm still testing their integration, compatibility, and behavior in real gameplay. The system is not finished:
 
 | Status | Examples |
 | --- | --- |
@@ -60,7 +60,7 @@ My priority is **preserving native inputs**, including touch and physical contro
 
 See the [development roadmap](./DEVELOPMENT_ROADMAP.md) for priorities and pending tests, and the [changelog](./CHANGELOG.md) for documented changes.
 
-## How to test the Alpha
+## How to test the project
 
 1. Install a compatible userscript manager such as **Tampermonkey**.
 2. Open **[NimboXcloud.user.js](./NimboXcloud.user.js)** and choose **Raw** to import it.
@@ -91,6 +91,6 @@ This is an **unofficial project**, not affiliated with Microsoft or Xbox. Experi
 
 **NimboXcloud — Your xCloud. More control.**
 
-*KReight's solo project · Alpha / under development · Open source · MIT · play.xbox.com*
+*KReight's solo project · Under development · Open source · MIT · play.xbox.com*
 
 </div>
