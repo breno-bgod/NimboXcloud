@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.14
+// @version      4.12.15
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.14';
+  const VER = '4.12.15';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -268,6 +268,36 @@
     return {state:state,label:label,detail:detail,consoleCompatibility:'não comprovada',offerings:offers,
       sessionState:health.state,videoPlaying:playing,observedAt:new Date().toISOString()};
   }
+  // Matriz de evidências: separa observação local, modificação e confirmação remota.
+  function nxProtocolEvidence() {
+    const nav = navigator, hints = nav.userAgentData || null;
+    const safeHints = hints ? {brands:Array.isArray(hints.brands) ? hints.brands.map(function(b){return {brand:String(b.brand).slice(0,60),version:String(b.version).slice(0,20)};}) : [],
+      mobile:typeof hints.mobile === 'boolean' ? hints.mobile : null,platform:hints.platform || null} : null;
+    const offer = nxOfferingTrace.length ? nxOfferingTrace[nxOfferingTrace.length-1] : null;
+    const play = nxSessionTrace.filter(function(x){return x.stage==='play';}).slice(-1)[0] || null;
+    const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
+    return {
+      schema:'nx-protocol-evidence-v1',
+      observed:{
+        javascriptIdentity:{userAgent:nav.userAgent,platform:nav.platform || null,vendor:nav.vendor || null,
+          clientHints:safeHints,maxTouchPoints:nav.maxTouchPoints || 0,language:nav.language || null},
+        capabilities:{webRTC:typeof RTCPeerConnection === 'function',gamepadAPI:typeof nav.getGamepads === 'function',
+          videoDecoder:typeof VideoDecoder !== 'undefined',secureContext:!!window.isSecureContext},
+        authOffering:offer ? {hostOffering:offer.offering,status:offer.status,at:offer.at} : null,
+        sessionPlay:play ? {status:play.status,method:play.method,at:play.time,elapsedMs:play.ms} : null,
+        video:video ? {readyState:video.readyState,width:video.videoWidth,height:video.videoHeight,paused:video.paused} : null
+      },
+      configured:{profile:nxConsoleLabProfile,identityMode:nxConsoleLabState.identityMode,
+        jsUserAgentChanged:nav.userAgent !== nxConsoleNativeUA,sessionOsRewriteDisabled:nxCompatibilityMode},
+      notObservableFromUserscript:[
+        'HTTP User-Agent e Sec-CH-UA realmente transmitidos pelo navegador',
+        'TLS ClientHello e fingerprint de rede',
+        'Identidade do hardware/firmware Xbox validada pelo servidor',
+        'Reconhecimento ou autorização de catálogo exclusivo de console'
+      ],
+      limitations:'Um nome de modelo ou User-Agent JavaScript nao equivale a identidade de hardware; verificar headers efetivos no DevTools.'
+    };
+  }
   function nxConsoleLabReport() {
     const video = typeof activeStreamVideo === 'function' ? activeStreamVideo() : null;
     const note = (function () { try { return localStorage.getItem(LS_CONSOLE_NOTES) || ''; } catch (_) { return ''; } })();
@@ -281,6 +311,7 @@
       platformExperience: nxPlatformProfile, profileSession: Object.assign({}, nxProfileSessionState),
        compatibility: { enabled: nxCompatibilityMode, identityMode: nxConsoleLabState.identityMode, nativeUserAgentPreserved: navigator.userAgent === nxConsoleNativeUA, sessionOsRewriteDisabled: nxCompatibilityMode, clientHintsOverrideDisabled: nxCompatibilityMode },
        clientHintsExperiment: { enabled: nxClientHintsMode, applied: nxClientHintsApplied, note: 'Somente navigator.userAgentData JS; nao altera cabecalhos HTTP' },
+      protocolEvidence: nxProtocolEvidence(),
       offeringTrace: nxOfferingTrace.slice(), offeringTraceNotice: 'Somente host, metodo, status e duracao; sem credenciais.',
        sessionTrace: nxSessionTrace.slice(),
       sessionHealth: nxSessionHealth(), compatibilityVerdict: nxCompatibilityVerdict(),
@@ -3463,6 +3494,11 @@
       root.appendChild(g3.root);
 
       const lab = group('Plataforma e modo console', 'Perfis Xbox e TV preservam a identidade nativa para iniciar jogos. Tela cheia e orientação horizontal dependem de permissão do navegador e de uma ação do usuário.');
+      lab.add(infoRow('Identidade observada', function () { const e=nxProtocolEvidence(); return e.observed.javascriptIdentity.platform+' · '+(e.configured.jsUserAgentChanged?'UA JS alterado':'UA JS nativo'); }));
+      lab.add(infoRow('Client Hints', function () { const h=nxProtocolEvidence().observed.javascriptIdentity.clientHints; return h ? (h.platform || 'sem plataforma')+' · '+(h.mobile?'mobile':'desktop') : 'Não disponível via JavaScript'; }));
+      lab.add(infoRow('Modelo de hardware Xbox', function () { return 'Não verificável por userscript'; }));
+      lab.add(setRow('Copiar diagnóstico de protocolo', 'Relatório estruturado de identidade, autenticação e sessão. Revise os dados antes de compartilhar.',
+        actBtn('Copiar', function(){copyText(JSON.stringify(nxProtocolEvidence(),null,2),'[NX protocol]','Diagnóstico de protocolo copiado');},'ghost')));
       lab.add(infoRow('Resultado do teste', function () { return nxCompatibilityVerdict().label; }));
       lab.add(infoRow('Detalhes do teste', function () { return nxCompatibilityVerdict().detail; }));
       lab.add(infoRow('Compatibilidade de console', function () { return nxCompatibilityVerdict().consoleCompatibility; }));
