@@ -8,7 +8,7 @@
 
 NimboXcloud is an unofficial, open-source userscript for [Xbox Cloud Gaming](https://play.xbox.com/). It experiments with local region settings, streaming data-center preferences, video quality negotiation, IPv4 filtering, and connection diagnostics, with particular attention to **Android, Samsung DeX, and Windows**. It runs on the official website and **is not an independent cloud gaming service**.
 
-> **Current status:** version **3.6.3**, experimental. Implemented code does not guarantee compatibility with every xCloud release. End-to-end streaming tests on different devices have not yet been documented.
+> **Current status:** version **3.6.37**, experimental. Implemented code does not guarantee compatibility with every xCloud release. End-to-end streaming tests on different devices have not yet been documented.
 
 ## About the developer
 
@@ -29,7 +29,7 @@ NimboXcloud is **open-source software under the MIT License**. You may read, stu
 | Feature | Description |
 | --- | --- |
 | Video profiles | 1080p/Windows default, experimental 1080p HQ/Tizen, and manual 720p |
-| Bitrate | Automatic or optional 5, 8, 10, 12, and 15 Mbps limits |
+| Bitrate | Automatic or configurable limits; higher requested values do not guarantee server delivery |
 | Region | Experimental adjustments to market and territory information |
 | Data center | Preference among streaming regions supported by the script |
 | Connectivity | Optional filtering of IPv6 ICE candidates to prefer IPv4 |
@@ -47,7 +47,7 @@ Microsoft introduced a [new Xbox Cloud Gaming web experience](https://news.xbox.
 ## Installation
 
 1. Install a compatible userscript manager, such as Tampermonkey.
-2. Open [xbox-cloud-unlock-ptbr.user.js](./xbox-cloud-unlock-ptbr.user.js).
+2. Open [xbox-cloud-unlock-ptbr.user.js](./NimboXcloud.user.js).
 3. Use GitHub's **Raw** option to download or import the script.
 4. Enable the script and visit [play.xbox.com](https://play.xbox.com/).
 
