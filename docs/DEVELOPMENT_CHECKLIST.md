@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-018 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.13 com opt-out reversível de Pointer Lock
+**Edição:** PM-019 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.13 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -285,3 +285,12 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `eb313961`: v4.11.13, INPUT-006 limpa estado obsoleto de gamepad quando a leitura nativa falha.
 - `dd923a25`: teste de regressão de estado obsoleto (verificação estática; Node/CI não confirmados).
 - **P01 permanece aberto por código E por validação real**; AUD-01 não aprovada. P02 HUD-001..007/AUD-02 também aberto; P00 e P03..P07 sem mudança.
+
+
+## Prioridade redefinida — P02 HUD (2026-11-11)
+- A pedido do usuário, **P01 pausado até a etapa final**. Não iniciar novos trabalhos de mouse/teclado/gamepad/Pointer Lock agora.
+- **P02 é prioridade ativa**: HUD inclui posicionamento, tamanho, perfis, joystick virtual, safe areas e controles de toque; a prévia atual não altera o HUD jogável do xCloud.
+- `c67a6c0c`: v4.11.14 protege o editor contra perda de captura de ponteiro e avisa explicitamente que se trata de prévia.
+- **P02 restante:** HUD-001/002/005/006 PARCIAIS; HUD-003/004 PENDENTES (integração real); HUD-007 NÃO TESTADO; AUD-02 ABERTA.
+- **P01 pendente para o final:** INPUT-001..006 implementação/aceite parcial; INPUT-007 testes reais; AUD-01.
+- **P00 e P03..P07:** sem alteração de escopo ou conclusão.
