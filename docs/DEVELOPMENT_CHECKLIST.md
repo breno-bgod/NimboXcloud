@@ -166,3 +166,11 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `docs/P00_PROVENANCE.md`: matriz preliminar MIT/AGPL. CORE-006 **EM_ANDAMENTO**; licenças por arquivo ainda pendentes.
 - Auditoria documental: os três arquivos foram publicados; não houve mudança de runtime. CI e testes reais permanecem sem validação.
 - A próxima rodada deve aprofundar CORE-001/002/006 e CORE-005; somente depois fechar AUD-00.
+
+
+## P00 — automação de auditoria estática (2026-11-11)
+- `tools/static-risk-report.cjs` identifica pontos de interceptação global e produz JSON sem credenciais; detecta riscos, não comprova falhas de execução.
+- `tests/static-risk.test.cjs` valida formato e localização das ocorrências; workflow passa a executar `node --check`, testes Node e relatório, com permissões de leitura.
+- Verificação estática independente encontrou substituições de `Element.prototype.requestPointerLock` (linha 1059), `XMLHttpRequest.prototype.send` (1141) e `window.fetch` (693) no baseline v4.11.2. As referências de linha podem mudar.
+- Corrigido falso positivo de igualdade `===` e linhas de comentário no detector.
+- **Estado:** implementado e revisado estaticamente; execução efetiva do Node/GitHub Actions e testes em sessão xCloud ainda não confirmados. AUD-00 permanece aberta.
