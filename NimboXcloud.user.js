@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      3.7.4
+// @version      3.7.5
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '3.7.4';
+  const VER = '3.7.5';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -108,13 +108,15 @@
   // não altera cabeçalhos HTTP, autenticação, tokens, gamepad ou autorização do servidor.
   const nxConsoleNativeUA = navigator.userAgent;
   const nxConsoleLabProfile = (function () {
-    try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off'; return ['off','xbox','windows','smarttv'].includes(p) ? p : 'off'; }
+    try { const p = localStorage.getItem(LS_CONSOLE_LAB) || 'off'; return ['off','xbox','windows','smarttv','xboxone'].includes(p) ? p : 'off'; }
     catch (_) { return 'off'; }
   })();
   const nxConsoleLabState = { profile: nxConsoleLabProfile, applied: false, error: '', nativeUA: nxConsoleNativeUA, startedAt: new Date().toISOString() };
   if (nxConsoleLabProfile !== 'off') {
     try {
-      const ua = nxConsoleLabProfile === 'xbox'
+      const ua = nxConsoleLabProfile === 'xboxone'
+        ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; Xbox; Xbox One) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36 Edge/17.17115'
+        : nxConsoleLabProfile === 'xbox'
         ? nxConsoleNativeUA.replace(/\\sXbox;/g, '') + ' Xbox;'
         : nxConsoleLabProfile === 'smarttv' ? 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 7.0) AppleWebKit/537.36 (KHTML, like Gecko) 94.0.4606.31/7.0 TV Safari/537.36' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0';
       Object.defineProperty(navigator, 'userAgent', { configurable: true, get: function () { return ua; } });
@@ -156,6 +158,7 @@
       pointerFine: !!(window.matchMedia && matchMedia('(any-pointer:fine)').matches),
       fullscreenSupported: !!document.fullscreenEnabled,
       userAgentDataPlatform: navigator.userAgentData ? navigator.userAgentData.platform : null,
+      identityConsistency: { uaContainsXboxOne: navigator.userAgent.includes('Xbox One'), uaContainsXbox: navigator.userAgent.includes('Xbox;'), platformReportsWindows: /Win/.test(navigator.platform || ''), clientHintsPlatform: navigator.userAgentData ? navigator.userAgentData.platform : null },
       platform: navigator.platform || null, language: navigator.language || null,
       hardwareConcurrency: navigator.hardwareConcurrency || null,
       mediaDevices: !!navigator.mediaDevices, mediaCapabilities: !!navigator.mediaCapabilities,
@@ -197,7 +200,7 @@
     };
   }
   function nxConsoleLabSetProfile(profile) {
-    if (!['off','xbox','windows','smarttv'].includes(profile)) return;
+    if (!['off','xbox','windows','smarttv','xboxone'].includes(profile)) return;
     try { localStorage.setItem(LS_CONSOLE_LAB, profile); } catch (_) {}
     // Reiniciar a página é necessário para negociar desde o document-start.
     location.reload();
@@ -2204,7 +2207,7 @@
       lab.add(setRow('Modo console em tela cheia', 'Expande a página inteira mantendo o painel NX acessível. Não altera a autorização ou o sistema operacional.',
         actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'primary')));
       lab.add(setRow('Identidade de teste', 'Padrão é desligado. Teste cada perfil na mesma conta e no mesmo jogo.',
-        chips([{k:'off',label:'Original'},{k:'xbox',label:'Xbox JS'},{k:'windows',label:'Windows JS'},{k:'smarttv',label:'Smart TV'}],
+        chips([{k:'off',label:'Original'},{k:'xbox',label:'Xbox JS'},{k:'xboxone',label:'Xbox One'},{k:'windows',label:'Windows JS'},{k:'smarttv',label:'Smart TV'}],
           nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
       lab.add(setRow('Registrar observação', 'Anote o jogo, se apareceu no catálogo, se iniciou e eventuais mensagens de erro.',
         actBtn('Anotar', function () {
