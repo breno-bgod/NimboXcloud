@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.11.17
+// @version      4.11.18
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.11.17';
+  const VER = '4.11.18';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1856,7 +1856,10 @@
   }
   const NX_HUD_PROFILES_KEY = 'nx.hud.editor.profiles.v1';
   function nxHudProfileName(name) {
-    return typeof name === 'string' && /^[A-Za-zÀ-ÿ0-9 _-]{1,32}$/u.test(name.trim()) ? name.trim() : '';
+    if (typeof name !== 'string') return '';
+    const clean = name.trim();
+    if (['__proto__', 'constructor', 'prototype'].includes(clean.toLowerCase())) return '';
+    return /^[A-Za-zÀ-ÿ0-9 _-]{1,32}$/u.test(clean) ? clean : '';
   }
   function nxHudProfilesRead() {
     try {
@@ -1971,7 +1974,9 @@
     const value = JSON.stringify(bindings);
     try {
       localStorage.setItem(NX_HUD_GAME_BINDINGS_KEY, value);
-      return localStorage.getItem(NX_HUD_GAME_BINDINGS_KEY) === value;
+      const saved = localStorage.getItem(NX_HUD_GAME_BINDINGS_KEY) === value;
+      if (saved) { nxHudLastRoute = null; nxHudLastAppliedProfile = ''; }
+      return saved;
     } catch (_) { return false; }
   }
   function nxHudUnbindGame(gameId) {
@@ -1981,7 +1986,9 @@
     const value = JSON.stringify(bindings);
     try {
       localStorage.setItem(NX_HUD_GAME_BINDINGS_KEY, value);
-      return localStorage.getItem(NX_HUD_GAME_BINDINGS_KEY) === value;
+      const saved = localStorage.getItem(NX_HUD_GAME_BINDINGS_KEY) === value;
+      if (saved) { nxHudLastRoute = null; nxHudLastAppliedProfile = ''; }
+      return saved;
     } catch (_) { return false; }
   }
   const NX_HUD_AUTO_KEY = 'nx.hud.editor.autoLoad.v1';
