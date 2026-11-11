@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.1.0
+// @version      4.2.0
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.1.0';
+  const VER = '4.2.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2237,6 +2237,25 @@
           setPref(NX_GYRO_INVERT_Y_KEY, nxGyroInvertY() ? '0' : '1');
           renderBody();
         }, 'Inverter eixo vertical')));
+      gyroGroup.add(setRow('Enviar giroscópio ao jogo (experimental)',
+        'Desativado por padrão. Exige controle físico padrão e sensor calibrado. Recarrega a página; ative novamente a leitura do sensor após recarregar.',
+        toggle(nxGyroGameEnabled(), function () {
+          setPref(NX_GYRO_GAME_KEY, nxGyroGameEnabled() ? '0' : '1');
+          location.reload();
+        }, 'Ativar giroscópio experimental no jogo')));
+      gyroGroup.add(setRow('Ativação da mira por giroscópio',
+        'LT (gatilho esquerdo) é o padrão; Sempre ativo exige controle físico conectado.',
+        chips([{ k: 'lt', label: 'Segurar LT' }, { k: 'always', label: 'Sempre ativo' }],
+          nxGyroActivationMode(), function (k) {
+            setPref(NX_GYRO_TRIGGER_KEY, k);
+            renderBody();
+          }), true));
+      gyroGroup.add(infoRow('Saída ao jogo', function () {
+        if (!nxGyroGameEnabled()) return 'Desativada';
+        if (!nxInputBridge.installed) return 'Aguardando ponte experimental';
+        const g = nxGyroPreviewState();
+        return g.enabled && g.calibrated && g.receiving ? 'Pronta (controle padrão)' : 'Aguardando sensor e calibração';
+      }));
       gyroGroup.add(infoRow('Eixos virtuais simulados', function () {
         const g = nxGyroPreviewState();
         return g.axisX.toFixed(2) + ' / ' + g.axisY.toFixed(2);
@@ -2842,12 +2861,36 @@
   const nxInputBridge = { enabled: false, installed: false, error: '', transformedReads: 0, nativeReads: 0, fallbacks: 0, lastFallback: '', foreignOverride: false, restored: false };
   const nxOriginalGamepadDescriptor = Object.getOwnPropertyDescriptor(navigator, 'getGamepads');
   const nxNativeGetGamepads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads.bind(navigator) : null;
+  const NX_GYRO_GAME_KEY = 'nx.gyro.gameInput.v1';
+  const NX_GYRO_TRIGGER_KEY = 'nx.gyro.activation.v1';
+  function nxGyroGameEnabled() { return getPref(NX_GYRO_GAME_KEY, '0') === '1'; }
+  function nxGyroActivationMode() { return getPref(NX_GYRO_TRIGGER_KEY, 'lt') === 'always' ? 'always' : 'lt'; }
   function nxInputEnabled() { return getPref(NX_INPUT_APPLY_KEY, '0') === '1'; }
+  function nxGameBridgeRequested() { return nxInputEnabled() || nxGyroGameEnabled(); }
+  function nxGyroGameAxes(buttons) {
+    if (!nxGyroGameEnabled() || !nxGyroPreview.enabled || !nxGyroPreviewState().calibrated ||
+        !nxGyroPreviewState().receiving || document.visibilityState === 'hidden') return null;
+    if (nxGyroActivationMode() === 'lt') {
+      const lt = buttons && buttons[6];
+      if (!lt || !(lt.pressed || Number(lt.value) > 0.5)) return null;
+    }
+    const g = nxGyroPreviewState();
+    return [g.axisX, g.axisY];
+  }
+  function nxMergeGyroAxes(axes, buttons) {
+    const gyro = nxGyroGameAxes(buttons);
+    if (!gyro || axes.length < 4) return axes;
+    const merged = axes.slice();
+    merged[2] = Math.max(-1, Math.min(1, merged[2] + gyro[0]));
+    merged[3] = Math.max(-1, Math.min(1, merged[3] + gyro[1]));
+    return merged;
+  }
   function nxInputBridgeStatus() {
     if (nxInputBridge.installed && navigator.getGamepads !== nxInputBridge.wrapper) {
       nxInputBridge.foreignOverride = true;
       nxInputBridge.installed = false;
       nxInputBridge.enabled = false;
+      setPref(NX_GYRO_GAME_KEY, '0');
       nxInputBridge.error = 'Outro script substituiu a Gamepad API; processamento NimboXcloud suspenso';
       setPref(NX_INPUT_APPLY_KEY, '0');
     }
@@ -2859,6 +2902,7 @@
     nxInputBridge.error = nxInputBridge.lastFallback;
     nxInputBridge.enabled = false;
     setPref(NX_INPUT_APPLY_KEY, '0');
+    setPref(NX_GYRO_GAME_KEY, '0');
     if (nxNativeGetGamepads) {
       try {
         if (nxInputBridge.wrapper && navigator.getGamepads !== nxInputBridge.wrapper) {
@@ -2878,7 +2922,7 @@
     }
   }
   function nxInstallInputBridge() {
-    nxInputBridge.enabled = nxInputEnabled();
+    nxInputBridge.enabled = nxGameBridgeRequested();
     if (!nxInputBridge.enabled || !nxNativeGetGamepads) return;
     if (nxInputBridge.foreignOverride) {
       nxInputBridge.enabled = false;
@@ -2899,9 +2943,11 @@
           const result = Array.from(pads, function (pad) {
             if (!pad || !pad.connected || !pad.axes || !pad.axes.length || pad.mapping !== 'standard') return pad;
             // Apenas eixos padrão dos sticks. Eixos adicionais ficam intactos.
-            const axes = Array.from(pad.axes, function (v, i) {
+            const nativeAxes = Array.from(pad.axes);
+            const profiledAxes = nxInputEnabled() ? nativeAxes.map(function (v, i) {
               return i < 4 ? nxTransformStickAxis(v, i) : v;
-            });
+            }) : nativeAxes;
+            const axes = nxMergeGyroAxes(profiledAxes, pad.buttons);
             // Evita criar um novo objeto se não houver diferença perceptível.
             if (axes.every(function (v, i) { return Object.is(v, pad.axes[i]); })) return pad;
             const output = { id: pad.id, index: pad.index, connected: pad.connected,
@@ -3184,6 +3230,8 @@
     check('eixo virtual positivo limitado', nxGyroAxisPreview(999, 45) === 1);
     check('eixo virtual negativo limitado', nxGyroAxisPreview(-999, 45) === -1);
     check('eixo virtual inválido neutro', nxGyroAxisPreview(NaN, 45) === 0);
+    check('fusão de eixos sem sensor mantém original', nxMergeGyroAxes([0, 0, 0.2, -0.3], []).join(',') === '0,0,0.2,-0.3');
+    check('modo de ativação válido', ['lt', 'always'].includes(nxGyroActivationMode()));
     check('zona morta válida', nxGyroDeadzone() >= 0 && nxGyroDeadzone() <= 0.2);
     check('sensibilidade válida', nxGyroSensitivity() >= 0.25 && nxGyroSensitivity() <= 3);
     return { passed: tests.filter(function (t) { return t.pass; }).length,
@@ -3311,6 +3359,7 @@
       inputCoordination: nxCoordState(),
       virtualInputs: nxVirtualInputState(),
       gyroPreview: nxGyroPreviewState(),
+      gyroGame: { enabled: nxGyroGameEnabled(), activation: nxGyroActivationMode(), bridgeInstalled: nxInputBridge.installed },
       gamepadMonitor: { connected: nxGamepadMonitor.connected, active: nxGamepadMonitor.active, snapshots: nxGamepadMonitor.snapshots, lastChange: nxGamepadMonitor.lastChange, errors: nxGamepadMonitor.errors, previewProfile: nxInputProfileName(), rightStickProfile: nxRightStickProfileName(), previewOnly: !nxInputBridge.installed, bridge: { enabled: nxInputBridge.enabled, installed: nxInputBridge.installed, error: nxInputBridge.error, transformedReads: nxInputBridge.transformedReads, nativeReads: nxInputBridge.nativeReads, fallbacks: nxInputBridge.fallbacks, lastFallback: nxInputBridge.lastFallback, foreignOverride: nxInputBridge.foreignOverride, restored: nxInputBridge.restored } },
       inputNegotiation: lastInputNegotiation,
       touchSession: touchSessionDiagnostics,
