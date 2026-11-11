@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.28
+// @version      4.12.29
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.28';
+  const VER = '4.12.29';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3467,11 +3467,20 @@
         actBtn('Restaurar original',function(){
           setPref(LS_VIDEO_PROFILE,'original');applyVideoAdjustments(activeStreamVideo());renderBody();
         },'ghost')));
-      const gpuGroup=group('GPU experimental','WebGL2: curvas simples de sombras e realces. Pode aumentar consumo e latencia; se falhar, retorna ao video nativo.');
+      const gpuGroup=group('Clarity Boost experimental','WebGL2: curvas simples de sombras e realces. Pode aumentar consumo e latencia; se falhar, retorna ao video nativo.');
       gpuGroup.add(setRow('Processamento GPU','Desativado por padrao. Ative somente durante uma partida.',
         chips([{k:'0',label:'Desligado'},{k:'1',label:'WebGL2'}],getPref(LS_NX_GPU,'0'),function(k){
           setPref(LS_NX_GPU,k);nxGpuSync();renderBody();
         }),true));
+      gpuGroup.add(setRow('Nitidez','Ative WebGL2. Escolha o filtro de nitidez local.',
+        chips([{k:'off',label:'Original'},{k:'usm',label:'Unsharp'},{k:'cas',label:'CAS'}],getPref('nx.gpu.clarity.mode.v1','off'),function(k){setPref('nx.gpu.clarity.mode.v1',k);renderBody();}),true));
+      const clarityRow=mk('div','display:flex;align-items:center;gap:8px');
+      const claritySlider=mk('input','flex:1;accent-color:'+C.accent);claritySlider.type='range';claritySlider.min='0';claritySlider.max='100';claritySlider.step='5';
+      claritySlider.value=getPref('nx.gpu.clarity.strength.v1','35');
+      const clarityLabel=mk('span','min-width:38px;text-align:right',claritySlider.value+'%');
+      claritySlider.addEventListener('input',function(){clarityLabel.textContent=claritySlider.value+'%';setPref('nx.gpu.clarity.strength.v1',claritySlider.value);});
+      clarityRow.appendChild(claritySlider);clarityRow.appendChild(clarityLabel);
+      gpuGroup.add(setRow('Intensidade','Comece em 20–40%; excesso pode criar halos.',clarityRow,true));
       function gpuToneSlider(label,key){
         const row=mk('div','display:flex;align-items:center;gap:8px');
         const slider=mk('input','flex:1;accent-color:'+C.accent);slider.type='range';slider.min='-100';slider.max='100';slider.step='1';
@@ -5643,7 +5652,7 @@ void main(){v_uv=vec2((a_pos.x+1.0)*0.5,1.0-(a_pos.y+1.0)*0.5);gl_Position=vec4(
       const frag=nxGpuCompile(gl,gl.FRAGMENT_SHADER,`#version 300 es
 precision mediump float;
 uniform sampler2D u_tex;uniform float u_shadows;uniform float u_highlights;
-uniform vec3 u_adjust;in vec2 v_uv;out vec4 outColor;
+uniform vec3 u_adjust;uniform int u_clarityMode;uniform float u_clarityStrength;in vec2 v_uv;out vec4 outColor;
 void main(){
  vec3 c=texture(u_tex,v_uv).rgb;
  vec3 up=texture(u_tex,v_uv+vec2(0.0,1.0/float(textureSize(u_tex,0).y))).rgb;
@@ -5653,7 +5662,15 @@ void main(){
  vec3 minimum=min(min(up,down),min(left,right));
  vec3 maximum=max(max(up,down),max(left,right));
  float detail=clamp(dot(maximum-minimum,vec3(0.3333)),0.0,1.0);
- c=clamp(c+(4.0*c-up-down-left-right)*(0.12*(1.0-detail)),0.0,1.0);
+ if(u_clarityMode==1)c=clamp(c+(4.0*c-up-down-left-right)*(u_clarityStrength*0.20),0.0,1.0);
+ else if(u_clarityMode==2){
+  vec3 mn=min(min(min(up,down),min(left,right)),c);
+  vec3 mx=max(max(max(up,down),max(left,right)),c);
+  vec3 amp=clamp(min(mn,2.0-mx)/max(mx,vec3(0.0001)),0.0001,1.0);
+  vec3 w=-1.0/(inversesqrt(amp)*5.6);
+  vec3 enhanced=clamp(((up+down+left+right)*w+c)/(4.0*w+1.0),0.0,1.0);
+  c=mix(c,enhanced,u_clarityStrength*0.5);
+ }
  float l=dot(c,vec3(0.2126,0.7152,0.0722));
  float shadows=(1.0-smoothstep(0.08,0.55,l))*u_shadows*0.22;
  float highlights=smoothstep(0.45,0.95,l)*u_highlights*0.20;
@@ -5703,6 +5720,10 @@ void main(){
           const cal=nxVideoCalibration();
           gl.uniform3f(gl.getUniformLocation(program,'u_adjust'),cal.brightness/100,cal.contrast/100,cal.saturation/100);
           const clamp=function(key){const n=Number(getPref(key,'0'));return Number.isFinite(n)?Math.max(-1,Math.min(1,n)):0;};
+           const clarityMode=getPref('nx.gpu.clarity.mode.v1','off');
+           const clarityRaw=Number(getPref('nx.gpu.clarity.strength.v1','35'));
+           gl.uniform1i(gl.getUniformLocation(program,'u_clarityMode'),clarityMode==='usm'?1:clarityMode==='cas'?2:0);
+           gl.uniform1f(gl.getUniformLocation(program,'u_clarityStrength'),Number.isFinite(clarityRaw)?Math.max(0,Math.min(100,clarityRaw))/100:0.35);
           gl.uniform1f(gl.getUniformLocation(program,'u_shadows'),clamp(LS_NX_SHADOWS));
           gl.uniform1f(gl.getUniformLocation(program,'u_highlights'),clamp(LS_NX_HIGHLIGHTS));
           gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
