@@ -299,6 +299,7 @@ test('session: WebRTC offer is sent and SDP answer is applied',async()=>{
     async createOffer(){return {type:'offer',sdp:'v=0\\r\\n'};}
     async setLocalDescription(offer){this.localDescription=offer;}
     async setRemoteDescription(answer){this.remoteDescription=answer;}
+    async addIceCandidate(candidate){this.remoteCandidate=candidate;}
     close(){this.closed=true;}
   }
   const api=harness(async(url,opts)=>{
@@ -307,16 +308,45 @@ test('session: WebRTC offer is sent and SDP answer is applied',async()=>{
     if(calls.length===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
     if(calls.length===3)return ok({state:'Provisioned'});
     if(calls.length===4)return {ok:true,status:204};
-    return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0\\r\\n',status:'success'})});
+    if(calls.length===5)return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0\\r\\n',status:'success'})});
+    return ok({candidates:[]});
   },null,FakePeer);
   api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
   await api.startSession();
-  assert.equal(calls.length,5);
+  assert.equal(calls.length,6);
   assert.match(calls[3].url,/\/sdp$/);
   assert.equal(calls[3].opts.method,'POST');
   assert.equal(JSON.parse(calls[3].opts.body).messageType,'offer');
   assert.equal(peers.length,1);
   assert.equal(peers[0].remoteDescription.type,'answer');
-  assert.equal(api.state.sessionStatus,'sdp-ready');
+  assert.equal(api.state.sessionStatus,'ice-pending');
   assert.ok(!JSON.stringify(api.state).includes('TEST_BEARER'));
+});
+
+test('session: remote ICE candidates are added to peer',async()=>{
+  const peers=[];
+  class FakePeer{
+    constructor(){this.remoteCandidates=[];peers.push(this);}
+    addTransceiver(){}
+    createDataChannel(){return {};}
+    async createOffer(){return {type:'offer',sdp:'v=0'};}
+    async setLocalDescription(v){this.localDescription=v;}
+    async setRemoteDescription(v){this.remoteDescription=v;}
+    async addIceCandidate(v){this.remoteCandidates.push(v);}
+    close(){}
+  }
+  let n=0;
+  const api=harness(async()=>{
+    if(++n===1)return ok(login);
+    if(n===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    if(n===3)return ok({state:'Provisioned'});
+    if(n===4)return {ok:true,status:204};
+    if(n===5)return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0'})});
+    return ok({candidates:[{candidate:'candidate:1 1 udp 1 127.0.0.1 9999 typ host',sdpMid:'0',sdpMLineIndex:0}]});
+  },null,FakePeer);
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  assert.equal(n,6);
+  assert.equal(peers[0].remoteCandidates.length,1);
+  assert.equal(api.state.sessionStatus,'ice-pending');
 });
