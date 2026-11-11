@@ -5560,6 +5560,7 @@
       else state.video.style.removeProperty('opacity');
     }
     if(state.canvas)state.canvas.remove();
+    if(state.video && state.video.isConnected && getPref(LS_NX_GPU,'0')==='0')applyVideoAdjustments(state.video);
     if(state.gl){
       try{state.gl.deleteTexture(state.texture);state.gl.deleteBuffer(state.buffer);
         state.gl.deleteProgram(state.program);}catch(_){}
@@ -5646,6 +5647,7 @@ void main(){
           gl.uniform1f(gl.getUniformLocation(program,'u_shadows'),clamp(LS_NX_SHADOWS));
           gl.uniform1f(gl.getUniformLocation(program,'u_highlights'),clamp(LS_NX_HIGHLIGHTS));
           gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+          restoreVideoAdjustments(video); // GPU substitui CSS: nunca processar duas vezes.
           if(video.style.opacity!==state.appliedOpacity)video.style.setProperty('opacity','0',state.opacityPriority);
         }catch(e){
           S.lastErr='GPU desativada: '+String(e&&e.message||e);
