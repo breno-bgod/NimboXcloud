@@ -2851,7 +2851,7 @@
       const login=await auth.json();
       if(!login.gsToken || !login.offeringSettings || !Array.isArray(login.offeringSettings.regions))
         throw new Error('Resposta xHome incompleta.');
-      const regions=login.offeringSettings.regions.slice().sort(function(a,b){return Number(!!b.isDefault)-Number(!!a.isDefault);});
+      const regions=login.offeringSettings.regions.slice().sort(function(a,b){return Number(!!(b && b.isDefault))-Number(!!(a && a.isDefault));});
       let found=[];
       let successfulRegions=0;
       for(const region of regions) {
