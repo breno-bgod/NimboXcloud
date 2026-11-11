@@ -3400,6 +3400,12 @@
         const readout=mk('span','font-variant-numeric:tabular-nums;min-width:40px;text-align:right',String(value)+'%');
         slider.addEventListener('input',function(){
           readout.textContent=slider.value+'%';
+          if(getPref(LS_VIDEO_PROFILE,'original')!=='custom'){
+            const base=nxVideoCalibration();
+            setPref(LS_VIDEO_BRIGHTNESS,String(base.brightness));
+            setPref(LS_VIDEO_CONTRAST,String(base.contrast));
+            setPref(LS_VIDEO_SATURATION,String(base.saturation));
+          }
           setPref(LS_VIDEO_PROFILE,'custom');
           setPref(key,slider.value);
           applyVideoAdjustments(activeStreamVideo());
@@ -5444,14 +5450,16 @@
     video.style.setProperty('filter',state.applied,state.priority);
   }
   function cycleSharpness() {
-    const video = activeStreamVideo();
-    if (!video) { S.lastErr = 'Ajuste visual: vídeo não encontrado'; update(); return; }
-    const modes = ['0', '1', '2'];
-    const next = modes[(modes.indexOf(getPref(LS_SHARPNESS, '0')) + 1) % modes.length];
-    setPref(LS_VIDEO_PROFILE, 'custom');
-    setPref(LS_SHARPNESS, next);
+    // Compatibilidade com atalho legado: ajuste suave de contraste, nao nitidez.
+    const video=activeStreamVideo();
+    if(!video){S.lastErr='Ajuste visual: video nao encontrado';update();return;}
+    const cal=nxVideoCalibration();
+    setPref(LS_VIDEO_BRIGHTNESS,String(cal.brightness));
+    setPref(LS_VIDEO_SATURATION,String(cal.saturation));
+    setPref(LS_VIDEO_CONTRAST,String(cal.contrast>=105?100:cal.contrast+2));
+    setPref(LS_VIDEO_PROFILE,'custom');
     applyVideoAdjustments(video);
-    pushLog('video', 'Contraste adicional ' + next + '; não é nitidez real ou CAS');
+    pushLog('video','Contraste suave atualizado; sem nitidez artificial');
   }
   function inspectServerMeasurements() {
     const names = Object.keys(S.latencyByServer).filter(function (name) { const item = S.latencyByServer[name]; return item && item.at && Date.now() - item.at < 24 * 3600 * 1000 && item.samples >= 5; });
@@ -5463,13 +5471,15 @@
     update();
   }
   function cycleVideoFilter() {
-    const video = activeStreamVideo();
-    if (!video) { S.lastErr = 'Filtro: vídeo não encontrado'; schedule(); return; }
-    const next = ((Number(getPref(LS_VIDEO_COLOR, '0')) || 0) + 1) % 3;
-    setPref(LS_VIDEO_PROFILE, 'custom');
-    setPref(LS_VIDEO_COLOR, String(next));
+    const video=activeStreamVideo();
+    if(!video){S.lastErr='Filtro: video nao encontrado';schedule();return;}
+    const cal=nxVideoCalibration();
+    setPref(LS_VIDEO_BRIGHTNESS,String(cal.brightness));
+    setPref(LS_VIDEO_CONTRAST,String(cal.contrast));
+    setPref(LS_VIDEO_SATURATION,String(cal.saturation>=110?100:cal.saturation+5));
+    setPref(LS_VIDEO_PROFILE,'custom');
     applyVideoAdjustments(video);
-    pushLog('video', 'Cor/contraste CSS ' + next + ' (não aplica nitidez, CAS nem upscaling)');
+    pushLog('video','Saturacao CSS atualizada; filtro unico');
   }
   function captureStreamFrame() {
     const video = activeStreamVideo();
