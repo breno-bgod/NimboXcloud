@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-016 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.10 com opt-out reversível de Pointer Lock
+**Edição:** PM-017 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.12 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -266,3 +266,14 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - Verificação JS isolada: **PASSOU**. Tentativa de checkout remoto falhou por DNS; suíte Node/CI e gameplay não verificados.
 - **P01 após dois lotes:** INPUT-001..006 PARCIAIS, INPUT-007 NÃO TESTADO, AUD-01 ABERTA. Não marcar concluído antes de provar teclado/mouse virtual jogável, arbitragem ativa segura e testes reais.
 - **Demais pendências:** P00 CORE-001/002/004/005/006/AUD-00; P02 HUD-001..007/AUD-02; P03 NET-001..006/AUD-03; P04 MEDIA-001..006/AUD-04; P05 DIAG-001..010/AUD-05; P06 ACC-001..006/AUD-06; P07 REL-001..006/AUD-07.
+
+
+## P02 — primeiro lote de HUD (2026-11-11)
+- `06a25930`: v4.11.11 corrige retry de autoload após falha de perfil.
+- `e046a3ce`: v4.11.12 rejeita chaves inseguras em backups de HUD.
+- `8fc25ea0`: testes `tests/hud-p02.test.cjs` (retry, importação e descoberta passiva).
+- `8416aea6`: auditoria `docs/P02_HUD_AUDIT.md` com limites e critérios de aceite.
+- **P02 restante:** HUD-001/002/005/006 PARCIAIS; HUD-003/004 PENDENTES; HUD-007 NÃO TESTADO; AUD-02 ABERTA.
+- **P01 restante:** INPUT-001..006 PARCIAIS, INPUT-007 NÃO TESTADO, AUD-01 ABERTA.
+- **P00 restante:** CORE-001/002/004/005/006/AUD-00.
+- **P03–P07 restante:** NET-001..006/AUD-03; MEDIA-001..006/AUD-04; DIAG-001..010/AUD-05; ACC-001..006/AUD-06; REL-001..006/AUD-07.
