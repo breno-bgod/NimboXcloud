@@ -1,94 +1,94 @@
+<div align="center">
+
 # NimboXcloud
 
-**More control over Xbox Cloud Gaming, directly in your browser.**
+### Your xCloud. More control.
+**Seu xCloud. Mais controle.**
 
-**[Leia em português](./README.md)**
+**[Português](./README.md) · [English](./README_EN.md)**
 
-**Built for the new Xbox Cloud Gaming web experience:** NimboXcloud targets **[play.xbox.com](https://play.xbox.com/)**, not the older **xbox.com/play** interface. Our goal is to bring comparable customization and control features from tools built for the previous experience to the new xCloud website, while exploring new possibilities. Compatibility with the new interface remains under active development and must be validated feature by feature.
+**Built for the new Xbox Cloud Gaming experience — [play.xbox.com](https://play.xbox.com/)**
 
-**NimboXcloud** is an open-source userscript that adds a control center to [Xbox Cloud Gaming](https://play.xbox.com/). It provides streaming preferences, local video and audio adjustments, controller-layout tools, and connection diagnostics while continuing to use the official service.
+[**Install userscript**](./NimboXcloud.user.js) · [**Report an issue**](./../../issues) · [**Development roadmap**](./DEVELOPMENT_ROADMAP.md)
 
-> **Verified code version:** 4.12.16. Under development. A feature's presence in code does not guarantee successful operation in every session; experimental features are labeled below.
+</div>
 
-## What NimboXcloud does
+---
 
-### Streaming and network
-- Video negotiation profiles for **720p, 1080p and experimental 1080p HQ**.
-- Automatic bitrate or configurable SDP-requested limits.
-- Data-center selection and preference based on historical RTT.
-- Optional IPv4 preference through filtering IPv6 WebRTC ICE candidates.
-- Experimental market and territory adjustments.
+## A new experience deserves new possibilities
 
-Actual quality, service availability and game access remain under Xbox Cloud Gaming's control.
+Xbox Cloud Gaming is evolving. While many customization tools were originally designed for the previous website, **NimboXcloud focuses on the new web experience at `play.xbox.com`**, not the older `xbox.com/play` page.
 
-### Video and display
-- **Original, Balanced, Vivid and Custom** visual profiles.
-- Local contrast, color and saturation adjustments.
-- Fit modes, fullscreen, PNG frame capture and reduced background-tab visual processing.
+Our goal is to bring comparable customization and control capabilities to the new experience, explore additional possibilities, and make game streaming more transparent and configurable.
 
-The “sharpness” setting adjusts contrast; it is **not CAS, FSR, DLSS or true upscaling**.
+**NimboXcloud is an independent, open-source userscript.** It runs on the official Xbox Cloud Gaming website. It does not host games, replace the service, or guarantee access to Microsoft-controlled features.
 
-### Audio
-- Volume, mute and output selection where supported.
-- **10-band equalizer** (32 Hz–16 kHz).
-- **FPS, racing, cinema, music and dialogue** presets.
-- Compression, normalization, limiter, dialogue enhancement, mono and L/R balance.
+## What NimboXcloud offers
 
-### Controls and HUD
-- Diagnostics for **physical controllers, touch, mouse and keyboard**, including simultaneous activity.
-- Draggable layout preview, button scaling, per-game presets, import/export and backups.
-- **Experimental native HUD integration:** safely matched controls may be repositioned through CSS without synthesizing touch input.
-- **Experimental analog-stick response curves** and native-input restoration.
+| Area | Features |
+| --- | --- |
+| **Streaming and network** | Video-quality negotiation profiles, bitrate limits, data-center selection, latency-based preferences, and an option to prioritize IPv4. |
+| **Video** | Visual presets, contrast and saturation controls, fit modes, fullscreen, and frame capture. |
+| **Audio** | **10-band equalizer**, presets for different game and content types, compression, normalization, limiter, dialogue enhancement, and stereo balance. |
+| **Controls and HUD** | Diagnostics for physical controllers, touch, keyboard and mouse; visual layout editor, scaling, per-game presets, import and export. |
+| **Gyroscope** | Motion-sensor readings, calibration, axis preview, and experimental integration with controller input. |
+| **Microphone and vibration** | Voice-input tests, browser-supported microphone settings, push-to-talk preference, and local vibration tests. |
+| **Monitoring** | **NX panel** with available FPS, latency, jitter, packet loss, bitrate, resolution, codec, dropped frames, and session errors. |
+| **Compatibility lab** | Experimental tools to investigate session negotiation, browser capabilities, and differences between xCloud client experiences. |
 
-### Gyroscope — experimental
-- Sensor readings, calibration and axis preview.
-- Preview inversion, deadzone and smoothing.
-- Experimental gamepad-axis contribution with selectable strength and always-on or LT-held activation.
+> **Note:** these are features present in the code, not a promise that every feature works in every session. Actual streaming quality and access permissions remain under the service's control.
 
-Some settings affect **only the preview**, not actual gameplay. In-game output still requires validation.
+## The NX panel
 
-### Microphone and vibration
-- Microphone selection and testing, input meter, noise suppression, echo cancellation, automatic gain, mute and push-to-talk preference.
-- Local controller and device vibration tests where supported.
+**NX** brings settings and diagnostics into one interface. The aim is to help players understand their sessions, try adjustments, and restore preferences without relying on separate diagnostic tools.
 
-Voice chat and in-game haptics depend on the service and device capabilities.
-
-### Real-time diagnostics
-The **NX panel** displays available **FPS, RTT, jitter, packet loss, received bitrate, resolution, codec, dropped frames, freezes and server** metrics. It also includes session diagnostics, error history and structured reports.
-
-### Compatibility lab — experimental
-Platform-experience profiles, session negotiation observations, browser capability checks, protocol reports and an experimental **Xbox Shell** interface help investigate compatibility. They **do not emulate real Xbox hardware or server authentication, and do not unlock console-only games**.
+The project prioritizes **preserving native inputs**, including touch and physical controllers, rather than indiscriminately replacing the website's input systems.
 
 ## Development status
 
-**Present in code:** streaming preferences, visual filters, audio processing, layout editor, NX panel and diagnostic tools.
+NimboXcloud is **under active development**. We distinguish code availability from tested functionality:
 
-**Experimental or not yet validated in real gameplay:** native HUD integration, applied analog curves, gyroscope game output, compatibility profiles and end-to-end operation across environments.
+| Status | Examples |
+| --- | --- |
+| **Present in code** | Streaming preferences, visual filters, audio processing, NX panel, diagnostics, and layout management. |
+| **Experimental / requires gameplay testing** | Native HUD repositioning, applied analog curves, in-game gyro output, and compatibility profiles. |
+| **Not implemented or not demonstrated** | True CAS/FSR/DLSS upscaling, frame generation, full touch-based virtual keyboard and mouse, steering wheel with pedals, contextual aim assist, and integrated Remote Play. |
 
-**Not implemented or not demonstrated in this userscript:** frame generation, true CAS/FSR/DLSS upscaling, full touch-based virtual keyboard/mouse, virtual steering wheel with pedals, contextual aim assist, integrated Remote Play and real Xbox-console authentication.
+**The Xbox compatibility lab does not turn a browser into a real console or unlock console-only games.** We do not present unverified features as completed.
 
-The goal is to **improve the player experience without promising capabilities that the browser or service cannot provide**.
+See the [development roadmap](./DEVELOPMENT_ROADMAP.md) for priorities and pending tests, and the [changelog](./CHANGELOG.md) for documented changes.
 
 ## Installation
 
-1. Install a compatible userscript manager such as Tampermonkey.
-2. Open [NimboXcloud.user.js](./NimboXcloud.user.js) and use **Raw** to import it.
-3. Enable the script and visit [play.xbox.com](https://play.xbox.com/).
+1. Install a compatible userscript manager such as **Tampermonkey**.
+2. Open **[NimboXcloud.user.js](./NimboXcloud.user.js)** and choose **Raw** to import it.
+3. Enable the script and visit **[play.xbox.com](https://play.xbox.com/)**.
 
-The script runs at document start. **If the repository is private**, Raw access requires authorization and automatic userscript updates may not work; import new versions manually.
+The userscript targets the **new website** (`https://play.xbox.com/*`), not the old one. Compatibility depends on website updates, browser capabilities, and permissions.
 
-## About and credits
+## Why open source?
 
-**Developed by KReight.** NimboXcloud is an independent learning and development project; feedback, bug reports, code reviews and contributions are welcome.
+NimboXcloud is an independent project by **KReight**, built to learn, experiment, and create alternatives with the community. Suggestions, code reviews, bug reports, and contributions are welcome.
 
-Distributed under the **MIT License**, with applicable third-party license notices preserved. Its technical foundation derives from [xbox-cloud-unlock (RoyLiu04)](https://github.com/RoyLiu04/xbox-cloud-unlock), with engineering references including [Better xCloud (redphx)](https://github.com/redphx/better-xcloud) and [Xbox Cloud Gaming Optimizer (darkchaox)](https://github.com/darkchaox/xbox-cloud-gaming-optimizer). These references do not imply endorsement or partnership.
+The code is available under the **MIT License**, retaining applicable third-party notices. Its technical foundation derives from [xbox-cloud-unlock by RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock); engineering references include [Better xCloud by redphx](https://github.com/redphx/better-xcloud) and [Xbox Cloud Gaming Optimizer by darkchaox](https://github.com/darkchaox/xbox-cloud-gaming-optimizer). References and credits **do not imply partnership or endorsement**.
 
-NimboXcloud **is not affiliated with Microsoft or Xbox**. Region adjustments may fail or conflict with service terms.
+This is an **unofficial project**, not affiliated with Microsoft or Xbox. Experimental region adjustments may not work and may conflict with service terms.
 
-## Documentation and contributions
+## Explore the project
 
-- [Changelog](./CHANGELOG.md)
-- [Development roadmap and pending tests](./DEVELOPMENT_ROADMAP.md)
-- [Architecture and technical limitations](./docs/ARQUITETURA.md)
-- [Contributing](./CONTRIBUTING.md)
-- [Portuguese README](./README.md)
+- [**Main userscript**](./NimboXcloud.user.js)
+- [**Development roadmap**](./DEVELOPMENT_ROADMAP.md)
+- [**Changelog**](./CHANGELOG.md)
+- [**Architecture and technical limitations**](./docs/ARQUITETURA.md)
+- [**Contributing**](./CONTRIBUTING.md)
+- [**Português — README completo**](./README.md)
+
+---
+
+<div align="center">
+
+**NimboXcloud — Your xCloud. More control.**
+
+*Developed by KReight · Open source · MIT · Built for play.xbox.com*
+
+</div>
