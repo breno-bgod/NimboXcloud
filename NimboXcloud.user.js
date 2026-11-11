@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.10.7
+// @version      4.10.8
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.10.7';
+  const VER = '4.10.8';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1897,7 +1897,11 @@
     const previous = [];
     try {
       writes.forEach(function (pair) { previous.push([pair[0], localStorage.getItem(pair[0])]); });
-      writes.forEach(function (pair) { localStorage.setItem(pair[0], pair[1]); });
+      writes.forEach(function (pair) {
+        localStorage.setItem(pair[0], pair[1]);
+        if (localStorage.getItem(pair[0]) !== pair[1])
+          throw new Error('HUD storage write verification failed');
+      });
     } catch (_) {
       previous.forEach(function (pair) {
         try {
@@ -2041,7 +2045,11 @@
       writes.forEach(function (pair) {
         previous.push([pair[0], localStorage.getItem(pair[0])]);
       });
-      writes.forEach(function (pair) { localStorage.setItem(pair[0], pair[1]); });
+      writes.forEach(function (pair) {
+        localStorage.setItem(pair[0], pair[1]);
+        if (localStorage.getItem(pair[0]) !== pair[1])
+          throw new Error('HUD storage write verification failed');
+      });
     } catch (_) {
       previous.forEach(function (pair) {
         try {
