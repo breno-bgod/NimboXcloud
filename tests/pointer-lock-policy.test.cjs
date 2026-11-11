@@ -33,8 +33,8 @@ function boot(flagValue) {
     Element, document: doc, Promise, DOMException,
     localStorage: { getItem: () => flagValue }
   };
-  vm.runInNewContext(src.slice(begin, end), ctx, { timeout: 1000 });
-  return { target, doc, listeners, nativeCalls: () => nativeCalls };
+  vm.runInNewContext(src.slice(begin, end) + '\n globalThis.__nxTestPolicy = touchFullscreenPolicy;', ctx, { timeout: 1000 });
+  return { target, doc, listeners, policy: ctx.__nxTestPolicy, nativeCalls: () => nativeCalls };
 }
 
 test('legacy default blocks automatic relock after native lock is lost', async () => {
@@ -65,4 +65,13 @@ test('opt-out does not consume F9 keyboard event', () => {
   });
   assert.equal(prevented, false);
   assert.equal(stopped, false);
+});
+
+test('opt-out diagnostics report native release without F9 requirement', async () => {
+  const app = boot('0');
+  await app.target.requestPointerLock();
+  assert.equal(app.policy.lastReason, 'native pointer lock active');
+  app.doc.exitPointerLock();
+  assert.equal(app.policy.lastReason, 'native pointer lock released');
+  assert.equal(app.policy.requestsBlockedByNimbo, false);
 });
