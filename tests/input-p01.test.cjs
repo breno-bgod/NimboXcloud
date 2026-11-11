@@ -33,3 +33,22 @@ test('INPUT-004 physical gamepad wrapper remains explicitly opt-in', () => {
 test('INPUT-005 diagnostics do not record keyboard text or codes', () => {
   assert.match(src, /diagLog\('keydown', \{ trusted: e\.isTrusted, repeat: e\.repeat \}\)/);
 });
+
+test('INPUT-004 keyboard activity is not classified as touch/mouse overlap', () => {
+  const start = src.indexOf('  const nxInputSources = ');
+  const end = src.indexOf('  const NX_INPUT_COORD_KEY = ', start);
+  assert.ok(start > 0 && end > start);
+  let now = 10000;
+  const events = [];
+  class Clock extends Date { static now() { return now; } }
+  const ctx = { Date: Clock, Number, Math, Object, nxInputEvent: (...args) => events.push(args) };
+  vm.runInNewContext(src.slice(start, end) + '\n globalThis.record = nxRecordInputSource; globalThis.sources = nxInputSources;', ctx);
+  ctx.record('keyboard');
+  assert.equal(ctx.sources.simultaneous, 0);
+  now += 120;
+  ctx.record('touch');
+  assert.equal(ctx.sources.simultaneous, 0);
+  now += 120;
+  ctx.record('mouse');
+  assert.equal(ctx.sources.simultaneous, 1);
+});
