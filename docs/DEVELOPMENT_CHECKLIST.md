@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-013 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.6 com opt-out reversível de Pointer Lock
+**Edição:** PM-014 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.6 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -236,3 +236,11 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `4a43cd0b`: testes para restauração repetida e ponte desativada com API já pertencente a terceiro.
 - Sintaxe do userscript e da suíte verificadas; execução Node, CI e navegador real ainda não confirmadas.
 - **P00 aberto:** CORE-001, CORE-002, CORE-004, CORE-005, CORE-006 e AUD-00. **P01–P07 pendentes:** INPUT-001..007, HUD-001..007, NET-001..006, MEDIA-001..006, DIAG-001..010, ACC-001..006, REL-001..006, AUD-01..07.
+
+
+## AUD-00.10 — proteção de API e estado real de validação (2026-11-11)
+- `b70d051a`: testes para Gamepad API não configurável e controles com mapeamento não padrão. Ambos os cenários passaram em sandbox JS isolado; a suíte Node completa ainda não foi executada.
+- `65aa2e8d`: `docs/P00_VALIDATION_STATUS.md` explicita verificações feitas e não confirmadas.
+- **CORE-004 continua EM_ANDAMENTO:** execução real de `node --test` e GitHub Actions não confirmada.
+- **P00 restante:** CORE-001 (teardown), CORE-002 (diff por função), CORE-004 (CI), CORE-005 (flags gerais), CORE-006 (licenças), AUD-00.
+- **P01–P07 restante:** INPUT-001..007/AUD-01; HUD-001..007/AUD-02; NET-001..006/AUD-03; MEDIA-001..006/AUD-04; DIAG-001..010/AUD-05; ACC-001..006/AUD-06; REL-001..006/AUD-07.
