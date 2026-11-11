@@ -8,7 +8,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,startSession:nxRemoteStartSession};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,startSession:nxRemoteStartSession};';
 function harness(fetchImpl, storageOverride, rtcClass) {
   const ctx = {
     AbortController, URL, Date, setTimeout, clearTimeout,
@@ -349,4 +349,18 @@ test('session: remote ICE candidates are added to peer',async()=>{
   assert.equal(n,6);
   assert.equal(peers[0].remoteCandidates.length,1);
   assert.equal(api.state.sessionStatus,'ice-pending');
+});
+
+test('stop: closes an established peer and clears session without needing busy state',async()=>{
+  const api=harness(async()=>{throw Error('unexpected fetch');});
+  let closed=0;
+  api.state.busy=false;
+  api.state.peer={close(){closed++;}};
+  api.state.sessionId='12345678-1234-1234-1234-123456789abc';
+  api.state.sessionStatus='connected';
+  api.stop();
+  assert.equal(closed,1);
+  assert.equal(api.state.peer,null);
+  assert.equal(api.state.sessionId,'');
+  assert.equal(api.state.sessionStatus,'stopped');
 });
