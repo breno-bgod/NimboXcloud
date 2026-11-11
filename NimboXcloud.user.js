@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.33
+// @version      4.12.34
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.33';
+  const VER = '4.12.34';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1784,7 +1784,7 @@
     { id: 'voice', label: 'Voz e acessórios', desc: 'Microfone e vibração' },
     { id: 'controls', label: 'Controles', desc: 'Entrada, gamepad e toque' },
     { id: 'region', label: 'Rede e região', desc: 'Servidores e disponibilidade' },
-    { id: 'advanced', label: 'Sistema', desc: 'Diagnóstico e ferramentas' }
+    { id: 'advanced', label: 'Sistema', desc: 'Diagnóstico e manutenção' }
   ];
   const PRESETS = [
     { name: 'Máximo', res: 'hq', br: 'auto', sub: 'Melhor imagem' },
@@ -4071,6 +4071,38 @@
     }
   };
 
+  // NX categorias v2: cada função pertence ao contexto onde será utilizada.
+  // Preserva os construtores originais e suas ações, mas distribui seus grupos.
+  const nxLegacySystemBuilder = TAB_BUILDERS.advanced;
+  const nxLegacyRegionBuilder = TAB_BUILDERS.region;
+  function nxLegacySystemGroups() {
+    const temp = document.createElement('div');
+    nxLegacySystemBuilder(temp);
+    return Array.from(temp.children);
+  }
+  // Grupos originais: 0 desempenho, 1 link, 2 servidores, 3 plataforma,
+  // 4 sistema, 5 ferramentas, 6 créditos.
+  TAB_BUILDERS.advanced = function(root) {
+    const groups=nxLegacySystemGroups();
+    [4,5,6].forEach(function(i){if(groups[i])root.appendChild(groups[i]);});
+  };
+  TAB_BUILDERS.compatibility = function(root) {
+    const groups=nxLegacySystemGroups();
+    if(groups[3])root.appendChild(groups[3]);
+  };
+  TAB_BUILDERS.region = function(root) {
+    nxLegacyRegionBuilder(root);
+    const groups=nxLegacySystemGroups();
+    if(groups[2])root.appendChild(groups[2]);
+  };
+  const nxOriginalStreamBuilder = TAB_BUILDERS.stream;
+  TAB_BUILDERS.stream = function(root) {
+    nxOriginalStreamBuilder(root);
+    const groups=nxLegacySystemGroups();
+    [0,1].forEach(function(i){if(groups[i])root.appendChild(groups[i]);});
+  };
+  TABS.push({id:'compatibility',label:'Compatibilidade',desc:'Identidade, plataforma e testes de console'});
+
   // Páginas temáticas reutilizam os controles originais sem duplicar suas rotinas.
   const buildLegacyMedia = TAB_BUILDERS.media;
   const buildLegacyControls = TAB_BUILDERS.controls;
@@ -4236,7 +4268,7 @@
     cardEl.insertBefore(navBar,el.body);
     const rail=mk('div','flex:0 0 54px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;background:#101419;border-right:1px solid '+C.line+';overflow-y:auto');
     el.nxRailButtons=[];
-    [['overview','Início'],['stream','Vídeo'],['audio','Áudio'],['controls','Controles'],['voice','Voz'],['region','Rede'],['personalize','Personalizar'],['advanced','Sistema']].forEach(function(item){
+    [['overview','Início'],['stream','Vídeo'],['audio','Áudio'],['controls','Controles'],['voice','Voz'],['region','Rede'],['personalize','Personalizar'],['compatibility','Compatibilidade'],['advanced','Sistema']].forEach(function(item){
       const btn=mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;border-radius:8px;color:'+C.dim);
       btn.title=item[1];btn.setAttribute('aria-label',item[1]);btn.appendChild(ico(ICONS[item[0]]||ICONS.overview,22));
       btn.addEventListener('click',function(e){e.stopPropagation();setTab(item[0]);});rail.appendChild(btn);
@@ -4375,7 +4407,7 @@
       {title:'Transmissão',sub:'Qualidade, servidores e estatísticas',icon:ICONS.stream,links:[['stream','Imagem e transmissão'],['region','Rede e servidores'],['dashboard','Dashboard e gráficos']]},
       {title:'Controles',sub:'Gamepad, toque, áudio e acessórios',icon:ICONS.controls,links:[['controls','Controle e HUD'],['audio','Áudio'],['voice','Voz e acessórios']]},
       {title:'Personalização',sub:'Monitor, transparência e layout',icon:ICONS.overview,links:[['personalize','Configurar NX Stream Monitor']]},
-      {title:'Avançado',sub:'Ferramentas e diagnóstico',icon:ICONS.advanced,links:[['advanced','Sistema e laboratório']]}
+      {title:'Sistema',sub:'Diagnósticos e manutenção',icon:ICONS.advanced,links:[['compatibility','Compatibilidade e identidade'],['advanced','Diagnósticos do sistema']]}
     ];
     groups.forEach(function(g){
       const section=mk('div','margin-bottom:8px;border:1px solid '+C.line+';border-radius:11px;overflow:hidden;background:'+C.panel);
