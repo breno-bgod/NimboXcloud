@@ -1,6 +1,6 @@
 # NimboXcloud — Plano mestre de desenvolvimento
 
-**Edição:** PM-019 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.13 com opt-out reversível de Pointer Lock
+**Edição:** PM-020 · **Data:** 2026-11-11 · **Status:** P00 em andamento; runtime v4.11.13 com opt-out reversível de Pointer Lock
 
 ## Regras permanentes
 
@@ -294,3 +294,11 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - **P02 restante:** HUD-001/002/005/006 PARCIAIS; HUD-003/004 PENDENTES (integração real); HUD-007 NÃO TESTADO; AUD-02 ABERTA.
 - **P01 pendente para o final:** INPUT-001..006 implementação/aceite parcial; INPUT-007 testes reais; AUD-01.
 - **P00 e P03..P07:** sem alteração de escopo ou conclusão.
+
+
+## P02 — segundo lote HUD (2026-11-11)
+- `a5ef777f`: v4.11.15, exclusividade do ponteiro durante arrasto do editor e liberação segura de captura.
+- `28370f8a`: teste de regressão para segundo dedo e `lostpointercapture`.
+- **P02 código corrigido:** editor de prévia e persistência; ainda **não** existe prova de integração com controles jogáveis do xCloud (HUD-003/HUD-004).
+- **P02 pendente:** HUD-001/002/005/006 parciais; HUD-003/004 pendentes; HUD-007 teste real; AUD-02 aberta.
+- **P01:** adiado para o final conforme decisão do usuário. **P00, P03–P07:** sem mudança.
