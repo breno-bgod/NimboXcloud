@@ -309,3 +309,12 @@ Cada pacote deverá registrar: IDs incluídos, commits, origem da solução, alt
 - `643d9290`: regressões para nomes especiais e invalidação do cache.
 - Verificações executadas: sintaxe JS do runtime e dos testes; execução isolada do validador de nomes (6 casos passaram). **Suíte Node/CI e gameplay não executados nesta rodada.**
 - **P02 ainda aberto:** integração com HUD jogável do xCloud (HUD-003/004), layout responsivo e testes reais. P01 segue reservado para revisão final, conforme preferência do usuário.
+
+
+## P01 — retomada de código (2026-11-11)
+- `e064f948`: v4.11.16 protege propriedade da Gamepad API em reinstalações.
+- `c3e98a09`: testes executáveis de reinstalação e owner externo.
+- `e14a4e46`: v4.11.17 elimina snapshots obsoletos em falhas de processamento.
+- `86411a4d`: regressão para ambos os tipos de erro de leitura.
+- `eb85e385`: AUD-01 revisada sem aprovação indevida.
+- **P01 ainda não concluído:** INPUT-001/003/004/005 precisam de integração funcional; INPUT-002/006/007 testes reais; AUD-01 ABERTA. P02 continua com HUD-003/004 pendentes; P00/P03–P07 inalterados.
