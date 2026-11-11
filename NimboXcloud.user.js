@@ -2050,7 +2050,7 @@
   }
 
   function copyText(text, tag, okMsg) {
-    const fail = function () { console.log(tag, text); toast('Cópia bloqueada; texto no console'); };
+    const fail = function () { toast('Cópia bloqueada; diagnóstico não exibido no console por privacidade'); };
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(function () { toast(okMsg); }, fail);
@@ -2098,21 +2098,11 @@
   }
   function copyReport() { copyUnifiedReport(); }
   function copyHistory() {
-    copyText(JSON.stringify({ version: VER, samples: S.qosHistory, diagnosis: S.lastDiagnosis }, null, 2), '[NX history]', 'Histórico copiado');
+    copyText(JSON.stringify(nxUnifiedReport().history, null, 2), '[NX history]', 'Histórico copiado');
   }
   function copyDiag() {
-    copyText(JSON.stringify({
-      version: VER, url: location.origin + location.pathname,
-      selectedServer: srvCfg().name || 'auto', requestedQuality: resCfg().label,
-      bitrateLimit: bitrateCfg().mbps || 'auto', lastQos: S.qos,
-      latencyByServer: S.latencyByServer, nxRecoveries: S.nxRecoveries,
-      diagnosticsWarnings: S.diagnosticsWarnings,
-      micStatus: S.micStatus, vibrationStatus: S.vibrationStatus,
-      remotePlayStatus: S.remotePlayStatus, serverProbeStatus: S.serverProbeStatus,
-      consoleLab: nxConsoleLabReport(),
-      pointerLockActive: !!document.pointerLockElement,
-      touchPoints: navigator.maxTouchPoints || 0, lastError: S.lastErr
-    }, null, 2), '[NX diagnostic]', 'Diagnóstico copiado');
+    // Compartilha a sanitização do relatório unificado, sem caminhos alternativos não filtrados.
+    copyText(JSON.stringify(nxUnifiedReport(), null, 2), '[NX diagnostic]', 'Diagnóstico copiado');
   }
 
   // ----- Abas -----
