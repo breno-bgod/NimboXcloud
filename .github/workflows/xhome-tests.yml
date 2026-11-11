@@ -25,5 +25,5 @@ jobs:
           node-version: '22'
       - name: Validate userscript syntax
         run: node --check NimboXcloud.user.js
-      - name: Run xHome discovery regression tests
-        run: node --test tests/xhome-discovery.test.cjs
+      - name: Run NX panel and xHome regression tests
+        run: node --test tests/*.test.cjs
