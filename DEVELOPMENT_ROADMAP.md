@@ -278,3 +278,9 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - A antiga nitidez era contraste adicional e podia estourar realces; substituida por controles moderados de brilho (85–115%), contraste (85–115%) e saturacao (75–125%). Presets Original/Equilibrado/Vivido substituem valores sem empilhar filtros. Manual preserva base ao mudar de preset; atalhos legados migrados para ajustes suaves. Restaurar Original remove filtro NX e preserva filtro inicial do site.
 - Novos testes estaticos em `tests/nx-video-calibration.test.cjs`, workflow ja executa glob de testes. Parse JS confirmado; testes Node e validacao visual real ainda pendentes.
 - Limitacao: filtros CSS nao recuperam informacao perdida no streaming nem ajustam brancos/pretos independentemente. Para controle separado de niveis ou nitidez real sera necessario pipeline WebGL/WebGPU com custos de latencia e desempenho a medir.
+
+## 2026-11-11 — NX Visual Studio: biblioteca portatil v1
+- v4.12.20, commits `878c7984e49722f56914e5be8c5b79226ec5111a` e `017ffb3e85a9bd1b31ba8d614f9853952b1f7de9`.
+- Biblioteca de ate 24 perfis locais, salvar perfil, exportar JSON e importar arquivo JSON limitado a 16 KB, esquema `nx-visual-preset` v1 validado com allowlist numerica. Aplicacao de perfil usa filtros CSS unicos existentes; reset original continua disponivel. Sem codigo executavel nos arquivos.
+- Adicionados testes de regressao do schema e rejeicao de entradas invalidas. Sintaxe do userscript verificada e sanitizacao exercitada com dados validos/invalidos; execucao completa do workflow e teste de interface ainda nao confirmados.
+- Proximas etapas: curvas RGB e sombras/realces por shader, LUTs 3D, nitidez espacial (CAS/unsharp), GPU upscale experimental, preview antes/depois, e integracao comunitaria via site futuro. Nao anunciar estes recursos como implementados.
