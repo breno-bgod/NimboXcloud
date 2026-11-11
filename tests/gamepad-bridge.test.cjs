@@ -25,9 +25,9 @@ function boot(settings, nativePads, configure) {
     getPref: (key, fallback) => Object.hasOwn(store, key) ? store[key] : fallback,
     setPref: (key, value) => { store[key] = value; }
   };
-  const source = bridgeSource + '\n globalThis.__testBridge = nxInputBridge; globalThis.__restore = nxRestoreNativeGamepads;';
+  const source = bridgeSource + '\n globalThis.__testBridge = nxInputBridge; globalThis.__restore = nxRestoreNativeGamepads; globalThis.__status = nxInputBridgeStatus;';
   vm.runInNewContext(source, ctx, { timeout: 1000 });
-  return { navigator, store, bridge: ctx.__testBridge, restore: ctx.__restore, nativeGet };
+  return { navigator, store, bridge: ctx.__testBridge, restore: ctx.__restore, status: ctx.__status, nativeGet };
 }
 test('native Gamepad API is untouched when experimental modules are disabled', () => {
   const a = boot({}, []);
@@ -51,4 +51,14 @@ test('foreign Gamepad API owner is never overwritten on restore', () => {
   a.restore('test foreign override');
   assert.equal(a.navigator.getGamepads, foreign);
   assert.equal(a.bridge.foreignOverride, true);
+});
+
+test('status inspection does not modify stored settings when another script takes over', () => {
+  const a = boot({ 'nx.input.applyAxes.v1': '1', 'nx.gyro.gameInput.v1': '0' }, []);
+  const foreign = () => [];
+  a.navigator.getGamepads = foreign;
+  const before = JSON.stringify(a.store);
+  assert.match(a.status(), /Outro script controla/);
+  assert.equal(JSON.stringify(a.store), before);
+  assert.equal(a.navigator.getGamepads, foreign);
 });
