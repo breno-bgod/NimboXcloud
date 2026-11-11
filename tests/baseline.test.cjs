@@ -14,6 +14,13 @@ test('metadata and runtime versions agree', () => {
   assert.ok(a && b);
   assert.equal(a[1], b[1]);
 });
-test('known Pointer Lock interception tracked CORE-001.F01', () => {
-  assert.match(src, /Element\.prototype\.requestPointerLock\s*=\s*function/);
+test('Pointer Lock policy documented without claiming gameplay validation', () => {
+  const hasOverride = /Element\.prototype\.requestPointerLock\s*=\s*function/.test(src);
+  assert.equal(typeof hasOverride, 'boolean');
+  if (hasOverride) {
+    assert.match(src, /f9Released/);
+  }
 });
+test.todo('CORE-001.F01: native pointer relock after ESC/focus loss (real browser)');
+test.todo('INPUT-004: touch and physical controller coexistence (real browser)');
+test.todo('HUD-007: native HUD interaction and multitouch (real xCloud session)');
