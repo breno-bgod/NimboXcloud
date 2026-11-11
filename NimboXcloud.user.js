@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.0.4
+// @version      4.0.5
 // @description  Deixa o play.xbox.com utilizável em regiões restritas: reescreve a verificação de mercado e os cabeçalhos, e oferece ajustes de streaming (data center / forçar IPv4 / qualidade) com um mini medidor de QoS
 // @author       KReight
 // @license      MIT
@@ -62,7 +62,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.0.4';
+  const VER = '4.0.5';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2205,6 +2205,13 @@
 
       const gyroGroup = group('Giroscópio — calibração experimental',
         'Leitura local dos sensores para diagnóstico. Não controla a câmera do jogo.');
+      gyroGroup.add(infoRow('Orientação da tela', function () {
+        const g = nxGyroPreviewState();
+        return g.screenAngle === null ? 'Aguardando sensor' : g.screenAngle + '°';
+      }, 'Ao girar o aparelho, o centro é redefinido e precisa ser calibrado novamente.'));
+      gyroGroup.add(infoRow('Mudanças de orientação', function () {
+        return String(nxGyroPreviewState().orientationChanges);
+      }));
       gyroGroup.add(infoRow('Amostras recebidas', function () {
         return String(nxGyroPreviewState().samples);
       }));
@@ -2934,10 +2941,16 @@
     const raw = Number(getPref(NX_GYRO_SMOOTH_KEY, '0.25'));
     return Number.isFinite(raw) ? Math.max(0.05, Math.min(1, raw)) : 0.25;
   }
+  function nxScreenAngle() {
+    try {
+      const angle = screen.orientation && Number(screen.orientation.angle);
+      return Number.isFinite(angle) ? ((angle % 360) + 360) % 360 : 0;
+    } catch (_) { return 0; }
+  }
   let nxGyroRequestGeneration = 0;
   const nxGyroPreview = { enabled: false, permission: 'não solicitada', samples: 0, lastAt: 0,
     alpha: null, beta: null, gamma: null, originBeta: null, originGamma: null,
-    filteredX: null, filteredY: null, error: '' };
+    filteredX: null, filteredY: null, screenAngle: null, orientationChanges: 0, error: '' };
   function nxGyroOnOrientation(e) {
     if (!nxGyroPreview.enabled) return;
     if (!Number.isFinite(e.beta) || !Number.isFinite(e.gamma)) return;
@@ -2946,6 +2959,12 @@
     nxGyroPreview.alpha = Number.isFinite(e.alpha) ? e.alpha : null;
     nxGyroPreview.beta = e.beta;
     nxGyroPreview.gamma = e.gamma;
+    const angle = nxScreenAngle();
+    if (nxGyroPreview.screenAngle !== null && angle !== nxGyroPreview.screenAngle) {
+      nxGyroPreview.orientationChanges++;
+      nxResetGyroCalibration();
+    }
+    nxGyroPreview.screenAngle = angle;
     if (nxGyroPreview.originBeta !== null && nxGyroPreview.originGamma !== null) {
       const x = Math.max(-90, Math.min(90, e.gamma - nxGyroPreview.originGamma));
       const y = Math.max(-180, Math.min(180, e.beta - nxGyroPreview.originBeta));
@@ -2990,6 +3009,7 @@
     nxGyroPreview.lastAt = 0;
     nxGyroPreview.beta = null;
     nxGyroPreview.gamma = null;
+    nxGyroPreview.screenAngle = null;
     nxResetGyroCalibration();
   }
   function nxResetGyroCalibration() {
@@ -3015,6 +3035,7 @@
       tiltX: g.filteredX === null ? null : Math.round(g.filteredX * 10) / 10,
       tiltY: g.filteredY === null ? null : Math.round(g.filteredY * 10) / 10,
       smoothing: nxGyroSmoothFactor(),
+      screenAngle: g.screenAngle, orientationChanges: g.orientationChanges,
       autoPauseOnHidden: true,
       error: g.error, gameplayInput: false };
   }
@@ -3103,6 +3124,7 @@
     check('sensor desativado por padrão', nxGyroPreviewState().gameplayInput === false);
     check('limite de entradas virtuais', NX_VIRTUAL_INPUT_LIMIT === 8);
     check('janela de expiração virtual', NX_VIRTUAL_INPUT_TTL === 2000);
+    check('ângulo de tela normalizado', nxScreenAngle() >= 0 && nxScreenAngle() < 360);
     return { passed: tests.filter(function (t) { return t.pass; }).length,
       total: tests.length, tests: tests, note: 'Autoteste matemático e estrutural; não substitui teste de streaming.' };
   }
