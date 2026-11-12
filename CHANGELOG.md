@@ -1,3 +1,8 @@
+## [4.12.89] — 2026-11-12
+- Fixed xHome cancellation after session setup: the active session retains its AbortController so Stop can abort pending ICE polling requests; failed setup still clears the controller.
+- Added a deterministic Stop→Start regression where a delayed ICE response from session A arrives after session B is active; stale candidates cannot alter the new peer, status or poll timer.
+- No ICE protocol, authentication, SDP, transport or xCloud retail input behavior was changed.
+
 ## [4.12.88] — 2026-11-12
 - Corrigido o seletor de qualidade xCloud: Máximo solicita HQ/Tizen; Equilibrado e Compatível solicitam Windows. Preferências `auto` antes ignoradas passam a valer na próxima partida; novas instalações e valores desconhecidos mantêm HQ. Sem mudanças no transporte de entrada.
 - A qualidade exibida acompanha o perfil solicitado; cartão de bitrate usa Mbps. Não há garantia de resolução ou bitrate recebido.
