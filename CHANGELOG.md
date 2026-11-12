@@ -1,3 +1,8 @@
+## [4.12.80] — 2026-11-12
+- Fixed the shared xHome gamepad loop returning early when the browser Gamepad API is unavailable or throws. It now continues with an empty physical snapshot, allowing the touch virtual gamepad to resume and stale physical slots to neutralize.
+- Added dynamic and structural regressions for virtual-input recovery without Gamepad API.
+- No synthetic Gamepad API, additional polling loop, or change to the xCloud input path was introduced.
+
 ## [4.12.79] — 2026-11-12
 - Fixed stale virtual touch-gamepad state across xHome focus, visibility, and NX-panel suspension. A suspended touch state is cleared after neutralization, and new virtual frames are rejected until the shared scheduler resumes.
 - Preserved physical gamepad state handling, slot registration, the shared polling loop, packet sequence, and the existing xCloud Gamepad API path.
