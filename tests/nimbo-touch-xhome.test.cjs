@@ -90,3 +90,14 @@ test('xHome virtual gamepad keeps the shared loop alive without the browser Game
     'missing or failing Gamepad API must not return before the shared xHome scheduler');
   assert.match(block, /nxRemoteGamepadTick\(pads,allowInput\)/);
 });
+
+ 
+test('xHome touch and virtual-gamepad transport remain in main and distribution URLs stay on main', () => {
+  assert.ok(hostSource.includes('function nxRemoteCreateTouchInputAdapter('));
+  assert.ok(hostSource.includes('function nxRemoteAttachTouchAdapter('));
+  assert.ok(hostSource.includes('function nxRemoteDetachTouchAdapter('));
+  assert.ok(hostSource.includes('function nxRemoteSetVirtualGamepadState('));
+  assert.ok(hostSource.includes('@updateURL   https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js'));
+  assert.ok(hostSource.includes('@downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js'));
+  assert.equal(hostSource.includes('fix/virtual-gamepad-panel-integration'), false);
+});

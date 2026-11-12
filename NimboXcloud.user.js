@@ -10,8 +10,8 @@
 // @grant        none
 // @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.82
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
-// @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/fix/virtual-gamepad-panel-integration/NimboXcloud.user.js
-// @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/fix/virtual-gamepad-panel-integration/NimboXcloud.user.js
+// @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
+// @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // ==/UserScript==
 
 /*
@@ -3139,6 +3139,7 @@
   // Input packet fields are cross-checked against the MIT-licensed unknownskl/greenlight player package.
   // Gamepad and opt-in physical keyboard/mouse capture share one ordered input sequence.
   let nxRemoteChannels=null;
+  let nxRemoteTouchAdapter=null;
   function nxRemoteUuid() {
     try { if(typeof crypto!=='undefined' && typeof crypto.randomUUID==='function') return crypto.randomUUID(); } catch (_) {}
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
@@ -3274,6 +3275,44 @@
   let nxRemoteGamepadPaused=false;
   let nxRemoteGamepadWindowFocused=true;
   const nxRemoteNeutralGamepad={mapping:'standard',buttons:[],axes:[]};
+  let nxRemoteVirtualGamepad=null;
+  function nxRemoteNormalizeVirtualGamepadState(state) {
+    if(!state || typeof state!=='object') return null;
+    const axisSource=state.axes;
+    const buttonSource=state.buttons;
+    const hasAxes=axisSource && typeof axisSource.length==='number';
+    const hasButtons=buttonSource && typeof buttonSource.length==='number';
+    if(!hasAxes && !hasButtons) return null;
+    const deadzoneValue=state.deadzone===undefined?0.08:Number(state.deadzone);
+    const deadzone=Number.isFinite(deadzoneValue)?Math.max(0,Math.min(0.25,deadzoneValue)):0.08;
+    const axes=Array.from({length:4},function(_,index){
+      const value=Number(hasAxes?axisSource[index]:0);
+      return Number.isFinite(value)?Math.max(-1,Math.min(1,value)):0;
+    });
+    const normalizePair=function(x,y){
+      const magnitude=Math.hypot(x,y);
+      if(!Number.isFinite(magnitude) || magnitude<=deadzone) return [0,0];
+      const outputMagnitude=(Math.min(1,magnitude)-deadzone)/(1-deadzone);
+      const factor=outputMagnitude/magnitude;
+      return [x*factor,y*factor];
+    };
+    const left=normalizePair(axes[0],axes[1]);
+    const right=normalizePair(axes[2],axes[3]);
+    axes[0]=left[0];axes[1]=left[1];axes[2]=right[0];axes[3]=right[1];
+    const buttons=Array.from({length:17},function(_,index){
+      const button=hasButtons?buttonSource[index]:null;
+      let value=0;
+      if(typeof button==='boolean') value=button?1:0;
+      else if(typeof button==='number') value=Math.max(0,Math.min(1,button));
+      else if(button && typeof button==='object') {
+        const raw=Number(button.value);
+        value=Number.isFinite(raw)?Math.max(0,Math.min(1,raw)):(button.pressed?1:0);
+        if(value===0 && button.pressed===true) value=1;
+      }
+      return {pressed:value>=0.5,value:value};
+    });
+    return {mapping:'standard',connected:true,index:-1,id:'NimboTouch Virtual Gamepad',buttons:buttons,axes:axes};
+  }
   function nxRemoteGamepadReady() {
     const peer=nxRemotePlay.peer;
     const channel=nxRemoteChannels && nxRemoteChannels.input;
@@ -3281,9 +3320,101 @@
     return !!(nxRemotePlay.dataChannelsReady && nxRemotePlay.sessionStatus==='connected' &&
       peer && peerState==='connected' && channel && channel.readyState==='open');
   }
+  function nxRemoteSetVirtualGamepadState(state,requestId,peer,channels) {
+    if(!Number.isInteger(requestId) || requestId!==nxRemotePlay.requestId || peer!==nxRemotePlay.peer ||
+      channels!==nxRemoteChannels || nxRemoteGamepadPaused || !nxRemoteGamepadReady()) return false;
+    const pad=nxRemoteNormalizeVirtualGamepadState(state);
+    if(!pad) return false;
+    const previous=nxRemoteVirtualGamepad;
+    const sameOwner=previous && previous.requestId===requestId && previous.peer===peer && previous.channels===channels;
+    nxRemoteVirtualGamepad={requestId:requestId,peer:peer,channels:channels,pad:pad,slot:sameOwner?previous.slot:null};
+    return true;
+  }
+  function nxRemoteReleaseVirtualGamepad(requestId,peer,channels) {
+    const current=nxRemoteVirtualGamepad;
+    if(!current) return true;
+    if(current.requestId!==requestId || current.peer!==peer || current.channels!==channels) return true;
+    nxRemoteVirtualGamepad=null;
+    if(Number.isInteger(current.slot) && nxRemoteRegisteredGamepadSlots.has(current.slot))
+      return nxRemoteSendNeutralGamepad(current.slot,channels);
+    return true;
+  }
   function nxRemoteVideoHasInputFocus() {
     const video=nxRemotePlay.videoElement;
     return !!(video && document.activeElement===video);
+  }
+  function nxRemoteCreateTouchInputAdapter(requestId,peer,channels) {
+    if(!Number.isInteger(requestId)||!peer||!channels||!channels.input)return null;
+    let disposed=false,mouseButtons=0;
+    const heldKeys=new Map();
+    const current=function(){return !disposed&&requestId===nxRemotePlay.requestId&&nxRemotePlay.peer===peer&&nxRemoteChannels===channels;};
+    const ready=function(){return current()&&nxRemotePlay.dataChannelsReady&&nxRemotePlay.sessionStatus==='connected'&&
+      (peer.connectionState||peer.iceConnectionState)==='connected'&&channels.input&&channels.input.readyState==='open';};
+    const releaseGamepad=function(){return nxRemoteReleaseVirtualGamepad(requestId,peer,channels);};
+    const release=function(){
+      let complete=true;
+      Array.from(heldKeys.entries()).forEach(function(entry){
+        if(nxRemoteSendKeyboardFrame({code:entry[0],keyCode:entry[1],pressed:false},true,channels))heldKeys.delete(entry[0]);
+        else complete=false;
+      });
+      if(mouseButtons!==0){
+        if(nxRemoteSendMouseFrame({X:0,Y:0,WheelX:0,WheelY:0,Buttons:0,Relative:0},true,channels))mouseButtons=0;
+        else complete=false;
+      }
+      if(!releaseGamepad()) complete=false;
+      return complete;
+    };
+    return Object.freeze({
+      id:'xhome:'+requestId,
+      isReady:ready,
+      sendKey:function(code,pressed){
+        if(!ready()||typeof code!=='string'||typeof pressed!=='boolean')return false;
+        const keyCode=nxRemoteVirtualKey(code,null);
+        if(keyCode===null)return false;
+        const wasHeld=heldKeys.has(code);
+        if(wasHeld===pressed)return true;
+        if(!nxRemoteSendKeyboardFrame({code:code,keyCode:keyCode,pressed:pressed},false,channels))return false;
+        if(pressed)heldKeys.set(code,keyCode);else heldKeys.delete(code);
+        return true;
+      },
+      sendMouse:function(reading){
+        if(!ready()||!reading||reading.Type!==0)return false;
+        for(const key of ['X','Y','WheelX','WheelY','Buttons'])if(!Number.isFinite(reading[key]))return false;
+        const buttons=nxRemoteByte(reading.Buttons)&31;
+        if(!nxRemoteSendMouseFrame({X:reading.X,Y:reading.Y,WheelX:reading.WheelX,WheelY:reading.WheelY,
+          Buttons:buttons,Relative:0},false,channels))return false;
+        mouseButtons=buttons;
+        return true;
+      },
+      sendGamepad:function(state){return ready()&&nxRemoteSetVirtualGamepadState(state,requestId,peer,channels);},
+      releaseGamepad:releaseGamepad,
+      release:release,
+      dispose:function(){if(disposed)return true;const complete=release();disposed=true;return complete;}
+    });
+  }
+  function nxRemoteAttachTouchAdapter(requestId,peer,channels) {
+    const api=window.NimboTouch;
+    if(!api||typeof api.attachRemoteInputAdapter!=='function')return false;
+    if(nxRemoteTouchAdapter&&nxRemoteTouchAdapter.id==='xhome:'+requestId)return true;
+    nxRemoteDetachTouchAdapter();
+    const adapter=nxRemoteCreateTouchInputAdapter(requestId,peer,channels);
+    if(!adapter)return false;
+    let attached=false;
+    try{attached=api.attachRemoteInputAdapter(adapter)===true;}catch(_){}
+    if(!attached){adapter.dispose();return false;}
+    nxRemoteTouchAdapter=adapter;
+    return true;
+  }
+  function nxRemoteDetachTouchAdapter() {
+    const adapter=nxRemoteTouchAdapter;
+    if(!adapter)return false;
+    nxRemoteTouchAdapter=null;
+    try{
+      const api=window.NimboTouch;
+      if(typeof api?.clearRemoteInputAdapter==='function')api.clearRemoteInputAdapter(adapter);
+      else adapter.dispose();
+    }catch(_){try{adapter.dispose();}catch(__){}}
+    return true;
   }
   let nxRemoteInputCapture=null;
   const nxRemoteHeldKeys=new Map();
@@ -3299,17 +3430,17 @@
       return true;
     } catch (_) { return false; }
   }
-  function nxRemoteSendKeyboardFrame(frame,force) {
+  function nxRemoteSendKeyboardFrame(frame,force,channelsOverride) {
     if(force!==true && !nxRemoteGamepadReady()) return false;
     const packet=nxRemoteEncodeKeyboardFrame(frame,nxRemoteInputSequence>>>0,
       (typeof performance!=='undefined' && performance.now)?performance.now():Date.now());
-    return packet ? nxRemoteSendInputPacket(packet,force===true) : false;
+    return packet ? nxRemoteSendInputPacket(packet,force===true,channelsOverride) : false;
   }
-  function nxRemoteSendMouseFrame(frame,force) {
+  function nxRemoteSendMouseFrame(frame,force,channelsOverride) {
     if(force!==true && !nxRemoteGamepadReady()) return false;
     const packet=nxRemoteEncodeMouseFrame(frame,nxRemoteInputSequence>>>0,
       (typeof performance!=='undefined' && performance.now)?performance.now():Date.now());
-    return packet ? nxRemoteSendInputPacket(packet,force===true) : false;
+    return packet ? nxRemoteSendInputPacket(packet,force===true,channelsOverride) : false;
   }
   function nxRemoteInputRelease() {
     let complete=true;
@@ -3532,7 +3663,10 @@
     return nxRemoteSendGamepadFrame(nxRemoteNeutralGamepad,slot,true,channelsOverride);
   }
   function nxRemoteGamepadSuspend() {
-    if(nxRemoteGamepadPaused) return;
+    if(nxRemoteGamepadPaused && !nxRemoteVirtualGamepad) return;
+    // A touch-held state is not a physical device state. Never replay it after
+    // focus/visibility/panel suspension; require a fresh pointer update on resume.
+    nxRemoteVirtualGamepad=null;
     let complete=true;
     Array.from(nxRemoteRegisteredGamepadSlots).forEach(function(slot){
       if(!nxRemoteSendNeutralGamepad(slot)) complete=false;
@@ -3560,6 +3694,7 @@
         nxRemoteChannelSend(control,JSON.stringify({message:'gamepadChanged',gamepadIndex:slot,wasAdded:false}));
     });
     nxRemoteRegisteredGamepadSlots.clear();
+    nxRemoteVirtualGamepad=null;
     nxRemoteGamepadPaused=false;
   }
   function nxRemoteGamepadTick(pads,allowInput) {
@@ -3576,6 +3711,22 @@
       const slot=Number.isInteger(pad.index)?pad.index:i;
       if(slot<0 || slot>3 || active.has(slot)) continue;
       active.set(slot,pad);
+    }
+    let virtual=nxRemoteVirtualGamepad;
+    if(virtual && (virtual.requestId!==nxRemotePlay.requestId || virtual.peer!==nxRemotePlay.peer || virtual.channels!==nxRemoteChannels)) {
+      nxRemoteVirtualGamepad=null;virtual=null;
+    }
+    if(virtual) {
+      let slot=Number.isInteger(virtual.slot) && !active.has(virtual.slot)?virtual.slot:null;
+      if(slot===null) {
+        for(let candidate=0;candidate<4;candidate++) {
+          if(active.has(candidate)) continue;
+          if(nxRemoteRegisteredGamepadSlots.has(candidate) && candidate!==virtual.slot) continue;
+          slot=candidate;break;
+        }
+      }
+      virtual.slot=slot;
+      if(slot!==null) active.set(slot,virtual.pad);
     }
     Array.from(nxRemoteRegisteredGamepadSlots).forEach(function(slot) {
       if(active.has(slot)) return;
@@ -3594,6 +3745,7 @@
   }
   function nxRemoteCloseDataChannels() {
     const channels=nxRemoteChannels;
+    nxRemoteDetachTouchAdapter();
     nxRemoteInputCaptureDisable(true,'Sessão xHome encerrada; entradas remotas liberadas.');
     nxRemoteReleaseGamepadSlots(channels);
     nxRemoteChannels=null;
@@ -3679,7 +3831,8 @@
         ];
         for(const item of configs) if(!sendMessage(item[0],item[1])) throw new Error('canal message indisponível');
         nxRemotePlay.dataChannelsReady=true;
-        nxRemotePlay.status='Canais de dados xHome prontos; gamepad físico encaminhado quando detectado.';
+        nxRemoteAttachTouchAdapter(requestId,peer,channels);
+        nxRemotePlay.status='Canais de dados xHome prontos; gamepad físico encaminhado quando detectado; HUD de toque aguarda WebRTC.';
       } catch(e) {
         fail('falha ao inicializar: '+String(e && e.message||'erro'));
       }
@@ -4076,11 +4229,14 @@
           const connectionState=peer.connectionState||peer.iceConnectionState;
           if(connectionState==='connected'){
             nxRemotePlay.sessionStatus='connected';
-            nxRemotePlay.status='WebRTC conectado; gamepad e teclado/mouse físico usam o canal input experimental. Mídia ainda aguarda validação.';
+            nxRemoteAttachTouchAdapter(requestId,peer,nxRemoteChannels);
+            nxRemotePlay.status='WebRTC conectado; gamepad, teclado/mouse físico e HUD de toque usam o canal input experimental. Mídia ainda aguarda validação.';
             if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
           }else if(connectionState==='disconnected'||connectionState==='failed'||connectionState==='closed'){
             nxRemoteInputCaptureDisable(false,'Conexão WebRTC perdida; captura pausada e entradas liberadas.');
+            if(nxRemoteTouchAdapter)nxRemoteTouchAdapter.release();
             nxRemoteGamepadSuspend();
+            if(connectionState==='failed'||connectionState==='closed')nxRemoteDetachTouchAdapter();
             nxRemotePlay.sessionStatus='disconnected';
             nxRemotePlay.status='Conexão WebRTC '+connectionState+'.';
           }
@@ -4117,7 +4273,7 @@
   const TAB_BUILDERS = {
     remote: function(root) {
       root.appendChild(mk('div','font-size:19px;font-weight:750;margin-bottom:6px','Remote Play · Xbox em casa'));
-      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:14px','Descoberta e negociação WebRTC experimentais. Gamepad e teclado/mouse físicos têm encaminhamento experimental; toque e mídia ainda dependem de validação real com Xbox.'));
+      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:14px','Descoberta, WebRTC e encaminhamento de entradas são experimentais. O HUD NimboTouch pode ser ativado separadamente; transmissão, áudio e comandos ainda dependem de validação real com Xbox.'));
       const btn=mk('button','cursor:pointer;padding:10px 14px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.busy?'Consultando…':'Buscar meus consoles');
       btn.disabled=nxRemotePlay.busy || !!nxRemotePlay.sessionId || !!nxRemotePlay.peer || !!nxRemotePlay.mediaStream || !!nxRemotePendingRelease;btn.addEventListener('click',function(e){e.stopPropagation();nxRemoteDiscover();});root.appendChild(btn);
       if(nxRemotePlay.busy){const cancel=mk('button','cursor:pointer;padding:10px 14px;margin-left:8px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.cancelAfterCreate?'Aguardando ID…':'Cancelar');cancel.disabled=nxRemotePlay.cancelAfterCreate;cancel.addEventListener('click',function(e){e.stopPropagation();nxRemoteCancel();});root.appendChild(cancel);}
@@ -4163,7 +4319,7 @@
           const inputButton=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,
             nxRemoteInputCapture?'Desativar teclado/mouse':'Ativar teclado/mouse');
           const inputStatus=mk('div','font-size:11px;color:'+C.dim+';margin-top:6px',
-            nxRemoteInputCapture?'Captura ativa. Escape encerra a captura.':'Entrada física opcional; mouse relativo dentro do vídeo. O HUD de toque ainda não está conectado ao canal xHome.');
+            nxRemoteInputCapture?'Captura ativa. Escape encerra a captura.':'Entrada física opcional; mouse relativo dentro do vídeo. O HUD NimboTouch tem ativação independente abaixo.');
           if(nxRemoteInputCapture){nxRemoteInputCapture.button=inputButton;nxRemoteInputCapture.status=inputStatus;}
           inputButton.addEventListener('click',function(e){
             e.stopPropagation();
@@ -4174,6 +4330,28 @@
           });
           root.appendChild(inputButton);
           root.appendChild(inputStatus);
+          const touchApi=window.NimboTouch;
+          if(nxRemoteTouchAdapter&&touchApi&&typeof touchApi.startRemote==='function'&&touchApi.hasRemoteInputAdapter?.()){
+            const touchActive=!!touchApi.isRemoteActive?.();
+            const touchEnabled=!!touchApi.isRemoteEnabled?.();
+            const touchReady=!!nxRemoteTouchAdapter.isReady();
+            const touchButton=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,
+              touchEnabled?'Desativar HUD de toque':touchReady?'Ativar HUD de toque':'Aguardando conexão para HUD de toque');
+            touchButton.disabled=!touchReady&&!touchEnabled;
+            touchButton.addEventListener('click',async function(e){
+              e.stopPropagation();
+              let startFailed=false;
+              if(touchApi.isRemoteEnabled?.())touchApi.stopRemote?.();
+              else startFailed=!(await touchApi.startRemote());
+              renderBody();
+              if(startFailed){const status=root.querySelector('[data-nx-xhome-touch-status]');if(status)status.textContent='Não foi possível ativar: confirme a conexão WebRTC e feche menus ou editores abertos.';}
+            });
+            root.appendChild(touchButton);
+            const touchStatus=mk('div','font-size:11px;color:'+C.dim+';margin-top:6px',
+              touchActive?'HUD de toque ativo no transporte xHome.':touchEnabled?'HUD de toque ligado, mas pausado até a conexão e o foco estarem disponíveis.':'HUD de toque independente; as preferências e o layout do NimboTouch são preservados.');
+            touchStatus.setAttribute('data-nx-xhome-touch-status','');
+            root.appendChild(touchStatus);
+          }
         }
       }
       if(nxRemotePlay.sessionId || nxRemotePlay.peer || nxRemotePlay.mediaStream){
@@ -5210,24 +5388,6 @@
     });
   };
 
-  TABS.push({id:'virtualpad',label:'Controle virtual',desc:'Gamepad independente por toque'});
-  TAB_BUILDERS.virtualpad = function(root) {
-    const intro=group('Gamepad virtual','Configure uma HUD independente com botões e analógicos de um controle Xbox. As configurações não alteram o Teclado e Mouse.');
-    intro.add(mk('div','font-size:12px;line-height:1.5;color:'+C.dim+';margin:2px 0 10px','Ative a HUD para jogar. Use Editar HUD para organizar os controles diretamente sobre a tela do jogo.'));
-    const actions=mk('div','display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px');
-    actions.appendChild(actBtn(nxVirtualGamepad.enabled?'Desativar controle':'Ativar controle',function(){nxVirtualPadToggle(!nxVirtualGamepad.enabled);},nxVirtualGamepad.enabled?'danger':'primary'));
-    actions.appendChild(actBtn(nxVirtualGamepad.editing?'Concluir edição':'Editar HUD',function(){if(!nxVirtualGamepad.enabled){toast('Ative a HUD antes de editar');return;}nxVirtualPadSetEditing(!nxVirtualGamepad.editing);},'ghost'));
-    intro.add(actions);
-    intro.add(mk('div','font-size:11px;line-height:1.5;color:'+C.dim+';margin-top:9px',nxVirtualGamepad.error||(nxVirtualGamepad.enabled?'HUD ativa · leituras: '+nxVirtualGamepad.reads+' · slot: '+(nxVirtualGamepad.lastIndex<0?'aguardando':nxVirtualGamepad.lastIndex):'HUD desativada · controles físicos preservados')));
-    root.appendChild(intro.root);
-    const editor=group('Personalização','Arraste os controles, selecione cada um para abrir o painel de configuração e use Ocultar HUD para liberar a tela sem desligar o controle.');
-    editor.add(mk('div','font-size:11px;line-height:1.5;color:'+C.dim,'Salve o layout no próprio dispositivo. A edição só fica disponível enquanto a HUD estiver ativada.'));
-    const opacity=document.createElement('input');opacity.type='range';opacity.min='20';opacity.max='100';opacity.step='1';opacity.value=String(Math.round(nxVirtualGamepad.opacity*100));opacity.style.cssText='width:100%;max-width:220px';opacity.addEventListener('input',function(){nxVirtualGamepad.opacity=Number(opacity.value)/100;if(nxVirtualGamepad.hud)nxVirtualGamepad.hud.style.setProperty('--nx-vpad-opacity',String(nxVirtualGamepad.opacity));});
-    editor.add(setRow('Transparência','Ajusta a transparência visual dos controles.',opacity));
-    editor.add(actBtn('Restaurar layout original',function(){nxVirtualGamepad.layout=NX_VPAD_DEFAULTS.map(function(c){return Object.assign({},c);});nxVirtualPadSaveLayout();if(nxVirtualGamepad.hud)nxVirtualPadRenderHud();renderBody();},'ghost'));
-    root.appendChild(editor.root);
-  };
-
   function setTab(id) {
     if (!TAB_BUILDERS[id]) id = 'overview';
     tabId = id;
@@ -5578,7 +5738,7 @@
     });
     const groups=[
       {title:'Transmissão',sub:'Vídeo, qualidade, servidores e estatísticas',icon:ICONS.stream,links:[['video','Imagem e filtros'],['stream','Streaming e WebRTC'],['region','Servidores e regiões'],['dashboard','Dashboard e gráficos']]},
-      {title:'Controles',sub:'Gamepad, teclado, mouse e HUD',icon:ICONS.controls,links:[['controls','Gamepad e HUD'],['virtualpad','Controle virtual (Xbox)'],['audio','Áudio'],['voice','Voz e acessórios']]},
+      {title:'Controles',sub:'Gamepad, teclado, mouse e HUD',icon:ICONS.controls,links:[['controls','Gamepad e HUD'],['audio','Áudio'],['voice','Voz e acessórios']]},
       {title:'Personalização',sub:'Monitor, transparência e layout',icon:ICONS.overview,links:[['personalize','Configurar NX Stream Monitor']]},
       {title:'Sistema',sub:'Diagnósticos e manutenção',icon:ICONS.advanced,links:[['compatibility','Compatibilidade e identidade'],['advanced','Diagnósticos do sistema']]}
     ];
@@ -5711,12 +5871,19 @@
     return pads;
   }
   function nxGamepadUiTick() {
-    if (document.visibilityState === 'hidden' || typeof navigator.getGamepads !== 'function') {
+    if (document.visibilityState === 'hidden') {
       nxRemoteGamepadSuspend();
       return;
     }
-    let pads;
-    try { pads=nxReadGamepadSnapshot(); } catch (_) { nxRemoteGamepadSuspend();return; }
+    let pads=[];
+    try {
+      if(typeof navigator.getGamepads==='function') pads=nxReadGamepadSnapshot();
+    } catch (_) {
+      // Keep the shared scheduler alive for touch-originated xHome input.
+      // An empty snapshot lets the scheduler neutralize stale physical slots.
+    }
+    // Without Gamepad API, an empty physical snapshot still services the xHome
+    // virtual pad and clears the paused gate after focus/visibility is restored.
     const remoteVideoFocused=nxRemoteVideoHasInputFocus();
     const allowInput=!nxCapturePad && nxRemoteGamepadWindowFocused && (!openUI || remoteVideoFocused);
     if (!pads.length) { nxRemoteGamepadTick(pads,allowInput);nxPadUiState.combo=false;return; }
@@ -5933,236 +6100,6 @@
     const normalized = (magnitude - profile.deadzone) / (1 - profile.deadzone);
     return Math.sign(x) * Math.pow(normalized, profile.curve);
   }
-  // Controle virtual independente: seu estado não depende do NimboTouch, xHome ou mouse/teclado.
-  const nxVirtualGamepad = {
-    enabled: false, axes: [0,0,0,0], buttons: Array(17).fill(0),
-    pointers: new Map(), buttonPointers: new Map(), toggledButtons: new Set(), tapCounts: new Map(), tapTimers: new Map(), hud: null, status: null,
-    selectedId: null, panelCollapsed: false, panelPosition: null, hudHidden: false, deadzone: 0.08,
-    lastIndex: -1, reads: 0, error: ''
-  };
-  function nxVirtualPadFindIndex(pads) {
-    for (let i=0;i<4;i++) if (!pads[i] || pads[i].connected===false) return i;
-    return -1;
-  }
-  function nxVirtualPadSnapshot(index, connected) {
-    return {
-      id:'NimboXcloud Virtual Gamepad', index:index, connected:connected!==false,
-      mapping:'standard', timestamp:performance.now(),
-      axes:nxVirtualGamepad.axes.slice(),
-      buttons:nxVirtualGamepad.buttons.map(function(value){
-        const v=Math.max(0,Math.min(1,Number(value)||0));
-        return {pressed:v>0.5,touched:v>0,value:v};
-      }),
-      hapticActuators:[], vibrationActuator:null
-    };
-  }
-  function nxVirtualPadEvent(type,pad) {
-    try {
-      let event;
-      if (typeof GamepadEvent==='function') {
-        try { event=new GamepadEvent(type,{gamepad:pad}); } catch (_) {}
-      }
-      if (!event) { event=new Event(type); Object.defineProperty(event,'gamepad',{value:pad}); }
-      window.dispatchEvent(event);
-    } catch (_) {}
-  }
-  function nxVirtualPadSetAxis(index,value) {
-    if(index<0||index>3)return;
-    const n=Math.max(-1,Math.min(1,Number(value)||0));
-    nxVirtualGamepad.axes[index]=n;
-    nxVirtualPadUpdateSticks();
-  }
-  function nxVirtualPadSetButton(index,value) {
-    if(index<0||index>16)return;
-    nxVirtualGamepad.buttons[index]=Math.max(0,Math.min(1,Number(value)||0));
-    nxVirtualPadUpdateButtons();
-  }
-  function nxVirtualPadReleaseButtonPointer(pointerId) {
-    const pointer=nxVirtualGamepad.pointers.get(pointerId);
-    if(!pointer)return;
-    nxVirtualGamepad.pointers.delete(pointerId);
-    if(pointer.element&&pointer.leave)pointer.element.removeEventListener('pointerleave',pointer.leave);
-    if(pointer.mode==='hold')pointer.indices.forEach(function(i){
-      const set=nxVirtualGamepad.buttonPointers.get(i);
-      if(set){set.delete(pointerId);if(!set.size)nxVirtualGamepad.buttonPointers.delete(i);}
-      nxVirtualPadRefreshOutput(i);
-    });
-  }
-  window.addEventListener('pointerup',function(e){nxVirtualPadReleaseButtonPointer(e.pointerId);},true);
-  window.addEventListener('pointercancel',function(e){nxVirtualPadReleaseButtonPointer(e.pointerId);},true);
-  function nxVirtualPadReset() {
-    nxVirtualGamepad.pointers.forEach(function(pointer,pointerId){
-      if(pointer&&pointer.type==='button'&&pointer.element&&pointer.leave)pointer.element.removeEventListener('pointerleave',pointer.leave);
-    });
-    nxVirtualGamepad.axes=[0,0,0,0];
-    nxVirtualGamepad.buttons.fill(0);
-    nxVirtualGamepad.pointers.clear();nxVirtualGamepad.buttonPointers.clear();nxVirtualGamepad.toggledButtons.clear();nxVirtualGamepad.tapCounts.clear();nxVirtualGamepad.tapTimers.forEach(function(t){clearTimeout(t);});nxVirtualGamepad.tapTimers.clear();
-    nxVirtualPadUpdateSticks();
-    nxVirtualPadUpdateButtons();
-  }
-  function nxVirtualPadUpdateSticks() {
-    if(!nxVirtualGamepad.hud)return;
-    ['left','right'].forEach(function(side,i){
-      const knob=nxVirtualGamepad.hud.querySelector('[data-nx-vpad-stick="'+side+'"] .nx-vpad-knob');
-      if(knob)knob.style.transform='translate('+(nxVirtualGamepad.axes[i*2]*30)+'px,'+(nxVirtualGamepad.axes[i*2+1]*30)+'px)';
-    });
-  }
-  function nxVirtualPadUpdateButtons() {
-    if(!nxVirtualGamepad.hud)return;
-    nxVirtualGamepad.hud.querySelectorAll('[data-nx-vpad-button]').forEach(function(el){
-      el.classList.toggle('active',nxVirtualGamepad.buttons[Number(el.dataset.nxVpadButton)]>0.5);
-    });
-  }
-  const NX_VPAD_LAYOUT_KEY='nx.virtualGamepad.layout.v1';
-  const NX_VPAD_DEFAULTS=[
-    {id:'left-stick',type:'stick',label:'Analógico esquerdo',x:13,y:73,size:132,visible:true,axis:0},
-    {id:'right-stick',type:'stick',label:'Analógico direito',x:87,y:73,size:132,visible:true,axis:2},
-    {id:'a',type:'button',label:'A',x:91,y:58,size:42,visible:true,index:0},{id:'b',type:'button',label:'B',x:95,y:50,size:42,visible:true,index:1},
-    {id:'x',type:'button',label:'X',x:87,y:50,size:42,visible:true,index:2},{id:'y',type:'button',label:'Y',x:91,y:42,size:42,visible:true,index:3},
-    {id:'lb',type:'button',label:'LB',x:7,y:48,size:46,visible:true,index:4},{id:'rb',type:'button',label:'RB',x:93,y:35,size:46,visible:true,index:5},
-    {id:'lt',type:'button',label:'LT',x:7,y:40,size:46,visible:true,index:6},{id:'rt',type:'button',label:'RT',x:93,y:27,size:46,visible:true,index:7},
-    {id:'view',type:'button',label:'VIEW',x:43,y:89,size:42,visible:true,index:8},{id:'menu',type:'button',label:'MENU',x:57,y:89,size:42,visible:true,index:9},
-    {id:'l3',type:'button',label:'L3',x:13,y:89,size:40,visible:true,index:10},{id:'r3',type:'button',label:'R3',x:87,y:89,size:40,visible:true,index:11},
-    {id:'up',type:'button',label:'▲',x:7,y:64,size:36,visible:true,index:12},{id:'down',type:'button',label:'▼',x:7,y:82,size:36,visible:true,index:13},
-    {id:'left',type:'button',label:'◀',x:3,y:73,size:36,visible:true,index:14},{id:'right',type:'button',label:'▶',x:11,y:73,size:36,visible:true,index:15},
-    {id:'home',type:'button',label:'HOME',x:50,y:8,size:44,visible:false,index:16}
-  ];
-  function nxVirtualPadLoadLayout(){
-    try{const saved=JSON.parse(localStorage.getItem(NX_VPAD_LAYOUT_KEY)||'null');if(!Array.isArray(saved))return NX_VPAD_DEFAULTS.map(function(c){return Object.assign({},c);});
-      return NX_VPAD_DEFAULTS.map(function(base){const item=saved.find(function(x){return x&&x.id===base.id;});return Object.assign({},base,item?{x:item.x,y:item.y,size:item.size,visible:item.visible,opacity:Number.isFinite(item.opacity)?Math.max(.2,Math.min(1,item.opacity)):1,deadzone:Number.isFinite(item.deadzone)?Math.max(0,Math.min(.5,item.deadzone)):.08}:null);});
-    }catch(_){return NX_VPAD_DEFAULTS.map(function(c){return Object.assign({},c);});}
-  }
-  nxVirtualGamepad.layout=nxVirtualGamepad.layout||nxVirtualPadLoadLayout();
-  nxVirtualGamepad.editing=false;nxVirtualGamepad.opacity=nxVirtualGamepad.opacity||0.82;
-  function nxVirtualPadSaveLayout(){
-    try{localStorage.setItem(NX_VPAD_LAYOUT_KEY,JSON.stringify(nxVirtualGamepad.layout.map(function(c){return {id:c.id,x:c.x,y:c.y,size:c.size,visible:c.visible,opacity:Number.isFinite(c.opacity)?c.opacity:1,deadzone:Number.isFinite(c.deadzone)?c.deadzone:.08};})));toast('Layout do controle salvo');}
-    catch(e){nxVirtualGamepad.error='Falha ao salvar layout: '+String(e&&e.message||e);toast(nxVirtualGamepad.error);}
-  }
-  function nxVirtualPadSetEditing(value){nxVirtualGamepad.editing=!!value;if(!nxVirtualGamepad.hud)nxVirtualPadMountHud();nxVirtualPadRenderHud();if(typeof renderBody==='function')renderBody();}
-  function nxVirtualPadOutputIndices(control,index){return [index];}
-  function nxVirtualPadRefreshOutput(index){const held=nxVirtualGamepad.buttonPointers.has(index)&&nxVirtualGamepad.buttonPointers.get(index).size>0;const toggled=nxVirtualGamepad.toggledButtons.has(index);const tapped=(nxVirtualGamepad.tapCounts.get(index)||0)>0;nxVirtualPadSetButton(index,held||toggled||tapped?1:0);}
-  function nxVirtualPadTap(indices){indices.forEach(function(index){const old=nxVirtualGamepad.tapTimers.get(index);if(old)clearTimeout(old);nxVirtualGamepad.tapCounts.set(index,1);nxVirtualPadRefreshOutput(index);const timer=setTimeout(function(){const count=Math.max(0,(nxVirtualGamepad.tapCounts.get(index)||1)-1);if(count)nxVirtualGamepad.tapCounts.set(index,count);else nxVirtualGamepad.tapCounts.delete(index);nxVirtualGamepad.tapTimers.delete(index);nxVirtualPadRefreshOutput(index);},110);nxVirtualGamepad.tapTimers.set(index,timer);});}
-  function nxVirtualPadSelectedControl(){return nxVirtualGamepad.layout.find(function(c){return c.id===nxVirtualGamepad.selectedId;})||null;}
-  function nxVirtualPadRenderEditorPanel(){
-    const root=nxVirtualGamepad.hud;if(!root)return;
-    const panel=root.querySelector('.nx-vpad-editor-panel'),collapse=root.querySelector('.nx-vpad-panel-toggle');
-    if(!panel||!collapse)return;
-    const c=nxVirtualPadSelectedControl();
-    collapse.hidden=!nxVirtualGamepad.editing;
-    collapse.textContent=nxVirtualGamepad.panelCollapsed?'⚙ Configurar':'Recolher painel';
-    if(!c){panel.hidden=true;return;}
-    if(!nxVirtualGamepad.panelPosition){panel.style.left=c.x<50?'auto':'12px';panel.style.right=c.x<50?'12px':'auto';panel.style.top='50%';panel.style.transform='translateY(-50%)';}else{panel.style.left=nxVirtualGamepad.panelPosition.x+'px';panel.style.top=nxVirtualGamepad.panelPosition.y+'px';panel.style.right='auto';panel.style.transform='none';}
-    panel.querySelector('.nx-vpad-panel-title').textContent=c.type==='stick'?'Configurar '+c.label:'Configurar botão '+c.label;
-    panel.querySelector('.nx-vpad-size-value').textContent=Math.round(c.size)+' px';
-    panel.querySelector('.nx-vpad-size-range').value=String(c.size);
-    panel.querySelector('.nx-vpad-opacity-value').textContent=Math.round((c.opacity==null?1:c.opacity)*100)+'%';
-    panel.querySelector('.nx-vpad-opacity-range').value=String(Math.round((c.opacity==null?1:c.opacity)*100));
-    panel.querySelector('.nx-vpad-deadzone-row').hidden=c.type!=='stick';
-    panel.querySelector('.nx-vpad-deadzone').value=String(Math.round((c.deadzone==null?.08:c.deadzone)*100));
-    panel.querySelector('.nx-vpad-deadzone-value').textContent=Math.round((c.deadzone==null?.08:c.deadzone)*100)+'%';
-    panel.hidden=!nxVirtualGamepad.editing||nxVirtualGamepad.panelCollapsed;
-  }
-  function nxVirtualPadRenderHud(){
-    const root=nxVirtualGamepad.hud;if(!root)return;root.classList.toggle('editing',nxVirtualGamepad.editing);root.classList.toggle('hud-hidden',!!nxVirtualGamepad.hudHidden);root.style.setProperty('--nx-vpad-opacity',String(nxVirtualGamepad.opacity));
-    const stage=root.querySelector('.nx-vpad-stage');stage.textContent='';
-    nxVirtualGamepad.layout.filter(function(c){return c.visible;}).forEach(function(c){
-      const el=document.createElement(c.type==='stick'?'div':'button');el.className='nx-vpad-control '+(c.type==='stick'?'nx-vpad-stick':'nx-vpad-button');el.dataset.nxVpadId=c.id;
-      el.style.left=c.x+'%';el.style.top=c.y+'%';el.style.width=c.size+'px';el.style.height=c.size+'px';
-      el.style.setProperty('--nx-vpad-control-opacity',String((c.opacity==null?1:c.opacity)*nxVirtualGamepad.opacity));
-      if(nxVirtualGamepad.editing&&nxVirtualGamepad.selectedId===c.id)el.classList.add('selected');
-      if(c.type==='stick'){el.dataset.nxVpadStick=c.axis===0?'left':'right';const knob=document.createElement('span');knob.className='nx-vpad-knob';el.appendChild(knob);}
-      else{el.type='button';el.dataset.nxVpadButton=String(c.index);el.textContent=c.label;}
-      if(nxVirtualGamepad.editing){const tag=document.createElement('span');tag.className='nx-vpad-edit-tag';tag.textContent=c.label;el.appendChild(tag);}
-      stage.appendChild(el);
-    });
-    root.querySelector('.nx-vpad-toolbar').hidden=!nxVirtualGamepad.editing;
-    const select=root.querySelector('.nx-vpad-add');select.innerHTML='<option value="">Adicionar controle…</option>';
-    nxVirtualGamepad.layout.filter(function(c){return !c.visible;}).forEach(function(c){const o=document.createElement('option');o.value=c.id;o.textContent=c.label;select.appendChild(o);});
-    nxVirtualPadRenderEditorPanel();nxVirtualPadUpdateSticks();nxVirtualPadUpdateButtons();
-  }
-  function nxVirtualPadMountHud(){
-    if(nxVirtualGamepad.hud&&nxVirtualGamepad.hud.isConnected){nxVirtualPadRenderHud();return;}
-    const root=document.createElement('div');root.id='nx-virtual-gamepad-hud';
-    const style=document.createElement('style');
-    style.textContent='#nx-virtual-gamepad-hud{position:fixed;inset:0;z-index:2147483000;pointer-events:none;color:#fff;font:700 12px system-ui,sans-serif;touch-action:none;user-select:none;--nx-vpad-opacity:.82}#nx-virtual-gamepad-hud *{box-sizing:border-box}#nx-virtual-gamepad-hud .nx-vpad-stage{position:absolute;inset:0;pointer-events:none}#nx-virtual-gamepad-hud .nx-vpad-control{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;touch-action:none}#nx-virtual-gamepad-hud .nx-vpad-stick{border-radius:50%;border:1px solid #ffffff70;background:radial-gradient(circle,#66758b99 0 38%,#1b2639bb 40% 68%,#080d17bb 70%);display:grid;place-items:center;opacity:var(--nx-vpad-control-opacity,var(--nx-vpad-opacity))}#nx-virtual-gamepad-hud .nx-vpad-knob{width:36%;height:36%;border-radius:50%;background:linear-gradient(145deg,#8292a8,#26364b);border:2px solid #d2deed;box-shadow:0 4px 14px #0009;pointer-events:none}#nx-virtual-gamepad-hud .nx-vpad-button{border:1px solid #ffffff65;border-radius:50%;background:#26364b;color:#fff;font-weight:900;opacity:var(--nx-vpad-control-opacity,var(--nx-vpad-opacity));display:grid;place-items:center;box-shadow:0 3px 10px #0007}#nx-virtual-gamepad-hud .nx-vpad-button.active{background:#f2f6ff;color:#152033}#nx-virtual-gamepad-hud.editing .nx-vpad-stage{pointer-events:auto}#nx-virtual-gamepad-hud.editing .nx-vpad-control{outline:1px dashed #80c7ff;opacity:.92;cursor:move}#nx-virtual-gamepad-hud.editing .nx-vpad-control.selected{outline:2px solid #38bdf8;box-shadow:0 0 0 4px #38bdf833,0 3px 12px #0008}#nx-virtual-gamepad-hud .nx-vpad-edit-tag{position:absolute;left:50%;top:-16px;transform:translateX(-50%);font-size:9px;color:#fff;background:#075985;padding:2px 4px;border-radius:4px;white-space:nowrap;pointer-events:none}#nx-virtual-gamepad-hud .nx-vpad-toolbar{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:5px;padding:7px;background:#101722ed;border:1px solid #ffffff45;border-radius:12px;pointer-events:auto;z-index:4;white-space:nowrap;max-width:calc(100vw - 20px);overflow-x:auto}#nx-virtual-gamepad-hud .nx-vpad-toolbar[hidden],#nx-virtual-gamepad-hud .nx-vpad-editor-panel[hidden],#nx-virtual-gamepad-hud .nx-vpad-panel-toggle[hidden]{display:none}#nx-virtual-gamepad-hud .nx-vpad-toolbar button,#nx-virtual-gamepad-hud .nx-vpad-toolbar select{border:1px solid #ffffff45;background:#26364b;color:#fff;border-radius:8px;padding:7px;font:600 11px system-ui}#nx-virtual-gamepad-hud .nx-vpad-panel-toggle{position:absolute;top:64px;right:12px;z-index:6;pointer-events:auto;border:1px solid #ffffff55;background:#101722ed;color:#fff;border-radius:9px;padding:9px 12px;font:600 11px system-ui}#nx-virtual-gamepad-hud.hud-hidden .nx-vpad-stage{display:none}#nx-virtual-gamepad-hud.hud-hidden .nx-vpad-toolbar,#nx-virtual-gamepad-hud.hud-hidden .nx-vpad-editor-panel,#nx-virtual-gamepad-hud.hud-hidden .nx-vpad-panel-toggle,#nx-virtual-gamepad-hud.hud-hidden .nx-vpad-close{display:none}#nx-virtual-gamepad-hud .nx-vpad-editor-panel{position:absolute;top:50%;transform:none;width:min(260px,calc(100vw - 24px));max-height:min(78vh,520px);overflow:auto;z-index:5;pointer-events:auto;background:#101722f2;border:1px solid #ffffff35;border-radius:14px;padding:13px;box-shadow:0 14px 40px #0009;display:flex;flex-direction:column;gap:11px;backdrop-filter:blur(12px)}#nx-virtual-gamepad-hud .nx-vpad-panel-titlebar{display:flex;align-items:center;justify-content:space-between;cursor:move;touch-action:none}#nx-virtual-gamepad-hud .nx-vpad-panel-title{font-size:13px;font-weight:800}#nx-virtual-gamepad-hud .nx-vpad-panel-collapse{border:0;background:#26364b;color:#fff;border-radius:6px;padding:3px 8px}#nx-virtual-gamepad-hud .nx-vpad-combo-title{font-size:11px;color:#dce6f4;font-weight:700}#nx-virtual-gamepad-hud .nx-vpad-combo-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}#nx-virtual-gamepad-hud .nx-vpad-combo-options label{font-size:10px;display:flex;align-items:center;gap:3px;background:#26364b;padding:5px;border-radius:6px}#nx-virtual-gamepad-hud .nx-vpad-combo-options input{accent-color:#38bdf8}#nx-virtual-gamepad-hud .nx-vpad-panel-field{display:flex;flex-direction:column;gap:5px;color:#dce6f4;font-size:11px}#nx-virtual-gamepad-hud .nx-vpad-panel-field input,#nx-virtual-gamepad-hud .nx-vpad-panel-field select{width:100%;accent-color:#38bdf8}#nx-virtual-gamepad-hud .nx-vpad-panel-actions{display:flex;gap:7px}#nx-virtual-gamepad-hud .nx-vpad-panel-actions button{flex:1;border:1px solid #ffffff40;background:#26364b;color:#fff;border-radius:8px;padding:8px;font:600 11px system-ui}#nx-virtual-gamepad-hud .nx-vpad-close{position:absolute;right:12px;bottom:12px;pointer-events:auto;border:1px solid #ffffff45;background:#111b;color:#fff;border-radius:10px;padding:7px 10px}';
-    root.appendChild(style);
-    const toolbar=document.createElement('div');toolbar.className='nx-vpad-toolbar';toolbar.hidden=true;
-    toolbar.innerHTML='<select class="nx-vpad-add" aria-label="Adicionar controle"></select><button type="button" class="nx-vpad-save">Salvar layout</button><button type="button" class="nx-vpad-done">Concluir edição</button>';root.appendChild(toolbar);
-    const panelToggle=document.createElement('button');panelToggle.type='button';panelToggle.className='nx-vpad-panel-toggle';panelToggle.hidden=true;panelToggle.textContent='Configurar controle';root.appendChild(panelToggle);
-    const panel=document.createElement('div');panel.className='nx-vpad-editor-panel';panel.hidden=true;
-    panel.innerHTML='<div class="nx-vpad-panel-titlebar"><div class="nx-vpad-panel-title">Configurações do controle</div><button type="button" class="nx-vpad-panel-collapse">Recolher</button></div><label class="nx-vpad-panel-field">Tamanho <span class="nx-vpad-size-value">—</span><input class="nx-vpad-size-range" type="range" min="28" max="190" step="2" value="42"></label><label class="nx-vpad-panel-field">Transparência <span class="nx-vpad-opacity-value">100%</span><input class="nx-vpad-opacity-range" type="range" min="20" max="100" step="1" value="100"></label><label class="nx-vpad-panel-field nx-vpad-deadzone-row">Zona morta do analógico <span class="nx-vpad-deadzone-value">8%</span><input class="nx-vpad-deadzone" type="range" min="0" max="50" step="1" value="8"></label><div class="nx-vpad-panel-actions"><button type="button" class="nx-vpad-hide-selected">Ocultar controle</button><button type="button" class="nx-vpad-save-selected">Salvar</button></div>';
-    root.appendChild(panel);
-    const stage=document.createElement('div');stage.className='nx-vpad-stage';root.appendChild(stage);
-    const close=document.createElement('button');close.type='button';close.className='nx-vpad-close';close.textContent='Ocultar HUD';root.appendChild(close);
-    const showHud=document.createElement('button');showHud.type='button';showHud.className='nx-vpad-show';showHud.textContent='Mostrar controles';showHud.style.cssText='position:fixed;right:12px;bottom:12px;z-index:2147483001;pointer-events:auto;border:1px solid #ffffff55;background:#101722ed;color:#fff;border-radius:10px;padding:9px 12px;font:600 11px system-ui;display:none';root.appendChild(showHud);
-    document.body.appendChild(root);nxVirtualGamepad.hud=root;
-    close.addEventListener('click',function(){nxVirtualGamepad.hudHidden=true;nxVirtualGamepad.editing=false;root.classList.add('hud-hidden');showHud.style.display='block';});
-    showHud.addEventListener('click',function(){nxVirtualGamepad.hudHidden=false;root.classList.remove('hud-hidden');showHud.style.display='none';});
-    toolbar.querySelector('.nx-vpad-save').addEventListener('click',nxVirtualPadSaveLayout);
-    toolbar.querySelector('.nx-vpad-done').addEventListener('click',function(){nxVirtualPadSaveLayout();nxVirtualPadSetEditing(false);});
-    toolbar.querySelector('select').addEventListener('change',function(e){const c=nxVirtualGamepad.layout.find(function(x){return x.id===e.target.value;});if(c){c.visible=true;nxVirtualGamepad.selectedId=c.id;nxVirtualGamepad.panelCollapsed=false;nxVirtualPadRenderHud();}});
-    panelToggle.addEventListener('click',function(){nxVirtualGamepad.panelCollapsed=!nxVirtualGamepad.panelCollapsed;nxVirtualPadRenderEditorPanel();});
-    panel.querySelector('.nx-vpad-size-range').addEventListener('input',function(e){const c=nxVirtualPadSelectedControl();if(!c)return;c.size=Number(e.target.value);nxVirtualPadRenderHud();});
-    panel.querySelector('.nx-vpad-opacity-range').addEventListener('input',function(e){const c=nxVirtualPadSelectedControl();if(!c)return;c.opacity=Number(e.target.value)/100;nxVirtualPadRenderHud();});
-    panel.querySelector('.nx-vpad-deadzone').addEventListener('input',function(e){const c=nxVirtualPadSelectedControl();if(!c)return;c.deadzone=Number(e.target.value)/100;panel.querySelector('.nx-vpad-deadzone-value').textContent=e.target.value+'%';});
-    panel.querySelector('.nx-vpad-panel-collapse').addEventListener('click',function(){nxVirtualGamepad.panelCollapsed=true;nxVirtualPadRenderEditorPanel();});
-    const panelHandle=panel.querySelector('.nx-vpad-panel-titlebar');panelHandle.addEventListener('pointerdown',function(e){if(e.target.closest('button'))return;const rect=panel.getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ox=rect.left,oy=rect.top;panelHandle.setPointerCapture(e.pointerId);const move=function(ev){const x=Math.max(0,Math.min(window.innerWidth-panel.offsetWidth,ox+ev.clientX-sx)),y=Math.max(0,Math.min(window.innerHeight-panel.offsetHeight,oy+ev.clientY-sy));nxVirtualGamepad.panelPosition={x:x,y:y};panel.style.left=x+'px';panel.style.top=y+'px';panel.style.right='auto';};const done=function(){panelHandle.removeEventListener('pointermove',move);panelHandle.removeEventListener('pointerup',done);panelHandle.removeEventListener('pointercancel',done);};panelHandle.addEventListener('pointermove',move);panelHandle.addEventListener('pointerup',done);panelHandle.addEventListener('pointercancel',done);});
-    panel.querySelector('.nx-vpad-hide-selected').addEventListener('click',function(){const c=nxVirtualPadSelectedControl();if(!c)return;c.visible=false;nxVirtualGamepad.selectedId=null;nxVirtualGamepad.panelCollapsed=false;nxVirtualPadRenderHud();});
-    panel.querySelector('.nx-vpad-save-selected').addEventListener('click',nxVirtualPadSaveLayout);
-    root.addEventListener('pointerdown',function(e){
-      if(!nxVirtualGamepad.editing)return;const el=e.target.closest('.nx-vpad-control');if(!el)return;
-      const c=nxVirtualGamepad.layout.find(function(x){return x.id===el.dataset.nxVpadId;});if(!c)return;
-      nxVirtualGamepad.selectedId=c.id;nxVirtualGamepad.panelCollapsed=false;nxVirtualPadRenderEditorPanel();
-      root.querySelectorAll('.nx-vpad-control').forEach(function(n){n.classList.toggle('selected',n.dataset.nxVpadId===c.id);});
-      e.preventDefault();e.stopPropagation();el.setPointerCapture(e.pointerId);const rect=root.getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ox=c.x,oy=c.y;
-      const move=function(ev){c.x=Math.max(2,Math.min(98,ox+(ev.clientX-sx)/rect.width*100));c.y=Math.max(4,Math.min(96,oy+(ev.clientY-sy)/rect.height*100));el.style.left=c.x+'%';el.style.top=c.y+'%';};
-      const done=function(){el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',done);el.removeEventListener('pointercancel',done);nxVirtualPadRenderEditorPanel();};
-      el.addEventListener('pointermove',move);el.addEventListener('pointerup',done);el.addEventListener('pointercancel',done);
-    },true);
-    root.addEventListener('pointerdown',function(e){
-      if(nxVirtualGamepad.editing||nxVirtualGamepad.hudHidden)return;
-      const stick=e.target.closest('[data-nx-vpad-stick]');
-      if(stick){const axis=stick.dataset.nxVpadStick==='left'?0:2,control=nxVirtualGamepad.layout.find(function(c){return c.type==='stick'&&c.axis===axis;});
-        const move=function(ev){const r=stick.getBoundingClientRect(),rad=Math.max(1,Math.min(r.width,r.height)*.38);let x=Math.max(-1,Math.min(1,(ev.clientX-r.left-r.width/2)/rad)),y=Math.max(-1,Math.min(1,(ev.clientY-r.top-r.height/2)/rad));const m=Math.hypot(x,y),dz=control&&Number.isFinite(control.deadzone)?control.deadzone:nxVirtualGamepad.deadzone;if(m<=dz){x=0;y=0;}else{const scaled=Math.min(1,(m-dz)/(1-dz));x=x/m*scaled;y=y/m*scaled;}nxVirtualPadSetAxis(axis,x);nxVirtualPadSetAxis(axis+1,y);};
-        e.preventDefault();stick.setPointerCapture(e.pointerId);nxVirtualGamepad.pointers.set(e.pointerId,{type:'stick',start:axis});move(e);
-        const up=function(ev){nxVirtualGamepad.pointers.delete(ev.pointerId);nxVirtualPadSetAxis(axis,0);nxVirtualPadSetAxis(axis+1,0);stick.removeEventListener('pointermove',move);stick.removeEventListener('pointerup',up);stick.removeEventListener('pointercancel',up);};
-        stick.addEventListener('pointermove',move);stick.addEventListener('pointerup',up);stick.addEventListener('pointercancel',up);return;
-      }
-      const btn=e.target.closest('[data-nx-vpad-button]');if(!btn)return;
-      const index=Number(btn.dataset.nxVpadButton),indices=[index],pointerId=e.pointerId;
-      e.preventDefault();
-      const leave=function(){nxVirtualPadReleaseButtonPointer(pointerId);};
-      nxVirtualGamepad.pointers.set(pointerId,{type:'button',index:index,indices:indices,mode:'hold',element:btn,leave:leave});
-      btn.addEventListener('pointerleave',leave);
-      indices.forEach(function(i){if(!nxVirtualGamepad.buttonPointers.has(i))nxVirtualGamepad.buttonPointers.set(i,new Set());nxVirtualGamepad.buttonPointers.get(i).add(pointerId);nxVirtualPadRefreshOutput(i);});
-    },true);
-    nxVirtualPadRenderHud();
-  }
-  function nxVirtualPadToggle(enabled) {
-    const next=!!enabled;
-    if(next===nxVirtualGamepad.enabled)return;
-    if(next){
-      nxVirtualGamepad.error='';
-      nxVirtualGamepad.enabled=true;
-      nxInstallInputBridge();
-      if(!nxInputBridge.installed){
-        nxVirtualGamepad.enabled=false;
-        nxVirtualGamepad.error=nxInputBridge.error||'Não foi possível conectar à Gamepad API';
-        return;
-      }
-      nxVirtualPadMountHud();
-    }else{
-      if(nxVirtualGamepad.lastIndex>=0)nxVirtualPadEvent('gamepaddisconnected',nxVirtualPadSnapshot(nxVirtualGamepad.lastIndex,false));
-      nxVirtualGamepad.enabled=false;nxVirtualGamepad.editing=false;nxVirtualGamepad.lastIndex=-1;
-      nxVirtualPadReset();
-      if(nxVirtualGamepad.hud){nxVirtualGamepad.hud.remove();nxVirtualGamepad.hud=null;}
-    }
-    if(typeof renderBody==='function')renderBody();
-  }
-  window.addEventListener('blur',nxVirtualPadReset);
-  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')nxVirtualPadReset();});
-  window.addEventListener('pagehide',function(){nxVirtualPadToggle(false);});
-
   const NX_INPUT_APPLY_KEY = 'nx.input.applyAxes.v1';
   const nxInputBridge = { enabled: false, installed: false, error: '', transformedReads: 0, nativeReads: 0, fallbacks: 0, lastFallback: '', foreignOverride: false, restored: false };
   const nxOriginalGamepadDescriptor = Object.getOwnPropertyDescriptor(navigator, 'getGamepads');
@@ -6172,7 +6109,7 @@
   function nxGyroGameEnabled() { return getPref(NX_GYRO_GAME_KEY, '0') === '1'; }
   function nxGyroActivationMode() { return getPref(NX_GYRO_TRIGGER_KEY, 'lt') === 'always' ? 'always' : 'lt'; }
   function nxInputEnabled() { return getPref(NX_INPUT_APPLY_KEY, '0') === '1'; }
-  function nxGameBridgeRequested() { return nxInputEnabled() || nxGyroGameEnabled() || nxVirtualGamepad.enabled; }
+  function nxGameBridgeRequested() { return nxInputEnabled() || nxGyroGameEnabled(); }
   const NX_GYRO_BLEND_KEY = 'nx.gyro.blend.v1';
   const NX_GYRO_MAX_AGE_MS = 250;
   function nxGyroBlend() {
@@ -6285,19 +6222,6 @@
             nxInputBridge.transformedReads++;
             return output;
           });
-          if(nxVirtualGamepad.enabled){
-            const virtualIndex=nxVirtualPadFindIndex(result);
-            if(virtualIndex>=0){
-              const changed=nxVirtualGamepad.lastIndex!==virtualIndex;
-              if(nxVirtualGamepad.lastIndex>=0&&changed)nxVirtualPadEvent('gamepaddisconnected',nxVirtualPadSnapshot(nxVirtualGamepad.lastIndex,false));
-              result[virtualIndex]=nxVirtualPadSnapshot(virtualIndex,true);
-              nxVirtualGamepad.lastIndex=virtualIndex;
-              nxVirtualGamepad.reads++;
-              if(changed)nxVirtualPadEvent('gamepadconnected',result[virtualIndex]);
-            }else{
-              nxVirtualGamepad.error='Todos os quatro slots da Gamepad API estão ocupados por controles físicos.';
-            }
-          }
           return result;
         } catch (err) {
           nxRestoreNativeGamepads('Falha no processamento: ' + String(err && err.message || err));

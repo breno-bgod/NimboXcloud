@@ -157,7 +157,7 @@ test('native touch changes do not create a NimboTouch restore snapshot', async (
 
 test('HUD editor removes only the selected custom binding and preserves the rest', () => {
   const start = moduleSource.indexOf('  removeKey(id){');
-  const end = moduleSource.indexOf('\\n  clearKeys(){', start);
+  const end = moduleSource.indexOf('  clearKeys(){', start);
   assert.ok(start >= 0 && end > start, 'removeKey method exists');
   const method = moduleSource.slice(start, end).trim();
   const context = {};
