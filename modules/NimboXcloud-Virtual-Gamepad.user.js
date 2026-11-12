@@ -50,9 +50,9 @@
     const normalized = clamp(value, 0, 1);
     return { pressed: normalized > 0.5, touched: normalized > 0, value: normalized };
   }
-  function createSnapshot(index) {
+  function createSnapshot(index, connected) {
     return {
-      id: GAMEPAD_ID, index, connected: true,
+      id: GAMEPAD_ID, index, connected: connected !== false,
       timestamp: typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now(),
       mapping: 'standard',
       axes: state.axes.slice(0, AXIS_COUNT),
@@ -104,7 +104,7 @@
         const previousIndex = state.lastIndex;
         const snapshot = createSnapshot(index);
         if (previousIndex !== index && previousIndex >= 0) {
-          dispatchGamepadEvent('gamepaddisconnected', createSnapshot(previousIndex));
+          dispatchGamepadEvent('gamepaddisconnected', createSnapshot(previousIndex, false));
         }
         pads[index] = snapshot;
         state.lastIndex = index;
@@ -134,7 +134,7 @@
       return;
     }
     if (!next && state.enabled && state.lastIndex >= 0) {
-      dispatchGamepadEvent('gamepaddisconnected', createSnapshot(state.lastIndex));
+      dispatchGamepadEvent('gamepaddisconnected', createSnapshot(state.lastIndex, false));
     }
     state.enabled = next;
     if (!next) {
@@ -142,6 +142,14 @@
       state.lastIndex = -1;
     } else {
       state.lastIndex = -1;
+      try {
+        const pads = Array.from(nativeGetGamepads() || []);
+        const index = findVirtualIndex(pads);
+        state.lastIndex = index;
+        dispatchGamepadEvent('gamepadconnected', createSnapshot(index));
+      } catch (error) {
+        state.error = 'Falha ao anunciar o controle virtual: ' + String(error && error.message || error);
+      }
     }
     refreshStatus();
   }
