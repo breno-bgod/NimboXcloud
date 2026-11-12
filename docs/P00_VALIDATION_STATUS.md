@@ -1,6 +1,6 @@
 # P00 — Estado de validação e evidências
 
-Revisão: 2026-11-12. Código de runtime integrado na main pelo PR #16: `091e6cc0c9da53b9bb31777a47a86c0b67a60368`. Runtime: v4.12.92.
+Revisão: 2026-11-12. Base main: `bb0dda00f10642541aa8e6355be6679ed628f665` (4.12.93 / Touch HUD 1.2.7). Código candidato do PR #17: `a09c06ab45440f9a39a84ae79c88e702ee0052e0`. Runtime: 4.12.94.
 
 ## Evidência automatizada confirmada na main
 
@@ -56,3 +56,15 @@ Testar o limite de 30 consultas do ICE poll e a transição para `connected` enq
 - Sintaxe dos dois userscripts e relatório estático passaram no baseline.
 - Sem homologação de navegador real, sessão Xbox, mídia, áudio ou comandos do console. Remote Play permanece experimental.
 - Próxima validação: normalizar e deduplicar candidatos equivalentes representados como string JSON e objeto, ignorando entradas malformadas sem duplicar `addIceCandidate`.
+
+
+## Evidência adicional — 4.12.94 / PR #17
+
+- [Baseline — run 43331934517](https://github.com/breno-bgod/NimboXcloud/actions/runs/43331934517): PASS.
+- [NX/xHome regression — run 43331934314](https://github.com/breno-bgod/NimboXcloud/actions/runs/43331934314): PASS.
+- Resultado: 243 testes, 240 PASS, 0 FAIL, 3 TODO.
+- Sintaxe do userscript principal e do módulo Touch HUD, suíte CommonJS/ESM e relatório estático passaram.
+- A primeira execução do baseline falhou apenas pelo fixture de teste sem `nowStr`; o fixture foi corrigido e os dois workflows passaram no head atualizado.
+- O helper retail de IPv4 agora ignora explicitamente os hosts xHome de login e região; o comportamento retail continua testado.
+- Sem sessão Xbox real, navegador real, áudio, vídeo ou controle homologados.
+- Próxima validação: deduplicação canônica de ICE quando a mesma entrada aparece como string e objeto.
