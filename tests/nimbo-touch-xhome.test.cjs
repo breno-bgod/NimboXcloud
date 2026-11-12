@@ -84,9 +84,9 @@ test('xHome virtual gamepad keeps the shared loop alive without the browser Game
   const end = hostSource.indexOf('let nxGamepadLoopTimer', start);
   assert.ok(start >= 0 && end > start, 'shared gamepad loop exists');
   const block = hostSource.slice(start, end);
-  assert.match(block, /if \\(document\\.visibilityState === 'hidden'\\)/);
-  assert.match(block, /typeof navigator\\.getGamepads==='function'/);
-  assert.doesNotMatch(block, /else if\\(!nxRemoteVirtualGamepad\\)/,
+  assert.match(block, /if \(document\.visibilityState === 'hidden'\)/);
+  assert.match(block, /typeof navigator\.getGamepads==='function'/);
+  assert.doesNotMatch(block, /else if\(!nxRemoteVirtualGamepad\)/,
     'missing or failing Gamepad API must not return before the shared xHome scheduler');
-  assert.match(block, /nxRemoteGamepadTick\\(pads,allowInput\\)/);
+  assert.match(block, /nxRemoteGamepadTick\(pads,allowInput\)/);
 });

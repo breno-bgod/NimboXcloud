@@ -1,3 +1,10 @@
+## [4.12.81] — 2026-11-12
+- Fixed the NimboTouch HUD editor deleting every binding when removing one custom key; deletion now targets only the selected binding and preserves the remaining controls and their saved layout.
+- Corrected over-escaped xHome scheduler regression assertions that caused both GitHub Actions workflows to fail despite the production scheduler behaving as intended.
+- Bumped the Touch HUD module to 1.2.3 and aligned the userscript/runtime version and @require cache key at 4.12.81.
+- Added a VM regression that executes the actual removeKey method and verifies unrelated bindings and geometry remain intact.
+- No xHome protocol, gamepad scheduler, native xCloud input path, or user preference format was changed.
+
 ## [4.12.80] — 2026-11-12
 - Fixed the shared xHome gamepad loop returning early when the browser Gamepad API is unavailable or throws. It now continues with an empty physical snapshot, allowing the touch virtual gamepad to resume and stale physical slots to neutralize.
 - Added dynamic and structural regressions for virtual-input recovery without Gamepad API.

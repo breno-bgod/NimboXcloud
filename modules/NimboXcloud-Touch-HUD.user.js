@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.2.2
+// @version      1.2.3
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD e HUD editável. Experimental; requer suporte K/M do jogo e do SDK.
 // @author       KReight / NimboPlay contributors
 // @license      MIT
@@ -41,7 +41,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.2.2';
+const VERSION='1.2.3';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -862,7 +862,7 @@ class BxTouchpadUnified extends BxTouchpadHud {
   removeKey(id){
     if(!this.editingHud)return;
     const b=this.bindings.find(b=>b.id===id);if(!b)return;
-    this.bindings=this.bindings.filter(b=>b!==b);delete this.hud.items[id];
+    this.bindings=this.bindings.filter(item=>item.id!==id);delete this.hud.items[id];
     this.renderMappedButtons();this.refreshEditorOptions();this.selectHud('joystick');
   }
   clearKeys(){

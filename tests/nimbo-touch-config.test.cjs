@@ -153,3 +153,29 @@ test('native touch changes do not create a NimboTouch restore snapshot', async (
   assert.equal(inputConfiguration.enableTouchInput, false);
   assert.equal(transport.previous, null);
 });
+
+
+test('HUD editor removes only the selected custom binding and preserves the rest', () => {
+  const start = moduleSource.indexOf('  removeKey(id){');
+  const end = moduleSource.indexOf('\\n  clearKeys(){', start);
+  assert.ok(start >= 0 && end > start, 'removeKey method exists');
+  const method = moduleSource.slice(start, end).trim();
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext('globalThis.removeKey = ({' + method + '}).removeKey;', context);
+
+  const calls = [];
+  const subject = {
+    editingHud: true,
+    bindings: [{id:'left'}, {id:'right'}, {id:'fire'}],
+    hud: {items: {left:{x:.2}, right:{x:.5}, fire:{x:.8}}},
+    renderMappedButtons() { calls.push('render'); },
+    refreshEditorOptions() { calls.push('refresh'); },
+    selectHud(id) { calls.push(['select', id]); }
+  };
+  context.removeKey.call(subject, 'right');
+
+  assert.deepEqual(plain(subject.bindings), [{id:'left'}, {id:'fire'}]);
+  assert.deepEqual(plain(subject.hud.items), {left:{x:.2}, fire:{x:.8}});
+  assert.deepEqual(calls, ['render', 'refresh', ['select', 'joystick']]);
+});
