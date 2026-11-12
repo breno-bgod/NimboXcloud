@@ -1,3 +1,13 @@
+## [4.12.69] — 2026-11-12
+- Integra captura opt-in de teclado e mouse ao canal input xHome pelo dispatcher central já existente; não instala listeners globais paralelos.
+- Captura apenas eventos físicos confiáveis direcionados ao vídeo xHome focado; mantém várias teclas, movimento absoluto/relativo, cliques e roda.
+- Registra teclado/mouse em slot livre controlV1, reserva esse slot e realoca gamepads físicos sem colisão; libera estados em blur, página oculta, troca de aba, fechamento do painel e Stop.
+- Exige NimboTouch desligado durante a captura; Escape e atalhos críticos do navegador permanecem sob controle do navegador.
+- Gamepad xHome só recebe comandos quando a aba Remote Play está aberta e pronta; ao fechar o painel ou sair da aba, neutraliza os frames para não enviar comandos ao Xbox remoto enquanto o usuário joga no Cloud Gaming.
+- Todos os relatórios binários compartilham uma sequência; metadata ocupa sequence 0 e o primeiro frame usa sequence 1.
+- Adiciona testes determinísticos de sequência, captura, neutralização, conflito com NimboTouch, slots e visibilidade.
+- Ainda experimental: protocolo/controles exigem validação em Xbox físico; nenhuma sessão real foi executada nesta etapa.
+
 ## [4.12.68] — 2026-11-12
 - Added pure xHome keyboard and mouse encoders using the shared 14-byte input header: Keyboard report 64 with a 3-byte VKey frame, and Mouse report 32 with an 18-byte frame.
 - Added physical KeyboardEvent.code to Windows virtual-key mapping with validated legacy keyCode fallback; unknown keys are rejected instead of emitting ambiguous input.
