@@ -3,7 +3,7 @@
 > Documento operacional. Toda execução autônoma deve reler a versão atual de `main` e atualizar este plano conforme evidências. Nunca presumir que a versão indicada aqui ainda é a mais recente.
 
 ## Estado de referência
-- Versão auditada do userscript: 4.12.17 (rever o HEAD em cada execução).
+- Versão auditada do userscript: 4.12.62 (rever o HEAD em cada execução).
 - Arquivo principal: `NimboXcloud.user.js`.
 - Plataforma prioritária: navegador em `play.xbox.com`, sem reescrever como aplicativo nativo.
 - Objetivo: estabilidade real do cliente web, manutenção das funções existentes e investigação verificável das diferenças entre cliente web e cliente Xbox.
@@ -345,3 +345,33 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Auditoria xHome: `nxRemoteStop` e `nxRemoteCancel` ainda não enviam DELETE remoto, apesar de haver `sessionId`; `nxRemoteStartSession` usa credencial `gsToken` efêmera em escopo local e provisiona `/v5/sessions/home/play`. O contrato de encerramento precisa ser confirmado antes de implementar. O fluxo atual pode deixar sessão remota órfã após Stop, Cancel ou falha. Nenhuma evidência nova de mídia ou controles reais.
 - Estrutura: `package.json` ausente na raiz (404); módulo touch externo referenciado em `@require`; suíte de testes ainda requer execução em ambiente Node. Risco: versão interna alinhada não comprova execução no navegador.
 - **Próxima tarefa concreta:** verificar contrato e autenticação do DELETE xHome em fonte MIT confiável, implementar encerramento remoto best-effort com token efêmero e timeout separado e limpeza local incondicional. Aceite: testes mockados 204/401/timeout/cancelamento, sem bearer persistido/logado, parse e testes Node PASS e ausência de regressão em descoberta/início.
+
+
+## 2026-11-12 04:00 UTC — xHome: encerramento remoto autenticado e suíte de regressão verde
+- SHA inicial da execução: `1859a26e52564b459d3ceaef18380469b1b486db`. SHA final de código/testes antes deste registro: `8185df88df2a3179b2ff82925f3d8bb0c262c432`. Versão publicada: `4.12.62`. O commit deste registro documental será o HEAD seguinte.
+- Commits publicados nesta execução:
+  - `92bc1ebe6192a46f0cd849407338154415aa5cd4` — alinhamento dos testes antigos com a arquitetura atual (Pointer Lock nativo, perfis de identidade suspensos, filtros de vídeo, medição de áudio e fallback do painel NX).
+  - `4af54506af643616b82f4065fd2879e4ec1c8f39` — correção de uma asserção de teste que confundia `navigator.userAgent ===` com atribuição.
+  - `4fabda6d8a94072eb6829b6caa38155d82c980cd` — encerramento xHome remoto por DELETE autenticado.
+  - `f688a233ea1fd9271a63ba995fc3fc639fcfa5cf` e `8185df88df2a3179b2ff82925f3d8bb0c262c432` — regressões de teardown, cancelamento e falha após provisionamento.
+- Fonte de protocolo: a documentação pública de `Geocld/XStreaming`, seção 3.11, descreve `DELETE https://<region>.core.gssv-play-prodxhome.xboxlive.com/v5/sessions/home/{sessionId}`, com bearer de sessão e sem corpo de resposta: https://github.com/Geocld/XStreaming/blob/main/docs/3.Stream.md. O repositório XStreaming declara AGPL-3.0; foi usada somente a descrição documental do protocolo. Nenhum código AGPL foi copiado ou incorporado.
+- `NimboXcloud.user.js`:
+  - versão `@version`, constante interna `VER` e parâmetro `@require nx_version` alinhados em `4.12.62`;
+  - adicionado `nxRemoteDeleteSession()`, com região limitada a `[a-z0-9]{2,12}`, sessionId validado, host regional fixo, `Authorization: Bearer`, `redirect:'error'` e timeout independente de 8 segundos;
+  - `nxRemoteStop()` agora encerra peer, vídeo, timer e tracks localmente antes de aguardar DELETE remoto. HTTP 404/410 é tratado como sessão já ausente; falha HTTP/rede/timeout não desfaz a limpeza local;
+  - bearer xHome fica em variável de fechamento `nxRemoteSessionToken`, fora de `nxRemotePlay`, sem persistência ou inclusão no estado serializável;
+  - quando o DELETE não é confirmado, a sessão pendente fica somente em memória e a interface oferece `Tentar liberar sessão remota`; novas descobertas/inícios ficam bloqueados até liberação confirmada;
+  - cancelamento durante o POST de criação é diferido até receber o sessionId; em seguida envia DELETE, evitando perder um identificador já criado. Falhas posteriores à criação também tentam DELETE automaticamente.
+- Testes/arquivos afetados:
+  - `tests/xhome-discovery.test.cjs`: cinco novos cenários para DELETE 204, HTTP 401 com retry, timeout e limpeza de tracks, cancelamento durante POST e falha após criação; teste de falha de provisionamento atualizado para exigir DELETE.
+  - Atualizados `tests/baseline.test.cjs`, `tests/console-ua-regression.test.cjs`, `tests/media-p04.test.cjs`, `tests/nx-bluetooth-audio.test.cjs`, `tests/nx-panel-regression.test.cjs`, `tests/pointer-lock-flag.test.cjs` e `tests/pointer-lock-policy.test.cjs`. Os testes estavam presos a implementações antigas removidas; foram substituídos por invariantes do comportamento atual, não desativados.
+  - `DEVELOPMENT_ROADMAP.md`: referência de versão e handoff atualizados.
+- Validação real via GitHub Actions no SHA `8185df88df2a3179b2ff82925f3d8bb0c262c432`:
+  - workflow `NimboXcloud baseline`, run `43151779714`: PASS; `node --check NimboXcloud.user.js`, 110 testes (107 PASS, 3 TODO, 0 FAIL) e `node tools/static-risk-report.cjs` concluídos com sucesso;
+  - workflow `NimboXcloud regression tests`, run `43151779746`: PASS; sintaxe e os mesmos 110 testes (107 PASS, 3 TODO, 0 FAIL).
+  - Não existe `package.json` na raiz; não há build/lint npm configurado. Não executados Chrome, Edge, autenticação real xHome, Xbox físico ou streaming real.
+- Auditoria de hooks: o relatório estático lista padrões de Gamepad API nas linhas de instalação/restauração do mesmo bridge, além de um wrapper de `fetch` e um observador XHR. A leitura do código confirma um único bridge ativo de `navigator.getGamepads` com restauração do descriptor, um wrapper de fetch e um wrapper de XHR; o módulo Touch HUD não instala outro getGamepads. Nenhum novo interceptador foi adicionado.
+- Riscos e hipóteses ainda não validados: o contrato DELETE vem de documentação comunitária XStreaming e precisa de confirmação com uma sessão Xbox real; respostas 401/403/5xx ainda não foram verificadas contra o serviço atual. O retry e o bearer pendente existem somente em memória: recarregar a página perde o contexto de retry e o servidor pode manter a sessão até expirar. Se o POST de criação for aceito pelo servidor, mas a conexão cair antes de entregar o sessionId, o cliente não tem identificador para enviar DELETE. A negociação ICE/SDP, keepalive, áudio/vídeo e comandos ainda não foram comprovados em Xbox real; o data channel `input` ainda não transmite comandos jogáveis.
+- Concluído nesta etapa: contrato de DELETE documentado; encerramento remoto best-effort implementado; limpeza local incondicional; retry em memória; cancelamento diferido durante criação; suíte CI voltou a verde.
+- Pendências gerais: validar DELETE com conta/console reais; cobrir 403/404/410/500 e idempotência de Stop; confirmar formato ICE/trickle e keepalive; renderizar mídia real; implementar mensagens do data channel para controle físico/touch; testar reconexão e regressões no Chrome/Edge. Remote Play continua experimental e não deve ser descrito como jogável.
+- **Próxima tarefa concreta:** completar a matriz de regressão do teardown xHome para HTTP 403, 404, 410, 500, falha de rede, timeout, Stop repetido e retry repetido; manter uma única tentativa de DELETE por sessão e provar que 404/410 são idempotentes. Critérios de aceite: todos os casos mockados PASS nos dois workflows, limpeza local em todos os resultados, sessão pendente bloqueando novo start até liberação, nenhum bearer em estado/storage/logs e nenhuma alteração no fluxo Cloud Gaming. Depois, executar validação real de DELETE com Xbox quando o ambiente permitir.
