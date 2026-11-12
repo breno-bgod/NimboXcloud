@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.75
+// @version      4.12.76
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.75
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.76
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.75';
+  const VER = '4.12.76';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3139,6 +3139,7 @@
   // Input packet fields are cross-checked against the MIT-licensed unknownskl/greenlight player package.
   // Gamepad and opt-in physical keyboard/mouse capture share one ordered input sequence.
   let nxRemoteChannels=null;
+  let nxRemoteTouchAdapter=null;
   function nxRemoteUuid() {
     try { if(typeof crypto!=='undefined' && typeof crypto.randomUUID==='function') return crypto.randomUUID(); } catch (_) {}
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
@@ -3285,6 +3286,75 @@
     const video=nxRemotePlay.videoElement;
     return !!(video && document.activeElement===video);
   }
+  function nxRemoteCreateTouchInputAdapter(requestId,peer,channels) {
+    if(!Number.isInteger(requestId)||!peer||!channels||!channels.input)return null;
+    let disposed=false,mouseButtons=0;
+    const heldKeys=new Map();
+    const current=function(){return !disposed&&requestId===nxRemotePlay.requestId&&nxRemotePlay.peer===peer&&nxRemoteChannels===channels;};
+    const ready=function(){return current()&&nxRemotePlay.dataChannelsReady&&nxRemotePlay.sessionStatus==='connected'&&
+      (peer.connectionState||peer.iceConnectionState)==='connected'&&channels.input&&channels.input.readyState==='open';};
+    const release=function(){
+      let complete=true;
+      Array.from(heldKeys.entries()).forEach(function(entry){
+        if(nxRemoteSendKeyboardFrame({code:entry[0],keyCode:entry[1],pressed:false},true,channels))heldKeys.delete(entry[0]);
+        else complete=false;
+      });
+      if(mouseButtons!==0){
+        if(nxRemoteSendMouseFrame({X:0,Y:0,WheelX:0,WheelY:0,Buttons:0,Relative:0},true,channels))mouseButtons=0;
+        else complete=false;
+      }
+      return complete;
+    };
+    return Object.freeze({
+      id:'xhome:'+requestId,
+      isReady:ready,
+      sendKey:function(code,pressed){
+        if(!ready()||typeof code!=='string'||typeof pressed!=='boolean')return false;
+        const keyCode=nxRemoteVirtualKey(code,null);
+        if(keyCode===null)return false;
+        const wasHeld=heldKeys.has(code);
+        if(wasHeld===pressed)return true;
+        if(!nxRemoteSendKeyboardFrame({code:code,keyCode:keyCode,pressed:pressed},false,channels))return false;
+        if(pressed)heldKeys.set(code,keyCode);else heldKeys.delete(code);
+        return true;
+      },
+      sendMouse:function(reading){
+        if(!ready()||!reading||reading.Type!==0)return false;
+        for(const key of ['X','Y','WheelX','WheelY','Buttons'])if(!Number.isFinite(reading[key]))return false;
+        const buttons=nxRemoteByte(reading.Buttons)&31;
+        if(!nxRemoteSendMouseFrame({X:reading.X,Y:reading.Y,WheelX:reading.WheelX,WheelY:reading.WheelY,
+          Buttons:buttons,Relative:0},false,channels))return false;
+        mouseButtons=buttons;
+        return true;
+      },
+      release:release,
+      dispose:function(){if(disposed)return true;const complete=release();disposed=true;return complete;}
+    });
+  }
+  function nxRemoteAttachTouchAdapter(requestId,peer,channels) {
+    const api=window.NimboTouch;
+    if(!api||typeof api.attachRemoteInputAdapter!=='function')return false;
+    if(nxRemoteTouchAdapter&&nxRemoteTouchAdapter.id==='xhome:'+requestId)return true;
+    nxRemoteDetachTouchAdapter();
+    const adapter=nxRemoteCreateTouchInputAdapter(requestId,peer,channels);
+    if(!adapter)return false;
+    let attached=false;
+    try{attached=api.attachRemoteInputAdapter(adapter)===true;}catch(_){}
+    if(!attached){adapter.dispose();return false;}
+    nxRemoteTouchAdapter=adapter;
+    return true;
+  }
+  function nxRemoteDetachTouchAdapter() {
+    const adapter=nxRemoteTouchAdapter;
+    if(!adapter)return false;
+    nxRemoteTouchAdapter=null;
+    try{
+      const api=window.NimboTouch;
+      if(typeof api?.clearRemoteInputAdapter==='function')api.clearRemoteInputAdapter(adapter);
+      else adapter.dispose();
+    }catch(_){try{adapter.dispose();}catch(__){}}
+    return true;
+  }
   let nxRemoteInputCapture=null;
   const nxRemoteHeldKeys=new Map();
   let nxRemoteMouseButtons=0;
@@ -3299,17 +3369,17 @@
       return true;
     } catch (_) { return false; }
   }
-  function nxRemoteSendKeyboardFrame(frame,force) {
+  function nxRemoteSendKeyboardFrame(frame,force,channelsOverride) {
     if(force!==true && !nxRemoteGamepadReady()) return false;
     const packet=nxRemoteEncodeKeyboardFrame(frame,nxRemoteInputSequence>>>0,
       (typeof performance!=='undefined' && performance.now)?performance.now():Date.now());
-    return packet ? nxRemoteSendInputPacket(packet,force===true) : false;
+    return packet ? nxRemoteSendInputPacket(packet,force===true,channelsOverride) : false;
   }
-  function nxRemoteSendMouseFrame(frame,force) {
+  function nxRemoteSendMouseFrame(frame,force,channelsOverride) {
     if(force!==true && !nxRemoteGamepadReady()) return false;
     const packet=nxRemoteEncodeMouseFrame(frame,nxRemoteInputSequence>>>0,
       (typeof performance!=='undefined' && performance.now)?performance.now():Date.now());
-    return packet ? nxRemoteSendInputPacket(packet,force===true) : false;
+    return packet ? nxRemoteSendInputPacket(packet,force===true,channelsOverride) : false;
   }
   function nxRemoteInputRelease() {
     let complete=true;
@@ -3594,6 +3664,7 @@
   }
   function nxRemoteCloseDataChannels() {
     const channels=nxRemoteChannels;
+    nxRemoteDetachTouchAdapter();
     nxRemoteInputCaptureDisable(true,'Sessão xHome encerrada; entradas remotas liberadas.');
     nxRemoteReleaseGamepadSlots(channels);
     nxRemoteChannels=null;
@@ -3679,7 +3750,8 @@
         ];
         for(const item of configs) if(!sendMessage(item[0],item[1])) throw new Error('canal message indisponível');
         nxRemotePlay.dataChannelsReady=true;
-        nxRemotePlay.status='Canais de dados xHome prontos; gamepad físico encaminhado quando detectado.';
+        nxRemoteAttachTouchAdapter(requestId,peer,channels);
+        nxRemotePlay.status='Canais de dados xHome prontos; gamepad físico e HUD de toque podem ser encaminhados quando WebRTC conectar.';
       } catch(e) {
         fail('falha ao inicializar: '+String(e && e.message||'erro'));
       }
@@ -4076,11 +4148,14 @@
           const connectionState=peer.connectionState||peer.iceConnectionState;
           if(connectionState==='connected'){
             nxRemotePlay.sessionStatus='connected';
-            nxRemotePlay.status='WebRTC conectado; gamepad e teclado/mouse físico usam o canal input experimental. Mídia ainda aguarda validação.';
+            nxRemoteAttachTouchAdapter(requestId,peer,nxRemoteChannels);
+            nxRemotePlay.status='WebRTC conectado; gamepad, teclado/mouse físico e HUD de toque usam o canal input experimental. Mídia ainda aguarda validação.';
             if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
           }else if(connectionState==='disconnected'||connectionState==='failed'||connectionState==='closed'){
             nxRemoteInputCaptureDisable(false,'Conexão WebRTC perdida; captura pausada e entradas liberadas.');
+            if(nxRemoteTouchAdapter)nxRemoteTouchAdapter.release();
             nxRemoteGamepadSuspend();
+            if(connectionState==='failed'||connectionState==='closed')nxRemoteDetachTouchAdapter();
             nxRemotePlay.sessionStatus='disconnected';
             nxRemotePlay.status='Conexão WebRTC '+connectionState+'.';
           }
@@ -4117,7 +4192,7 @@
   const TAB_BUILDERS = {
     remote: function(root) {
       root.appendChild(mk('div','font-size:19px;font-weight:750;margin-bottom:6px','Remote Play · Xbox em casa'));
-      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:14px','Descoberta e negociação WebRTC experimentais. Gamepad e teclado/mouse físicos têm encaminhamento experimental; toque e mídia ainda dependem de validação real com Xbox.'));
+      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:14px','Descoberta, WebRTC e encaminhamento de entradas são experimentais. O HUD NimboTouch pode ser ativado separadamente; transmissão, áudio e comandos ainda dependem de validação real com Xbox.'));
       const btn=mk('button','cursor:pointer;padding:10px 14px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.busy?'Consultando…':'Buscar meus consoles');
       btn.disabled=nxRemotePlay.busy || !!nxRemotePlay.sessionId || !!nxRemotePlay.peer || !!nxRemotePlay.mediaStream || !!nxRemotePendingRelease;btn.addEventListener('click',function(e){e.stopPropagation();nxRemoteDiscover();});root.appendChild(btn);
       if(nxRemotePlay.busy){const cancel=mk('button','cursor:pointer;padding:10px 14px;margin-left:8px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.cancelAfterCreate?'Aguardando ID…':'Cancelar');cancel.disabled=nxRemotePlay.cancelAfterCreate;cancel.addEventListener('click',function(e){e.stopPropagation();nxRemoteCancel();});root.appendChild(cancel);}
@@ -4163,7 +4238,7 @@
           const inputButton=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,
             nxRemoteInputCapture?'Desativar teclado/mouse':'Ativar teclado/mouse');
           const inputStatus=mk('div','font-size:11px;color:'+C.dim+';margin-top:6px',
-            nxRemoteInputCapture?'Captura ativa. Escape encerra a captura.':'Entrada física opcional; mouse relativo dentro do vídeo. O HUD de toque ainda não está conectado ao canal xHome.');
+            nxRemoteInputCapture?'Captura ativa. Escape encerra a captura.':'Entrada física opcional; mouse relativo dentro do vídeo. O HUD NimboTouch tem ativação independente abaixo.');
           if(nxRemoteInputCapture){nxRemoteInputCapture.button=inputButton;nxRemoteInputCapture.status=inputStatus;}
           inputButton.addEventListener('click',function(e){
             e.stopPropagation();
@@ -4174,6 +4249,28 @@
           });
           root.appendChild(inputButton);
           root.appendChild(inputStatus);
+          const touchApi=window.NimboTouch;
+          if(nxRemoteTouchAdapter&&touchApi&&typeof touchApi.startRemote==='function'&&touchApi.hasRemoteInputAdapter?.()){
+            const touchActive=!!touchApi.isRemoteActive?.();
+            const touchReady=!!nxRemoteTouchAdapter.isReady();
+            const touchButton=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,
+              touchActive?'Desativar HUD de toque':touchReady?'Ativar HUD de toque':'Aguardando conexão para HUD de toque');
+            touchButton.disabled=!touchReady&&!touchActive;
+            touchButton.addEventListener('click',async function(e){
+              e.stopPropagation();
+              if(touchApi.isRemoteActive?.())touchApi.stopRemote?.();
+              else{
+                const started=await touchApi.startRemote();
+                if(!started){const status=root.querySelector('[data-nx-xhome-touch-status]');if(status)status.textContent='Não foi possível ativar: confirme a conexão WebRTC e feche menus ou editores abertos.';}
+              }
+              renderBody();
+            });
+            root.appendChild(touchButton);
+            const touchStatus=mk('div','font-size:11px;color:'+C.dim+';margin-top:6px',
+              touchActive?'HUD de toque ativo no transporte xHome.':'HUD de toque independente; as preferências e o layout do NimboTouch são preservados.');
+            touchStatus.setAttribute('data-nx-xhome-touch-status','');
+            root.appendChild(touchStatus);
+          }
         }
       }
       if(nxRemotePlay.sessionId || nxRemotePlay.peer || nxRemotePlay.mediaStream){
