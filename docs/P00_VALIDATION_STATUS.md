@@ -1,6 +1,6 @@
 # P00 — Estado de validação e evidências
 
-Revisão: 2026-11-12. Base main: `bb0dda00f10642541aa8e6355be6679ed628f665` (4.12.93 / Touch HUD 1.2.7). Código candidato do PR #17: `a09c06ab45440f9a39a84ae79c88e702ee0052e0`. Runtime: 4.12.94.
+Revisão: 2026-11-12. PR #17 integrado na main: `e9de54e4aa79ccdb9b30e26aeb9994cb3fa6e0f4`. Runtime: 4.12.94 / Touch HUD 1.2.7.
 
 ## Evidência automatizada confirmada na main
 
@@ -58,7 +58,7 @@ Testar o limite de 30 consultas do ICE poll e a transição para `connected` enq
 - Próxima validação: normalizar e deduplicar candidatos equivalentes representados como string JSON e objeto, ignorando entradas malformadas sem duplicar `addIceCandidate`.
 
 
-## Evidência adicional — 4.12.94 / PR #17
+## Evidência adicional — 4.12.94 / PR #17 (mesclado)
 
 - [Baseline — run 43331934517](https://github.com/breno-bgod/NimboXcloud/actions/runs/43331934517): PASS.
 - [NX/xHome regression — run 43331934314](https://github.com/breno-bgod/NimboXcloud/actions/runs/43331934314): PASS.
