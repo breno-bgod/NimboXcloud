@@ -444,7 +444,7 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 
 ## 2026-11-12 — xHome: encoder binário e lifecycle de slots de gamepad
 - SHA inicial da main consultada diretamente: 33b690ee2a952c6fc186737fef13de8b9d9d06d0; versão inicial do userscript: 4.12.65.
-- Implementação preparada na branch automation/xhome-gamepad-packet-2026-11-12; SHA candidato será registrado após a criação do commit e a validação dos workflows.
+- Implementação preparada na branch automation/xhome-gamepad-packet-2026-11-12; PR #2 squash-merged após CI verde. Commit integrado na main: f35a283f5e537ef8a3becbb5da554cc543b244ab; commit final de documentação desta execução será criado a seguir.
 - Diagnóstico do ciclo anterior: os commits bb460ff / 587d60a adicionaram timeout de 12 s aos data channels. Os workflows mais recentes falharam no teste 103 (session: WebRTC offer is sent and SDP answer is applied) porque JSON.stringify(nxRemotePlay) encontrou o objeto Timeout circular do Node em channelTimer. A sintaxe passou; 116 testes passaram, 1 falhou e 3 ficaram TODO. O timer real também mantinha o processo aberto por ~12 s. O comportamento esperado no navegador usa handles numéricos; o harness não simulava esse contrato.
 - Correção de testes: o harness padrão usa handles numéricos fake, sem executar timers implicitamente; os testes específicos de timeout continuam controlando callbacks/handles por meio de timerOverrides. Isso remove a diferença Node/browser e evita timers pendentes após os testes.
 - Referência técnica conferida diretamente em unknownskl/xbox-xcloud-player (MIT), src/channel/input/packet.ts: pacote possui cabeçalho de 14 bytes, contador de frames e registro Gamepad de 23 bytes. O registro contém slot, máscara de 15 botões (bits 1–15), quatro eixos int16, dois triggers uint16 e os campos PhysicalPhysicality/VirtualPhysicality. A implementação de referência grava o último campo em big-endian; o encoder mantém esse detalhe e possui teste explícito.
@@ -453,7 +453,7 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
   - registro/desregistro idempotente de slots no canal controlV1, condicionado a dataChannelsReady e canal aberto;
   - teardown envia gamepadChanged=false para slots registrados antes de fechar os canais;
   - não lê navigator.getGamepads, não instala wrapper, não cria polling nem transmite frames contínuos. O encoder ainda não está conectado ao input físico.
-- Testes adicionados em tests/xhome-discovery.test.cjs: layout binário completo de 38 bytes, clamp/sequence/mapping inválido e registro idempotente/teardown de slot. Total esperado após a correção: 123 testes, 120 PASS, 0 FAIL e 3 TODO; aguardar confirmação dos workflows antes de declarar resultado.
+- Testes adicionados em tests/xhome-discovery.test.cjs: layout binário completo de 38 bytes, clamp/sequence/mapping inválido e registro idempotente/teardown de slot. Resultado confirmado: 123 testes, 120 PASS, 0 FAIL e 3 TODO nos dois workflows.
 - Arquivos alterados: NimboXcloud.user.js, tests/xhome-discovery.test.cjs, CHANGELOG.md e este documento.
 - Riscos: o formato foi conferido contra a implementação pública MIT, mas ainda não foi validado contra um console Xbox real; o slot ainda não é associado a um gamepad físico; nenhum frame é transmitido. A divergência de endianess do campo VirtualPhysicality é mantida exatamente como a referência e precisa de confirmação em sessão real. Não houve alteração do Cloud Gaming, HUD Touch ou bridge da Gamepad API.
 - Concluído nesta etapa: encoder determinístico; transições de slot idempotentes; neutralização do slot no teardown; harness de timer compatível com browser; testes correspondentes.
@@ -465,3 +465,17 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - O primeiro PR run (43175885519 baseline; 43175885534 regression) confirmou a correção do timer circular, mas encontrou dois erros exclusivos do sandbox VM do teste: ArrayBuffer e Array retornados pelo contexto VM não compartilham o prototype do Node externo, portanto instanceof/deepStrictEqual falhavam apesar dos valores corretos.
 - Ajustados os testes para verificar o tipo de ArrayBuffer por Object.prototype.toString e converter slots com Array.from no contexto do teste. Nenhum código de produção foi alterado por esse ajuste.
 - Aguardando nova execução dos workflows antes de declarar aprovação.
+
+
+### Fechamento e validação final — execução 2026-11-12
+- SHA inicial da main: 33b690ee2a952c6fc186737fef13de8b9d9d06d0.
+- SHA do código integrado na main após PR #2: f35a283f5e537ef8a3becbb5da554cc543b244ab.
+- PR #2: https://github.com/breno-bgod/NimboXcloud/pull/2 — squash merge concluído somente depois de ambos workflows PASS.
+- Baseline: run 43176093250 PASS; Syntax check PASS; Baseline tests PASS; Static risk report PASS.
+- Regression: run 43176093339 PASS; syntax e suíte de regressão PASS.
+- Resultado em ambos: 123 testes, 120 PASS, 0 FAIL, 3 TODO.
+- Primeiro CI do PR (708085f) falhou em duas assertions de contexto cruzado (ArrayBuffer/Array VM versus Node); os testes foram corrigidos sem alterar o encoder. Segundo commit do PR (3aba68e) passou integralmente.
+- Avisos não bloqueantes: punycode depreciado e actions/checkout@v4 + setup-node@v4 sinalizados por runtime Node 20; não afetam o resultado atual, mas merecem atualização futura.
+- Validação executada: GitHub Actions; node --check; node --test tests/*.test.cjs; node tools/static-risk-report.cjs. Não houve build/lint separado configurado, nem execução em Chrome/Edge, Android, stream xCloud ou Xbox físico.
+- O userscript permanece 4.12.66. O encoder e o registro de slots estão disponíveis internamente, mas não há envio contínuo de frames e o Remote Play não está homologado.
+- Próxima prioridade permanece: um único scheduler xHome para Gamepad API, com envio de frames somente após handshake, neutralização, controle de bufferedAmount e teardown completo.

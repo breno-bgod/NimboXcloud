@@ -3,6 +3,7 @@
 - Added idempotent registration/unregistration for remote gamepad slots 0–3; registered slots are released before data-channel teardown.
 - Encoder remains pure and dormant: no continuous frame transmission, Gamepad API interception, or polling was added.
 - Replaced real Node timers in the xHome test harness with browser-like numeric fake handles; explicit timeout tests retain controllable fake clocks.
+- CI after PR #2: baseline run 43176093250 and regression run 43176093339 both PASS; node --check and static risk report PASS; 123 tests, 120 PASS, 0 FAIL, 3 TODO.
 
 ## [4.12.65] — 2026-11-12
 - O bootstrap xHome agora possui timeout de 12 segundos para abertura dos quatro data channels e recebimento de `HandshakeAck`; o timer é cancelado somente após a inicialização completa.
