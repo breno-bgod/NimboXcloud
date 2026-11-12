@@ -1,3 +1,9 @@
+## [4.12.68] — 2026-11-12
+- Adiciona encoders puros xHome para pacotes de teclado (VKey) e mouse (movimento relativo, botões e roda), incluindo batching determinístico e adaptadores sem listeners globais.
+- Corrige a sequência do canal input: o pacote inicial de metadados usa sequence 0 e o primeiro frame de controle agora usa sequence 1; gamepad, teclado e mouse compartilham um contador por sessão.
+- Adiciona helpers puros para gerar keyup de todas as teclas conhecidas e um frame neutro de mouse; nenhum listener de teclado/mouse foi ativado nesta etapa.
+- Mantém backpressure de 4096 bytes e limite de 30 frames por tipo por pacote. Remote Play segue experimental e sem validação em Xbox físico.
+
 ## [4.12.67] — 2026-11-12
 - Integra o gamepad físico ao canal input xHome usando o encoder binário já existente e o slot estável do índice do navegador (0–3).
 - Reutiliza o loop de leitura do painel NX: frequência adaptativa de 75 ms normalmente e 16 ms somente quando a sessão xHome, os quatro canais, o HandshakeAck e o foco permitem entrada.

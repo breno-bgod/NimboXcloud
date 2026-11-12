@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.67
+// @version      4.12.68
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.67
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.68
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.67';
+  const VER = '4.12.68';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3055,8 +3055,119 @@
     view.setUint32(34,1,false); // VirtualPhysicality (big-endian in reference client)
     return buffer;
   }
+  const NX_REMOTE_INPUT_REPORT_MOUSE=32;
+  const NX_REMOTE_INPUT_REPORT_KEYBOARD=64;
+  const NX_REMOTE_INPUT_MAX_FRAMES=30;
+  function nxRemoteInputInt32(value) {
+    const number=Number(value);
+    if(!Number.isFinite(number))return null;
+    return Math.trunc(Math.max(-2147483648,Math.min(2147483647,number)));
+  }
+  function nxRemoteInputByte(value) {
+    const number=Number(value);
+    if(!Number.isInteger(number) || number<0 || number>255)return null;
+    return number;
+  }
+  // Adapters puros: não registram listeners nem alteram eventos do navegador.
+  function nxRemoteKeyboardFrameFromEvent(event,pressed) {
+    if(!event)return null;
+    const keyCode=Number(event.keyCode || event.which || 0);
+    if(!Number.isInteger(keyCode) || keyCode<1 || keyCode>255)return null;
+    return {pressed:pressed===true,keyCode:keyCode,key:typeof event.key==='string'?event.key:''};
+  }
+  function nxRemoteMouseFrameFromPointer(event) {
+    if(!event)return null;
+    const x=nxRemoteInputInt32(event.movementX===undefined?0:event.movementX);
+    const y=nxRemoteInputInt32(event.movementY===undefined?0:event.movementY);
+    const buttons=nxRemoteInputByte(event.buttons===undefined?0:event.buttons);
+    if(x===null || y===null || buttons===null)return null;
+    return {X:x,Y:y,WheelX:0,WheelY:0,Buttons:buttons,Relative:0};
+  }
+  function nxRemoteMouseFrameFromWheel(event,buttons) {
+    if(!event)return null;
+    const wheelX=nxRemoteInputInt32(event.deltaX===undefined?0:event.deltaX);
+    const wheelY=nxRemoteInputInt32(event.deltaY===undefined?0:event.deltaY);
+    const buttonMask=nxRemoteInputByte(buttons===undefined?(event.buttons===undefined?0:event.buttons):buttons);
+    if(wheelX===null || wheelY===null || buttonMask===null)return null;
+    return {X:0,Y:0,WheelX:wheelX,WheelY:wheelY,Buttons:buttonMask,Relative:0};
+  }
+  function nxRemoteKeyboardReleaseFrames(keyCodes) {
+    if(!Array.isArray(keyCodes))return [];
+    const seen=new Set(),frames=[];
+    for(const raw of keyCodes) {
+      const keyCode=nxRemoteInputByte(raw);
+      if(keyCode===null || keyCode===0 || seen.has(keyCode))continue;
+      seen.add(keyCode);frames.push({pressed:false,keyCode:keyCode});
+    }
+    return frames;
+  }
+  function nxRemoteNeutralMouseFrame() {
+    return {X:0,Y:0,WheelX:0,WheelY:0,Buttons:0,Relative:0};
+  }
+  // Wire layout: 14-byte header; Mouse=32 (count + 18 bytes/frame);
+  // Keyboard=64 (count + 3 bytes/frame, VKey record type 2).
+  function nxRemoteEncodeInputFrames(input,sequence,timestamp) {
+    const mouseFrames=Array.isArray(input && input.mouseFrames)?input.mouseFrames:[];
+    const keyboardFrames=Array.isArray(input && input.keyboardFrames)?input.keyboardFrames:[];
+    if(!mouseFrames.length && !keyboardFrames.length)return null;
+    if(mouseFrames.length>NX_REMOTE_INPUT_MAX_FRAMES || keyboardFrames.length>NX_REMOTE_INPUT_MAX_FRAMES)return null;
+    const mouse=[];
+    for(const frame of mouseFrames) {
+      if(!frame)return null;
+      const X=nxRemoteInputInt32(frame.X),Y=nxRemoteInputInt32(frame.Y);
+      const WheelX=nxRemoteInputInt32(frame.WheelX),WheelY=nxRemoteInputInt32(frame.WheelY);
+      const Buttons=nxRemoteInputByte(frame.Buttons),Relative=nxRemoteInputByte(frame.Relative);
+      if(X===null || Y===null || WheelX===null || WheelY===null || Buttons===null || Relative===null || Relative>1)return null;
+      mouse.push({X,Y,WheelX,WheelY,Buttons,Relative});
+    }
+    const keyboard=[];
+    for(const frame of keyboardFrames) {
+      if(!frame || typeof frame.pressed!=='boolean')return null;
+      const keyCode=nxRemoteInputByte(frame.keyCode);
+      if(keyCode===null || keyCode===0)return null;
+      keyboard.push({pressed:frame.pressed,keyCode});
+    }
+    const reportType=(mouse.length?NX_REMOTE_INPUT_REPORT_MOUSE:0)|(keyboard.length?NX_REMOTE_INPUT_REPORT_KEYBOARD:0);
+    const size=14+(mouse.length?1+18*mouse.length:0)+(keyboard.length?1+3*keyboard.length:0);
+    const buffer=new ArrayBuffer(size),view=new DataView(buffer);
+    const packetSequence=Number.isFinite(Number(sequence))?(Math.trunc(Number(sequence))>>>0):0;
+    const packetTime=Number.isFinite(Number(timestamp))?Number(timestamp):
+      ((typeof performance!=='undefined' && performance.now)?performance.now():Date.now());
+    view.setUint16(0,reportType,true);
+    view.setUint32(2,packetSequence,true);
+    view.setFloat64(6,packetTime,true);
+    let offset=14;
+    if(mouse.length) {
+      view.setUint8(offset,mouse.length);offset++;
+      for(const frame of mouse) {
+        view.setInt32(offset,frame.X,true);
+        view.setInt32(offset+4,frame.Y,true);
+        view.setInt32(offset+8,frame.WheelX,true);
+        view.setInt32(offset+12,frame.WheelY,true);
+        view.setUint8(offset+16,frame.Buttons);
+        view.setUint8(offset+17,frame.Relative);
+        offset+=18;
+      }
+    }
+    if(keyboard.length) {
+      view.setUint8(offset,keyboard.length);offset++;
+      for(const frame of keyboard) {
+        view.setUint8(offset,2); // Virtual-key record
+        view.setUint8(offset+1,frame.pressed?1:0);
+        view.setUint8(offset+2,frame.keyCode);
+        offset+=3;
+      }
+    }
+    return buffer;
+  }
+  function nxRemoteEncodeKeyboardFrame(frame,sequence,timestamp) {
+    return nxRemoteEncodeInputFrames({keyboardFrames:[frame]},sequence,timestamp);
+  }
+  function nxRemoteEncodeMouseFrame(frame,sequence,timestamp) {
+    return nxRemoteEncodeInputFrames({mouseFrames:[frame]},sequence,timestamp);
+  }
   const nxRemoteRegisteredGamepadSlots=new Set();
-  let nxRemoteGamepadSequence=0;
+  let nxRemoteInputSequence=0;
   let nxRemoteGamepadPaused=false;
   let nxRemoteGamepadWindowFocused=true;
   const nxRemoteNeutralGamepad={mapping:'standard',buttons:[],axes:[]};
@@ -3067,20 +3178,31 @@
     return !!(nxRemotePlay.dataChannelsReady && nxRemotePlay.sessionStatus==='connected' &&
       peer && peerState==='connected' && channel && channel.readyState==='open');
   }
-  function nxRemoteSendGamepadFrame(pad,slot,force,channelsOverride) {
+  function nxRemoteSendInputPacket(encoder,force,channelsOverride) {
     const channels=channelsOverride || nxRemoteChannels;
     const channel=channels && channels.input;
-    if(!channel || channel.readyState!=='open') return false;
-    if(!force && Number(channel.bufferedAmount)>4096) return false;
-    const sequence=nxRemoteGamepadSequence>>>0;
+    if(!channel || channel.readyState!=='open')return false;
+    if(!force && !nxRemoteGamepadReady())return false;
+    if(!force && Number(channel.bufferedAmount)>4096)return false;
+    const sequence=nxRemoteInputSequence>>>0;
     const timestamp=(typeof performance!=='undefined' && performance.now)?performance.now():Date.now();
-    const packet=nxRemoteEncodeGamepadFrame(pad,slot,sequence,timestamp);
-    if(!packet) return false;
+    const packet=encoder(sequence,timestamp);
+    if(!packet)return false;
     try {
       channel.send(packet);
-      nxRemoteGamepadSequence=(sequence+1)>>>0;
+      nxRemoteInputSequence=(sequence+1)>>>0;
       return true;
     } catch (_) { return false; }
+  }
+  function nxRemoteSendInputFrames(frames,force,channelsOverride) {
+    return nxRemoteSendInputPacket(function(sequence,timestamp){
+      return nxRemoteEncodeInputFrames(frames,sequence,timestamp);
+    },force,channelsOverride);
+  }
+  function nxRemoteSendGamepadFrame(pad,slot,force,channelsOverride) {
+    return nxRemoteSendInputPacket(function(sequence,timestamp){
+      return nxRemoteEncodeGamepadFrame(pad,slot,sequence,timestamp);
+    },force,channelsOverride);
   }
   function nxRemoteSendNeutralGamepad(slot,channelsOverride) {
     return nxRemoteSendGamepadFrame(nxRemoteNeutralGamepad,slot,true,channelsOverride);
@@ -3209,12 +3331,15 @@
           {message:'gamepadChanged',gamepadIndex:0,wasAdded:false}
         ];
         for(const item of controlMessages) if(!nxRemoteChannelSend(channels.control,JSON.stringify(item))) throw new Error('canal control indisponível');
+        nxRemoteInputSequence=0;
         const metadata=new ArrayBuffer(15),view=new DataView(metadata);
+        const metadataSequence=nxRemoteInputSequence>>>0;
         view.setUint16(0,8,true);
-        view.setUint32(2,0,true);
+        view.setUint32(2,metadataSequence,true);
         view.setFloat64(6,(typeof performance!=='undefined' && performance.now)?performance.now():Date.now(),true);
         view.setUint8(14,Math.max(1,Number(navigator.maxTouchPoints)||1));
         if(!nxRemoteChannelSend(channels.input,metadata)) throw new Error('canal input indisponível');
+        nxRemoteInputSequence=(metadataSequence+1)>>>0;
         const dimensions=nxRemotePlay.resolution==='720p'?{width:1280,height:720}:{width:1920,height:1080};
         const configs=[
           ['/streaming/systemUi/configuration',{version:[0,2,0],systemUis:[]}],
