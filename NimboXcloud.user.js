@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.56
+// @version      4.12.57
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.56
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.57
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -1175,37 +1175,16 @@
   // Configuracao independente de toque, inspirada no Better xCloud.
   let touchSessionDiagnostics = { inspected: false, applied: false };
   function patchTouchSessionConfiguration(response) {
-    if (!response || !response.ok) return Promise.resolve(response);
-    const caps = inputCapabilities();
-    const forceFortnite = nxFortniteConsoleEnabled && nxIsFortniteRoute();
-    if (!forceFortnite && (!caps.touch || caps.maxTouchPoints < 1)) return Promise.resolve(response);
-    if (forceFortnite) { nxFortniteConsoleState.matched = true; nxFortniteConsoleState.inspected++; }
-    return response.clone().text().then(function (body) {
-      let data;
-      try { data = JSON.parse(body); } catch (e) { return response; }
-      if (!data || typeof data !== 'object' || Array.isArray(data)) return response;
-      let overrides;
-      try {
-        overrides = typeof data.clientStreamingConfigOverrides === 'string'
-          ? JSON.parse(data.clientStreamingConfigOverrides || '{}')
-          : (data.clientStreamingConfigOverrides || {});
-      } catch (e) { return response; }
-      if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return response;
-      const original = overrides.inputConfiguration;
-      if (original != null && (typeof original !== 'object' || Array.isArray(original))) return response;
-      const inputs = Object.assign({}, original || {});
-      const previous = typeof inputs.enableTouchInput === 'boolean' ? inputs.enableTouchInput : null;
-      inputs.enableTouchInput = !forceFortnite;
-      if (!forceFortnite) inputs.maxTouchPoints = Math.max(Number(inputs.maxTouchPoints) || 0, caps.maxTouchPoints);
-      if (forceFortnite) { nxFortniteConsoleState.patched++; nxFortniteConsoleState.previousTouch = previous; }
-      overrides.inputConfiguration = inputs;
-      data.clientStreamingConfigOverrides = JSON.stringify(overrides);
-      touchSessionDiagnostics = { inspected: true, applied: true, previousTouch: previous, maxTouchPoints: inputs.maxTouchPoints };
-      const headers = new Headers(response.headers);
-      headers.delete('content-length');
-      headers.delete('content-encoding');
-      return new Response(JSON.stringify(data), { status: response.status, statusText: response.statusText, headers: headers });
-    }).catch(function () { return response; });
+    // A negociação e a execução dos controles touch pertencem ao xCloud.
+    // Alterar enableTouchInput/maxTouchPoints na resposta pode exibir botões
+    // sem que a sessão tenha sido preparada para transmitir seus comandos.
+    // Não modificar a resposta: preservar a configuração original do serviço.
+    touchSessionDiagnostics = {
+      inspected: false,
+      applied: false,
+      reason: 'native-xcloud-touch-negotiation-preserved'
+    };
+    return Promise.resolve(response);
   }
 
   // Pointer Lock pertence ao xCloud e ao navegador. Nao simular F9 nem
