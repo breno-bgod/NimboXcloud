@@ -8,7 +8,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
   let timerId=0;
   const fakeTimers=new Map();
@@ -420,7 +420,7 @@ test('session: negotiates xHome data channels and initializes protocol bootstrap
   assert.equal(messages.length,6);
   assert.equal(messages[0].target,'/streaming/systemUi/configuration');
   assert.equal(messages[3].target,'/streaming/characteristics/touchinputenabledchanged');
-  assert.equal(api.state.status.includes('envio de comandos ainda não implementado'),true);
+  assert.equal(api.state.status.includes('gamepad físico encaminhado quando detectado'),true);
   assert.equal(JSON.stringify(channels).includes('TEST_BEARER'),false);
   await api.stop();
   for(const name of ['chat','control','input','message'])assert.equal(channels[name].readyState,'closed');
@@ -849,5 +849,163 @@ test('gamepad slots: registration is gated, idempotent and released before chann
   assert.deepEqual(Array.from(api.registeredSlots()),[]);
   const release=JSON.parse(channels.control.sent.at(-1));
   assert.deepEqual(release,{message:'gamepadChanged',gamepadIndex:1,wasAdded:false});
+  const neutralFrames=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===38);
+  assert.equal(neutralFrames.length,1,'teardown sends one neutral gamepad frame before closing input');
+  const neutralView=new DataView(neutralFrames[0]);
+  assert.equal(neutralView.getUint16(16,true),0);
+  assert.equal(neutralView.getInt16(18,true),0);
+  assert.equal(neutralView.getInt16(20,true),0);
+  assert.equal(neutralView.getInt16(22,true),0);
+  assert.equal(neutralView.getInt16(24,true),0);
+  assert.equal(neutralView.getUint16(26,true),0);
+  assert.equal(neutralView.getUint16(28,true),0);
   assert.ok(Object.values(channels).every(channel=>channel.readyState==='closed'));
+});
+
+
+function readyInputHarness() {
+  const events=[];
+  class FakeChannel {
+    constructor(label){this.label=label;this.readyState='open';this.sent=[];this.bufferedAmount=0;}
+    send(data){if(this.failSend){this.failSend=false;throw new Error('simulated send failure');}this.sent.push(data);events.push({channel:this.label,data});}
+    close(){this.readyState='closed';}
+  }
+  class FakePeer {
+    constructor(){this.channels={};this.connectionState='connected';this.closed=false;}
+    createDataChannel(label){return (this.channels[label]=new FakeChannel(label));}
+    close(){this.closed=true;}
+  }
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const peer=new FakePeer();
+  api.state.peer=peer;
+  api.initChannels(peer,api.state.requestId,new AbortController().signal);
+  const channels=api.channels();
+  for(const name of ['chat','control','input','message'])channels[name].onopen();
+  channels.message.onmessage({data:JSON.stringify({type:'HandshakeAck'})});
+  api.state.sessionStatus='connected';
+  return {api,channels,events};
+}
+function standardPad(index) {
+  return {
+    index:index,
+    connected:true,
+    mapping:'standard',
+    buttons:Array.from({length:17},()=>({pressed:false,value:0})),
+    axes:[0,0,0,0]
+  };
+}
+function xhomeFrames(channel) {
+  return channel.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===38);
+}
+function gamepadEvents(channel) {
+  return channel.sent.filter(data=>typeof data==='string').map(data=>JSON.parse(data)).filter(data=>data.message==='gamepadChanged');
+}
+
+test('gamepad scheduler: sends frames only after peer, channels and handshake are ready',()=>{
+  const {api,channels}=readyInputHarness();
+  const pad=standardPad(0);
+  pad.buttons[0]={pressed:true,value:1};
+  assert.equal(api.ready(),true);
+  api.state.dataChannelsReady=false;
+  api.tickGamepads([pad],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[]);
+  assert.equal(xhomeFrames(channels.input).length,0);
+  api.state.dataChannelsReady=true;
+  api.tickGamepads([pad],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[0]);
+  assert.equal(xhomeFrames(channels.input).length,1);
+  assert.equal(new DataView(xhomeFrames(channels.input)[0]).getUint16(16,true),16);
+});
+
+test('gamepad scheduler: keeps stable slots, registers once and neutralizes before disconnect',()=>{
+  const {api,channels,events}=readyInputHarness();
+  const pad=standardPad(2);
+  pad.buttons[0]={pressed:true,value:1};
+  pad.axes[0]=0.5;
+  api.tickGamepads([pad],true);
+  api.tickGamepads([pad],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[2]);
+  assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===2&&message.wasAdded===true).length,1);
+  assert.equal(xhomeFrames(channels.input).length,2);
+  const active=new DataView(xhomeFrames(channels.input)[1]);
+  assert.equal(active.getUint8(15),2);
+  assert.equal(active.getUint16(16,true),16);
+  assert.equal(active.getInt16(18,true),16383);
+  api.tickGamepads([],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[]);
+  assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===2&&message.wasAdded===false).length,1);
+  const neutral=new DataView(xhomeFrames(channels.input).at(-1));
+  assert.equal(neutral.getUint16(16,true),0);
+  assert.equal(neutral.getInt16(18,true),0);
+  assert.equal(neutral.getUint16(26,true),0);
+  const neutralIndex=events.findLastIndex(event=>event.channel==='input'&&Object.prototype.toString.call(event.data)==='[object ArrayBuffer]'&&event.data.byteLength===38);
+  const releaseIndex=events.findLastIndex(event=>event.channel==='control'&&typeof event.data==='string'&&JSON.parse(event.data).message==='gamepadChanged'&&JSON.parse(event.data).gamepadIndex===2);
+  assert.ok(neutralIndex>=0&&releaseIndex>neutralIndex,'neutral frame must precede gamepadChanged(false)');
+});
+
+test('gamepad scheduler: blur or panel suspension sends one neutral frame and resumes cleanly',()=>{
+  const {api,channels}=readyInputHarness();
+  const pad=standardPad(0);
+  pad.buttons[1]={pressed:true,value:1};
+  api.tickGamepads([pad],true);
+  const before=xhomeFrames(channels.input).length;
+  api.suspendGamepads();
+  api.suspendGamepads();
+  api.tickGamepads([pad],false);
+  assert.equal(xhomeFrames(channels.input).length,before+1);
+  assert.deepEqual(Array.from(api.registeredSlots()),[0]);
+  api.tickGamepads([pad],true);
+  assert.equal(xhomeFrames(channels.input).length,before+2);
+  assert.deepEqual(Array.from(api.registeredSlots()),[0]);
+});
+
+test('gamepad scheduler: backpressure bounds input queue and resumes with current state',()=>{
+  const {api,channels}=readyInputHarness();
+  const pad=standardPad(1);
+  pad.buttons[4]={pressed:true,value:1};
+  channels.input.bufferedAmount=4097;
+  api.tickGamepads([pad],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[1]);
+  assert.equal(xhomeFrames(channels.input).length,0);
+  channels.input.bufferedAmount=0;
+  api.tickGamepads([pad],true);
+  assert.equal(xhomeFrames(channels.input).length,1);
+  assert.equal(new DataView(xhomeFrames(channels.input)[0]).getUint16(16,true),4096);
+});
+
+test('gamepad encoder: pressed digital button falls back when value is zero',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const buttons=Array.from({length:17},()=>({pressed:false,value:0}));
+  buttons[0]={pressed:true,value:0};
+  const packet=api.encodeGamepadFrame({mapping:'standard',buttons,axes:[0,0,0,0]},0,1,10);
+  assert.equal(new DataView(packet).getUint16(16,true),16);
+});
+
+
+test('gamepad scheduler: retries neutralization when the data channel rejects a release frame',()=>{
+  const {api,channels}=readyInputHarness();
+  const pad=standardPad(0);
+  pad.buttons[0]={pressed:true,value:1};
+  api.tickGamepads([pad],true);
+  const before=xhomeFrames(channels.input).length;
+  channels.input.failSend=true;
+  api.suspendGamepads();
+  assert.equal(xhomeFrames(channels.input).length,before);
+  api.suspendGamepads();
+  assert.equal(xhomeFrames(channels.input).length,before+1);
+  api.tickGamepads([pad],true);
+  assert.equal(xhomeFrames(channels.input).length,before+2);
+});
+
+test('gamepad scheduler: keeps a slot registered until a disconnect neutral frame is accepted',()=>{
+  const {api,channels}=readyInputHarness();
+  const pad=standardPad(1);
+  pad.buttons[1]={pressed:true,value:1};
+  api.tickGamepads([pad],true);
+  channels.input.failSend=true;
+  api.tickGamepads([],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[1]);
+  api.tickGamepads([],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[]);
+  assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===1&&message.wasAdded===false).length,1);
 });
