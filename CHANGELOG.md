@@ -1,3 +1,9 @@
+## [4.12.77] — 2026-11-12
+- Integrated the existing NimboTouch HUD with the xHome input data channel through an explicit, opt-in adapter. Relative mouse movement, mouse buttons, wheel and virtual keyboard keys use the existing xHome encoders and shared input sequence.
+- Added separate Remote Play HUD activation/deactivation, including a distinct enabled state so a paused HUD can still be disabled from the NX panel. The HUD pauses on focus/visibility/menu loss and resumes only while the same adapter and WebRTC session are ready.
+- Adapter teardown releases held virtual keys and mouse buttons before data-channel closure; stale request IDs and congested channels reject new touch input. The xCloud attachSession and native keyboard/mouse activation/restore path remain unchanged.
+- Added mock regressions for packet ordering, release, backpressure, stale-session rejection and the module adapter contract. Real Xbox input acceptance and on-device touch behavior remain unverified.
+
 ## [4.12.75] — 2026-11-12
 - Added xHome media lifecycle diagnostics for received audio/video tracks, mute/unmute/ended transitions, video metadata/frame readiness, dimensions, playback state, and browser autoplay rejection.
 - Deduplicated playback requests for repeated WebRTC track events and added a user-triggered playback retry when autoplay is blocked.
