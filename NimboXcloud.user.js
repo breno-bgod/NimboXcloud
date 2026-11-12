@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.59
+// @version      4.12.60
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.59
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.60
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -1781,6 +1781,37 @@
     nxNativeMenuPriority(false,null);
     const placement = findProfileAnchor();
     const anchor = placement && placement.node;
+    // Em Fullscreen API, somente os descendentes do elemento fullscreen são renderizados.
+    // O header do xCloud pode continuar no body; nesse caso o botão integrado fica invisível.
+    // Use a pílula NX, que já está montada dentro do fullscreenHost, como acesso confiável.
+    const fsHost = fullscreenHost();
+    const anchorInsideFullscreen = !!(fsHost && anchor && (fsHost === anchor || fsHost.contains(anchor)));
+    if (fsHost && anchor && !anchorInsideFullscreen) {
+      if (nxLibraryButton) nxLibraryButton.style.display = 'none';
+      if (nxKeyboardMouseButton) nxKeyboardMouseButton.style.display = 'none';
+      wrap.style.display = 'flex';
+      wrap.style.position = 'fixed';
+      wrap.style.transform = 'none';
+      wrap.style.left = 'auto';
+      wrap.style.right = 'max(12px, env(safe-area-inset-right, 12px))';
+      wrap.style.top = 'max(12px, env(safe-area-inset-top, 12px))';
+      wrap.style.bottom = 'auto';
+      wrap.style.width = '44px';
+      wrap.style.maxWidth = '44px';
+      wrap.style.alignItems = 'flex-end';
+      if (pillEl) {
+        pillEl.style.display = 'inline-flex';
+        pillEl.style.width = '44px';
+        pillEl.style.height = '44px';
+        pillEl.style.padding = '0';
+        pillEl.style.gap = '0';
+        pillEl.style.justifyContent = 'center';
+        pillEl.style.borderRadius = '14px';
+      }
+      if (dotEl) dotEl.style.display = 'none';
+      if (pillTxt) pillTxt.style.display = 'none';
+      return;
+    }
     if (anchor && anchor.parentElement) {
       if (!nxLibraryButton) nxLibraryButton = buildLibraryButton();
       if (placement.position === 'after') {
@@ -6429,12 +6460,16 @@ void main(){
         try {
           const host = mountTarget();
           if (wrap && host) host.appendChild(wrap);
+          // Recalcular no mesmo frame: não esperar o tick periódico para revelar o fallback.
+          syncNXPlacement();
         } catch (e) { }
       }, true);
     });
     setInterval(tick, 1500);
     window.addEventListener('popstate', tick);
     window.addEventListener('resize', tick);
+    window.addEventListener('orientationchange', tick, { passive: true });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', tick, { passive: true });
     tick();
     setInterval(pumpQos, 2000);
     console.log('[xcu] v' + VER + ' iniciado | data center', srvCfg().label, '| IPv4', v4on(), '| qualidade', resCfg().label);
