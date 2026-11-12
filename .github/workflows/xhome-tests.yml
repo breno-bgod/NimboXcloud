@@ -5,11 +5,13 @@ on:
     paths:
       - 'NimboXcloud.user.js'
       - 'tests/**'
+      - 'modules/**'
       - '.github/workflows/xhome-tests.yml'
   pull_request:
     paths:
       - 'NimboXcloud.user.js'
       - 'tests/**'
+      - 'modules/**'
       - '.github/workflows/xhome-tests.yml'
   workflow_dispatch:
 permissions:
