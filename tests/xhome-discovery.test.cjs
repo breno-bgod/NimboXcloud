@@ -8,7 +8,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('function nxRemoteEmptyMediaDiagnostics()');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady,sendKeyboardFrame:nxRemoteSendKeyboardFrame,sendMouseFrame:nxRemoteSendMouseFrame,enableInput:nxRemoteInputCaptureEnable,disableInput:nxRemoteInputCaptureDisable,inputFocus:nxRemoteVideoHasInputFocus,heldKeys:function(){return Array.from(nxRemoteHeldKeys.keys());},mouseButtons:function(){return nxRemoteMouseButtons;},captureEnabled:function(){return !!nxRemoteInputCapture;},browser:{window:window,document:document}};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},setChannels:function(value){nxRemoteChannels=value;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady,sendKeyboardFrame:nxRemoteSendKeyboardFrame,sendMouseFrame:nxRemoteSendMouseFrame,createTouchAdapter:nxRemoteCreateTouchInputAdapter,attachTouchAdapter:nxRemoteAttachTouchAdapter,detachTouchAdapter:nxRemoteDetachTouchAdapter,touchAdapter:function(){return nxRemoteTouchAdapter;},enableInput:nxRemoteInputCaptureEnable,disableInput:nxRemoteInputCaptureDisable,inputFocus:nxRemoteVideoHasInputFocus,heldKeys:function(){return Array.from(nxRemoteHeldKeys.keys());},mouseButtons:function(){return nxRemoteMouseButtons;},captureEnabled:function(){return !!nxRemoteInputCapture;},browser:{window:window,document:document}};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides, mediaStreamClass) {
   let timerId=0;
   const fakeTimers=new Map();
@@ -1406,4 +1406,73 @@ test('xHome gamepad routing: video focus grants input while the NX panel is open
   assert.match(source,/const allowInput=!nxCapturePad && nxRemoteGamepadWindowFocused && \(!openUI \|\| remoteVideoFocused\);/);
   assert.match(source,/if \(remoteVideoFocused\) return;/);
   assert.match(source,/const fast=nxRemoteGamepadReady\(\) && \(!openUI \|\| nxRemoteVideoHasInputFocus\(\)\)/);
+});
+
+
+test('xHome touch adapter: attaches explicitly and forwards mouse and keyboard through the shared input sequence',()=>{
+  const api=harness(async()=>ok({}));
+  const sent=[];
+  const channels={input:{readyState:'open',bufferedAmount:0,send(payload){sent.push(payload.slice(0));}},
+    control:{readyState:'open',send(){}},message:{readyState:'open',send(){}},chat:{readyState:'open',send(){}}};
+  const peer={connectionState:'connected'};
+  api.state.peer=peer;api.state.sessionStatus='connected';api.state.dataChannelsReady=true;api.setChannels(channels);
+  let attached=null;
+  api.browser.window.NimboTouch={attachRemoteInputAdapter(adapter){attached=adapter;return true;},clearRemoteInputAdapter(adapter){adapter.dispose();return true;}};
+  assert.equal(api.attachTouchAdapter(api.state.requestId,peer,channels),true);
+  assert.ok(attached);
+  assert.equal(attached.isReady(),true);
+  assert.equal(attached.sendKey('KeyW',true),true);
+  assert.equal(attached.sendMouse({Type:0,X:14,Y:-7,WheelX:0,WheelY:0,Buttons:1}),true);
+  assert.equal(attached.sendKey('KeyW',false),true);
+  assert.equal(sent.length,3);
+  const packets=sent.map(buffer=>new DataView(buffer));
+  assert.deepEqual(packets.map(view=>view.getUint16(0,true)),[64,32,64]);
+  assert.deepEqual(packets.map(view=>view.getUint32(2,true)),[1,2,3]);
+  assert.equal(packets[0].getUint8(15),2);
+  assert.equal(packets[0].getUint8(16),1);
+  assert.equal(packets[0].getUint8(17),0x57);
+  assert.equal(packets[1].getInt32(15,true),14);
+  assert.equal(packets[1].getInt32(19,true),-7);
+  assert.equal(packets[1].getUint8(31),1);
+  assert.equal(packets[2].getUint8(16),0);
+});
+
+test('xHome touch adapter: release sends key-up and neutral mouse before adapter disposal',()=>{
+  const api=harness(async()=>ok({}));
+  const sent=[];
+  const channels={input:{readyState:'open',bufferedAmount:0,send(payload){sent.push(payload.slice(0));}},
+    control:{readyState:'open',send(){}},message:{readyState:'open',send(){}},chat:{readyState:'open',send(){}}};
+  const peer={connectionState:'connected'};
+  api.state.peer=peer;api.state.sessionStatus='connected';api.state.dataChannelsReady=true;api.setChannels(channels);
+  const adapter=api.createTouchAdapter(api.state.requestId,peer,channels);
+  assert.equal(adapter.sendKey('Space',true),true);
+  assert.equal(adapter.sendMouse({Type:0,X:0,Y:0,WheelX:0,WheelY:0,Buttons:3}),true);
+  assert.equal(adapter.release(),true);
+  const packets=sent.map(buffer=>new DataView(buffer));
+  assert.deepEqual(packets.map(view=>view.getUint16(0,true)),[64,32,64,32]);
+  assert.equal(packets[2].getUint8(16),0);
+  assert.equal(packets[3].getUint8(31),0);
+  assert.equal(adapter.dispose(),true);
+  assert.equal(adapter.isReady(),false);
+});
+
+test('xHome touch adapter: backpressure and stale sessions reject new touch input',()=>{
+  const api=harness(async()=>ok({}));
+  const sent=[];
+  const input={readyState:'open',bufferedAmount:5000,send(payload){sent.push(payload.slice(0));}};
+  const channels={input,control:{readyState:'open',send(){}},message:{readyState:'open',send(){}},chat:{readyState:'open',send(){}}};
+  const peer={connectionState:'connected'};
+  api.state.peer=peer;api.state.sessionStatus='connected';api.state.dataChannelsReady=true;api.setChannels(channels);
+  const adapter=api.createTouchAdapter(api.state.requestId,peer,channels);
+  assert.equal(adapter.sendKey('KeyA',true),false);
+  assert.equal(sent.length,0);
+  input.bufferedAmount=0;
+  assert.equal(adapter.sendKey('KeyA',true),true);
+  api.state.requestId++;
+  assert.equal(adapter.isReady(),false);
+  assert.equal(adapter.sendMouse({Type:0,X:1,Y:1,WheelX:0,WheelY:0,Buttons:0}),false);
+  assert.equal(sent.length,1);
+  assert.equal(adapter.dispose(),true);
+  assert.equal(sent.length,2);
+  assert.equal(new DataView(sent[1]).getUint8(16),0);
 });
