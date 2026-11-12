@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.85
+// @version      4.12.86
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch e controle virtual experimental exclusivo do xHome.
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.85
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.86
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.85';
+  const VER = '4.12.86';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -4575,7 +4575,7 @@
       root.appendChild(g3.root);
     },
 
-    media: function (root) {
+    media: function (root, category) {
       const g1 = group('Áudio');
       const sl = document.createElement('input');
       sl.type = 'range'; sl.min = '0'; sl.max = '100'; sl.step = '5'; sl.value = '100';
@@ -4640,7 +4640,7 @@
       g1.add(setRow('Saida de audio','No Android, fones Bluetooth normalmente usam a saida padrao do sistema.',audioOutputs,true));
       g1.add(setRow('Roteamento', 'Status de selecao de dispositivo.',outputStatus,true));
       g1.add(setRow('Dispositivos','Atualiza saidas disponibilizadas pelo navegador.',actBtn('Atualizar saidas',refreshOutputs,'ghost')));
-      refreshOutputs();
+      if (category === 'audio') refreshOutputs();
             const presets = {
         original: [0,0,0,0,0,0,0,0,0,0], fps: [-3,-2,-1,0,1,2,3,3,1,0],
         corrida: [3,2,1,0,0,0,1,1,1,0], cinema: [3,2,1,0,0,1,2,2,1,1],
@@ -5324,7 +5324,7 @@
   const buildLegacyMedia=TAB_BUILDERS.media;
   const buildLegacyControls=TAB_BUILDERS.controls;
   function nxLegacySystemGroups(){const temp=document.createElement('div');nxLegacySystemBuilder(temp);return Array.from(temp.children);}
-  function nxLegacyMediaGroups(){const temp=document.createElement('div');buildLegacyMedia(temp);return Array.from(temp.children);}
+  function nxLegacyMediaGroups(category){const temp=document.createElement('div');buildLegacyMedia(temp,category);return Array.from(temp.children);}
   function nxLegacyControlGroups(category){const temp=document.createElement('div');buildLegacyControls(temp,category);return Array.from(temp.children);}
   function nxGroupTitle(node){return node&&node.firstElementChild?String(node.firstElementChild.textContent||'').trim():'';}
   function nxGroupCard(node){return node&&node.children&&node.children[1]?node.children[1]:null;}
@@ -5372,7 +5372,7 @@
     const system=nxLegacySystemGroups();if(system[2])root.appendChild(system[2]);
     nxQualityPresets(root);
   };
-  TAB_BUILDERS.audio=function(root){nxMoveGroup(root,nxLegacyMediaGroups(),'Áudio');};
+  TAB_BUILDERS.audio=function(root){nxMoveGroup(root,nxLegacyMediaGroups('audio'),'Áudio');};
   TAB_BUILDERS.voice=function(root){
     const nodes=nxLegacyControlGroups('voice');
     const mic=nxTakeGroupRows(nxFindGroup(nodes,'Acessórios'),'Microfone e entrada de voz',['Microfone'],
@@ -5381,7 +5381,7 @@
   };
   TAB_BUILDERS.video=function(root){
     const controls=nxLegacyControlGroups('video');nxMoveGroup(root,controls,'Dispositivo');
-    const media=nxLegacyMediaGroups();
+    const media=nxLegacyMediaGroups('video');
     const presentation=nxTakeGroupRows(nxFindGroup(media,'Biblioteca de perfis'),'Apresentação do vídeo',
       ['Enquadramento','Tela cheia','Economia de recursos'],
       'Enquadramento, tela cheia e economia de filtros locais durante a aba oculta.');
@@ -5389,7 +5389,7 @@
     root.appendChild(note('Auto, Desktop, Celular e DeX são preferências de experiência. O navegador mantém sua identidade nativa.'));
   };
   TAB_BUILDERS.images=function(root){
-    const media=nxLegacyMediaGroups();
+    const media=nxLegacyMediaGroups('images');
     ['Imagem','Clarity Boost experimental','Captura'].forEach(function(title){nxMoveGroup(root,media,title);});
     const profiles=nxTakeGroupRows(nxFindGroup(media,'Biblioteca de perfis'),'Perfis de imagem',
       ['Salvar configuracao','Exportar configuracao','Importar JSON','Perfis salvos'],
@@ -5810,8 +5810,7 @@
       });
       section.appendChild(button);section.appendChild(details);root.appendChild(section);
     });
-    const monitor=actBtn(nxTelemetryEnabled?'Ocultar monitor de desempenho':'Ativar monitor de desempenho',function(){nxTelemetryToggle(!nxTelemetryEnabled);renderBody();},'ghost');
-    monitor.style.width='100%';monitor.style.marginTop='4px';root.appendChild(monitor);
+
   };
     // Painel como inventario: solta o ponteiro uma unica vez ao abrir.
   // Ao fechar, nao recaptura sem gesto do usuario; F9 continua nativo.
