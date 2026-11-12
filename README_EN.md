@@ -52,7 +52,7 @@ The integrated **NimboTouch** module is loaded by the main userscript through `@
 
 ## The new NX experience — minimal interface (in development)
 
-The **NX** panel is being reorganized to reduce clutter during gameplay without removing advanced tools. Its home screen now provides four collapsible categories: **Streaming, Controls, Personalization, and Advanced**. Audio, voice, server, graph, and diagnostic pages remain accessible through these groups.
+The **NX** panel is being reorganized to reduce clutter during gameplay without removing advanced tools. Its navigation separates **Video, Streaming, Audio, Voice, Controls, Keyboard and mouse, Servers, Personalization, Compatibility, and System**. Each area keeps its own settings instead of mixing physical-controller input with keyboard and mouse.
 
 ### NX Stream Monitor
 
