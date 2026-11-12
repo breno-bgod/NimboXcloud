@@ -1,3 +1,9 @@
+## [4.12.94] — 2026-11-12
+- Isolado o sinalizador IPv4 do xCloud retail: `rewriteIce` não modifica mais SDP/ICE de hosts xHome.
+- A sessão xHome preserva os candidatos originais até existir política IPv4 específica para seu formato de sinalização; evita filtragem parcial entre SDP e respostas diretas de candidatos.
+- Regressão executa o helper real isolado e verifica os hosts xHome de login/região, preservando a reescrita IPv4 retail.
+- Sem alteração de autenticação, endpoints, SDP/ICE enviado, canais de dados ou roteamento de controles.
+
 ## [4.12.93] — 2026-11-12
 - Adicionados modos explícitos de entrada física: Automático, teclado/mouse e gamepad, separados do HUD por toque. O gamepad exige dispositivo reconhecido; não é criado um controle fictício.
 - Preferência pode ajustar campos conhecidos da configuração inicial e solicitar alteração na sessão conectada pelo adaptador existente. Schemas desconhecidos passam sem alteração; o recebimento de comandos pelo Fortnite ainda requer teste real.
