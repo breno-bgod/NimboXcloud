@@ -8,7 +8,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady,encodeInputFrames:nxRemoteEncodeInputFrames,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,keyboardFrameFromEvent:nxRemoteKeyboardFrameFromEvent,mouseFrameFromPointer:nxRemoteMouseFrameFromPointer,mouseFrameFromWheel:nxRemoteMouseFrameFromWheel,keyboardReleaseFrames:nxRemoteKeyboardReleaseFrames,neutralMouseFrame:nxRemoteNeutralMouseFrame,sendInputFrames:nxRemoteSendInputFrames};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
   let timerId=0;
   const fakeTimers=new Map();
@@ -1008,4 +1008,109 @@ test('gamepad scheduler: keeps a slot registered until a disconnect neutral fram
   api.tickGamepads([],true);
   assert.deepEqual(Array.from(api.registeredSlots()),[]);
   assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===1&&message.wasAdded===false).length,1);
+});
+
+
+test('xHome keyboard encoder: emits deterministic virtual-key down and up records',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const down=api.encodeKeyboardFrame({pressed:true,keyCode:65},7,12.5);
+  assert.equal(down.byteLength,18);
+  const view=new DataView(down);
+  assert.equal(view.getUint16(0,true),64);
+  assert.equal(view.getUint32(2,true),7);
+  assert.equal(view.getFloat64(6,true),12.5);
+  assert.equal(view.getUint8(14),1);
+  assert.deepEqual([view.getUint8(15),view.getUint8(16),view.getUint8(17)],[2,1,65]);
+  const up=api.encodeKeyboardFrame({pressed:false,keyCode:65},8,13.5);
+  const upView=new DataView(up);
+  assert.deepEqual([upView.getUint8(15),upView.getUint8(16),upView.getUint8(17)],[2,0,65]);
+});
+
+test('xHome mouse encoder: preserves signed relative movement, wheel, buttons and mode',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const packet=api.encodeMouseFrame({X:-12,Y:34,WheelX:-120,WheelY:240,Buttons:5,Relative:0},9,14.5);
+  assert.equal(packet.byteLength,33);
+  const view=new DataView(packet);
+  assert.equal(view.getUint16(0,true),32);
+  assert.equal(view.getUint32(2,true),9);
+  assert.equal(view.getFloat64(6,true),14.5);
+  assert.equal(view.getUint8(14),1);
+  assert.deepEqual([
+    view.getInt32(15,true),view.getInt32(19,true),
+    view.getInt32(23,true),view.getInt32(27,true),
+    view.getUint8(31),view.getUint8(32)
+  ],[-12,34,-120,240,5,0]);
+});
+
+test('xHome input encoder: batches mouse then keyboard in protocol order',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const packet=api.encodeInputFrames({
+    mouseFrames:[{X:1,Y:-2,WheelX:0,WheelY:120,Buttons:1,Relative:0}],
+    keyboardFrames:[{pressed:true,keyCode:87},{pressed:false,keyCode:87}]
+  },11,15.5);
+  assert.equal(packet.byteLength,40);
+  const view=new DataView(packet);
+  assert.equal(view.getUint16(0,true),96);
+  assert.equal(view.getUint32(2,true),11);
+  assert.equal(view.getUint8(14),1);
+  assert.deepEqual([view.getInt32(15,true),view.getInt32(19,true),view.getInt32(27,true)],[1,-2,120]);
+  assert.equal(view.getUint8(33),2);
+  assert.deepEqual([
+    view.getUint8(34),view.getUint8(35),view.getUint8(36),
+    view.getUint8(37),view.getUint8(38),view.getUint8(39)
+  ],[2,1,87,2,0,87]);
+});
+
+test('xHome input adapters: convert browser events and build release frames without listeners',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const key=api.keyboardFrameFromEvent({keyCode:65,key:'a'},true);
+  assert.equal(JSON.stringify(key),JSON.stringify({pressed:true,keyCode:65,key:'a'}));
+  assert.equal(api.keyboardFrameFromEvent({keyCode:0,which:0,key:'Unidentified'},true),null);
+  const pointer=api.mouseFrameFromPointer({movementX:-4.8,movementY:5.9,buttons:1});
+  assert.equal(JSON.stringify(pointer),JSON.stringify({X:-4,Y:5,WheelX:0,WheelY:0,Buttons:1,Relative:0}));
+  const wheel=api.mouseFrameFromWheel({deltaX:-120.4,deltaY:240.8},3);
+  assert.equal(JSON.stringify(wheel),JSON.stringify({X:0,Y:0,WheelX:-120,WheelY:240,Buttons:3,Relative:0}));
+  assert.equal(JSON.stringify(api.neutralMouseFrame()),JSON.stringify({X:0,Y:0,WheelX:0,WheelY:0,Buttons:0,Relative:0}));
+  assert.equal(JSON.stringify(Array.from(api.keyboardReleaseFrames([65,65,13,0,256]))),JSON.stringify([
+    {pressed:false,keyCode:65},{pressed:false,keyCode:13}
+  ]));
+});
+
+test('xHome input encoder: rejects malformed records and oversized batches',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  assert.equal(api.encodeKeyboardFrame({pressed:1,keyCode:65},0,0),null);
+  assert.equal(api.encodeKeyboardFrame({pressed:true,keyCode:0},0,0),null);
+  assert.equal(api.encodeMouseFrame({X:0,Y:0,WheelX:0,WheelY:0,Buttons:0,Relative:2},0,0),null);
+  assert.equal(api.encodeInputFrames({keyboardFrames:Array.from({length:31},()=>({pressed:true,keyCode:65}))},0,0),null);
+  assert.equal(api.encodeInputFrames({},0,0),null);
+});
+
+test('xHome input sender: metadata, gamepad and keyboard/mouse share one increasing sequence',()=>{
+  const {api,channels}=readyInputHarness();
+  const metadata=channels.input.sent[0];
+  assert.equal(new DataView(metadata).getUint32(2,true),0);
+  const pad=standardPad(0);
+  pad.buttons[0]={pressed:true,value:1};
+  api.tickGamepads([pad],true);
+  const gamepad=xhomeFrames(channels.input)[0];
+  assert.equal(new DataView(gamepad).getUint32(2,true),1);
+  assert.equal(api.sendInputFrames({
+    keyboardFrames:[{pressed:true,keyCode:65}],
+    mouseFrames:[{X:2,Y:3,WheelX:0,WheelY:0,Buttons:1,Relative:0}]
+  }),true);
+  const mixed=channels.input.sent.find(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===37);
+  assert.ok(mixed);
+  assert.equal(new DataView(mixed).getUint32(2,true),2);
+});
+
+test('xHome input sender: backpressure does not consume the shared sequence',()=>{
+  const {api,channels}=readyInputHarness();
+  const frames={keyboardFrames:[{pressed:true,keyCode:65}]};
+  channels.input.bufferedAmount=4097;
+  assert.equal(api.sendInputFrames(frames),false);
+  channels.input.bufferedAmount=0;
+  assert.equal(api.sendInputFrames(frames),true);
+  const packet=channels.input.sent.find(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===18);
+  assert.ok(packet);
+  assert.equal(new DataView(packet).getUint32(2,true),1);
 });
