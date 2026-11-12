@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const src = fs.readFileSync(path.join(__dirname, '..', 'NimboXcloud.user.js'), 'utf8');
 
 test('NET-003: SDP bitrate edits only offer/answer descriptions', () => {
@@ -87,4 +88,46 @@ test('NET-001: aborted play requests are not parsed and rebuilt', () => {
   const body = src.slice(start, end);
   assert.match(body, /init\.signal\.aborted/);
   assert.match(body, /input\.signal\.aborted/);
+});
+
+
+test('NET-004: retail IPv4 rewriting leaves xHome SDP and ICE endpoints untouched', async () => {
+  const start = src.indexOf('  function rewriteIce(');
+  const end = src.indexOf('  // ---------- 8.', start);
+  assert.ok(start > 0 && end > start);
+  const code = src.slice(start, end) + '\nglobalThis.__rewriteIce = rewriteIce;';
+  let rewriteCalls = 0;
+  const context = {
+    Promise,
+    v4on: () => true,
+    rewriteJson(response, mutate) {
+      rewriteCalls++;
+      const payload = { exchangeResponse: JSON.stringify({ sdp:
+        'a=candidate:1 1 udp 1 2001:db8::1 5000 typ host\r\na=candidate:2 1 udp 1 192.0.2.1 5001 typ host'
+      }) };
+      mutate(payload);
+      return Promise.resolve(response);
+    },
+    isV6Candidate(candidate) {
+      const fields = String(candidate).trim().split(/\s+/);
+      return (fields[4] || '').includes(':');
+    },
+    S: { v6dropped: 0 },
+    addCap() {}
+  };
+  vm.runInNewContext(code, context);
+  const response = { status: 200 };
+  for (const hostname of [
+    'xhome.gssv-play-prod.xboxlive.com',
+    'wus.core.gssv-play-prodxhome.xboxlive.com'
+  ]) {
+    const url = { hostname, host: hostname, pathname: '/v5/sessions/home/session-id/sdp' };
+    assert.equal(await context.__rewriteIce(response, url, true), response);
+    assert.equal(await context.__rewriteIce(response, url, false), response);
+  }
+  assert.equal(rewriteCalls, 0, 'xHome login and regional session hosts must bypass retail candidate rewriting');
+
+  const retailHost = 'wus.core.gssv-play-prod.xboxlive.com';
+  await context.__rewriteIce(response, { hostname: retailHost, host: retailHost, pathname: '/v5/sessions/cloud/session-id/sdp' }, true);
+  assert.equal(rewriteCalls, 1, 'retail GSSV IPv4 rewriting remains active');
 });
