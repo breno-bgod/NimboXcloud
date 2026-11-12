@@ -31,7 +31,7 @@
     enabled: false, installed: false, error: '', reads: 0, lastIndex: -1,
     axes: [0, 0, 0, 0],
     buttons: Array.from({ length: BUTTON_COUNT }, () => 0),
-    pointers: new Map(), panel: null, status: null
+    pointers: new Map(), buttonPointers: new Map(), panel: null, status: null
   };
 
   function clamp(value, min, max) {
@@ -42,6 +42,7 @@
     state.axes = [0, 0, 0, 0];
     state.buttons.fill(0);
     state.pointers.clear();
+    state.buttonPointers.clear();
     updateKnobs();
     updateButtonVisuals();
   }
@@ -325,13 +326,20 @@
         event.preventDefault();
         button.setPointerCapture(event.pointerId);
         state.pointers.set(event.pointerId, { type: 'button', index, element: button });
+        if (!state.buttonPointers.has(index)) state.buttonPointers.set(index, new Set());
+        state.buttonPointers.get(index).add(event.pointerId);
         setButton(index, 1);
       });
       const release = (event) => {
         const pointer = state.pointers.get(event.pointerId);
         if (!pointer || pointer.type !== 'button') return;
         state.pointers.delete(event.pointerId);
-        setButton(index, 0);
+        const activePointers = state.buttonPointers.get(index);
+        if (activePointers) {
+          activePointers.delete(event.pointerId);
+          if (!activePointers.size) state.buttonPointers.delete(index);
+        }
+        setButton(index, state.buttonPointers.has(index) ? 1 : 0);
         try { if (button.hasPointerCapture(event.pointerId)) button.releasePointerCapture(event.pointerId); } catch (_) {}
       };
       button.addEventListener('pointerup', release);
