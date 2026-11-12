@@ -1,3 +1,9 @@
+## [4.12.66] — 2026-11-12
+- Added a deterministic xHome gamepad packet encoder matching the public MIT reference layout: 14-byte header, one-frame count and 23-byte gamepad record (38 bytes total).
+- Added idempotent registration/unregistration for remote gamepad slots 0–3; registered slots are released before data-channel teardown.
+- Encoder remains pure and dormant: no continuous frame transmission, Gamepad API interception, or polling was added.
+- Replaced real Node timers in the xHome test harness with browser-like numeric fake handles; explicit timeout tests retain controllable fake clocks.
+
 ## [4.12.65] — 2026-11-12
 - O bootstrap xHome agora possui timeout de 12 segundos para abertura dos quatro data channels e recebimento de `HandshakeAck`; o timer é cancelado somente após a inicialização completa.
 - Erro ou fechamento inesperado de qualquer canal provoca encerramento local e tentativa de liberação remota da sessão, evitando `dataChannelsReady` permanecer verdadeiro após perda do transporte.
