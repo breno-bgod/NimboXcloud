@@ -5,10 +5,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'NimboXcloud.user.js'), 'utf8');
+const touchModuleSource = fs.readFileSync(require('node:path').join(__dirname, '..', 'modules', 'NimboXcloud-Touch-HUD.user.js'), 'utf8');
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady,setInputReady:function(input,control){nxRemoteChannels={input:input,control:control||{readyState:'open',send:function(){return true;}}};nxRemotePlay.peer={connectionState:'connected'};nxRemotePlay.dataChannelsReady=true;nxRemotePlay.sessionStatus='connected';},sendKeyboard:nxRemoteInputSendKeyboard,sendMouse:nxRemoteInputSendMouse,releaseSource:nxRemoteInputReleaseSource,releaseAll:nxRemoteInputReleaseAll,setCapture:nxRemoteInputSetCapture,heldKeys:function(){return Array.from(nxRemoteInputHeldKeys.entries()).map(function(e){return [e[0],Array.from(e[1])];});},mouseButtons:function(){return {physical:nxRemoteInputMouseButtons.physical,touch:nxRemoteInputMouseButtons.touch};},sequence:function(){return nxRemoteInputSequence;}};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
   let timerId=0;
   const fakeTimers=new Map();
@@ -1071,4 +1072,109 @@ test('mouse encoder: clamps integer fields and rejects invalid pointer mode',()=
   assert.equal(view.getUint8(31),255);
   assert.equal(view.getUint8(32),1,'absolute pointer mode');
   assert.equal(api.encodeMouseFrame({X:0,Y:0,Relative:2},0,0),null);
+});
+
+
+test('input dispatcher: keyboard sources share a held VK until the final source releases',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const sent=[],input={readyState:'open',bufferedAmount:0,send(packet){sent.push(packet);}};
+  api.setInputReady(input);
+  assert.equal(api.sendKeyboard('KeyA',true,'physical'),true);
+  assert.equal(api.sendKeyboard('KeyA',true,'touch'),true);
+  assert.equal(sent.length,1,'second source must not duplicate keydown');
+  assert.equal(api.releaseSource('physical',true),true);
+  assert.equal(sent.length,1,'key remains held by touch source');
+  assert.equal(api.releaseSource('touch',true),true);
+  assert.equal(sent.length,2,'keyup follows the final source release');
+  const down=new DataView(sent[0]),up=new DataView(sent[1]);
+  assert.equal(down.getUint16(0,true),64);assert.equal(down.getUint8(15),2);
+  assert.equal(down.getUint8(16),1);assert.equal(down.getUint8(17),65);
+  assert.equal(up.getUint8(16),0);assert.equal(api.heldKeys().length,0);
+});
+
+test('input dispatcher: physical and touch mouse buttons combine and release independently',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const sent=[],input={readyState:'open',bufferedAmount:0,send(packet){sent.push(packet);}};
+  api.setInputReady(input);
+  const empty={X:0,Y:0,WheelX:0,WheelY:0,Relative:0};
+  api.sendMouse({...empty,Buttons:1},'physical');api.sendMouse({...empty,Buttons:2},'touch');
+  api.releaseSource('physical',true);api.releaseSource('touch',true);
+  assert.deepEqual(sent.map(packet=>new DataView(packet).getUint8(31)),[1,3,2,0]);
+  assert.deepEqual(api.mouseButtons(),{physical:0,touch:0});
+});
+
+test('input dispatcher: gamepad, keyboard and mouse share one sequence counter',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const sent=[],input={readyState:'open',bufferedAmount:0,send(packet){sent.push(packet);}};
+  api.setInputReady(input,{readyState:'open',send(){}});
+  api.sendKeyboard('KeyW',true,'physical');
+  api.sendMouse({X:2,Y:3,WheelX:0,WheelY:0,Buttons:0,Relative:0},'physical');
+  const pad={connected:true,mapping:'standard',index:0,buttons:Array.from({length:17},()=>({pressed:false,value:0})),axes:[0,0,0,0]};
+  api.tickGamepads([pad],true);
+  assert.equal(sent.length,3);
+  assert.deepEqual(sent.map(packet=>new DataView(packet).getUint32(2,true)),[0,1,2]);
+  assert.equal(api.sequence(),3);
+});
+
+test('input dispatcher: backpressure rejects new input without retaining phantom state',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const sent=[],input={readyState:'open',bufferedAmount:4097,send(packet){sent.push(packet);}};
+  api.setInputReady(input);
+  assert.equal(api.sendKeyboard('KeyB',true,'physical'),false);
+  assert.equal(api.sendMouse({X:1,Y:1,WheelX:0,WheelY:0,Buttons:1,Relative:0},'physical'),false);
+  assert.equal(sent.length,0);assert.equal(api.heldKeys().length,0);
+  assert.deepEqual(api.mouseButtons(),{physical:0,touch:0});assert.equal(api.sequence(),0);
+});
+
+test('input dispatcher: physical capture is opt-in and requires a ready transport',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  assert.equal(api.setCapture(true),false);
+  api.setInputReady({readyState:'open',bufferedAmount:0,send(){}});
+  assert.equal(api.setCapture(true),true);assert.equal(api.state.inputCapture,true);
+  assert.equal(api.setCapture(false),true);assert.equal(api.state.inputCapture,false);
+});
+
+test('input dispatcher: releaseAll emits keyup and neutral mouse before teardown',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const sent=[],input={readyState:'open',bufferedAmount:0,send(packet){sent.push(packet);}};
+  api.setInputReady(input);
+  api.sendKeyboard('KeyW',true,'physical');
+  api.sendMouse({X:0,Y:0,WheelX:0,WheelY:0,Buttons:1,Relative:0},'touch');
+  assert.equal(api.releaseAll(true),true);assert.equal(sent.length,4);
+  assert.equal(new DataView(sent[2]).getUint8(16),0);
+  assert.equal(new DataView(sent[3]).getUint8(31),0);
+  assert.equal(api.heldKeys().length,0);assert.deepEqual(api.mouseButtons(),{physical:0,touch:0});
+});
+
+test('NimboTouch remote transport routes virtual HUD inputs through the shared sink',async()=>{
+  const begin=touchModuleSource.indexOf('class NimboRemoteInputTransport {');
+  const end=touchModuleSource.indexOf('class NimboXboxTransport {',begin);
+  assert.ok(begin>=0&&end>begin);
+  const context={};vm.createContext(context);
+  vm.runInContext(touchModuleSource.slice(begin,end)+'\\nglobalThis.Adapter=NimboRemoteInputTransport;',context);
+  const calls=[],target={
+    ready:true,isReady(){return this.ready;},
+    sendMouse(frame,source){calls.push(['mouse',frame,source]);return true;},
+    sendKeyboard(code,pressed,source,keyCode){calls.push(['keyboard',code,pressed,source,keyCode]);return true;},
+    releaseSource(source){calls.push(['release',source]);return true;}
+  };
+  const adapter=new context.Adapter(target);
+  assert.equal(adapter.connected(),true);
+  await adapter.configure({enableKeyboardInput:true,enableMouseInput:true,enableTouchInput:false});
+  adapter.mouse({Type:0,X:4,Y:-3,WheelX:0,WheelY:0,Buttons:1});
+  adapter.sendKey('KeyW',true,new Set(['KeyW']));
+  adapter.keyboard({windowsKey:65,isPressed:false,reportType:2});
+  adapter.release();adapter.release();
+  assert.equal(calls.filter(c=>c[0]==='mouse').length,1);
+  assert.equal(calls.filter(c=>c[0]==='keyboard').length,2);
+  assert.equal(calls.filter(c=>c[0]==='release').length,1);
+  assert.equal(calls[0][2],'touch');assert.equal(calls[1][3],'touch');assert.equal(calls[2][3],'touch');
+  await adapter.dispose();assert.equal(adapter.connected(),false);
+});
+
+test('NimboTouch remote sink blocks native xCloud polling while attached',()=>{
+  assert.match(touchModuleSource,/if\\(nimboRemoteInputTarget\\)return false;/);
+  assert.match(touchModuleSource,/if\\(nimboRemoteInputTarget\\)\\{syncTouchVisibility\\(\\);touchPanel\\.refresh\\(\\);return;\\}/);
+  assert.match(touchModuleSource,/attachRemoteInputSink:nimboAttachRemoteInputSink/);
+  assert.match(touchModuleSource,/detachRemoteInputSink:nimboDetachRemoteInputSink/);
 });
