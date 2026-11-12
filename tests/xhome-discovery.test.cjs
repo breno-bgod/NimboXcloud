@@ -1768,3 +1768,107 @@ test('reconnect: Stop releases the old xHome session before Start and ignores la
 
   await api.stop();
 });
+
+
+test('reconnect: pending ICE poll from old session cannot mutate the new session',async()=>{
+  const calls=[],peers=[],timers=new Map();
+  let timerId=0;
+  const setTimeoutFake=(fn,ms)=>{const id=++timerId;timers.set(id,{fn,ms});return id;};
+  const clearTimeoutFake=(id)=>timers.delete(id);
+  const sessionIds=[
+    '33333333-3333-4333-8333-333333333333',
+    '44444444-4444-4444-8444-444444444444'
+  ];
+  let sessionIndex=0;
+  const iceReads=new Map();
+  let resolveOldPoll;
+  let oldPollSignal=null;
+  const oldPollResponse=new Promise(resolve=>{resolveOldPoll=resolve;});
+  const candidateA={candidate:'candidate:old-session 1 udp 1 127.0.0.1 9001 typ host',sdpMid:'0',sdpMLineIndex:0};
+  const candidateB={candidate:'candidate:new-session 1 udp 1 127.0.0.1 9002 typ host',sdpMid:'0',sdpMLineIndex:0};
+  class FakeChannel{
+    constructor(label,options){this.label=label;this.protocol=options.protocol;this.ordered=options.ordered;this.readyState='open';this.bufferedAmount=0;this.sent=[];}
+    send(data){this.sent.push(data);}
+    close(){this.readyState='closed';}
+  }
+  class FakePeer{
+    constructor(){this.channels={};this.connectionState='new';this.signalingState='stable';this.remoteCandidates=[];this.closed=false;peers.push(this);}
+    createDataChannel(label,options){const channel=new FakeChannel(label,options);this.channels[label]=channel;return channel;}
+    addTransceiver(){}
+    async createOffer(){return {type:'offer',sdp:'v=0'};}
+    async setLocalDescription(value){this.localDescription=value;}
+    async setRemoteDescription(value){this.remoteDescription=value;}
+    async addIceCandidate(value){this.remoteCandidates.push(value);}
+    close(){this.closed=true;this.connectionState='closed';this.signalingState='closed';}
+  }
+  const api=harness(async(url,options)=>{
+    const opts=options||{};
+    const method=opts.method||'GET';
+    calls.push({url,opts});
+    if(url.endsWith('/v2/login/user'))return ok(login);
+    if(url.endsWith('/v5/sessions/home/play'))return ok({sessionId:sessionIds[sessionIndex++]});
+    if(url.endsWith('/state'))return ok({state:'Provisioned'});
+    if(url.endsWith('/sdp')&&method==='POST')return {ok:true,status:204};
+    if(url.endsWith('/sdp')&&method==='GET')return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0'})});
+    if(url.endsWith('/ice')&&method==='GET'){
+      const sessionId=sessionIds.find(id=>url.includes(id));
+      const count=(iceReads.get(sessionId)||0)+1;
+      iceReads.set(sessionId,count);
+      if(sessionId===sessionIds[0]&&count===1)return ok({candidates:[]});
+      if(sessionId===sessionIds[0]&&count===2){oldPollSignal=opts.signal;return oldPollResponse;}
+      if(sessionId===sessionIds[1]&&count===1)return ok({candidates:[candidateB]});
+      return ok({candidates:[]});
+    }
+    if(method==='DELETE')return {ok:true,status:204};
+    throw new Error('unexpected request '+method+' '+url);
+  },null,FakePeer,{setTimeout:setTimeoutFake,clearTimeout:clearTimeoutFake});
+  api.state.consoles=[{id:'console-1'}];
+  api.state.selectedId='console-1';
+  api.state.regionShortName='wus';
+
+  await api.startSession();
+  const oldPeer=peers[0];
+  const oldPollId=api.state.iceTimer;
+  const oldPollTimer=timers.get(oldPollId);
+  assert.ok(oldPollTimer,'session A must schedule its ICE poll');
+  assert.equal(oldPollTimer.ms,1000);
+  timers.delete(oldPollId);
+  const pendingPoll=oldPollTimer.fn();
+  await Promise.resolve();
+  assert.equal(iceReads.get(sessionIds[0]),2,'session A poll must be pending at fetch');
+  assert.ok(oldPollSignal);
+
+  await api.stop();
+  assert.equal(oldPollSignal.aborted,true,'Stop must abort the old session controller');
+  assert.equal(oldPeer.closed,true);
+
+  await api.startSession();
+  const newPeer=peers[1];
+  const newPollId=api.state.iceTimer;
+  assert.ok(newPollId&&timers.has(newPollId),'session B must own a new ICE poll timer');
+  assert.notEqual(newPollId,oldPollId);
+  assert.deepEqual(newPeer.remoteCandidates,[candidateB],'only session B initial candidates may reach peer B');
+  const activeRequestId=api.state.requestId;
+  const activeStatus=api.state.status;
+  const activeSessionStatus=api.state.sessionStatus;
+  const activeTimers=Array.from(timers.keys()).sort((a,b)=>a-b);
+  const deleteIndex=calls.findIndex(call=>call.opts.method==='DELETE'&&call.url.includes(sessionIds[0]));
+  const secondPlayIndex=calls.findIndex((call,index)=>index>deleteIndex&&call.opts.method==='POST'&&call.url.endsWith('/v5/sessions/home/play'));
+  assert.ok(deleteIndex>=0&&secondPlayIndex>deleteIndex,'the old DELETE must finish before session B is created');
+
+  // Deliberately resolve a fetch that ignored AbortSignal and returned after session B became active.
+  resolveOldPoll(ok({candidates:[candidateA]}));
+  await pendingPoll;
+
+  assert.equal(calls.filter(call=>call.url.includes(sessionIds[0])&&call.url.endsWith('/ice')&&call.opts.method==='GET').length,2);
+  assert.deepEqual(oldPeer.remoteCandidates,[],'the stale candidate must not be added even to the closed peer');
+  assert.deepEqual(newPeer.remoteCandidates,[candidateB],'the stale candidate must never reach peer B');
+  assert.equal(api.state.requestId,activeRequestId);
+  assert.equal(api.state.peer,newPeer);
+  assert.equal(api.state.sessionId,sessionIds[1]);
+  assert.equal(api.state.sessionStatus,activeSessionStatus);
+  assert.equal(api.state.status,activeStatus,'a stale poll must not overwrite the active session status');
+  assert.equal(api.state.iceTimer,newPollId,'a stale poll must not replace the new session timer');
+  assert.deepEqual(Array.from(timers.keys()).sort((a,b)=>a-b),activeTimers,'a stale poll must not schedule another timer');
+  await api.stop();
+});
