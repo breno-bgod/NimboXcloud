@@ -3011,6 +3011,9 @@
   }
   async function nxRemoteStop() {
     if(nxRemotePlay.sessionStatus==='stopping')return;
+    // A sessão já foi encerrada localmente e aguarda liberação remota: preserve o retry pendente.
+    // Um segundo Stop não deve apagar o aviso nem substituir o estado de liberação.
+    if(nxRemotePendingRelease){if(tabId==='remote')renderBody();return;}
     const release={sessionId:nxRemotePlay.sessionId,region:nxRemotePlay.regionShortName,token:nxRemoteSessionToken};
     const stopRequestId=++nxRemotePlay.requestId;
     if(nxRemotePlay.abortController)nxRemotePlay.abortController.abort();
