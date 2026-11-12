@@ -1,3 +1,9 @@
+## [4.12.79] — 2026-11-12
+- Fixed stale virtual touch-gamepad state across xHome focus, visibility, and NX-panel suspension. A suspended touch state is cleared after neutralization, and new virtual frames are rejected until the shared scheduler resumes.
+- Preserved physical gamepad state handling, slot registration, the shared polling loop, packet sequence, and the existing xCloud Gamepad API path.
+- Added a regression for neutral-frame emission, idempotent repeated suspension, stale-update rejection, slot release on resume, and fresh-input recovery.
+- Real Xbox acceptance and on-device touch behavior remain unverified.
+
 ## [4.12.78] — 2026-11-12
 - Added a normalized virtual-gamepad transport contract to the xHome touch adapter. It accepts four standard axes and up to 17 standard buttons, applies a radial deadzone and circular magnitude clamp, and preserves analog trigger values.
 - Virtual touch-gamepad state reuses the existing xHome encoder, shared packet sequence, gamepadChanged registration, neutral-release lifecycle, backpressure handling, and single gamepad polling loop. It reserves an available remote slot beside physical controllers without replacing Gamepad API or adding another scheduler.
