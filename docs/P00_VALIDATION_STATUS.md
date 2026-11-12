@@ -1,6 +1,6 @@
 # P00 — Estado de validação e evidências
 
-Revisão: 2026-11-12. Código de runtime validado no PR #16: `f1def105ff3283c9ff1b2d3bbec4a1b096c3fc50`. Runtime: v4.12.92 (antes do merge).
+Revisão: 2026-11-12. Código de runtime integrado na main pelo PR #16: `091e6cc0c9da53b9bb31777a47a86c0b67a60368`. Runtime: v4.12.92.
 
 ## Evidência automatizada confirmada na main
 
@@ -45,10 +45,11 @@ A primeira execução do teste falhou porque o controller já havia sido removid
 Testar o limite de 30 consultas do ICE poll e a transição para `connected` enquanto um GET está pendente. Aceite: nenhum timer novo após conexão, falha terminal ou esgotamento; Stop continua abortando; erros de uma sessão antiga não alteram uma sessão posterior; ambos workflows permanecem verdes.
 
 
-## Evidência adicional — 4.12.92 / PR #16
+## Evidência adicional — 4.12.92 / PR #16 (mesclado)
 
 - [Baseline — run 43330718365](https://github.com/breno-bgod/NimboXcloud/actions/runs/43330718365): PASS.
 - [NX/xHome regression — run 43330718131](https://github.com/breno-bgod/NimboXcloud/actions/runs/43330718131): PASS.
+- PR #16 squash-merged em `091e6cc0c9da53b9bb31777a47a86c0b67a60368`.
 - Resultado em ambos: 223 testes, 220 PASS, 0 FAIL, 3 TODO.
 - Regressão de limite: uma leitura ICE inicial + no máximo 30 polls, sem timer 31 e sem ID de timer obsoleto.
 - Regressão de transição: GET ICE pendente resolvido depois de connected/failed/closed não inicia outro poll.
