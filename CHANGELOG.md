@@ -1,3 +1,9 @@
+## [4.12.67] — 2026-11-12
+- Integra o gamepad físico ao canal input xHome usando o encoder binário já existente e o slot estável do índice do navegador (0–3).
+- Reutiliza o loop de leitura do painel NX: frequência adaptativa de 75 ms normalmente e 16 ms somente quando a sessão xHome, os quatro canais, o HandshakeAck e o foco permitem entrada.
+- Neutraliza controles em desconexão, abertura do painel, perda de foco, ocultação da página, pagehide e encerramento; limita fila do data channel por bufferedAmount.
+- Não adiciona override de navigator.getGamepads, polling paralelo, nem altera o fluxo de entrada do Cloud Gaming. A transmissão xHome continua experimental e sem homologação em Xbox real.
+
 ## [4.12.66] — 2026-11-12
 - Added a deterministic xHome gamepad packet encoder matching the public MIT reference layout: 14-byte header, one-frame count and 23-byte gamepad record (38 bytes total).
 - Added idempotent registration/unregistration for remote gamepad slots 0–3; registered slots are released before data-channel teardown.
