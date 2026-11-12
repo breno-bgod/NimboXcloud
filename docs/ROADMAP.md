@@ -30,9 +30,9 @@
 - [ ] Atualizar README, documentação de arquitetura, notas de versão, licenças e guia de contribuição.
 - [ ] Publicar beta com limitações explícitas, configuração segura e opção de restaurar padrões.
 
-## Congelados — não retomar sem evidência e decisão
+## Congelados ou em retomada controlada — não reativar interface sem evidência
 
-- Remote Play: código de xHome/WebRTC existente, mas sessão jogável não homologada.
+- Remote Play: retomada técnica xHome autorizada pelo mantenedor em 2026-11-12; continuar desenvolvimento incremental, mantendo a interface oculta até sessão com vídeo, áudio e controles ser homologada em Xbox real.
 - Laboratório de identidade Xbox: nenhuma identidade de hardware comprovada.
 - Curvas de analógico: estudar interceptação da Gamepad API e regressões.
 - Equalizador avançado: resultado considerado insatisfatório pelo mantenedor.
