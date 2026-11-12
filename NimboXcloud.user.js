@@ -6054,7 +6054,7 @@
     const stage=document.createElement('div');stage.className='nx-vpad-stage';root.appendChild(stage);
     const close=document.createElement('button');close.type='button';close.className='nx-vpad-close';close.textContent='Fechar HUD ×';root.appendChild(close);
     document.body.appendChild(root);nxVirtualGamepad.hud=root;
-    close.addEventListener('click',function(){nxVirtualPadReset();root.remove();nxVirtualGamepad.hud=null;nxVirtualGamepad.enabled=false;if(typeof renderBody==='function')renderBody();});
+    close.addEventListener('click',function(){nxVirtualPadReset();root.remove();nxVirtualGamepad.hud=null;nxVirtualGamepad.enabled=false;nxVirtualGamepad.editing=false;if(typeof renderBody==='function')renderBody();});
     toolbar.querySelector('.nx-vpad-save').addEventListener('click',nxVirtualPadSaveLayout);
     toolbar.querySelector('.nx-vpad-done').addEventListener('click',function(){nxVirtualPadSetEditing(false);});
     toolbar.querySelector('select').addEventListener('change',function(e){const c=nxVirtualGamepad.layout.find(function(x){return x.id===e.target.value;});if(c){c.visible=true;nxVirtualPadRenderHud();}});
@@ -6089,7 +6089,7 @@
       nxVirtualPadMountHud();
     }else{
       if(nxVirtualGamepad.lastIndex>=0)nxVirtualPadEvent('gamepaddisconnected',nxVirtualPadSnapshot(nxVirtualGamepad.lastIndex,false));
-      nxVirtualGamepad.enabled=false;nxVirtualGamepad.lastIndex=-1;
+      nxVirtualGamepad.enabled=false;nxVirtualGamepad.editing=false;nxVirtualGamepad.lastIndex=-1;
       nxVirtualPadReset();
       if(nxVirtualGamepad.hud){nxVirtualGamepad.hud.remove();nxVirtualGamepad.hud=null;}
     }
