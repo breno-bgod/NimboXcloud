@@ -8,7 +8,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;}};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
   const ctx = {
     AbortController, URL, Date,
@@ -686,4 +686,77 @@ test('stop: repeated retry while DELETE is in flight sends only one request',asy
   await first;
   assert.equal(api.state.sessionStatus,'stopped');
   assert.equal(calls.length,5);
+});
+
+
+test('data channels: handshake timeout closes channels and releases the local session', async () => {
+  const scheduled = new Map();
+  let nextId = 0;
+  const timers = {
+    setTimeout(fn, ms) { const id = ++nextId; scheduled.set(id, { fn, ms }); return id; },
+    clearTimeout(id) { scheduled.delete(id); }
+  };
+  class FakeChannel {
+    constructor(label) { this.label = label; this.readyState = 'connecting'; this.sent = []; }
+    send(data) { this.sent.push(data); }
+    close() { this.readyState = 'closed'; }
+  }
+  class FakePeer {
+    constructor() { this.channels = {}; this.closed = false; }
+    createDataChannel(label) { return (this.channels[label] = new FakeChannel(label)); }
+    close() { this.closed = true; }
+  }
+  const api = harness(async () => { throw new Error('unexpected network'); }, null, null, timers);
+  const peer = new FakePeer();
+  api.state.peer = peer;
+  api.initChannels(peer, api.state.requestId, new AbortController().signal);
+  const timer = Array.from(scheduled.values()).find(item => item.ms === 12000);
+  assert.ok(timer, '12-second handshake timeout is scheduled');
+  timer.fn();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(api.state.sessionStatus, 'stopped');
+  assert.match(api.state.status, /tempo limite de 12 segundos/i);
+  assert.equal(api.state.dataChannelsReady, false);
+  assert.equal(api.state.channelTimer, null);
+  assert.equal(peer.closed, true);
+  assert.ok(Object.values(peer.channels).every(channel => channel.readyState === 'closed'));
+});
+
+test('data channels: unexpected close after HandshakeAck tears down the xHome session', async () => {
+  const scheduled = new Map();
+  let nextId = 0;
+  const timers = {
+    setTimeout(fn, ms) { const id = ++nextId; scheduled.set(id, { fn, ms }); return id; },
+    clearTimeout(id) { scheduled.delete(id); }
+  };
+  class FakeChannel {
+    constructor(label) { this.label = label; this.readyState = 'open'; this.sent = []; }
+    send(data) { this.sent.push(data); }
+    close() { this.readyState = 'closed'; }
+  }
+  class FakePeer {
+    constructor() { this.channels = {}; this.closed = false; }
+    createDataChannel(label) { return (this.channels[label] = new FakeChannel(label)); }
+    close() { this.closed = true; }
+  }
+  const api = harness(async () => { throw new Error('unexpected network'); }, null, null, timers);
+  const peer = new FakePeer();
+  api.state.peer = peer;
+  api.initChannels(peer, api.state.requestId, new AbortController().signal);
+  const channels = api.channels();
+  for (const name of ['chat', 'control', 'input', 'message']) channels[name].onopen();
+  channels.message.onmessage({ data: JSON.stringify({ type: 'HandshakeAck' }) });
+  assert.equal(api.state.dataChannelsReady, true);
+  assert.equal(api.state.channelTimer, null);
+  assert.equal(scheduled.size, 0, 'successful handshake cancels the timeout');
+  channels.input.readyState = 'closed';
+  channels.input.onclose();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(api.state.dataChannelsReady, false);
+  assert.equal(api.state.sessionStatus, 'stopped');
+  assert.match(api.state.status, /canal input fechado inesperadamente/i);
+  assert.equal(peer.closed, true);
+  assert.ok(Object.values(channels).every(channel => channel.readyState === 'closed'));
 });
