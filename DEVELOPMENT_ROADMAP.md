@@ -706,7 +706,7 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 ## 2026-11-12 — auditoria de regressão percebida: Touchpad e giroscópio
 
 - **HEAD consultado antes da auditoria:** `343bf6ae8ac8b32a1bf486e67a9b8d5eb5fccbd5` (branch `main`).
-- **Userscript consultado:** `NimboXcloud.user.js` v4.12.73, blob `bec8b39f076cc3c497f8918bdf238b446d6d899a`.
+- **Userscript consultado:** `NimboXcloud.user.js` v4.12.73 antes da alteração, blob `bec8b39f076cc3c497f8918bdf238b446d6d899a`; versão resultante v4.12.74.
 - **Módulo touch consultado:** `modules/NimboXcloud-Touch-HUD.user.js` v1.1.9.
 - **Diagnóstico:** os recursos não foram removidos do HEAD atual. O Touchpad continua no módulo separado NimboTouch; o giroscópio continua implementado no userscript principal e a interface de ambos é construída na aba `Controles` do painel NX. A navegação lateral contém a entrada `Controles`.
 - **Fluxo atual do Touchpad:** na aba Controles, o grupo `HUD de teclado e mouse por toque` oferece `Abrir Touch HUD`; o painel do módulo oferece ativação do touchpad, edição da HUD e perfis. Ele usa mouse relativo e joystick WASD; não representa o analógico direito nem substitui o giroscópio.
@@ -734,7 +734,7 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 ## 2026-11-12 — separação da aba Gyro Touch no painel NX
 
 - **Userscript antes da alteração:** `NimboXcloud.user.js` v4.12.73, blob `bec8b39f076cc3c497f8918bdf238b446d6d899a`.
-- **Commit funcional/documental desta alteração:** `fab85e9feb409484c0926aa9825240c0d35c0a66`.
+- **Commit funcional:** `fab85e9feb409484c0926aa9825240c0d35c0a66`; **commit de versão:** `055ff14732918dd0b4bb23405d9370879b29a4fb`.
 - **Organização do painel:** a aba `Controles` passa a concentrar configurações do joystick e do controle físico. Foi criada a aba independente `Gyro Touch` na navegação lateral.
 - **Conteúdo de Gyro Touch:** primeira seção é `Ativação`, com o controle `Ativar teclado e mouse`; abaixo ficam as seções de teclado/mouse, editor de HUD e giroscópio.
 - **Integração preservada:** o botão principal usa a API pública já existente `window.NimboTouch.toggle()` e consulta `window.NimboTouch.isEnabled()`. O módulo `modules/NimboXcloud-Touch-HUD.user.js` não foi alterado; não foi criado outro gerenciador de entradas.
