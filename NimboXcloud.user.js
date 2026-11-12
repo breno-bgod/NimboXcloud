@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.79
+// @version      4.12.80
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.79
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.80
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.79';
+  const VER = '4.12.80';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -5876,13 +5876,14 @@
       return;
     }
     let pads=[];
-    if(typeof navigator.getGamepads==='function') {
-      try { pads=nxReadGamepadSnapshot(); }
-      catch (_) { if(!nxRemoteVirtualGamepad){nxRemoteGamepadSuspend();return;} }
-    } else if(!nxRemoteVirtualGamepad) {
-      nxRemoteGamepadSuspend();
-      return;
+    try {
+      if(typeof navigator.getGamepads==='function') pads=nxReadGamepadSnapshot();
+    } catch (_) {
+      // Keep the shared scheduler alive for touch-originated xHome input.
+      // An empty snapshot lets the scheduler neutralize stale physical slots.
     }
+    // Without Gamepad API, an empty physical snapshot still services the xHome
+    // virtual pad and clears the paused gate after focus/visibility is restored.
     const remoteVideoFocused=nxRemoteVideoHasInputFocus();
     const allowInput=!nxCapturePad && nxRemoteGamepadWindowFocused && (!openUI || remoteVideoFocused);
     if (!pads.length) { nxRemoteGamepadTick(pads,allowInput);nxPadUiState.combo=false;return; }
