@@ -3,7 +3,7 @@
 > Documento operacional. Toda execução autônoma deve reler a versão atual de `main` e atualizar este plano conforme evidências. Nunca presumir que a versão indicada aqui ainda é a mais recente.
 
 ## Estado de referência
-- Versão auditada do userscript: 4.12.63 (rever o HEAD em cada execução).
+- Versão auditada do userscript: 4.12.64 (rever o HEAD em cada execução).
 - Arquivo principal: `NimboXcloud.user.js`.
 - Plataforma prioritária: navegador em `play.xbox.com`, sem reescrever como aplicativo nativo.
 - Objetivo: estabilidade real do cliente web, manutenção das funções existentes e investigação verificável das diferenças entre cliente web e cliente Xbox.
@@ -395,3 +395,27 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Concluído: correção de estado em Stop repetido; cobertura de testes adicionada; release 4.12.63 e changelog atualizados.
 - Pendências restantes: confirmar os novos testes nos workflows baseline/regression; validar DELETE com console/conta reais; investigar recuperação segura após reload sem persistir bearer; comprovar ICE, áudio/vídeo, comandos de controle e reconexão.
 - **Próxima tarefa concreta:** obter e verificar a execução dos workflows baseline e regression no commit `c1871d1bca6f79bca424be2a5e471c90156b5476` (ou no HEAD documental subsequente), corrigindo qualquer falha antes de avançar. A documentação pública também foi alinhada: a retomada foi autorizada, mas a aba xHome permanece oculta até homologação. Critérios de aceite: `node --check` e todos os testes da suíte PASS em ambos os workflows; 403/500/rede/timeout deixam retry utilizável; 404/410 são idempotentes; Stop/retry concorrentes produzem no máximo um DELETE por tentativa; nenhum bearer aparece em estado exportável, storage ou logs. Depois disso, a próxima etapa funcional é validação do DELETE em Xbox real.
+
+
+## 2026-11-12 05:45 UTC — xHome: bootstrap dos data channels WebRTC
+- SHA inicial desta execução: 09d52dfe0ba7b57ab9cef9dd9f6b7a867a46d005 (main consultada diretamente; userscript 4.12.63). Commits de implementação: 4258c08024fadb522c12c2f7fb9553b200c5ec9c (código 4.12.64) e c61a13f5689429a00b00f775e7d26c24e07b7063 (teste de handshake). Commit do changelog: d77558788de49235c5b1d38e6cc59270ef336228. O commit deste registro documental passa a ser o HEAD final.
+- Arquivos alterados: NimboXcloud.user.js, tests/xhome-discovery.test.cjs, CHANGELOG.md e este documento.
+- Descoberta técnica: o código anterior criava somente input com ordered:false, sem protocolo, sem handlers e sem handshake. Isso não correspondia ao cliente de referência. A inspeção direta do Better xCloud src/utils/xhome-interceptor.ts confirmou o roteamento/ajustes HTTP do xHome; a inspeção do Xbox XCloud Player confirmou quatro canais: chat/chatV1, control/controlV1, input/1.0 e message/messageV1. O package.json do Xbox XCloud Player declara MIT. Foram adaptados apenas nomes/opções e formas públicas das mensagens de bootstrap; nenhum cliente completo ou código AGPL foi incorporado.
+- Implementação em NimboXcloud.user.js v4.12.64:
+  - cria os quatro canais, todos ordenados e com seus protocolos explícitos;
+  - o canal message envia o handshake messageV1 e aguarda HandshakeAck;
+  - somente depois de todos os canais estarem abertos, envia autorização controlV1, os eventos iniciais de registro do gamepad, o pacote binário inicial ClientMetadata no canal input e seis mensagens de configuração de sessão;
+  - adiciona dataChannelsReady e status explícito de que o envio de comandos ainda não foi implementado;
+  - fecha os canais em Stop, Cancel e falha de inicialização. Não adiciona outro hook de navigator.getGamepads, outro wrapper de fetch/XHR ou outro polling de gamepad.
+- Teste novo em tests/xhome-discovery.test.cjs: verifica os quatro nomes/protocolos/opções, ordem handshake → HandshakeAck → autorização/configuração, conteúdo do pacote metadata (15 bytes, report type 8), ausência de bearer nos dados enviados e fechamento dos canais no Stop.
+- Validação real via GitHub Actions no commit de teste c61a13f5689429a00b00f775e7d26c24e07b7063:
+  - Regression tests, run 43163307224: PASS; node --check, node --test tests/*.test.cjs; 118 testes, 115 PASS, 0 FAIL, 3 TODO.
+  - Baseline, run 43163307321: PASS; sintaxe, os mesmos 118 testes e node tools/static-risk-report.cjs.
+  - Os commits posteriores alteraram apenas documentação; o código/testes validados permanecem idênticos no HEAD atual.
+- Avisos não bloqueantes nos logs: dependência Node punycode depreciada; actions/checkout@v4 e actions/setup-node@v4 usam runtime Node 20, que o runner já sinaliza como depreciado/forçado para Node 24. Não houve falha nos jobs.
+- Escopo/limitações: nenhum frame de gamepad, teclado, mouse ou toque é enviado. O canal input recebeu somente metadados iniciais; o canal chat foi criado, mas microfone não foi iniciado; touchInputEnabled permanece false. Não há prova de áudio/vídeo, conexão ICE funcional ou comandos jogáveis em Xbox real. O recurso continua experimental e a interface segue oculta.
+- Auditoria de compatibilidade web: o userscript mantém @match https://play.xbox.com/*. A documentação Microsoft distingue o cliente estável xbox.com/play da experiência de prévia play.xbox.com; a versão estável não é coberta por este match. Não foi ampliado o escopo porque a arquitetura atual foi desenvolvida para a prévia e o cliente estável precisa de auditoria DOM/API própria. Fonte: https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/game-streaming/game-streaming-web-content-test-application-xbox-com-play.
+- Riscos novos: se algum dos quatro canais nunca abrir ou o HandshakeAck não chegar, o bootstrap não se completa e não há timeout/retry específico de handshake ainda. A sessão pode continuar em estado ICE pendente sem comandos. A confirmação real do protocolo e do accessKey continua dependente de uma sessão autorizada com console físico.
+- Concluído: verificação dos workflows que estavam pendentes; bootstrap de quatro data channels; teste automatizado de handshake e teardown; versão/changelog 4.12.64.
+- Pendências: implementar frames binários de gamepad usando o bridge único já existente; depois mouse/teclado e touch; tratar vibração; adicionar timeout/telemetria sanitizada do handshake; validar sessão, mídia e comandos em Xbox real; avaliar separadamente compatibilidade com xbox.com/play; atualizar Actions para runtimes suportados sem warnings.
+- Próxima tarefa concreta: integrar o gamepad físico ao canal input reutilizando o bridge/estado de gamepad já existente no NimboXcloud, sem novo override de navigator.getGamepads nem polling concorrente. Critérios de aceite: teste binário determinístico para todos os botões, D-pad, triggers e quatro eixos; teste de neutralização/disconnect e de liberação dos botões ao encerrar; frames só enviados após os quatro canais e HandshakeAck; nenhum bearer em estado/storage/logs; node --check e ambos workflows PASS; nenhuma alteração no caminho de entrada do Cloud Gaming. Não declarar controle jogável até teste real com Xbox.
