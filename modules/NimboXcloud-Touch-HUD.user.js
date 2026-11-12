@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.1.8
+// @version      1.1.9
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD e HUD editável. Experimental; requer suporte K/M do jogo e do SDK.
 // @author       KReight / NimboPlay contributors
 // @license      MIT
@@ -41,7 +41,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.1.8';
+const VERSION='1.1.9';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -115,25 +115,27 @@ class NimboXboxTransport {
   assertConnected(){if(!this.connected())throw Error('A sessão não está conectada.');}
   serialize(task){const result=this.queue.catch(()=>{}).then(task);this.queue=result;return result;}
   configure(options){
+    // Chamadas originadas pelo próprio xCloud são transparentes: não inferir intenção
+    // pelo conteúdo do objeto (o cliente também pode pedir K/M simultaneamente).
     return this.serialize(async()=>{
       this.assertConnected();
-      // Nunca interceptar a configuração de toque solicitada pelo próprio xCloud.
-      // A interface nativa pode alternar Automático/Manual durante a sessão; essa chamada
-      // precisa chegar intacta ao SDK. O NimboTouch só restaura seus próprios campos K/M.
-      const activating=options.enableMouseInput===true&&options.enableKeyboardInput===true;
-      if(activating&&!this.previous){
-        const config=this.raw.configuration.inputConfiguration;
-        this.previous=Object.fromEntries(['enableMouseInput','enableKeyboardInput','enableAbsoluteMouse'].map(key=>[key,config[key]]));
+      return nimboApplyInput(this.raw,options);
+    });
+  }
+  activateKeyboardMouse(){
+    // Exclusivo do botão Ativar do NimboTouch; não passa pelo proxy público da sessão.
+    return this.serialize(async()=>{
+      this.assertConnected();
+      if(!this.previous){
+        const config=this.raw.configuration?.inputConfiguration||{};
+        const keys=['enableMouseInput','enableKeyboardInput','enableAbsoluteMouse'];
+        this.previous=Object.fromEntries(keys.filter(key=>Object.hasOwn(config,key)).map(key=>[key,config[key]]));
       }
-      // Keyboard packets are translated directly, never dispatched to the page.
-      // Native touch input is never changed, intercepted or restored by this adapter.
-      const applied={...options};
-      if(activating){
-        applied.enableKeyboardInput=this.previous.enableKeyboardInput;
-        this.applied={...applied};
-      }
+      const applied={enableMouseInput:true,enableAbsoluteMouse:false};
+      if(Object.hasOwn(this.previous,'enableKeyboardInput'))applied.enableKeyboardInput=this.previous.enableKeyboardInput;
+      this.applied={...applied};
       try{return await nimboApplyInput(this.raw,applied);}
-      catch(error){if(activating)try{await this.restoreNow();}catch{}throw error;}
+      catch(error){try{await this.restoreNow();}catch{}throw error;}
     });
   }
   async restoreNow(){
@@ -381,12 +383,12 @@ class BxTouchpad {
     if (typeof api.inputChannel?.queueMouseInput !== 'function' || typeof api.streamSession?.updateInputConfigurationAsync !== 'function') { this.status.textContent = 'Canal indisponível; verifique a compatibilidade dos patches.'; return; }
     this.busy = true;
     const epoch = ++this.epoch;
-    const session = api.streamSession;
+    const transport = nimboTransport;
     try {
       // Ativar somente o canal de teclado/mouse. A configuração de toque nativa pertence
       // exclusivamente ao xCloud e não pode ser desligada pela HUD do NimboTouch.
-      await session.updateInputConfigurationAsync({enableKeyboardInput: true, enableMouseInput: true, enableAbsoluteMouse: false});
-      if (epoch !== this.epoch || !this.root) return;
+      await transport.activateKeyboardMouse();
+      if (epoch !== this.epoch || !this.root || nimboTransport !== transport) return;
       this.active = true; this.buttons = 0; this.remainder = [0, 0]; this.send();
       this.pad.hidden = false; this.mapped.hidden = false;
       this.toggle.textContent = 'Pausar touchpad';
