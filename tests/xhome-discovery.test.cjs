@@ -1864,7 +1864,7 @@ test('reconnect: pending ICE poll from old session cannot mutate the new session
 
   assert.equal(calls.filter(call=>call.url.includes(sessionIds[0])&&call.url.endsWith('/ice')&&call.opts.method==='GET').length,2);
   assert.deepEqual(oldPeer.remoteCandidates,[],'the stale candidate must not be added even to the closed peer');
-  assert.deepEqual(newPeer.remoteCandidates,[candidateB],'the stale candidate must never reach peer B');
+  assert.deepEqual(JSON.parse(JSON.stringify(newPeer.remoteCandidates)),[candidateB],'the stale candidate must never reach peer B');
   assert.equal(api.state.requestId,activeRequestId);
   assert.equal(api.state.peer,newPeer);
   assert.equal(api.state.sessionId,sessionIds[1]);
