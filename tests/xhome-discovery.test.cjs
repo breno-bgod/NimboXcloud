@@ -1280,6 +1280,22 @@ test('xHome virtual touch gamepad: suspension clears held state and requires fre
   assert.ok(active.getInt16(18,true)>0);
 });
 
+test('xHome virtual touch gamepad: empty shared snapshot resumes input without Gamepad API',()=>{
+  const {api,channels}=readyInputHarness();
+  const adapter=api.createTouchAdapter(api.state.requestId,api.state.peer,channels);
+  const state={axes:[0.6,0,0,0],buttons:[true]};
+  api.suspendGamepads();
+  assert.equal(adapter.sendGamepad(state),false,'touch input remains blocked while suspended');
+  // nxGamepadUiTick supplies [] when Gamepad API is absent; the shared scheduler must still run.
+  api.tickGamepads([],true);
+  assert.equal(adapter.sendGamepad(state),true,'empty-snapshot scheduler tick reopens virtual input');
+  api.tickGamepads([],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[0]);
+  const frame=new DataView(xhomeFrames(channels.input).at(-1));
+  assert.equal(frame.getUint16(16,true),16);
+  assert.ok(frame.getInt16(18,true)>0);
+});
+
 test('xHome touch gamepad adapter: reserves a free slot beside physical pads without replacing them',()=>{
   const {api,channels}=readyInputHarness();
   const adapter=api.createTouchAdapter(api.state.requestId,api.state.peer,channels);
