@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.70
+// @version      4.12.71
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.70
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.71
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.69';
+  const VER = '4.12.71';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -219,6 +219,27 @@
     }
     return false;
   }
+  // Read-only probe: inspect only the own-property descriptor; never invoke the page hook.
+  // A missing property in this window does not prove that the page runtime lacks the hook.
+  function nxTouchAdaptationHookSnapshot(scope) {
+    const base = { hook: 'testTouchLayout', scope: 'window-own-property', state: 'not-visible-in-userscript-context', callable: false, invoked: false };
+    if (!scope || (typeof scope !== 'object' && typeof scope !== 'function')) {
+      return Object.assign({}, base, { state: 'scope-unavailable' });
+    }
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(scope, 'testTouchLayout');
+      if (!descriptor) return base;
+      if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+        return Object.assign({}, base, { state: 'accessor-not-inspected' });
+      }
+      if (typeof descriptor.value !== 'function') {
+        return Object.assign({}, base, { state: 'property-not-function' });
+      }
+      return Object.assign({}, base, { state: 'function-visible', callable: true });
+    } catch (_) {
+      return Object.assign({}, base, { state: 'inspection-error' });
+    }
+  }
   function nxConsoleLabCapabilities() {
     let codecs = null;
     try { codecs = typeof RTCRtpReceiver !== 'undefined' && RTCRtpReceiver.getCapabilities ?
@@ -238,7 +259,8 @@
       mediaDevices: !!navigator.mediaDevices, mediaCapabilities: !!navigator.mediaCapabilities,
       h264Decode: document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"'),
       screen: {width: screen.width, height: screen.height, dpr: devicePixelRatio},
-      gamepadAPI: typeof navigator.getGamepads === 'function'
+      gamepadAPI: typeof navigator.getGamepads === 'function',
+      touchLayoutTestHook: nxTouchAdaptationHookSnapshot(window)
     };
   }
   function nxConsoleLabFullScreen() {
@@ -302,7 +324,8 @@
         javascriptIdentity:{userAgent:nav.userAgent,platform:nav.platform || null,vendor:nav.vendor || null,
           clientHints:safeHints,maxTouchPoints:nav.maxTouchPoints || 0,language:nav.language || null},
         capabilities:{webRTC:typeof RTCPeerConnection === 'function',gamepadAPI:typeof nav.getGamepads === 'function',
-          videoDecoder:typeof VideoDecoder !== 'undefined',secureContext:!!window.isSecureContext},
+          videoDecoder:typeof VideoDecoder !== 'undefined',secureContext:!!window.isSecureContext,
+          touchLayoutTestHook:nxTouchAdaptationHookSnapshot(window)},
         authOffering:offer ? {hostOffering:offer.offering,status:offer.status,at:offer.at} : null,
         sessionPlay:play ? {status:play.status,method:play.method,at:play.time,elapsedMs:play.ms} : null,
         video:video ? {readyState:video.readyState,width:video.videoWidth,height:video.videoHeight,paused:video.paused} : null
@@ -4882,6 +4905,14 @@
       const lab = group('Compatibilidade de dispositivo', 'Console congelado: o navegador não pode comprovar identidade Xbox. Mobile e Desktop são opções experimentais; Automático preserva a identidade nativa.');
       lab.add(infoRow('Identidade observada', function () { const e=nxProtocolEvidence(); return e.observed.javascriptIdentity.platform+' · '+(e.configured.jsUserAgentChanged?'UA JS alterado':'UA JS nativo'); }));
       lab.add(infoRow('Client Hints', function () { const h=nxProtocolEvidence().observed.javascriptIdentity.clientHints; return h ? (h.platform || 'sem plataforma')+' · '+(h.mobile?'mobile':'desktop') : 'Não disponível via JavaScript'; }));
+      lab.add(infoRow('TAK · testTouchLayout', function () {
+        const tak = nxTouchAdaptationHookSnapshot(window);
+        if (tak.state === 'function-visible') return 'Função visível · não invocada';
+        if (tak.state === 'not-visible-in-userscript-context') return 'Não visível no contexto do userscript';
+        if (tak.state === 'accessor-not-inspected') return 'Acessor detectado · não executado';
+        if (tak.state === 'property-not-function') return 'Propriedade presente · não é função';
+        return tak.state;
+      }, 'Sondagem passiva. Não executa o hook nem altera layout, sessão ou controles; ausência aqui não prova ausência no contexto da página.'));
       lab.add(infoRow('Modelo de hardware Xbox', function () { return 'Não verificável por userscript'; }));
       lab.add(setRow('Copiar diagnóstico de protocolo', 'Relatório estruturado de identidade, autenticação e sessão. Revise os dados antes de compartilhar.',
         actBtn('Copiar', function(){copyText(JSON.stringify(nxProtocolEvidence(),null,2),'[NX protocol]','Diagnóstico de protocolo copiado');},'ghost')));
