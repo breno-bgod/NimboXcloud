@@ -4539,14 +4539,9 @@ SOFTWARE.
             if(requestId!==nxRemotePlay.requestId || controller.signal.aborted)return;
             const entries=Array.isArray(payload)?payload:Array.isArray(payload&&payload.candidates)?payload.candidates:[];
             for(const entry of entries){
-              const key=JSON.stringify(entry);
-              if(remoteSeen.has(key))continue;
-              remoteSeen.add(key);
-              let c=entry;
-              if(typeof c==='string'){try{c=JSON.parse(c);}catch(_){continue;}}
               if(requestId!==nxRemotePlay.requestId || controller.signal.aborted || nxRemotePlay.peer!==peer || peer.signalingState==='closed')return;
-              if(c && typeof c.candidate==='string' && c.candidate.length<8192)await peer.addIceCandidate(c);
-              if(requestId!==nxRemotePlay.requestId || controller.signal.aborted || nxRemotePlay.peer!==peer)return;
+              await addRemoteIceCandidate(entry);
+              if(requestId!==nxRemotePlay.requestId || controller.signal.aborted || nxRemotePlay.peer!==peer || peer.signalingState==='closed')return;
             }
           }catch(e){
             if(requestId===nxRemotePlay.requestId && !controller.signal.aborted && nxRemotePlay.peer===peer){
