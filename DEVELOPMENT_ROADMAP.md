@@ -573,3 +573,36 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Nova prioridade: prova de conceito read-only/diagnóstica do runtime TAK em sessão real, seguida de um layout de teste reversível. Critérios de aceite: detectar suporte sem quebrar inicialização; identificar a API e o formato ativos; aplicar/reverter um layout de teste em ambiente autorizado; validar joystick analógico, botões, D-pad e gatilhos; registrar comportamento em xCloud e Remote Play separadamente.
 - Gyro, vibração e touchpad permanecem extensões condicionais: só integrar como componentes/ações TAK se o esquema e runtime oferecerem suporte; caso contrário, implementar como camada complementar sem substituir o caminho nativo.
 - Nenhum código de produção foi alterado nesta revisão. Nenhum teste de navegador, sessão autenticada ou Xbox físico foi executado. Esta entrada corrige a prioridade arquitetural registrada na execução anterior.
+
+## 2026-11-12 12:34 UTC — xHome: captura física de teclado/mouse e roteamento do gamepad por foco
+
+- SHA inicial desta execução: \`e8d49aec1e98cae47e83ae9181d0e26751e7b623\` (userscript \`4.12.68\`).
+- HEADs concorrentes reconciliados antes do merge: \`b30194cc5076e7ac00410043ae8f165f62b97de6\` e \`70aea665d1ac486289bec92606cbe36bf94e2f11\`; ambos acrescentaram somente documentação ao roadmap. Nenhuma alteração de código foi descartada.
+- SHA final da implementação integrada: \`9756c9a3be97d16c05a24c7a4c5b6ade9eeea53e\` (userscript \`4.12.69\`). PR #10 foi mesclado; PR #9 foi fechado sem merge após a primeira tentativa de CI revelar uma regra existente de Pointer Lock.
+- Commits incrementais publicados na branch de trabalho: \`7de8f336f880552724864752cf662dcfd8d95870\`, \`f9a3d670f791f4223c0a5ec4c3f394c3df7f466b\`, \`a77665db220391b4fab90a2dc8da6d58125e9235\`; merge em \`main\`: \`9756c9a3be97d16c05a24c7a4c5b6ade9eeea53e\`.
+- Arquivos alterados: \`NimboXcloud.user.js\`, \`tests/xhome-discovery.test.cjs\`, \`CHANGELOG.md\` e este roadmap.
+- Implementado:
+  - Captura opcional de teclado físico e mouse físico na página Remote Play, ativada explicitamente pelo usuário e limitada ao vídeo xHome focado.
+  - Encaminhamento pelos encoders já existentes (Keyboard report 64 e Mouse report 32), sem novo encoder concorrente, sem override de \`navigator.getGamepads\` e sem polling paralelo.
+  - Estado de teclas pressionadas, supressão de auto-repeat, movimento relativo, botões, roda e liberação forçada de teclas/botões em blur, página oculta, Escape, pagehide, desconexão e Stop.
+  - Sequência única compartilhada entre gamepad, teclado e mouse. O frame ClientMetadata mantém sequência 0; o primeiro frame de entrada passa a usar sequência 1. Isso elimina a colisão que existia quando o primeiro frame de gamepad também começava em 0.
+  - O gamepad físico agora é encaminhado enquanto o vídeo xHome está focado, mesmo com o painel NX aberto; o loop volta a 16 ms nesse estado e deixa de interpretar o mesmo controle como navegação do painel.
+  - Atalhos Ctrl+Shift do NX e push-to-talk configurado em V permanecem disponíveis. Eventos de toque e KeyboardEvent sintéticos não são encaminhados por esta captura.
+- Decisão de compatibilidade: a primeira tentativa de CI detectou que os testes de política do repositório proíbem chamadas novas a \`requestPointerLock\`. A implementação foi corrigida para não solicitar nem liberar Pointer Lock; o mouse usa movimento relativo dentro da área do vídeo, sem roubar o lock do Cloud Gaming ou do NimboTouch.
+- Testes reais:
+  - PR #10: workflows regression #117 e baseline #368 — ambos PASS.
+  - Após merge: workflows regression #118 e baseline #370 — ambos PASS.
+  - Em cada suíte: 141 testes, 138 PASS, 0 FAIL, 3 TODO.
+  - \`node --check NimboXcloud.user.js\`: PASS.
+  - Relatório estático de riscos: PASS, JSON válido e linhas rastreáveis.
+  - Não há build/lint separado configurado no repositório.
+- Descobertas e limites:
+  - O bloqueio anterior de gamepad era o gate \`!openUI\`; com o vídeo focado o loop agora prioriza o console em vez de navegar o painel.
+  - O modo teclado/mouse ainda não é uma prova de controle funcional em Xbox físico. A transmissão real de vídeo/áudio, os comandos xHome e a resposta de jogos ainda precisam de validação com console e conta autorizados.
+  - O HUD de toque NimboTouch ainda não é encaminhado ao canal xHome. A captura atual ignora ponteiros touch de propósito; não alegar suporte touch xHome.
+  - Sem Pointer Lock, o mouse só envia movimento enquanto o ponteiro está dentro do vídeo. Uma integração posterior com a arbitragem existente pode ampliar isso, mas não deve criar outro gerenciador.
+  - Nenhum teste manual em Chrome/Edge, sessão autenticada ou Xbox físico foi executado nesta execução.
+- Estado da frente xHome: descoberta/autenticação, criação de sessão, negociação SDP/ICE e canais de dados já existem no código; gamepad físico e captura opcional de teclado/mouse agora têm caminho de envio implementado e testes determinísticos. Mídia e controles ainda não estão homologados em hardware real.
+- Tarefas concluídas nesta etapa: encoders de teclado/mouse; sequência de entrada compartilhada; captura física opt-in; liberação no ciclo de vida; roteamento do gamepad com o vídeo focado; regressões automatizadas.
+- Prioridades restantes: validação de mídia e controles em Xbox real; integração do HUD touch ao xHome por um contrato único; investigação do Touch Adaptation Kit antes de qualquer editor/renderizador de HUD próprio; reconexão real e regressões de Cloud Gaming.
+- **Próxima tarefa concreta:** executar uma prova de conceito passiva/read-only do Touch Adaptation Kit no runtime atual de \`play.xbox.com\`, mantendo a prioridade arquitetural definida na revisão mais recente. Critérios de aceite: verificar com guardas se \`testTouchLayout\` existe e qual assinatura/retorno apresenta; identificar o formato TAK efetivamente usado (incluindo versão e componentes) sem alterar sessão, DOM ou controles; comparar xCloud e Remote Play separadamente; documentar diferença entre retail e sideload/dev tooling; adicionar testes de detecção sem hooks de entrada, mutações ou listeners permanentes. Só depois dessa evidência planejar um teste de layout reversível em ambiente autorizado.
