@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.94
+// @version      4.12.95
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch e controle virtual experimental exclusivo do xHome.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.94
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.95
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.94';
+  const VER = '4.12.95';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -4476,22 +4476,52 @@ SOFTWARE.
           });check();
           if(!res.ok)throw new Error('Envio ICE recusado (HTTP '+res.status+').');
         };
-        // Remote candidates are accepted only as valid candidate objects.
+        // Canonicalize the supported RTCIceCandidateInit fields before applying or deduplicating.
+        const remoteSeen=new Set();
+        const normalizeRemoteIceCandidate=function(entry){
+          let value=entry;
+          if(typeof value==='string'){
+            if(value.length>=16384)return null;
+            try{value=JSON.parse(value);}catch(_){return null;}
+          }
+          if(!value || typeof value!=='object' || Array.isArray(value) ||
+            typeof value.candidate!=='string' || value.candidate.length>=8192)return null;
+          if(Object.prototype.hasOwnProperty.call(value,'sdpMid') &&
+            value.sdpMid!==null && typeof value.sdpMid!=='string')return null;
+          if(Object.prototype.hasOwnProperty.call(value,'sdpMLineIndex') &&
+            value.sdpMLineIndex!==null && (!Number.isInteger(value.sdpMLineIndex)||value.sdpMLineIndex<0))return null;
+          if(Object.prototype.hasOwnProperty.call(value,'usernameFragment') &&
+            value.usernameFragment!==null && typeof value.usernameFragment!=='string')return null;
+          const candidate={
+            candidate:value.candidate,
+            sdpMid:typeof value.sdpMid==='string'?value.sdpMid:null,
+            sdpMLineIndex:Number.isInteger(value.sdpMLineIndex)?value.sdpMLineIndex:null
+          };
+          if(typeof value.usernameFragment==='string')candidate.usernameFragment=value.usernameFragment;
+          const key=JSON.stringify([
+            candidate.candidate,candidate.sdpMid,candidate.sdpMLineIndex,
+            typeof candidate.usernameFragment==='string'?candidate.usernameFragment:null
+          ]);
+          return {candidate,key};
+        };
+        const addRemoteIceCandidate=async function(entry){
+          const normalized=normalizeRemoteIceCandidate(entry);
+          if(!normalized || remoteSeen.has(normalized.key))return false;
+          check();
+          if(nxRemotePlay.peer!==peer || peer.signalingState==='closed')return false;
+          await peer.addIceCandidate(normalized.candidate);
+          check();
+          if(nxRemotePlay.peer!==peer || peer.signalingState==='closed')return false;
+          remoteSeen.add(normalized.key);
+          return true;
+        };
         const iceRes=await fetch(sessionUrl+'/ice',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});check();
         if(!iceRes.ok)throw new Error('Consulta ICE recusada (HTTP '+iceRes.status+').');
         const iceData=await iceRes.json();check();
         const remoteList=Array.isArray(iceData)?iceData:Array.isArray(iceData&&iceData.candidates)?iceData.candidates:[];
-        for(const entry of remoteList){
-          check();
-          let candidate=entry;
-          if(typeof candidate==='string'){try{candidate=JSON.parse(candidate);}catch(_){continue;}}
-          if(candidate && typeof candidate.candidate==='string' && candidate.candidate.length<8192){
-            await peer.addIceCandidate(candidate);check();
-          }
-        }
+        for(const entry of remoteList){check();await addRemoteIceCandidate(entry);check();}
         for(const candidate of localIceCandidates){await iceSend(candidate);}
         localIceCandidates.length=0;
-        const remoteSeen=new Set(remoteList.map(function(c){return JSON.stringify(c);}));
         let icePollCount=0;
         const canPollIce=function(){
           return requestId===nxRemotePlay.requestId && !controller.signal.aborted &&
@@ -4519,9 +4549,13 @@ SOFTWARE.
               if(requestId!==nxRemotePlay.requestId || controller.signal.aborted || nxRemotePlay.peer!==peer)return;
             }
           }catch(e){
-            if(requestId===nxRemotePlay.requestId && !controller.signal.aborted && nxRemotePlay.peer===peer &&
-              (peer.connectionState==='new'||peer.connectionState==='connecting')){
-              nxRemotePlay.status='ICE: '+String(e&&e.message||e);
+            if(requestId===nxRemotePlay.requestId && !controller.signal.aborted && nxRemotePlay.peer===peer){
+              const detail=String(e&&e.message||e).slice(0,180);
+              if(peer.connectionState==='new'||peer.connectionState==='connecting'){
+                nxRemotePlay.status='ICE: '+detail;
+              }else{
+                nxRemotePlay.error='Falha na sinalização ICE: '+detail;
+              }
               if(tabId==='remote')renderBody();
             }
           }
