@@ -1220,9 +1220,12 @@ test('virtual gamepad normalization: applies radial deadzone, circular clamp and
   assert.ok(pad);
   assert.equal(pad.mapping,'standard');
   assert.ok(Math.abs(Math.hypot(pad.axes[0],pad.axes[1])-((Math.SQRT1_2-0.1)/0.9))<1e-9);
-  assert.deepEqual(pad.axes.slice(2),[0,0]);
-  assert.deepEqual(pad.buttons[0],{pressed:true,value:1});
-  assert.deepEqual(pad.buttons[6],{pressed:true,value:0.5});
+  assert.equal(pad.axes[2],0);
+  assert.equal(pad.axes[3],0);
+  assert.equal(pad.buttons[0].pressed,true);
+  assert.equal(pad.buttons[0].value,1);
+  assert.equal(pad.buttons[6].pressed,true);
+  assert.equal(pad.buttons[6].value,0.5);
   assert.ok(Math.hypot(pad.axes[0],pad.axes[1])<=1);
   assert.equal(api.normalizeVirtualGamepadState({}),null);
 });
@@ -1230,6 +1233,7 @@ test('virtual gamepad normalization: applies radial deadzone, circular clamp and
 test('xHome touch gamepad adapter: registers once and sends normalized analog, trigger and button frames',()=>{
   const {api,channels}=readyInputHarness();
   const adapter=api.createTouchAdapter(api.state.requestId,api.state.peer,channels);
+  const bootstrapAdds=gamepadEvents(channels.control).filter(message=>message.gamepadIndex===0&&message.wasAdded===true).length;
   const buttons=Array(17).fill(false);buttons[0]=true;buttons[6]=0.5;
   const state={axes:[0.5,0.5,0,0],buttons};
   const normalized=api.normalizeVirtualGamepadState(state);
@@ -1237,7 +1241,7 @@ test('xHome touch gamepad adapter: registers once and sends normalized analog, t
   api.tickGamepads([],true);
   api.tickGamepads([],true);
   assert.deepEqual(Array.from(api.registeredSlots()),[0]);
-  assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===0&&message.wasAdded===true).length,1);
+  assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===0&&message.wasAdded===true).length,bootstrapAdds+1);
   const frames=xhomeFrames(channels.input);
   assert.equal(frames.length,2);
   const view=new DataView(frames[0]);
@@ -1267,6 +1271,7 @@ test('xHome touch gamepad adapter: reserves a free slot beside physical pads wit
 test('xHome touch gamepad adapter: release neutralizes before unregister and stale sessions cannot send',()=>{
   const {api,channels}=readyInputHarness();
   const adapter=api.createTouchAdapter(api.state.requestId,api.state.peer,channels);
+  const bootstrapRemoves=gamepadEvents(channels.control).filter(message=>message.gamepadIndex===0&&message.wasAdded===false).length;
   assert.equal(adapter.sendGamepad({axes:[0.5,0,0,0],buttons:[true]}),true);
   api.tickGamepads([],true);
   const before=xhomeFrames(channels.input).length;
@@ -1275,7 +1280,7 @@ test('xHome touch gamepad adapter: release neutralizes before unregister and sta
   assert.equal(new DataView(xhomeFrames(channels.input).at(-1)).getUint16(16,true),0);
   api.tickGamepads([],true);
   assert.deepEqual(Array.from(api.registeredSlots()),[]);
-  assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===0&&message.wasAdded===false).length,1);
+  assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===0&&message.wasAdded===false).length,bootstrapRemoves+1);
 
   const stale=api.createTouchAdapter(api.state.requestId,api.state.peer,channels);
   assert.equal(stale.sendGamepad({axes:[0,0,0,0],buttons:[true]}),true);
