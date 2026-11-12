@@ -64,8 +64,13 @@
     try {
       let event;
       if (typeof GamepadEvent === 'function') {
-        event = new GamepadEvent(type, { gamepad, bubbles: false, cancelable: false });
-      } else {
+        try {
+          event = new GamepadEvent(type, { gamepad, bubbles: false, cancelable: false });
+        } catch (_) {
+          event = null;
+        }
+      }
+      if (!event) {
         event = new Event(type);
         Object.defineProperty(event, 'gamepad', { enumerable: true, value: gamepad });
       }
