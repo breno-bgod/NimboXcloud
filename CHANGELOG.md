@@ -1,7 +1,7 @@
-## [4.12.89] — 2026-11-12
+## [4.12.90] — 2026-11-12
 - Removidas menções editoriais e promocionais a projetos de referência dos README e da apresentação do código principal.
 - Removidos nomes de projetos externos das descrições de opções do painel; preservadas as explicações de comportamento e limitações.
-- Botão legado do HUD passa a exibir NimboXcloud. Módulo atualizado para 1.2.6 e metadados/cache do principal sincronizados em 4.12.89.
+- Botão legado do HUD passa a exibir NimboXcloud. Módulo atualizado para 1.2.6 e metadados/cache do principal sincronizados em 4.12.90.
 - Avisos de copyright/licença, proveniência técnica e histórico de atribuições permanecem preservados; não houve remoção de código de terceiros ou reescrita de histórico.
 - Nenhuma mudança nos transportes, configuração de sessão, áudio ou controles.
 

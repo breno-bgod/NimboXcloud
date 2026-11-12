@@ -75,7 +75,7 @@ test('no unverified 1440p mode is advertised', () => {
 // Executa o coletor real com relatórios WebRTC controlados, sem sessão Xbox.
 function qosHarness() {
   const start = source.indexOf('  function PCQos(pc) {');
-  const end = source.indexOf('  // Configuracao independente de toque', start);
+  const end = source.indexOf('  let touchSessionDiagnostics = ', start);
   assert.ok(start >= 0 && end > start);
   const context = { Promise, Date, S: { hist: [], histMin: null } };
   runInNewContext('let prevSnap = null;\n' + source.slice(start, end) +
