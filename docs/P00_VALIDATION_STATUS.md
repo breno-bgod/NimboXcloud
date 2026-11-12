@@ -62,6 +62,8 @@ Testar o limite de 30 consultas do ICE poll e a transição para `connected` enq
 
 - [Baseline — run 43331934517](https://github.com/breno-bgod/NimboXcloud/actions/runs/43331934517): PASS.
 - [NX/xHome regression — run 43331934314](https://github.com/breno-bgod/NimboXcloud/actions/runs/43331934314): PASS.
+- Após o merge na main: [baseline 43332265026](https://github.com/breno-bgod/NimboXcloud/actions/runs/43332265026) PASS e [regressões 43332265025](https://github.com/breno-bgod/NimboXcloud/actions/runs/43332265025) PASS; ambos com 243 testes, 240 PASS, 0 FAIL e 3 TODO.
+- Após a atualização documental final: [baseline 43332322583](https://github.com/breno-bgod/NimboXcloud/actions/runs/43332322583) PASS, novamente com 243 testes, 240 PASS, 0 FAIL e 3 TODO.
 - Resultado: 243 testes, 240 PASS, 0 FAIL, 3 TODO.
 - Sintaxe do userscript principal e do módulo Touch HUD, suíte CommonJS/ESM e relatório estático passaram.
 - A primeira execução do baseline falhou apenas pelo fixture de teste sem `nowStr`; o fixture foi corrigido e os dois workflows passaram no head atualizado.
