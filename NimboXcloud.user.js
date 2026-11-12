@@ -11,7 +11,7 @@
 // @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.76
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/fix/virtual-gamepad-panel-integration/NimboXcloud.user.js
-// @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
+// @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/fix/virtual-gamepad-panel-integration/NimboXcloud.user.js
 // ==/UserScript==
 
 /*
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.75';
+  const VER = '4.12.76';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
