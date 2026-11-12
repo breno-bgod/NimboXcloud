@@ -10,26 +10,32 @@ test('MEDIA-001: stream video replacement restores previous inline filter', () =
   assert.match(src, /restoreVideoAdjustments\(lastAdjustedVideo\)/);
   assert.match(src, /lastAdjustedVideo = video/);
 });
-test('MEDIA-002: visual bypass restores the host filter', () => {
-  const a = src.indexOf('  function restoreVideoAdjustments(');
-  const b = src.indexOf('  function cycleSharpness()', a);
-  assert.ok(a > 0 && b > a);
-  const block = src.slice(a,b);
-  assert.match(block, /const nxVideoFilters = new WeakMap\(\)/);
-  assert.match(block, /if \(!color && !sharp\)/);
+
+test('MEDIA-002: visual bypass restores the host filter without overwriting host changes', () => {
+  const a = src.indexOf('  const nxVideoFilters = new WeakMap();');
+  const b = src.indexOf('  const nxVideoFits = new WeakMap();', a);
+  assert.ok(a >= 0 && b > a);
+  const block = src.slice(a, b);
+  assert.match(block, /function restoreVideoAdjustments\(video\)/);
+  assert.match(block, /if \(video\.style\.filter === state\.applied\)/);
+  assert.match(block, /video\.style\.setProperty\('filter', state\.original, state\.priority\)/);
   assert.match(block, /video\.style\.removeProperty\('filter'\)/);
-  assert.match(block, /video\.style\.getPropertyValue\('filter'\)/);
-  assert.match(block, /video\.style\.filter !== state\.applied/);
+  assert.match(block, /nxVideoFilters\.delete\(video\)/);
+  assert.match(src, /video\.style\.getPropertyValue\('filter'\)/);
 });
 
-test('MEDIA-003: visual profiles are user-selectable and legacy preferences survive', () => {
+test('MEDIA-003: visual presets are selectable and legacy preferences remain readable', () => {
   assert.match(src, /const LS_VIDEO_PROFILE = 'xcu\.videoProfile\.v1'/);
   for (const name of ['original', 'balanced', 'vivid', 'custom']) {
-    assert.ok(src.includes("k: '" + name + "'"), 'missing profile: ' + name);
+    assert.match(src, new RegExp("k:\\s*'" + name + "'"));
   }
-  assert.match(src, /getPref\(LS_VIDEO_PROFILE, 'custom'\)/);
-  assert.match(src, /setPref\(LS_VIDEO_PROFILE, 'custom'\); setPref\(LS_SHARPNESS/);
-  assert.match(src, /setPref\(LS_VIDEO_PROFILE, 'custom'\); setPref\(LS_VIDEO_COLOR/);
+  assert.match(src, /getPref\(LS_VIDEO_PROFILE,'original'\)/);
+  assert.match(src, /setPref\(LS_VIDEO_PROFILE,'custom'\)/);
+  assert.match(src, /getPref\(LS_VIDEO_COLOR, '0'\)/);
+  assert.match(src, /getPref\(LS_SHARPNESS, '0'\)/);
+  assert.match(src, /setPref\(LS_VIDEO_BRIGHTNESS,String\(base\.brightness\)\)/);
+  assert.match(src, /setPref\(LS_VIDEO_CONTRAST,String\(base\.contrast\)\)/);
+  assert.match(src, /setPref\(LS_VIDEO_SATURATION,String\(base\.saturation\)\)/);
 });
 
 test('MEDIA-004: fullscreen requires user action and video fit is reversible', () => {
@@ -39,6 +45,7 @@ test('MEDIA-004: fullscreen requires user action and video fit is reversible', (
   assert.match(src, /video\.style\.removeProperty\('object-fit'\)/);
   assert.match(src, /restoreVideoFit\(lastAdjustedVideo\)/);
 });
+
 test('MEDIA-006: hidden-tab eco mode restores filters when visibility changes', () => {
   assert.match(src, /const LS_VIDEO_ECO = 'xcu\.videoEco\.v1'/);
   assert.match(src, /document\.visibilityState === 'hidden'/);
