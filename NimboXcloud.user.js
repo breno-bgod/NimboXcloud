@@ -3768,7 +3768,7 @@
       try { if(channel && channel.readyState!=='closed') channel.close(); } catch (_) {}
     });
   }
-  function nxRemoteInitDataChannels(peer,requestId,signal) {
+  function nxRemoteInitDataChannels(peer,requestId,signal,qualityProfile) {
     const channels={
       chat:peer.createDataChannel('chat',{ordered:true,protocol:'chatV1'}),
       control:peer.createDataChannel('control',{ordered:true,protocol:'controlV1'}),
@@ -3776,6 +3776,7 @@
       message:peer.createDataChannel('message',{ordered:true,protocol:'messageV1'})
     };
     nxRemoteChannels=channels;
+    const selectedQuality=qualityProfile||nxRemoteResolutionProfile(nxRemotePlay.resolution);
     nxRemoteInputSequence=1; // ClientMetadata uses sequence 0; first input frame starts at 1.
     let handshakeAck=false,initialized=false;
     const isCurrent=function(){
@@ -3825,7 +3826,7 @@
         view.setFloat64(6,(typeof performance!=='undefined' && performance.now)?performance.now():Date.now(),true);
         view.setUint8(14,Math.max(1,Number(navigator.maxTouchPoints)||1));
         if(!nxRemoteChannelSend(channels.input,metadata)) throw new Error('canal input indisponível');
-        const dimensions={width:qualityProfile.width,height:qualityProfile.height};
+        const dimensions={width:selectedQuality.width,height:selectedQuality.height};
         const configs=[
           ['/streaming/systemUi/configuration',{version:[0,2,0],systemUis:[]}],
           ['/streaming/properties/clientappinstallidchanged',{clientAppInstallId:nxRemoteUuid()}],
@@ -4175,7 +4176,7 @@
         };
         peer.addTransceiver('audio',{direction:'recvonly'});
         peer.addTransceiver('video',{direction:'recvonly'});
-        nxRemoteInitDataChannels(peer,requestId,controller.signal);
+        nxRemoteInitDataChannels(peer,requestId,controller.signal,qualityProfile);
         const offer=await peer.createOffer();check();
         await peer.setLocalDescription(offer);check();
         const exchange=await fetch(sessionUrl+'/sdp',{
