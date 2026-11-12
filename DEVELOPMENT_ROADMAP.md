@@ -3,7 +3,7 @@
 > Documento operacional. Toda execução autônoma deve reler a versão atual de `main` e atualizar este plano conforme evidências. Nunca presumir que a versão indicada aqui ainda é a mais recente.
 
 ## Estado de referência
-- Versão auditada do userscript: 4.12.64 (rever o HEAD em cada execução).
+- Versão auditada do userscript: 4.12.68 (HEAD consultado diretamente em 2026-11-12).
 - Arquivo principal: `NimboXcloud.user.js`.
 - Plataforma prioritária: navegador em `play.xbox.com`, sem reescrever como aplicativo nativo.
 - Objetivo: estabilidade real do cliente web, manutenção das funções existentes e investigação verificável das diferenças entre cliente web e cliente Xbox.
@@ -507,3 +507,30 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 
 - Publicação: PR #3 https://github.com/breno-bgod/NimboXcloud/pull/3 foi squash-merged em 2026-11-12 08:03:44 UTC. SHA inicial desta execução: 255cd7c7e9480293ff91675bbbd686d32922600e. SHA final da implementação integrada na main: c9f7cf0c4772101ac3bb11d2a577032972e745ce. Versão final do userscript: 4.12.67.
 - Estado final: o gamepad físico agora é encaminhado ao canal input após handshake e conexão WebRTC; o xCloud continua usando a Gamepad API existente sem novo override. Remote Play ainda NÃO está completo: vídeo/áudio e controle em Xbox físico aguardam validação real, e teclado/mouse ainda não foram integrados.
+
+
+## 2026-11-12 09:05 UTC — xHome: encoders puros de teclado e mouse
+
+- SHA inicial da main consultada diretamente: `bcf8e251ab52ab958a3dd6359d3a4db70aaa113a`; versão inicial: 4.12.67.
+- PR #5: https://github.com/breno-bgod/NimboXcloud/pull/5 — squash merge concluído após CI verde.
+- SHA final da implementação integrada na main: `6cda5228472467fa5a087a62bf030722cd6b77be`; versão do userscript: 4.12.68.
+- Auditoria: o comentário de bootstrap ainda dizia que nenhum frame de gamepad era enviado, e o diagnóstico manual afirmava que autenticação/protocolo Remote Play não estavam integrados. Ambos estavam desatualizados após a etapa 4.12.67; foram corrigidos para descrever o estado experimental real.
+- Referência de protocolo: `unknownskl/greenlight`, branch `main-v2`, LICENSE MIT; arquivos `packages/player/src/client/lib/channel/input/packet.ts` e `input/mousekeyboard.ts`. O encoder usa os formatos documentados de ReportTypes Keyboard (64) e Mouse (32), sem copiar trechos-fonte. O repositório separado `unknownskl/xbox-xcloud-player` não expõe licença detectável (`license=null`); nenhum código foi copiado dele. `Geocld/XStreaming` usa AGPL-3.0; não foi adaptado.
+- Implementação em `NimboXcloud.user.js`:
+  - helper comum de cabeçalho de 14 bytes + contador de frames; encoder Gamepad refatorado para usá-lo, preservando o pacote de 38 bytes;
+  - encoder Keyboard: pacote de 18 bytes, um registro VKey de 3 bytes (tipo, pressed, virtual-key), com mapeamento de `KeyboardEvent.code` para VK e fallback validado de `keyCode`;
+  - encoder Mouse: pacote de 33 bytes, registro de 18 bytes com X/Y/roda assinados em int32 little-endian, máscara de botões e flag relative/absolute;
+  - valores numéricos limitados à largura do protocolo; códigos de tecla desconhecidos e modos de ponteiro inválidos são rejeitados;
+  - encoders continuam puros e sem captura: nenhum listener global, Pointer Lock, integração de Touch HUD ou envio de teclado/mouse foi ativado.
+- Diagnóstico: `inspectRemotePlay` e `S.diagnosticsWarnings` agora refletem a autenticação/sessão experimental e deixam claro que gamepad, vídeo e áudio ainda não foram homologados em Xbox físico.
+- Arquivos alterados no PR: `NimboXcloud.user.js`, `tests/xhome-discovery.test.cjs`, `CHANGELOG.md`; este documento atualizado após o merge.
+- Validação real via GitHub Actions:
+  - PR regression run 43188373642: PASS; `node --check` PASS; suíte completa: 134 testes, 131 PASS, 0 FAIL, 3 TODO.
+  - PR baseline run 43188373678: PASS; sintaxe, suíte e static risk report PASS.
+  - Main regression run 43188479003: PASS.
+  - Main baseline run 43188479207: PASS.
+  - Static risk report identificou somente padrões já existentes: wrappers opt-in de Gamepad API, interceptação de XHR send e fetch; esta alteração não adicionou hooks nem polling.
+- Limitações/riscos: não houve teste local neste runtime porque o clone HTTPS falhou por DNS; CI executou sintaxe e testes em Node 22. Não houve Chrome/Edge, Android, sessão xHome autenticada, Xbox físico ou validação de vídeo/áudio. O layout do protocolo ainda precisa ser confirmado contra console real; a implementação de teclado/mouse ainda não envia frames.
+- Concluído: encoders puros e testes determinísticos de tamanhos, offsets, endianess, sequência, keydown/keyup, mapeamento VK, movimento relativo, roda, botões, clamp e rejeição de entrada inválida.
+- Prioridades restantes: captura integrada de teclado/mouse sem competir com NimboTouch; liberação de todas as teclas/botões em blur/Stop; validação de mídia e controles em Xbox real; reconexão/encerramento real; testes de regressão de Cloud Gaming.
+- **Próxima tarefa concreta:** integrar a captura e o envio de teclado/mouse ao fluxo xHome usando um único dispatcher compartilhado com a arbitragem de Pointer Lock/NimboTouch, sem instalar listeners globais paralelos. Critérios de aceite: somente encaminhar quando sessão/canais xHome estiverem prontos e o modo de captura estiver ativo; rastrear várias teclas e botões simultâneos; enviar keyup/mouseup para todos os estados retidos em blur, visibility hidden, Stop e pagehide; movimento relativo apenas sob captura/Pointer Lock, com roda e cliques ordenados; não consumir eventos do Cloud Gaming nem duplicar listeners do Touch HUD; testes determinísticos de concorrência, liberação e teardown; `node --check`, suíte completa e workflows baseline/regression PASS.
