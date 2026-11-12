@@ -1811,12 +1811,28 @@
         const expanded = toolbarExpanded(gameAnchor) && nxNativeToolbarOpen(gameAnchor);
         nxMountNativeActions(gameAnchor,expanded);
         nxLibraryButton.title = 'Abrir NimboXcloud durante a partida';
-        // O botão NX deve recolher junto com a barra nativa. Painel aberto permanece acessível.
-        // Barra nativa recolhida não implica fechar o painel aberto pelo atalho.
+        // Só esconder a pílula quando o botão integrado estiver realmente renderizado.
+        // Em layout desktop/janela o shell pode ser detectado, mas estar recortado ou oculto.
+        const integratedVisible = expanded && nxButtonActuallyVisible(nxLibraryButton, fullscreenHost());
+        if (!integratedVisible) {
+          nxLibraryButton.style.display = 'none';
+          if (nxKeyboardMouseButton) nxKeyboardMouseButton.style.display = 'none';
+        }
         wrap.style.display = 'flex';
-        if (pillEl) pillEl.style.display = 'none';
+        if (pillEl) pillEl.style.display = openUI || integratedVisible ? 'none' : 'inline-flex';
+        if (!openUI && !integratedVisible) {
+          wrap.style.position = 'fixed';
+          wrap.style.transform = 'none';
+          wrap.style.left = 'auto';
+          wrap.style.right = '12px';
+          wrap.style.top = '12px';
+          wrap.style.bottom = 'auto';
+          wrap.style.width = '360px';
+          wrap.style.maxWidth = 'calc(100vw - 16px)';
+          wrap.style.alignItems = 'flex-end';
+        }
         if (openUI) {
-          if (expanded) positionNXCard(nxLibraryButton);
+          if (integratedVisible) positionNXCard(nxLibraryButton);
           else { wrap.style.left='8px'; wrap.style.right='auto'; wrap.style.top='58px'; wrap.style.width=Math.min(380,innerWidth-16)+'px'; }
         }
       } else {
