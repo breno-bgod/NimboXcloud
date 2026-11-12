@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.50
+// @version      4.12.51
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.50
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.51
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -786,8 +786,8 @@
 
   function patchPlayRequest(input, init) {
     const r = resCfg();
-    const profileOs = nxPlatformProfile.sessionOs;
-    const effectiveOs = nxCompatibilityMode ? null : (profileOs || r.osName);
+    // Perfil desktop de streaming, sem mascarar o navegador ou remover suporte touch.
+    const effectiveOs = r.osName;
     // Console: não enviar osName Windows/Tizen de qualidade como se fosse identidade Xbox.
     if (!effectiveOs) return Promise.resolve({ input: input, init: init });
     // An aborted request must not be parsed/rebuilt before reaching native fetch.
@@ -808,8 +808,7 @@
           return { input: input, init: init };
         }
         inspectInputNegotiation(j);
-        // Perfil de plataforma prevalece sobre o perfil de qualidade apenas quando explícito.
-        // Xbox mantém o osName existente: não existe valor de console validado aqui.
+        // Qualidade prevalece sobre identidade de interface; o touch nativo permanece.
         j.settings.osName = effectiveOs;
         nxProfileSessionState.attempted++;
         nxProfileSessionState.patched++;
@@ -1618,38 +1617,30 @@
   // Encontra a faixa compacta de controles do xCloud no canto superior esquerdo.
   // Não altera botões nativos: só acrescenta o acesso NX quando a estrutura é reconhecível.
   function findInGameToolbar() {
-    const candidates = document.querySelectorAll('button,[role="button"]');
-    for (const node of candidates) {
-      if (node.id === 'nimboxcloud-library-button' || node.id === 'nimboxcloud-native-keyboard-mouse' || node.closest('#__xcu_panel__')) continue;
-      const r = node.getBoundingClientRect();
-      if (r.width < 22 || r.width > 90 || r.height < 22 || r.height > 90 ||
-          r.left < 0 || r.left > 170 || r.top < 0 || r.top > 105) continue;
-      let parent = node.parentElement;
-      for (let depth = 0; parent && depth < 3; depth++, parent = parent.parentElement) {
-        if (parent.id === '__xcu_panel__' || parent === document.body) break;
-        const pr = parent.getBoundingClientRect();
-        if (pr.left > 170 || pr.top > 110 || pr.width < 80 || pr.width > 360 ||
-            pr.height < 28 || pr.height > 125) continue;
-        const buttons = Array.from(parent.querySelectorAll('button,[role="button"]'))
-          .filter(function (b) {
-            if (b.id === 'nimboxcloud-library-button' || b.id === 'nimboxcloud-native-keyboard-mouse') return false;
-            const br = b.getBoundingClientRect();
-            return br.width >= 22 && br.height >= 22 && br.left >= pr.left - 2 &&
-              br.right <= pr.right + 2 && br.top >= pr.top - 2 && br.bottom <= pr.bottom + 2;
-          });
-        if (buttons.length < 2 || buttons.length > 5) continue;
-        // O grupo deve conter o controle Xbox/guia ou um botão de mais opções.
-        const labels = buttons.map(function (b) {
-          return [b.getAttribute('aria-label'), b.getAttribute('title'),
-            b.getAttribute('data-testid'), b.textContent].filter(Boolean).join(' ').toLowerCase();
-        }).join(' ');
-        const hasXbox = /xbox|guide|guia|menu|more|mais|options|opções|opcoes/.test(labels);
-        const hasIcons = buttons.filter(function (b) { return b.querySelector('svg,img'); }).length >= 2;
-        if (!hasXbox && !hasIcons) continue;
-        return buttons[buttons.length - 1];
+    // Detectar grupos nativos sem depender de coordenadas fixas no viewport.
+    const candidates=[];
+    for(const node of document.querySelectorAll('button,[role="button"]')){
+      if(node.id==='nimboxcloud-library-button'||node.id==='nimboxcloud-native-keyboard-mouse'||node.closest('#__xcu_panel__')||node.closest('#nimbo-touch-root'))continue;
+      const r=node.getBoundingClientRect();
+      if(r.width<20||r.width>110||r.height<20||r.height>110||r.top<0||r.top>Math.min(155,innerHeight*.30)||r.left<0||r.right>innerWidth)continue;
+      for(let p=node.parentElement,depth=0;p&&depth<4&&p!==document.body;depth++,p=p.parentElement){
+        const pr=p.getBoundingClientRect();
+        if(pr.width<65||pr.width>Math.min(innerWidth,800)||pr.height<25||pr.height>155||pr.top<0||pr.top>Math.min(150,innerHeight*.30))continue;
+        const buttons=Array.from(p.querySelectorAll('button,[role="button"]')).filter(b=>{
+          if(b.id==='nimboxcloud-library-button'||b.id==='nimboxcloud-native-keyboard-mouse'||b.closest('#__xcu_panel__'))return false;
+          const br=b.getBoundingClientRect(),st=getComputedStyle(b);
+          return br.width>=20&&br.height>=20&&br.top>=0&&br.right<=innerWidth&&st.display!=='none'&&st.visibility!=='hidden';
+        });
+        if(buttons.length<2||buttons.length>9)continue;
+        const labels=buttons.map(b=>[b.getAttribute('aria-label'),b.title,b.getAttribute('data-testid')].filter(Boolean).join(' ').toLowerCase()).join(' ');
+        const icons=buttons.filter(b=>b.querySelector('svg,img')).length;
+        if(icons<2&&!/xbox|guide|guia|menu|more|mais|controle|controller/.test(labels))continue;
+        const score=(/xbox|guide|guia/.test(labels)?6:0)+icons-Math.abs(buttons.length-4)-depth;
+        candidates.push({node:buttons[buttons.length-1],score});
       }
     }
-    return null;
+    candidates.sort((a,b)=>b.score-a.score);
+    return candidates[0]?.node||null;
   }
 
   function nxNativeToolbarOpen(anchor) {
