@@ -8,7 +8,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},gamepadSlots:function(){return Array.from(nxRemoteGamepadIndexSlots.entries());},mkbSlot:function(){return nxRemoteMkbSlot;},pressedKeys:function(){return Array.from(nxRemotePressedKeys.entries());},mouseButtons:function(){return nxRemoteMouseButtons;},inputSequence:function(){return nxRemoteInputSequence;},enableKeyboardMouse:nxRemoteKeyboardMouseEnable,disableKeyboardMouse:nxRemoteKeyboardMouseDisable,dispatchKey:nxRemoteKeyboardMouseDispatchKey,dispatchPointer:nxRemoteKeyboardMouseDispatchPointer,dispatchWheel:nxRemoteKeyboardMouseDispatchWheel,shouldForwardGamepad:nxRemoteShouldForwardGamepad,setDocumentState:function(active,locked,visibility){document.activeElement=active;document.pointerLockElement=locked;document.visibilityState=visibility||\"visible\";},setTouch:function(value){window.NimboTouch=value;},setWindowFocus:function(value){nxRemoteGamepadWindowFocused=!!value;},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
   let timerId=0;
   const fakeTimers=new Map();
@@ -18,7 +18,9 @@ function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
     AbortController, URL, Date,
     setTimeout:timerOverrides&&timerOverrides.setTimeout||browserSetTimeout,
     clearTimeout:timerOverrides&&timerOverrides.clearTimeout||browserClearTimeout,
-    fetch: fetchImpl, tabId: 'other', renderBody() {}, navigator:{language:'pt-BR'},
+    fetch: fetchImpl, tabId: 'remote', openUI:true, renderBody() {}, window:{NimboTouch:null},
+    document:{visibilityState:'visible',activeElement:null,pointerLockElement:null},
+    navigator:{language:'pt-BR'},
     localStorage: {
       getItem(k) { return k === 'xboxcom_xbl_user_info' ? JSON.stringify({tokens:{'http://gssv.xboxlive.com/':{token:'TEST_GSSV'}}}) : null; },
       get length() { return 0; }
@@ -897,6 +899,20 @@ function standardPad(index) {
 function xhomeFrames(channel) {
   return channel.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===38);
 }
+function xhomePackets(channel) {
+  return channel.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]');
+}
+function attachRemoteVideo(api) {
+  const video={isConnected:true,videoWidth:1920,videoHeight:1080,clientHeight:540,
+    focus(){api.setDocumentState(video,null,'visible');},
+    getBoundingClientRect(){return {left:100,top:50,width:960,height:540};},
+    setPointerCapture(){},requestPointerLock(){return undefined;}};
+  api.state.videoElement=video;api.setDocumentState(video,null,'visible');return video;
+}
+function inputEvent(extra) {
+  return Object.assign({isTrusted:true,prevented:false,stopped:false,
+    preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;}},extra||{});
+}
 function gamepadEvents(channel) {
   return channel.sent.filter(data=>typeof data==='string').map(data=>JSON.parse(data)).filter(data=>data.message==='gamepadChanged');
 }
@@ -1071,4 +1087,92 @@ test('mouse encoder: clamps integer fields and rejects invalid pointer mode',()=
   assert.equal(view.getUint8(31),255);
   assert.equal(view.getUint8(32),1,'absolute pointer mode');
   assert.equal(api.encodeMouseFrame({X:0,Y:0,Relative:2},0,0),null);
+});
+
+
+test('xHome input sequence: metadata reserves zero and all report types share one monotonic sequence',()=>{
+ const {api,channels}=readyInputHarness();assert.equal(api.inputSequence(),1);
+ const video=attachRemoteVideo(api);assert.equal(api.enableKeyboardMouse(),true);
+ api.dispatchKey(inputEvent({target:video,code:'KeyA',keyCode:65}),true);
+ let p=xhomePackets(channels.input).at(-1);assert.equal(new DataView(p).getUint16(0,true),64);assert.equal(new DataView(p).getUint32(2,true),1);
+ api.tickGamepads([standardPad(0)],true);p=xhomeFrames(channels.input).at(-1);assert.equal(new DataView(p).getUint32(2,true),2);
+ api.dispatchKey(inputEvent({target:video,code:'KeyA',keyCode:65}),false);
+ assert.equal(new DataView(xhomePackets(channels.input).at(-1)).getUint32(2,true),3);
+});
+
+test('xHome keyboard dispatcher: tracks simultaneous keys, ignores repeats and releases all on disable',()=>{
+ const {api,channels}=readyInputHarness(),video=attachRemoteVideo(api);assert.equal(api.enableKeyboardMouse(),true);
+ assert.equal(api.dispatchKey(inputEvent({target:video,code:'KeyA',keyCode:65}),true),true);
+ assert.equal(api.dispatchKey(inputEvent({target:video,code:'ShiftLeft',keyCode:16}),true),true);
+ assert.equal(api.dispatchKey(inputEvent({target:video,code:'KeyA',keyCode:65,repeat:true}),true),true);
+ assert.equal(api.pressedKeys().length,2);
+ assert.equal(xhomePackets(channels.input).filter(p=>new DataView(p).getUint16(0,true)===64).length,2);
+ assert.equal(api.disableKeyboardMouse('teste'),true);
+ const packets=xhomePackets(channels.input).filter(p=>new DataView(p).getUint16(0,true)===64);
+ assert.equal(packets.length,4);assert.equal(new DataView(packets[2]).getUint8(16),0);assert.equal(new DataView(packets[3]).getUint8(16),0);
+ assert.equal(api.pressedKeys().length,0);assert.equal(api.mkbSlot(),null);
+ const changes=gamepadEvents(channels.control);assert.equal(changes.filter(e=>e.wasAdded===true).length,1);assert.equal(changes.filter(e=>e.wasAdded===false).length,1);
+});
+
+test('xHome keyboard dispatcher: requires focused trusted video events and preserves browser-reserved shortcuts',()=>{
+ const {api,channels}=readyInputHarness(),video=attachRemoteVideo(api);assert.equal(api.enableKeyboardMouse(),true);
+ api.setDocumentState(null,null,'visible');
+ const unfocused=inputEvent({target:{},code:'KeyW',keyCode:87});assert.equal(api.dispatchKey(unfocused,true),false);assert.equal(unfocused.prevented,false);
+ api.setDocumentState(video,null,'visible');
+ assert.equal(api.dispatchKey(inputEvent({target:video,code:'KeyW',keyCode:87,isTrusted:false}),true),false);
+ assert.equal(api.dispatchKey(inputEvent({target:video,code:'Escape',keyCode:27}),true),false);
+ assert.equal(xhomePackets(channels.input).length,0);
+});
+
+test('xHome keyboard/mouse capture: refuses to compete with enabled NimboTouch',()=>{
+ const {api,channels}=readyInputHarness();attachRemoteVideo(api);api.setTouch({isEnabled:()=>true,diagnostic:()=>({active:true})});
+ assert.equal(api.enableKeyboardMouse(),false);assert.equal(api.state.keyboardMouseEnabled,false);
+ assert.match(api.state.keyboardMouseStatus,/NimboTouch/);
+ assert.equal(gamepadEvents(channels.control).filter(e=>e.wasAdded===true).length,0);assert.equal(xhomePackets(channels.input).length,0);
+});
+
+test('xHome mouse dispatcher: absolute coordinates, relative Pointer Lock, wheel and button release are ordered',()=>{
+ const {api,channels}=readyInputHarness(),video=attachRemoteVideo(api);assert.equal(api.enableKeyboardMouse(),true);
+ const down=inputEvent({target:video,pointerType:'mouse',pointerId:7,button:0,buttons:1,clientX:580,clientY:320});
+ assert.equal(api.dispatchPointer(down,'down'),true);assert.equal(down.prevented,true);assert.equal(api.mouseButtons(),1);
+ let p=new DataView(xhomePackets(channels.input).at(-1));
+ assert.equal(p.getUint16(0,true),32);assert.equal(p.getInt32(15,true),960);assert.equal(p.getInt32(19,true),540);assert.equal(p.getUint8(32),1);
+ api.setDocumentState(video,video,'visible');
+ assert.equal(api.dispatchPointer(inputEvent({target:video,pointerType:'mouse',pointerId:7,buttons:1,movementX:4,movementY:-3}),'move'),true);
+ p=new DataView(xhomePackets(channels.input).at(-1));assert.equal(p.getInt32(15,true),8);assert.equal(p.getInt32(19,true),-6);assert.equal(p.getUint8(32),0);
+ assert.equal(api.dispatchWheel(inputEvent({target:video,deltaX:1,deltaY:2,deltaMode:1,clientX:580,clientY:320})),true);
+ p=new DataView(xhomePackets(channels.input).at(-1));assert.equal(p.getInt32(23,true),16);assert.equal(p.getInt32(27,true),32);
+ assert.equal(api.dispatchPointer(inputEvent({target:video,pointerType:'mouse',pointerId:7,button:0,buttons:0,movementX:0,movementY:0}),'up'),true);
+ assert.equal(api.mouseButtons(),0);assert.equal(new DataView(xhomePackets(channels.input).at(-1)).getUint8(31),0);
+ assert.equal(api.disableKeyboardMouse('teste'),true);
+});
+
+test('xHome cleanup: blur-style teardown releases keys and mouse buttons before unregistering the slot',()=>{
+ const {api,channels,events}=readyInputHarness(),video=attachRemoteVideo(api);assert.equal(api.enableKeyboardMouse(),true);
+ api.dispatchKey(inputEvent({target:video,code:'KeyW',keyCode:87}),true);
+ api.dispatchPointer(inputEvent({target:video,pointerType:'mouse',pointerId:4,buttons:1,clientX:200,clientY:150}),'down');
+ assert.equal(api.disableKeyboardMouse('blur'),true);
+ const keyUps=xhomePackets(channels.input).filter(p=>new DataView(p).getUint16(0,true)===64&&new DataView(p).getUint8(16)===0);
+ const mouseFrames=xhomePackets(channels.input).filter(p=>new DataView(p).getUint16(0,true)===32);
+ assert.equal(keyUps.length,1);assert.equal(new DataView(mouseFrames.at(-1)).getUint8(31),0);
+ const releaseIndex=events.findLastIndex(e=>e.channel==='control'&&typeof e.data==='string'&&JSON.parse(e.data).wasAdded===false);
+ const lastNeutralIndex=events.findLastIndex(e=>e.channel==='input'&&e.data instanceof ArrayBuffer&&e.data.byteLength===33);
+ assert.ok(lastNeutralIndex>=0&&releaseIndex>lastNeutralIndex);
+});
+
+test('xHome gamepad allocator: preserves free physical indices and avoids the reserved keyboard/mouse slot',()=>{
+ const {api}=readyInputHarness();attachRemoteVideo(api);assert.equal(api.enableKeyboardMouse(),true);assert.equal(api.mkbSlot(),0);
+ api.tickGamepads([standardPad(0),standardPad(2)],true);assert.deepEqual(Array.from(api.registeredSlots()).sort(),[1,2]);
+ const slots=()=>Array.from(api.gamepadSlots(),entry=>Array.from(entry)).sort((a,b)=>a[0]-b[0]);
+ assert.deepEqual(slots(),[[0,1],[2,2]]);api.tickGamepads([standardPad(0),standardPad(2)],true);assert.deepEqual(slots(),[[0,1],[2,2]]);
+ assert.equal(api.disableKeyboardMouse('teste'),true);
+});
+
+test('xHome gamepad routing: input is forwarded only while Remote Play is visible and focused',()=>{
+ const {api}=readyInputHarness();
+ assert.equal(api.shouldForwardGamepad(false,false,false,true),false);
+ assert.equal(api.shouldForwardGamepad(true,false,false,true),false);
+ assert.equal(api.shouldForwardGamepad(true,true,false,true),true);
+ assert.equal(api.shouldForwardGamepad(true,true,true,true),false);
+ assert.equal(api.shouldForwardGamepad(true,true,false,false),false);
 });
