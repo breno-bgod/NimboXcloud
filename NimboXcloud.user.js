@@ -2826,7 +2826,7 @@
     if(tabId==='remote') renderBody();
   }
   async function nxRemoteDiscover() {
-    if(nxRemotePlay.busy) return;
+    if(nxRemotePlay.busy || nxRemotePlay.sessionId || nxRemotePlay.peer || nxRemotePlay.mediaStream) return;
     const requestId=++nxRemotePlay.requestId;
     const controller=new AbortController();
     nxRemotePlay.abortController=controller;
@@ -3112,7 +3112,7 @@
       root.appendChild(mk('div','font-size:19px;font-weight:750;margin-bottom:6px','Remote Play · Xbox em casa'));
       root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:14px','Descoberta e negociação WebRTC experimentais. Reprodução e comandos dependem de validação real com Xbox.'));
       const btn=mk('button','cursor:pointer;padding:10px 14px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.busy?'Consultando…':'Buscar meus consoles');
-      btn.disabled=nxRemotePlay.busy;btn.addEventListener('click',function(e){e.stopPropagation();nxRemoteDiscover();});root.appendChild(btn);
+      btn.disabled=nxRemotePlay.busy || !!nxRemotePlay.sessionId || !!nxRemotePlay.peer || !!nxRemotePlay.mediaStream;btn.addEventListener('click',function(e){e.stopPropagation();nxRemoteDiscover();});root.appendChild(btn);
       if(nxRemotePlay.busy){const cancel=mk('button','cursor:pointer;padding:10px 14px;margin-left:8px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,'Cancelar');cancel.addEventListener('click',function(e){e.stopPropagation();nxRemoteCancel();});root.appendChild(cancel);}
       root.appendChild(mk('div','font-size:12px;margin:12px 0;color:'+(nxRemotePlay.error?C.bad:C.dim),nxRemotePlay.error||nxRemotePlay.status));
       if(nxRemotePlay.region) root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:5px','Região xHome: '+nxRemotePlay.region));
