@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.1.6
+// @version      1.1.7
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD e HUD editável. Experimental; requer suporte K/M do jogo e do SDK.
 // @author       KReight / NimboPlay contributors
 // @license      MIT
@@ -41,7 +41,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.1.6';
+const VERSION='1.1.7';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -58,7 +58,7 @@ const BxEventBus={Script:eventBus(),Stream:eventBus()};
 const BxEvent={XCLOUD_POLLING_MODE_CHANGED:'nimbo-touch-unused-polling'};
 const STATES={isPlaying:false};
 const api={streamSession:null,inputChannel:null};
-let ui=null,nimboTransport=null,nimboCandidate=null,nimboGameStream=null;
+let ui=null,nimboTransport=null,nimboCandidate=null,nimboGameStream=null,nimboRemoteInputTarget=null;
 let nimboFiberRoot=null,nimboFiberQueue=[],nimboFiberIndex=0;
 const nimboModules=new Set();
 function nativeDialogVisible(){
@@ -70,6 +70,7 @@ function nativeDialogVisible(){
  return false;
 }
 function nimboCapture(raw){
+ if(nimboRemoteInputTarget)return false;
  if(!raw||raw.isShutdown||typeof raw.onVirtualMouseInput!=='function'||typeof raw.updateInputConfigurationAsync!=='function')return false;
  nimboCandidate=raw;
  if(raw.connectionState!=='Connected')return false;
@@ -95,6 +96,58 @@ function nimboCapture(raw){
  return true;
 }
 
+
+
+class NimboRemoteInputTransport {
+  constructor(target){
+    this.target=target;this.remote=true;this.disposed=false;this.hasInput=false;this.buttons=0;
+    this.channel={queueMouseInput:reading=>this.mouse(reading),sendKeyboardInput:reading=>this.keyboard(reading)};
+    this.facade={updateInputConfigurationAsync:options=>this.configure(options)};
+  }
+  connected(){if(this.disposed||!this.target||typeof this.target.isReady!=='function')return false;try{return this.target.isReady()===true;}catch{return false;}}
+  assertConnected(){if(!this.connected())throw Error('Sessão xHome indisponível.');}
+  configure(){this.assertConnected();return Promise.resolve(true);}
+  mouse(reading){
+    this.assertConnected();
+    if(!reading||reading.Type!==0)throw Error('Leitura de mouse xHome inválida.');
+    for(const key of ['X','Y','WheelX','WheelY','Buttons'])if(!Number.isFinite(reading[key]))throw Error('Leitura de mouse xHome inválida.');
+    if(this.target.sendMouse({...reading,Buttons:reading.Buttons&31},'touch')!==true)throw Error('Canal de mouse xHome indisponível.');
+    this.buttons=reading.Buttons&31;this.hasInput=true;return true;
+  }
+  keyboard(reading){
+    this.assertConnected();
+    if(!reading||!Number.isFinite(reading.windowsKey)||typeof reading.isPressed!=='boolean')throw Error('Leitura de teclado xHome inválida.');
+    if(this.target.sendKeyboard(null,reading.isPressed,'touch',reading.windowsKey)!==true)throw Error('Canal de teclado xHome indisponível.');
+    this.hasInput=true;return true;
+  }
+  sendKey(code,pressed){this.assertConnected();if(this.target.sendKeyboard(code,!!pressed,'touch')!==true)throw Error('Canal de teclado xHome indisponível.');this.hasInput=true;return true;}
+  release(){if(!this.hasInput)return;try{this.target?.releaseSource?.('touch');}finally{this.hasInput=false;this.buttons=0;}}
+  restore(){this.release();return Promise.resolve();}
+  dispose(){if(this.disposed)return Promise.resolve();this.release();this.disposed=true;return Promise.resolve();}
+}
+function nimboAttachRemoteInputSink(target){
+ if(!target||typeof target.isReady!=='function'||typeof target.sendMouse!=='function'||typeof target.sendKeyboard!=='function'||typeof target.releaseSource!=='function')return false;
+ if(nimboRemoteInputTarget===target&&nimboTransport?.remote)return true;
+ const resumeWanted=!!ui?.wanted;
+ if(ui)ui.stop();
+ const old=nimboTransport;
+ if(old)Promise.resolve(old.dispose()).catch(e=>NimboDiag.add('sessão','Falha ao trocar transporte de entrada',e.message));
+ nimboRemoteInputTarget=target;
+ nimboTransport=new NimboRemoteInputTransport(target);
+ api.streamSession=nimboTransport.facade;api.inputChannel=nimboTransport.channel;STATES.isPlaying=true;
+ if(ui){ui.mount();if(resumeWanted){ui.wanted=true;ui.desiredSession=api.streamSession;ui.retryAt=0;ui.ensureResumeWatch();}}
+ touchPanel.refresh();syncTouchVisibility();return true;
+}
+function nimboDetachRemoteInputSink(target){
+ if(!nimboRemoteInputTarget||(target&&target!==nimboRemoteInputTarget))return false;
+ const resumeWanted=!!ui?.wanted;
+ if(ui)ui.stop();
+ const old=nimboTransport;nimboRemoteInputTarget=null;
+ if(old)Promise.resolve(old.dispose()).catch(e=>NimboDiag.add('sessão','Falha ao finalizar transporte xHome',e.message));
+ if(nimboTransport===old){nimboTransport=null;api.streamSession=null;api.inputChannel=null;STATES.isPlaying=false;}
+ if(ui&&resumeWanted){ui.wanted=true;ui.retryAt=0;ui.ensureResumeWatch();}
+ return true;
+}
 
 class NimboXboxTransport {
   constructor(raw) {
@@ -1791,6 +1844,7 @@ NimboPlayControls.prototype.start=async function(...args){
 };
 function pollSession(){
  try{
+  if(nimboRemoteInputTarget){syncTouchVisibility();touchPanel.refresh();return;}
   if(nimboGameStream?.session)nimboCapture(nimboGameStream.session);
   if(nimboCandidate&&!nimboCandidate.isShutdown&&nimboCandidate.connectionState==='Connected')nimboCapture(nimboCandidate);
   if(nimboTransport&&!nimboTransport.connected()){
@@ -1813,7 +1867,7 @@ function boot(){
  }catch(e){NimboDiag.add('inicialização','Falha ao iniciar Nimbo Touch',e.message);const notice=document.createElement('div');notice.textContent='Nimbo Touch não iniciou: '+e.message;notice.style.cssText='position:fixed;top:8px;left:8px;z-index:2147483647;background:#331a1a;color:white;padding:12px';document.documentElement.append(notice);}
 }
 // Public integration point for a future host. No Better xCloud globals are read or overwritten.
-window.NimboTouch=Object.freeze({version:VERSION,attachSession:nimboCapture,open:()=>touchPanel.open(),stop:()=>ui?.stop(),diagnostic,isEnabled:()=>!!ui?.wanted,toggle:()=>{touchPanel.mount();touchPanel.toggle.click();},setMenuBlocked:blocked=>ui?.setMenuBlocked(blocked)});
+window.NimboTouch=Object.freeze({version:VERSION,attachSession:nimboCapture,attachRemoteInputSink:nimboAttachRemoteInputSink,detachRemoteInputSink:nimboDetachRemoteInputSink,isRemoteInputAttached:()=>!!nimboRemoteInputTarget,open:()=>touchPanel.open(),stop:()=>ui?.stop(),diagnostic,isEnabled:()=>!!ui?.wanted,toggle:()=>{touchPanel.mount();touchPanel.toggle.click();},setMenuBlocked:blocked=>ui?.setMenuBlocked(blocked)});
 
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 
