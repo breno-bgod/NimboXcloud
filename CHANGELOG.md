@@ -1,3 +1,7 @@
+## [4.12.84] — 2026-11-12
+- Made xHome virtual gamepad a separate presentation mode: while enabled, the K/M touch area, WASD joystick and mapped keyboard/mouse buttons are hidden. The shared HUD editor still exposes both layouts so each can be positioned and adjusted independently.
+- No input transport, xCloud retail path, Gamepad API hook or scheduler changed.
+
 ## [4.12.83] — 2026-11-12
 - Added an optional Xbox-style virtual gamepad HUD to NimboTouch for Remote Play xHome only: dual analog sticks, face buttons, D-pad, bumpers, analog triggers, View/Menu, stick clicks and an opt-in Home button.
 - Reused the existing xHome touch adapter, virtual-gamepad encoder, shared scheduler and per-profile HUD geometry/editor. The xCloud retail transport and its native/TAK input path are unchanged.
