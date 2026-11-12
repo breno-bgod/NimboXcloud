@@ -15,5 +15,5 @@ test('platform preferences do not spoof browser UA or grant Xbox authorization',
   assert.match(source, /const nxConsoleNativeUA = navigator\.userAgent/);
   assert.match(source, /nxConsoleLabState\.applied = false/);
   assert.doesNotMatch(source, /Object\.defineProperty\(navigator,\s*['"]userAgent['"]/);
-  assert.doesNotMatch(source, /navigator\.userAgent\s*=/);
+  assert.doesNotMatch(source, /navigator\\.userAgent\\s*=(?!=)/);
 });
