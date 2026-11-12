@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.43
+// @version      4.12.44
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.43
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.44
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -1648,15 +1648,26 @@
 
   // Drawer lateral mobile: mantém a maior parte do jogo visível.
   function nxCompactMobile() { return innerWidth <= 950 && (navigator.maxTouchPoints || 0) > 0; }
+  // Mobile: o acesso fechado e apenas um icone compacto, nunca uma barra horizontal.
+  // Posicionamento independente da orientacao e do tamanho do viewport.
   function nxPositionMobileDrawer() {
     if (!wrap) return;
-    const w = Math.min(320, Math.max(240, Math.round(innerWidth * .42)));
-    wrap.style.left = '8px'; wrap.style.right = 'auto'; wrap.style.top = '8px';
-    wrap.style.bottom = 'auto'; wrap.style.width = w + 'px';
-    wrap.style.alignItems = 'stretch'; wrap.style.display = 'flex';
-    if (cardEl) { cardEl.style.maxWidth = '100%'; cardEl.style.maxHeight = Math.max(170, innerHeight - 16) + 'px'; }
-    if (pillEl) pillEl.style.display = 'inline-flex';
-    if (nxLibraryButton) nxLibraryButton.style.display = 'none';
+    wrap.style.position='fixed';wrap.style.transform='none';
+    wrap.style.left='auto';wrap.style.right='max(8px,env(safe-area-inset-right,8px))';
+    wrap.style.top='auto';wrap.style.bottom='max(64px,env(safe-area-inset-bottom,8px))';
+    wrap.style.width='44px';wrap.style.maxWidth='44px';wrap.style.height='auto';
+    wrap.style.alignItems='flex-end';wrap.style.display='flex';
+    wrap.style.pointerEvents='none';
+    if(pillEl){
+      pillEl.style.display='inline-flex';pillEl.style.boxSizing='border-box';
+      pillEl.style.width='44px';pillEl.style.minWidth='44px';pillEl.style.maxWidth='44px';
+      pillEl.style.height='44px';pillEl.style.padding='0';pillEl.style.margin='0';
+      pillEl.style.justifyContent='center';pillEl.style.borderRadius='14px';
+      pillEl.setAttribute('aria-label','Abrir painel NX');
+    }
+    if(dotEl)dotEl.style.display='none';
+    if(pillTxt)pillTxt.style.display='none';
+    if(nxLibraryButton)nxLibraryButton.style.display='none';
   }
   function nxDockPanel() {
     if (!wrap || !cardEl) return;
