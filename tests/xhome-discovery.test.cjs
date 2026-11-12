@@ -8,17 +8,24 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady,sendKeyboardFrame:nxRemoteSendKeyboardFrame,sendMouseFrame:nxRemoteSendMouseFrame,enableInput:nxRemoteInputCaptureEnable,disableInput:nxRemoteInputCaptureDisable,inputFocus:nxRemoteVideoHasInputFocus,heldKeys:function(){return Array.from(nxRemoteHeldKeys.keys());},mouseButtons:function(){return nxRemoteMouseButtons;},captureEnabled:function(){return !!nxRemoteInputCapture;},browser:{window:window,document:document}};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
   let timerId=0;
   const fakeTimers=new Map();
   const browserSetTimeout=(fn,ms)=>{const id=++timerId;fakeTimers.set(id,{fn,ms});return id;};
   const browserClearTimeout=(id)=>fakeTimers.delete(id);
+  const fakeWindow=fakeEventTarget();
+  const fakeDocument=fakeEventTarget();
+  fakeDocument.visibilityState='visible';
+  fakeDocument.activeElement=null;
+  fakeDocument.pointerLockElement=null;
+  fakeDocument.exitPointerLock=function(){this.pointerLockElement=null;this.dispatch('pointerlockchange',{});};
   const ctx = {
     AbortController, URL, Date,
     setTimeout:timerOverrides&&timerOverrides.setTimeout||browserSetTimeout,
     clearTimeout:timerOverrides&&timerOverrides.clearTimeout||browserClearTimeout,
     fetch: fetchImpl, tabId: 'other', renderBody() {}, navigator:{language:'pt-BR'},
+    window:fakeWindow, document:fakeDocument, performance:{now:()=>123.5},
     localStorage: {
       getItem(k) { return k === 'xboxcom_xbl_user_info' ? JSON.stringify({tokens:{'http://gssv.xboxlive.com/':{token:'TEST_GSSV'}}}) : null; },
       get length() { return 0; }
@@ -28,10 +35,61 @@ function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
   if(rtcClass) ctx.RTCPeerConnection=rtcClass;
   vm.createContext(ctx);
   vm.runInContext(code, ctx);
+  ctx.api.browser={window:fakeWindow,document:fakeDocument};
   return ctx.api;
 }
 const ok = (value) => ({ok:true,status:200,json:async()=>value});
 const login = {gsToken:'TEST_BEARER',offeringSettings:{regions:[{name:'test',isDefault:true,baseUri:'https://wus.xboxlive.com'}]}};
+
+function fakeEventTarget() {
+  const listeners=new Map();
+  return {
+    addEventListener(type,listener) {
+      if(!listeners.has(type))listeners.set(type,[]);
+      listeners.get(type).push(listener);
+    },
+    removeEventListener(type,listener) {
+      const list=listeners.get(type)||[];
+      listeners.set(type,list.filter(item=>item!==listener));
+    },
+    dispatch(type,event) {
+      event=event||{};
+      event.type=type;
+      if(!Object.prototype.hasOwnProperty.call(event,'target'))event.target=this;
+      if(typeof event.preventDefault!=='function')event.preventDefault=function(){this.defaultPrevented=true;};
+      if(typeof event.stopImmediatePropagation!=='function')event.stopImmediatePropagation=function(){this.immediatePropagationStopped=true;};
+      if(typeof event.stopPropagation!=='function')event.stopPropagation=function(){this.propagationStopped=true;};
+      for(const listener of [...(listeners.get(type)||[])]) {
+        listener.call(this,event);
+        if(event.immediatePropagationStopped)break;
+      }
+      return event;
+    },
+    listenerCount(type){return (listeners.get(type)||[]).length;},
+    contains(target){return target===this;}
+  };
+}
+function fakeVideo(api) {
+  const video=fakeEventTarget();
+  video.controls=true;
+  video.tabIndex=-1;
+  video.clientHeight=720;
+  video.focus=function(){api.browser.document.activeElement=video;};
+  video.requestPointerLock=function(){
+    api.browser.document.pointerLockElement=video;
+    api.browser.document.dispatch('pointerlockchange',{});
+    return Promise.resolve();
+  };
+  return video;
+}
+function remoteInputPackets(channel,reportType) {
+  return channel.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]' &&
+    data.byteLength>=14 && new DataView(data).getUint16(0,true)===reportType);
+}
+function trustedEvent(target,extra) {
+  return Object.assign({isTrusted:true,target:target},extra||{});
+}
+
 test('success: authenticates and lists consoles without exposing tokens', async()=>{
   const calls=[];
   const api=harness(async (url,options)=>{calls.push([url,options]);return calls.length===1?ok(login):ok({results:[{serverId:'server-test',deviceName:'Xbox Test',consoleType:'SeriesX',powerState:'On'}]});});
@@ -1071,4 +1129,138 @@ test('mouse encoder: clamps integer fields and rejects invalid pointer mode',()=
   assert.equal(view.getUint8(31),255);
   assert.equal(view.getUint8(32),1,'absolute pointer mode');
   assert.equal(api.encodeMouseFrame({X:0,Y:0,Relative:2},0,0),null);
+});
+
+test('xHome input: metadata sequence zero is followed by one shared keyboard, mouse and gamepad sequence',()=>{
+  const {api,channels}=readyInputHarness();
+  const metadata=remoteInputPackets(channels.input,8);
+  assert.equal(metadata.length,1);
+  assert.equal(new DataView(metadata[0]).getUint32(2,true),0);
+  assert.equal(api.sendKeyboardFrame({code:'KeyA',keyCode:65,pressed:true},false),true);
+  assert.equal(api.sendMouseFrame({X:1,Y:2,WheelX:0,WheelY:0,Buttons:0,Relative:0},false),true);
+  api.tickGamepads([standardPad(0)],true);
+  const reports=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]' &&
+    data.byteLength>=14 && [2,32,64].includes(new DataView(data).getUint16(0,true)));
+  assert.deepEqual(reports.map(data=>new DataView(data).getUint32(2,true)),[1,2,3]);
+});
+
+test('xHome keyboard capture: sends trusted keydown and keyup once and preserves NX shortcuts',()=>{
+  const {api,channels}=readyInputHarness();
+  const video=fakeVideo(api);api.state.videoElement=video;
+  const button={textContent:''},status={textContent:''};
+  assert.equal(api.enableInput(video,button,status),true);
+  assert.equal(video.controls,false);
+  assert.equal(api.inputFocus(),true);
+  const down=trustedEvent(video,{code:'KeyA',keyCode:65,repeat:false,ctrlKey:false,shiftKey:false,altKey:false,metaKey:false});
+  api.browser.window.dispatch('keydown',down);
+  assert.equal(down.defaultPrevented,true);
+  assert.deepEqual(Array.from(api.heldKeys()),['KeyA']);
+  let packets=remoteInputPackets(channels.input,64);
+  assert.equal(packets.length,1);
+  let view=new DataView(packets[0]);
+  assert.equal(view.getUint8(15),2);
+  assert.equal(view.getUint8(16),1);
+  assert.equal(view.getUint8(17),65);
+  api.browser.window.dispatch('keydown',trustedEvent(video,{code:'KeyA',keyCode:65,repeat:true,ctrlKey:false,shiftKey:false,altKey:false,metaKey:false}));
+  assert.equal(remoteInputPackets(channels.input,64).length,1,'auto-repeat does not duplicate keydown');
+  const shortcut=trustedEvent(video,{code:'Digit1',keyCode:49,repeat:false,ctrlKey:true,shiftKey:true,altKey:false,metaKey:false});
+  api.browser.window.dispatch('keydown',shortcut);
+  assert.equal(shortcut.immediatePropagationStopped,undefined,'Ctrl+Shift shortcuts remain available to NX');
+  api.browser.window.dispatch('keyup',trustedEvent(video,{code:'KeyA',keyCode:65,ctrlKey:false,shiftKey:false,altKey:false,metaKey:false}));
+  packets=remoteInputPackets(channels.input,64);
+  assert.equal(packets.length,2);
+  assert.equal(new DataView(packets[1]).getUint8(16),0);
+  assert.deepEqual(Array.from(api.heldKeys()),[]);
+  api.disableInput(false);
+  assert.equal(api.captureEnabled(),false);
+  assert.equal(video.controls,true);
+  assert.equal(api.browser.document.activeElement,video);
+  assert.equal(button.textContent,'Ativar teclado/mouse');
+});
+
+test('xHome mouse capture: forwards relative movement, button transitions and wheel deltas',()=>{
+  const {api,channels}=readyInputHarness();
+  const video=fakeVideo(api);api.state.videoElement=video;
+  assert.equal(api.enableInput(video),true);
+  video.dispatch('pointermove',trustedEvent(video,{pointerType:'mouse',movementX:4,movementY:-3,buttons:0}));
+  video.dispatch('pointerdown',trustedEvent(video,{pointerType:'mouse',movementX:0,movementY:0,buttons:1,button:0}));
+  video.dispatch('wheel',trustedEvent(video,{deltaX:-2,deltaY:120,deltaMode:0}));
+  video.dispatch('pointerup',trustedEvent(video,{pointerType:'mouse',movementX:0,movementY:0,buttons:0,button:0}));
+  const packets=remoteInputPackets(channels.input,32);
+  assert.equal(packets.length,4);
+  let view=new DataView(packets[0]);
+  assert.equal(view.getInt32(15,true),8);
+  assert.equal(view.getInt32(19,true),-6);
+  view=new DataView(packets[1]);
+  assert.equal(view.getUint8(31),1);
+  view=new DataView(packets[2]);
+  assert.equal(view.getInt32(23,true),-2);
+  assert.equal(view.getInt32(27,true),120);
+  view=new DataView(packets[3]);
+  assert.equal(view.getUint8(31),0);
+  assert.equal(api.mouseButtons(),0);
+});
+
+test('xHome input capture: ignores touch pointers and synthetic keyboard events',()=>{
+  const {api,channels}=readyInputHarness();
+  const video=fakeVideo(api);api.state.videoElement=video;
+  assert.equal(api.enableInput(video),true);
+  const before=channels.input.sent.length;
+  video.dispatch('pointermove',trustedEvent(video,{pointerType:'touch',movementX:50,movementY:50,buttons:1}));
+  api.browser.window.dispatch('keydown',trustedEvent(video,{isTrusted:false,code:'KeyB',keyCode:66,repeat:false,ctrlKey:false,shiftKey:false,altKey:false,metaKey:false}));
+  assert.equal(channels.input.sent.length,before);
+  assert.deepEqual(Array.from(api.heldKeys()),[]);
+});
+
+test('xHome input capture: blur releases held keys and mouse buttons and detaches listeners',()=>{
+  const {api,channels}=readyInputHarness();
+  const video=fakeVideo(api);api.state.videoElement=video;
+  assert.equal(api.enableInput(video),true);
+  api.browser.window.dispatch('keydown',trustedEvent(video,{code:'KeyB',keyCode:66,repeat:false,ctrlKey:false,shiftKey:false,altKey:false,metaKey:false}));
+  video.dispatch('pointerdown',trustedEvent(video,{pointerType:'mouse',movementX:0,movementY:0,buttons:1,button:0}));
+  api.browser.window.dispatch('blur',{});
+  assert.equal(api.captureEnabled(),false);
+  assert.deepEqual(Array.from(api.heldKeys()),[]);
+  assert.equal(api.mouseButtons(),0);
+  assert.equal(video.controls,true);
+  const keys=remoteInputPackets(channels.input,64);
+  assert.equal(new DataView(keys.at(-1)).getUint8(16),0,'blur sends keyup');
+  const mouse=remoteInputPackets(channels.input,32);
+  assert.equal(new DataView(mouse.at(-1)).getUint8(31),0,'blur releases mouse buttons');
+  assert.equal(api.browser.window.listenerCount('keydown'),0);
+  assert.equal(video.listenerCount('pointermove'),0);
+});
+
+test('xHome input capture: Stop releases input before closing data channels',()=>{
+  const {api,channels}=readyInputHarness();
+  const video=fakeVideo(api);api.state.videoElement=video;
+  assert.equal(api.enableInput(video),true);
+  api.browser.window.dispatch('keydown',trustedEvent(video,{code:'KeyC',keyCode:67,repeat:false,ctrlKey:false,shiftKey:false,altKey:false,metaKey:false}));
+  video.dispatch('pointerdown',trustedEvent(video,{pointerType:'mouse',movementX:0,movementY:0,buttons:1,button:0}));
+  api.closeChannels();
+  assert.equal(channels.input.readyState,'closed');
+  assert.equal(api.captureEnabled(),false);
+  assert.deepEqual(Array.from(api.heldKeys()),[]);
+  assert.equal(api.mouseButtons(),0);
+  const keys=remoteInputPackets(channels.input,64);
+  assert.equal(new DataView(keys.at(-1)).getUint8(16),0,'keyup is sent before channel close');
+  const mouse=remoteInputPackets(channels.input,32);
+  assert.equal(new DataView(mouse.at(-1)).getUint8(31),0,'neutral mouse state is sent before channel close');
+  assert.equal(api.browser.window.listenerCount('keydown'),0);
+});
+
+test('xHome gamepad routing: video focus grants input while the NX panel is open',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const video=fakeVideo(api);api.state.videoElement=video;
+  assert.equal(api.inputFocus(),false);
+  api.browser.document.activeElement=video;
+  assert.equal(api.inputFocus(),true);
+  api.browser.document.activeElement=null;
+  api.browser.document.pointerLockElement=video;
+  assert.equal(api.inputFocus(),false,'xHome capture does not request or depend on pointer lock');
+  api.browser.document.pointerLockElement=null;
+  assert.equal(api.inputFocus(),false);
+  assert.match(source,/const allowInput=!nxCapturePad && nxRemoteGamepadWindowFocused && \(!openUI \|\| remoteVideoFocused\);/);
+  assert.match(source,/if \(remoteVideoFocused\) return;/);
+  assert.match(source,/const fast=nxRemoteGamepadReady\(\) && \(!openUI \|\| nxRemoteVideoHasInputFocus\(\)\)/);
 });
