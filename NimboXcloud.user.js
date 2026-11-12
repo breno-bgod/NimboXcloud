@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.68
+// @version      4.12.69
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.68
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.69
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.68';
+  const VER = '4.12.69';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2995,7 +2995,7 @@
   }
   // Data-channel bootstrap uses the xHome channels controlV1, input 1.0, messageV1 and chatV1.
   // Input packet fields are cross-checked against the MIT-licensed unknownskl/greenlight player package.
-  // Gamepad frames are forwarded after handshake; keyboard/mouse encoders remain pure and dormant.
+  // Gamepad and opt-in physical keyboard/mouse capture share one ordered input sequence.
   let nxRemoteChannels=null;
   function nxRemoteUuid() {
     try { if(typeof crypto!=='undefined' && typeof crypto.randomUUID==='function') return crypto.randomUUID(); } catch (_) {}
@@ -3128,7 +3128,7 @@
     return packet.buffer;
   }
   const nxRemoteRegisteredGamepadSlots=new Set();
-  let nxRemoteGamepadSequence=0;
+  let nxRemoteInputSequence=1;
   let nxRemoteGamepadPaused=false;
   let nxRemoteGamepadWindowFocused=true;
   const nxRemoteNeutralGamepad={mapping:'standard',buttons:[],axes:[]};
@@ -3139,20 +3139,276 @@
     return !!(nxRemotePlay.dataChannelsReady && nxRemotePlay.sessionStatus==='connected' &&
       peer && peerState==='connected' && channel && channel.readyState==='open');
   }
-  function nxRemoteSendGamepadFrame(pad,slot,force,channelsOverride) {
+  function nxRemoteVideoHasInputFocus() {
+    const video=nxRemotePlay.videoElement;
+    return !!(video && (document.activeElement===video || document.pointerLockElement===video));
+  }
+  let nxRemoteInputCapture=null;
+  const nxRemoteHeldKeys=new Map();
+  let nxRemoteMouseButtons=0;
+  function nxRemoteSendInputPacket(packet,force,channelsOverride) {
     const channels=channelsOverride || nxRemoteChannels;
     const channel=channels && channels.input;
     if(!channel || channel.readyState!=='open') return false;
     if(!force && Number(channel.bufferedAmount)>4096) return false;
-    const sequence=nxRemoteGamepadSequence>>>0;
-    const timestamp=(typeof performance!=='undefined' && performance.now)?performance.now():Date.now();
-    const packet=nxRemoteEncodeGamepadFrame(pad,slot,sequence,timestamp);
-    if(!packet) return false;
     try {
       channel.send(packet);
-      nxRemoteGamepadSequence=(sequence+1)>>>0;
+      nxRemoteInputSequence=(nxRemoteInputSequence+1)>>>0;
       return true;
     } catch (_) { return false; }
+  }
+  function nxRemoteSendKeyboardFrame(frame,force) {
+    if(force!==true && !nxRemoteGamepadReady()) return false;
+    const packet=nxRemoteEncodeKeyboardFrame(frame,nxRemoteInputSequence>>>0,
+      (typeof performance!=='undefined' && performance.now)?performance.now():Date.now());
+    return packet ? nxRemoteSendInputPacket(packet,force===true) : false;
+  }
+  function nxRemoteSendMouseFrame(frame,force) {
+    if(force!==true && !nxRemoteGamepadReady()) return false;
+    const packet=nxRemoteEncodeMouseFrame(frame,nxRemoteInputSequence>>>0,
+      (typeof performance!=='undefined' && performance.now)?performance.now():Date.now());
+    return packet ? nxRemoteSendInputPacket(packet,force===true) : false;
+  }
+  function nxRemoteInputRelease() {
+    let complete=true;
+    Array.from(nxRemoteHeldKeys.entries()).forEach(function(entry) {
+      if(nxRemoteSendKeyboardFrame({code:entry[0],keyCode:entry[1],pressed:false},true))
+        nxRemoteHeldKeys.delete(entry[0]);
+      else complete=false;
+    });
+    if(nxRemoteMouseButtons!==0) {
+      if(nxRemoteSendMouseFrame({X:0,Y:0,WheelX:0,WheelY:0,Buttons:0,Relative:0},true))
+        nxRemoteMouseButtons=0;
+      else complete=false;
+    }
+    return complete;
+  }
+  function nxRemoteInputConsume(event,preventDefault) {
+    if(preventDefault!==false && event && typeof event.preventDefault==='function') event.preventDefault();
+    if(event && typeof event.stopImmediatePropagation==='function') event.stopImmediatePropagation();
+    else if(event && typeof event.stopPropagation==='function') event.stopPropagation();
+  }
+  function nxRemoteInputEditableTarget(target) {
+    if(!target || nxRemoteInputCapture && target===nxRemoteInputCapture.video) return false;
+    return !!(target.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(String(target.tagName||'').toUpperCase()));
+  }
+  function nxRemoteInputReservedShortcut(event) {
+    const code=String(event.code||'');
+    if(event.metaKey) return true;
+    if(event.ctrlKey && /^(KeyW|KeyR|KeyT|KeyN|KeyL|KeyP|KeyS|KeyO|KeyD|KeyJ|KeyU|KeyF)$/.test(code)) return true;
+    if(event.altKey && code==='F4') return true;
+    return code==='F5' || code==='F11' || code==='F12';
+  }
+  function nxRemoteInputRequestPointerLock(video) {
+    if(!video || typeof video.requestPointerLock!=='function') return false;
+    try {
+      const result=video.requestPointerLock({unadjustedMovement:true});
+      if(result && typeof result.catch==='function') result.catch(function() {
+        try { video.requestPointerLock(); } catch (_) {}
+      });
+      return true;
+    } catch (_) {
+      try { video.requestPointerLock(); return true; } catch (__) { return false; }
+    }
+  }
+  function nxRemoteInputKeyDown(event) {
+    const state=nxRemoteInputCapture;
+    if(!state || !event || !event.isTrusted || !nxRemoteVideoHasInputFocus()) return;
+    if(nxRemoteInputEditableTarget(event.target)) return;
+    const code=String(event.code||'');
+    if(event.ctrlKey && event.shiftKey) return; // preserve NX keyboard shortcuts
+    if(code==='KeyV' && getPref(LS_MIC_PTT,'0')==='1') return; // preserve push-to-talk
+    if(code==='Escape') {
+      nxRemoteInputConsume(event,false);
+      nxRemoteInputCaptureDisable(false,'Captura desativada com Escape; o ponteiro foi liberado.');
+      return;
+    }
+    if(nxRemoteInputReservedShortcut(event)) {
+      nxRemoteInputConsume(event,true);
+      return;
+    }
+    if(!nxRemoteGamepadReady()) {
+      nxRemoteInputCaptureDisable(false,'Sessão xHome desconectada; captura pausada.');
+      return;
+    }
+    const keyCode=nxRemoteVirtualKey(code,event.keyCode);
+    if(keyCode===null) return;
+    if(event.repeat || nxRemoteHeldKeys.has(code)) {
+      nxRemoteInputConsume(event,true);
+      return;
+    }
+    if(nxRemoteSendKeyboardFrame({code:code,keyCode:keyCode,pressed:true},false))
+      nxRemoteHeldKeys.set(code,keyCode);
+    nxRemoteInputConsume(event,true);
+  }
+  function nxRemoteInputKeyUp(event) {
+    const state=nxRemoteInputCapture;
+    if(!state || !event || !event.isTrusted) return;
+    const code=String(event.code||'');
+    if(nxRemoteHeldKeys.has(code)) {
+      const keyCode=nxRemoteHeldKeys.get(code);
+      if(nxRemoteSendKeyboardFrame({code:code,keyCode:keyCode,pressed:false},true))
+        nxRemoteHeldKeys.delete(code);
+      nxRemoteInputConsume(event,true);
+      return;
+    }
+    if(!nxRemoteVideoHasInputFocus() || nxRemoteInputEditableTarget(event.target)) return;
+    if(event.ctrlKey && event.shiftKey) return;
+    if(code==='KeyV' && getPref(LS_MIC_PTT,'0')==='1') return;
+    if(nxRemoteVirtualKey(code,event.keyCode)!==null) nxRemoteInputConsume(event,true);
+  }
+  function nxRemoteInputSendMouseEvent(event,force) {
+    if(!nxRemoteInputCapture || !event || !event.isTrusted || event.pointerType!=='mouse') return false;
+    const buttons=event.buttons===undefined ? nxRemoteMouseButtons : (nxRemoteByte(event.buttons)&31);
+    const x=nxRemoteInt32((Number(event.movementX)||0)*2);
+    const y=nxRemoteInt32((Number(event.movementY)||0)*2);
+    if(!force && !x && !y && buttons===nxRemoteMouseButtons) return false;
+    const sent=nxRemoteSendMouseFrame({X:x,Y:y,WheelX:0,WheelY:0,Buttons:buttons,Relative:0},
+      force===true || buttons!==nxRemoteMouseButtons);
+    if(sent) nxRemoteMouseButtons=buttons;
+    return sent;
+  }
+  function nxRemoteInputPointerMove(event) {
+    const state=nxRemoteInputCapture;
+    if(!state || !event || !event.isTrusted || event.pointerType!=='mouse') return;
+    if(!nxRemoteGamepadReady()) {
+      nxRemoteInputCaptureDisable(false,'Sessão xHome desconectada; captura pausada.');
+      return;
+    }
+    const buttons=event.buttons===undefined ? nxRemoteMouseButtons : (nxRemoteByte(event.buttons)&31);
+    const x=Number(event.movementX)||0,y=Number(event.movementY)||0;
+    if(!x && !y && buttons===nxRemoteMouseButtons) return;
+    nxRemoteInputSendMouseEvent(event,false);
+    nxRemoteInputConsume(event,true);
+  }
+  function nxRemoteInputPointer(event) {
+    if(!nxRemoteInputCapture || !event || !event.isTrusted || event.pointerType!=='mouse') return;
+    if(!nxRemoteGamepadReady()) {
+      nxRemoteInputCaptureDisable(false,'Sessão xHome desconectada; captura pausada.');
+      return;
+    }
+    nxRemoteInputSendMouseEvent(event,true);
+    nxRemoteInputConsume(event,true);
+  }
+  function nxRemoteInputWindowPointerUp(event) {
+    const state=nxRemoteInputCapture;
+    if(!state || !event || !event.isTrusted || event.pointerType!=='mouse') return;
+    if(state.video.contains && state.video.contains(event.target)) return;
+    if(!nxRemoteGamepadReady()) {
+      nxRemoteInputCaptureDisable(false,'Sessão xHome desconectada; captura pausada.');
+      return;
+    }
+    nxRemoteInputSendMouseEvent(event,true);
+    nxRemoteInputConsume(event,true);
+  }
+  function nxRemoteInputWheel(event) {
+    const state=nxRemoteInputCapture;
+    if(!state || !event || !event.isTrusted || !nxRemoteGamepadReady()) return;
+    const unit=event.deltaMode===1?16:event.deltaMode===2?Math.max(1,Number(state.video.clientHeight)||720):1;
+    const wheelX=nxRemoteInt32((Number(event.deltaX)||0)*unit);
+    const wheelY=nxRemoteInt32((Number(event.deltaY)||0)*unit);
+    if(!wheelX && !wheelY) return;
+    nxRemoteSendMouseFrame({X:0,Y:0,WheelX:wheelX,WheelY:wheelY,Buttons:nxRemoteMouseButtons,Relative:0},false);
+    nxRemoteInputConsume(event,true);
+  }
+  function nxRemoteInputCaptureEnable(video,button,statusNode) {
+    if(nxRemoteInputCapture) return true;
+    if(!video || typeof video.addEventListener!=='function' || !nxRemoteGamepadReady()) return false;
+    if(!nxRemoteInputRelease()) return false;
+    nxRemotePlay.videoElement=video;
+    const state={
+      video:video,button:button||null,status:statusNode||null,
+      previousControls:video.controls,previousTabIndex:video.tabIndex
+    };
+    state.onKeyDown=nxRemoteInputKeyDown;
+    state.onKeyUp=nxRemoteInputKeyUp;
+    state.onPointerMove=nxRemoteInputPointerMove;
+    state.onPointerDown=nxRemoteInputPointer;
+    state.onPointerUp=nxRemoteInputPointer;
+    state.onWindowPointerUp=nxRemoteInputWindowPointerUp;
+    state.onWheel=nxRemoteInputWheel;
+    state.onClick=function(event) {
+      if(state===nxRemoteInputCapture && event && event.isTrusted && document.pointerLockElement!==video)
+        nxRemoteInputRequestPointerLock(video);
+    };
+    state.onContextMenu=function(event) {
+      if(state===nxRemoteInputCapture) nxRemoteInputConsume(event,true);
+    };
+    state.onBlur=function() {
+      if(state===nxRemoteInputCapture)
+        nxRemoteInputCaptureDisable(false,'Captura pausada por perda de foco; ative novamente ao voltar.');
+    };
+    state.onVisibility=function() {
+      if(state===nxRemoteInputCapture && document.visibilityState==='hidden')
+        nxRemoteInputCaptureDisable(false,'Captura pausada porque a página ficou oculta.');
+    };
+    state.onPageHide=function() {
+      if(state===nxRemoteInputCapture)
+        nxRemoteInputCaptureDisable(true,'Página encerrada; entradas remotas liberadas.');
+    };
+    state.onPointerLockChange=function() {
+      if(state!==nxRemoteInputCapture || !state.status) return;
+      state.status.textContent=document.pointerLockElement===video
+        ? 'Captura ativa. Pressione Escape para liberar o mouse e encerrar a captura.'
+        : 'Captura ativa; clique no vídeo para capturar o mouse novamente.';
+    };
+    nxRemoteInputCapture=state;
+    try { video.controls=false;video.tabIndex=0; } catch (_) {}
+    window.addEventListener('keydown',state.onKeyDown,true);
+    window.addEventListener('keyup',state.onKeyUp,true);
+    window.addEventListener('pointerup',state.onWindowPointerUp,true);
+    window.addEventListener('blur',state.onBlur,true);
+    window.addEventListener('pagehide',state.onPageHide,true);
+    document.addEventListener('visibilitychange',state.onVisibility,true);
+    document.addEventListener('pointerlockchange',state.onPointerLockChange,true);
+    video.addEventListener('pointermove',state.onPointerMove,true);
+    video.addEventListener('pointerdown',state.onPointerDown,true);
+    video.addEventListener('pointerup',state.onPointerUp,true);
+    video.addEventListener('wheel',state.onWheel,{capture:true,passive:false});
+    video.addEventListener('click',state.onClick,true);
+    video.addEventListener('contextmenu',state.onContextMenu,true);
+    try { if(typeof video.focus==='function') video.focus(); } catch (_) {}
+    if(button) button.textContent='Desativar teclado/mouse';
+    if(statusNode) statusNode.textContent='Captura ativa. Clique no vídeo para (re)capturar o mouse; Escape encerra a captura.';
+    nxRemoteInputRequestPointerLock(video);
+    return true;
+  }
+  function nxRemoteInputCaptureDisable(clearState,message) {
+    const state=nxRemoteInputCapture;
+    const released=nxRemoteInputRelease();
+    if(state) {
+      nxRemoteInputCapture=null;
+      window.removeEventListener('keydown',state.onKeyDown,true);
+      window.removeEventListener('keyup',state.onKeyUp,true);
+      window.removeEventListener('pointerup',state.onWindowPointerUp,true);
+      window.removeEventListener('blur',state.onBlur,true);
+      window.removeEventListener('pagehide',state.onPageHide,true);
+      document.removeEventListener('visibilitychange',state.onVisibility,true);
+      document.removeEventListener('pointerlockchange',state.onPointerLockChange,true);
+      state.video.removeEventListener('pointermove',state.onPointerMove,true);
+      state.video.removeEventListener('pointerdown',state.onPointerDown,true);
+      state.video.removeEventListener('pointerup',state.onPointerUp,true);
+      state.video.removeEventListener('wheel',state.onWheel,true);
+      state.video.removeEventListener('click',state.onClick,true);
+      state.video.removeEventListener('contextmenu',state.onContextMenu,true);
+      if(document.pointerLockElement===state.video && typeof document.exitPointerLock==='function') {
+        try { document.exitPointerLock(); } catch (_) {}
+      }
+      try { state.video.controls=state.previousControls;state.video.tabIndex=state.previousTabIndex; } catch (_) {}
+      if(state.button) state.button.textContent='Ativar teclado/mouse';
+      if(state.status) state.status.textContent=message||'Captura desativada; entradas remotas liberadas.';
+    }
+    if(clearState===true) {
+      nxRemoteHeldKeys.clear();
+      nxRemoteMouseButtons=0;
+    }
+    return released;
+  }
+  function nxRemoteSendGamepadFrame(pad,slot,force,channelsOverride) {
+    const sequence=nxRemoteInputSequence>>>0;
+    const timestamp=(typeof performance!=='undefined' && performance.now)?performance.now():Date.now();
+    const packet=nxRemoteEncodeGamepadFrame(pad,slot,sequence,timestamp);
+    return packet ? nxRemoteSendInputPacket(packet,force===true,channelsOverride) : false;
   }
   function nxRemoteSendNeutralGamepad(slot,channelsOverride) {
     return nxRemoteSendGamepadFrame(nxRemoteNeutralGamepad,slot,true,channelsOverride);
@@ -3220,6 +3476,7 @@
   }
   function nxRemoteCloseDataChannels() {
     const channels=nxRemoteChannels;
+    nxRemoteInputCaptureDisable(true,'Sessão xHome encerrada; entradas remotas liberadas.');
     nxRemoteReleaseGamepadSlots(channels);
     nxRemoteChannels=null;
     nxRemotePlay.dataChannelsReady=false;
@@ -3239,6 +3496,7 @@
       message:peer.createDataChannel('message',{ordered:true,protocol:'messageV1'})
     };
     nxRemoteChannels=channels;
+    nxRemoteInputSequence=1; // ClientMetadata uses sequence 0; first input frame starts at 1.
     let handshakeAck=false,initialized=false;
     const isCurrent=function(){
       return requestId===nxRemotePlay.requestId && !signal.aborted && nxRemotePlay.peer===peer && nxRemoteChannels===channels;
@@ -3695,9 +3953,11 @@
           const connectionState=peer.connectionState||peer.iceConnectionState;
           if(connectionState==='connected'){
             nxRemotePlay.sessionStatus='connected';
-            nxRemotePlay.status='WebRTC conectado; aguardando mídia. O encaminhamento experimental de gamepad depende dos canais de dados.';
+            nxRemotePlay.status='WebRTC conectado; gamepad e teclado/mouse físico usam o canal input experimental. Mídia ainda aguarda validação.';
             if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
           }else if(connectionState==='disconnected'||connectionState==='failed'||connectionState==='closed'){
+            nxRemoteInputCaptureDisable(false,'Conexão WebRTC perdida; captura pausada e entradas liberadas.');
+            nxRemoteGamepadSuspend();
             nxRemotePlay.sessionStatus='disconnected';
             nxRemotePlay.status='Conexão WebRTC '+connectionState+'.';
           }
@@ -3735,7 +3995,7 @@
   const TAB_BUILDERS = {
     remote: function(root) {
       root.appendChild(mk('div','font-size:19px;font-weight:750;margin-bottom:6px','Remote Play · Xbox em casa'));
-      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:14px','Descoberta e negociação WebRTC experimentais. Reprodução e comandos dependem de validação real com Xbox.'));
+      root.appendChild(mk('div','font-size:12px;color:'+C.dim+';margin-bottom:14px','Descoberta e negociação WebRTC experimentais. Gamepad e teclado/mouse físicos têm encaminhamento experimental; toque e mídia ainda dependem de validação real com Xbox.'));
       const btn=mk('button','cursor:pointer;padding:10px 14px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.busy?'Consultando…':'Buscar meus consoles');
       btn.disabled=nxRemotePlay.busy || !!nxRemotePlay.sessionId || !!nxRemotePlay.peer || !!nxRemotePlay.mediaStream || !!nxRemotePendingRelease;btn.addEventListener('click',function(e){e.stopPropagation();nxRemoteDiscover();});root.appendChild(btn);
       if(nxRemotePlay.busy){const cancel=mk('button','cursor:pointer;padding:10px 14px;margin-left:8px;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text,nxRemotePlay.cancelAfterCreate?'Aguardando ID…':'Cancelar');cancel.disabled=nxRemotePlay.cancelAfterCreate;cancel.addEventListener('click',function(e){e.stopPropagation();nxRemoteCancel();});root.appendChild(cancel);}
@@ -3757,11 +4017,27 @@
       if(nxRemotePlay.mediaStream){
         if(!nxRemotePlay.videoElement){
           const video=document.createElement('video');
-          video.autoplay=true;video.playsInline=true;video.controls=true;video.style.cssText='display:block;width:100%;max-height:48vh;margin-top:12px;background:#000;border-radius:10px';
+          video.autoplay=true;video.playsInline=true;video.controls=true;video.tabIndex=0;video.style.cssText='display:block;width:100%;max-height:48vh;margin-top:12px;background:#000;border-radius:10px';
           nxRemotePlay.videoElement=video;
         }
         nxRemotePlay.videoElement.srcObject=nxRemotePlay.mediaStream;
         root.appendChild(nxRemotePlay.videoElement);
+        if(nxRemoteGamepadReady()) {
+          const inputButton=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,
+            nxRemoteInputCapture?'Desativar teclado/mouse':'Ativar teclado/mouse');
+          const inputStatus=mk('div','font-size:11px;color:'+C.dim+';margin-top:6px',
+            nxRemoteInputCapture?'Captura ativa. Escape libera o mouse.':'Entrada física opcional; o HUD de toque ainda não está conectado ao canal xHome.');
+          if(nxRemoteInputCapture){nxRemoteInputCapture.button=inputButton;nxRemoteInputCapture.status=inputStatus;}
+          inputButton.addEventListener('click',function(e){
+            e.stopPropagation();
+            if(nxRemoteInputCapture) nxRemoteInputCaptureDisable(false,'Captura desativada manualmente.');
+            else if(!nxRemoteInputCaptureEnable(nxRemotePlay.videoElement,inputButton,inputStatus))
+              inputStatus.textContent='Não foi possível ativar: verifique a conexão WebRTC e os canais xHome.';
+            inputButton.textContent=nxRemoteInputCapture?'Desativar teclado/mouse':'Ativar teclado/mouse';
+          });
+          root.appendChild(inputButton);
+          root.appendChild(inputStatus);
+        }
       }
       if(nxRemotePlay.sessionId || nxRemotePlay.peer || nxRemotePlay.mediaStream){
         const stop=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,nxRemotePlay.sessionStatus==='stopping'?'Encerrando…':'Encerrar sessão');
@@ -3773,7 +4049,7 @@
         start.disabled=nxRemotePlay.busy || !!nxRemotePlay.sessionId || !!nxRemotePlay.peer || !!nxRemotePendingRelease;
         start.addEventListener('click',function(e){e.stopPropagation();nxRemoteStartSession();});
         root.appendChild(start);
-        root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-top:8px','Negociação WebRTC experimental; transmissão e controles ainda não validados em Xbox real.'));
+        root.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-top:8px','A transmissão e o protocolo de entrada ainda não foram homologados em Xbox físico.'));
         if(nxRemotePlay.sessionStatus==='provisioned')root.appendChild(mk('div','font-size:11px;color:'+C.dim,'Xbox provisionado; aguardando negociação WebRTC.'));
       }
     },
@@ -5251,7 +5527,8 @@
     }
     let pads;
     try { pads=nxReadGamepadSnapshot(); } catch (_) { nxRemoteGamepadSuspend();return; }
-    const allowInput=!openUI && !nxCapturePad && nxRemoteGamepadWindowFocused;
+    const remoteVideoFocused=nxRemoteVideoHasInputFocus();
+    const allowInput=!nxCapturePad && nxRemoteGamepadWindowFocused && (!openUI || remoteVideoFocused);
     if (!pads.length) { nxRemoteGamepadTick(pads,allowInput);nxPadUiState.combo=false;return; }
     const pressed = function(p,i){return !!(p.buttons && p.buttons[i] && p.buttons[i].pressed);};
     if(nxCapturePad){
@@ -5277,7 +5554,8 @@
       nxPadUiState.lastAt=Date.now();
     }
     nxPadUiState.combo=combo;
-    nxRemoteGamepadTick(pads,allowInput && !combo && !openUI);
+    nxRemoteGamepadTick(pads,allowInput && !combo);
+    if (remoteVideoFocused) return;
     if (!openUI || combo || !cardEl) return;
     const p=pads[0];
     const axisY=p.axes && p.axes.length>1 ? p.axes[1] : 0;
@@ -5314,7 +5592,7 @@
   let nxGamepadLoopTimer=null;
   function nxStartGamepadUiLoop() {
     if(nxGamepadLoopTimer!==null) return;
-    const fast=nxRemoteGamepadReady() && !openUI && !nxCapturePad &&
+    const fast=nxRemoteGamepadReady() && (!openUI || nxRemoteVideoHasInputFocus()) && !nxCapturePad &&
       nxRemoteGamepadWindowFocused && document.visibilityState!=='hidden';
     nxGamepadLoopTimer=setTimeout(function() {
       nxGamepadLoopTimer=null;
@@ -6745,7 +7023,7 @@ void main(){
   }
   function inspectRemotePlay() {
     S.remotePlayStatus = nxRemotePlay.sessionStatus==='connected'
-      ? 'Sessão xHome conectada; gamepad físico encaminhado experimentalmente, mídia ainda não homologada.'
+      ? 'Sessão xHome conectada; gamepad e teclado/mouse físicos experimentais, mídia ainda não homologada.'
       : 'Sessão xHome: '+String(nxRemotePlay.status||'não conectada');
     update();
   }
@@ -6927,7 +7205,7 @@ void main(){
       'Contraste adicional: filtro CSS, não é nitidez real nem CAS',
       'Microfone: teste de captura local com permissão; transmissão ao jogo depende do xCloud',
       'Vibração: testes locais de controle e celular; sem remapeamento do feedback do streaming',
-      'Remote Play: xHome experimental; gamepad físico ainda não homologado em Xbox real; vídeo e áudio aguardam validação'
+      'Remote Play: xHome experimental; gamepad e teclado/mouse físicos encaminhados sem homologação em Xbox real; mídia e HUD de toque aguardam validação'
     ];
     S.deviceDetected = detectedDeviceProfile();
     // Observa apenas eventos relevantes; não coleta corpos de API, cookies ou tokens.
