@@ -1,3 +1,10 @@
+## [4.12.70] — 2026-11-12
+- Added a read-only TAK runtime probe for the `window.testTouchLayout` own-property descriptor. It never invokes the hook, executes accessors, inspects layout contents, or mutates the stream.
+- Exposed the probe in the NX device-compatibility diagnostic and protocol report; absence is explicitly scoped to the userscript-visible window and is not treated as proof that the page runtime lacks TAK.
+- Added deterministic tests for missing, callable, accessor, non-function and hostile descriptor cases.
+- Documented the official TAK v4.0 schema capabilities (analog sticks, gamepad actions, touchpad, gyroscope, accelerometer, opacity, scale, sensitivity and deadzone) and the distinction between the Better xCloud runtime test hook and Microsoft's developer-only sideload flow.
+- No layout is applied and no Remote Play or Cloud Gaming input path is changed.
+
 ## [4.12.69] — 2026-11-12
 - Integrated opt-in physical keyboard and mouse capture into the xHome input channel, using the existing pure Keyboard (64) and Mouse (32) encoders.
 - Added ordered shared input sequencing across metadata, gamepad, keyboard and mouse reports; the client metadata frame remains sequence 0 and the first input frame starts at 1.
