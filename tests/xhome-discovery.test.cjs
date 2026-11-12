@@ -773,7 +773,7 @@ test('gamepad encoder: serializes standard controls into the 38-byte xHome packe
   buttons[6]={pressed:true,value:0.25};
   buttons[7]={pressed:true,value:0.75};
   const packet=api.encodeGamepadFrame({mapping:'standard',buttons,axes:[1,-1,0.5,-0.5]},2,0x01020304,123.5);
-  assert.ok(packet instanceof ArrayBuffer);
+  assert.equal(Object.prototype.toString.call(packet),'[object ArrayBuffer]');
   assert.equal(packet.byteLength,38);
   const view=new DataView(packet);
   assert.equal(view.getUint16(0,true),2);
@@ -839,14 +839,14 @@ test('gamepad slots: registration is gated, idempotent and released before chann
   assert.equal(api.setGamepadSlot(0,true),true);
   assert.equal(api.setGamepadSlot(0,true),true);
   assert.equal(channels.control.sent.length,initialCount+1,'duplicate add is suppressed');
-  assert.deepEqual(api.registeredSlots(),[0]);
+  assert.deepEqual(Array.from(api.registeredSlots()),[0]);
   assert.equal(api.setGamepadSlot(0,false),true);
   assert.equal(api.setGamepadSlot(0,false),true);
   assert.equal(channels.control.sent.length,initialCount+2,'duplicate remove is suppressed');
-  assert.deepEqual(api.registeredSlots(),[]);
+  assert.deepEqual(Array.from(api.registeredSlots()),[]);
   assert.equal(api.setGamepadSlot(1,true),true);
   api.closeChannels();
-  assert.deepEqual(api.registeredSlots(),[]);
+  assert.deepEqual(Array.from(api.registeredSlots()),[]);
   const release=JSON.parse(channels.control.sent.at(-1));
   assert.deepEqual(release,{message:'gamepadChanged',gamepadIndex:1,wasAdded:false});
   assert.ok(Object.values(channels).every(channel=>channel.readyState==='closed'));

@@ -459,3 +459,9 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Concluído nesta etapa: encoder determinístico; transições de slot idempotentes; neutralização do slot no teardown; harness de timer compatível com browser; testes correspondentes.
 - Pendências: executar node --check, suíte completa e ambos workflows; validar o pacote/registro com Xbox real; depois integrar um único scheduler xHome ao estado de gamepad existente, sem novo wrapper/polling concorrente; implementar keyboard/mouse/touch e vibração; comprovar mídia e reconexão.
 - Próxima tarefa concreta: após CI verde, integrar o envio contínuo de frames ao canal input com um único scheduler ativo apenas durante sessão xHome pronta. Critérios de aceite: ler Gamepad API por uma única rotina, associar no máximo quatro slots estáveis, registrar/desregistrar com gamepadChanged, enviar frame de neutralização em disconnect/blur/Stop, limitar fila via bufferedAmount, encerrar o scheduler em todos os caminhos de teardown e nunca interceptar navigator.getGamepads novamente; testes determinísticos de conexão, botão, eixo, trigger, disconnect e concorrência; workflows baseline/regression PASS. Não habilitar envio em sessão real até validar autorização e formato com Xbox.
+
+
+### Correção do primeiro CI da etapa 4.12.66
+- O primeiro PR run (43175885519 baseline; 43175885534 regression) confirmou a correção do timer circular, mas encontrou dois erros exclusivos do sandbox VM do teste: ArrayBuffer e Array retornados pelo contexto VM não compartilham o prototype do Node externo, portanto instanceof/deepStrictEqual falhavam apesar dos valores corretos.
+- Ajustados os testes para verificar o tipo de ArrayBuffer por Object.prototype.toString e converter slots com Array.from no contexto do teste. Nenhum código de produção foi alterado por esse ajuste.
+- Aguardando nova execução dos workflows antes de declarar aprovação.
