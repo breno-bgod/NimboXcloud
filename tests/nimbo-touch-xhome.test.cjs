@@ -32,26 +32,41 @@ test('xHome HUD mode does not install a second Gamepad API hook or alter the xCl
 
 
 test('xHome resume lifecycle is scoped to the remote adapter, not xCloud stream state', () => {
-  const canResume = source.match(/canResume\\(\\)\\{\\s*if\\(this\\.remoteMode\\)\\{([\\s\\S]*?)\\n \\}\\n if\\(!this\\.root/);
-  assert.ok(canResume, 'remote canResume branch exists');
-  assert.match(canResume[1], /this\\.remoteAdapter!==remoteInputAdapter/);
-  assert.match(canResume[1], /this\\.desiredSession!==this\\.remoteAdapter\\.id/);
-  assert.match(canResume[1], /this\\.remoteAdapter\\.isReady\\?\\.\\(\\)/);
-  assert.doesNotMatch(canResume[1], /api\\.streamSession|STATES\\.isPlaying/);
+  const canResumeStart = source.indexOf('canResume(){\n if(this.remoteMode){');
+  const cloudBranch = source.indexOf('\n if(!this.root', canResumeStart);
+  assert.ok(canResumeStart >= 0 && cloudBranch > canResumeStart, 'remote canResume branch exists');
+  const remoteGate = source.slice(canResumeStart, cloudBranch);
+  assert.ok(remoteGate.includes('this.remoteAdapter!==remoteInputAdapter'));
+  assert.ok(remoteGate.includes('this.desiredSession!==this.remoteAdapter.id'));
+  assert.ok(remoteGate.includes('this.remoteAdapter.isReady?.()'));
+  assert.doesNotMatch(remoteGate, /api\.streamSession|STATES\.isPlaying/);
 
-  const checkResume = source.match(/checkResume\\(\\)\\{\\s*if\\(!this\\.wanted\\|\\|!this\\.root\\)return;\\s*if\\(this\\.remoteMode\\)\\{([\\s\\S]*?)\\n    \\}\\n    const session=api\\?\\.streamSession;/);
-  assert.ok(checkResume, 'remote checkResume branch exists');
-  assert.match(checkResume[1], /this\\.stopRemote\\(\\)/);
-  assert.match(checkResume[1], /this\\.startRemote\\(adapter,true\\)/);
+  const resumeStart = source.indexOf('checkResume(){\n    if(!this.wanted||!this.root)return;\n    if(this.remoteMode){');
+  const cloudResume = source.indexOf('\n    const session=api?.streamSession;', resumeStart);
+  assert.ok(resumeStart >= 0 && cloudResume > resumeStart, 'remote checkResume branch exists');
+  const remoteResume = source.slice(resumeStart, cloudResume);
+  assert.ok(remoteResume.includes('this.stopRemote()'));
+  assert.ok(remoteResume.includes('this.startRemote(adapter,true)'));
 });
 
 test('xHome HUD teardown releases virtual inputs before clearing its adapter', () => {
-  assert.match(source, /if\\(this\\.remoteMode\\)try\\{this\\.remoteAdapter\\?\\.release\\?\\.\\(\\);\\}catch\\{\\}/);
-  assert.match(source, /stopRemote\\(\\)\\{\\s*if\\(!this\\.remoteMode\\)return false;\\s*this\\.stop\\(\\);\\s*this\\.remoteMode=false;this\\.remoteAdapter=null;/);
+  const stopStart = source.indexOf('stop(){\n    ++this.epoch;\n    this.releaseKeys();');
+  const stopEnd = source.indexOf('\n  bindSurface', stopStart);
+  assert.ok(stopStart >= 0 && stopEnd > stopStart, 'base HUD stop method exists');
+  const stopBlock = source.slice(stopStart, stopEnd);
+  assert.ok(stopBlock.indexOf('this.releaseKeys()') < stopBlock.indexOf('this.remoteAdapter?.release?.()'));
+  assert.ok(stopBlock.indexOf('this.remoteAdapter?.release?.()') < stopBlock.indexOf('this.active = false'));
+
+  const remoteStopStart = source.indexOf('stopRemote(){');
+  const remoteStopEnd = source.indexOf('\n  setMenuBlocked', remoteStopStart);
+  assert.ok(remoteStopStart >= 0 && remoteStopEnd > remoteStopStart, 'remote stop method exists');
+  const remoteStop = source.slice(remoteStopStart, remoteStopEnd);
+  assert.ok(remoteStop.indexOf('this.stop()') < remoteStop.indexOf('this.remoteMode=false'));
+  assert.ok(remoteStop.indexOf('this.remoteMode=false') < remoteStop.indexOf('this.remoteAdapter=null'));
 });
 
 test('xHome HUD startup selects the remote transport without changing xCloud input configuration', () => {
-  assert.match(source, /const remote=this\\.remoteMode===true;\\s*const transport=remote\\?this\\.remoteAdapter:nimboTransport;/);
-  assert.match(source, /if\\(!remote\\)await transport\\.activateKeyboardMouse\\(\\);/);
-  assert.match(source, /if\\(remote\\)\\{\\s*if\\(!transport\\|\\|transport!==remoteInputAdapter\\|\\|!transport\\.isReady\\?\\.\\(\\)\\)/);
+  assert.ok(source.includes('const remote=this.remoteMode===true;\n    const transport=remote?this.remoteAdapter:nimboTransport;'));
+  assert.ok(source.includes('if(!remote)await transport.activateKeyboardMouse();'));
+  assert.ok(source.includes("if(remote){\n      if(!transport||transport!==remoteInputAdapter||!transport.isReady?.())"));
 });
