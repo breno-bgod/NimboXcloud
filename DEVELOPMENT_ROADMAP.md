@@ -499,3 +499,6 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Riscos: formato binário, mapeamento de botões e endianness ainda não foram confirmados com console Xbox real; apenas mapping standard é encaminhado; o threshold de 4096 bytes pode descartar frames temporariamente em rede congestionada. O Cloud Gaming continua recebendo a Gamepad API normalmente, inclusive se o Remote Play estiver ativo.
 - Próxima tarefa concreta: implementar encoders puros de teclado e mouse xHome, ainda sem interceptar eventos globais. Critérios de aceite: offsets, endianness e códigos de tecla documentados; eventos keydown/keyup e mouse down/up/move/scroll com neutralização e teardown; testes determinísticos de tamanho, estados e ordenação; nenhum listener concorrente com o Touch HUD; node --check, suíte completa e ambos workflows PASS.
 
+
+- Revisão de robustez antes do PR: neutralização agora só marca pausa após envio aceito; desconexão mantém o slot registrado até o frame neutro ser aceito. O callback WebRTC reconcilia o estado atual imediatamente após ser instalado, evitando perder o evento connected se ele ocorrer antes do listener.
+- Testes adicionais: retry de neutralização após falha simulada de send e manutenção do slot até a liberação ser aceita.
