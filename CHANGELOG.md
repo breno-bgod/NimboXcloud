@@ -1,3 +1,10 @@
+## [4.12.83] — 2026-11-12
+- Added an optional Xbox-style virtual gamepad HUD to NimboTouch for Remote Play xHome only: dual analog sticks, face buttons, D-pad, bumpers, analog triggers, View/Menu, stick clicks and an opt-in Home button.
+- Reused the existing xHome touch adapter, virtual-gamepad encoder, shared scheduler and per-profile HUD geometry/editor. The xCloud retail transport and its native/TAK input path are unchanged.
+- Added independent pointer ownership for both sticks and simultaneous buttons, circular axis clamping, analog trigger values, and release on pointer end/cancel, blur, hidden page, menu suspension, Stop and session teardown.
+- No synthetic navigator.getGamepads override, extra polling loop or second input manager was introduced.
+- Added Node regression tests for multi-touch ownership, diagonal clamping, trigger pressure, cancellation and suspension/recovery. Real Xbox input acceptance remains unverified.
+
 ## [4.12.82] — 2026-11-12
 - Preserved the xHome NimboTouch adapter, virtual-gamepad contract, shared input sequence and existing remote lifecycle while integrating the HUD editor deletion fix.
 - Restored the production updateURL/downloadURL to the repository main branch. A promoted feature-branch snapshot had pointed userscript updates at the experimental branch and removed the xHome touch adapter.
