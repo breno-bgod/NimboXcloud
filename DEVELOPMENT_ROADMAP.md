@@ -3,7 +3,7 @@
 > Documento operacional. Toda execução autônoma deve reler a versão atual de `main` e atualizar este plano conforme evidências. Nunca presumir que a versão indicada aqui ainda é a mais recente.
 
 ## Estado de referência
-- Versão auditada do userscript: 4.12.86 (painel reorganizado; código principal atualizado em `6faed997f6669f1b6749ad742934c9ff50b944d9`; validação de código e testes no commit `d4c083c31c755a1ffc22be70e3f6d9f0b81ca350`; consulta de HEAD em 2026-11-12).
+- Versão auditada do userscript: 4.12.87 (descritor browser xHome e perfil de resolução coerentes; código/testes validados em `58a5dd5f178a94d8bc7483f08afccda65e17322c`; HEAD documental anterior `c80254e93f40a36f42435552c480d0010ebed8f3`; consulta direta em 2026-11-12).
 - Arquivo principal: `NimboXcloud.user.js`.
 - Plataforma prioritária: navegador em `play.xbox.com`, sem reescrever como aplicativo nativo.
 - Objetivo: estabilidade real do cliente web, manutenção das funções existentes e investigação verificável das diferenças entre cliente web e cliente Xbox.
@@ -965,3 +965,34 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - **Não validado:** aparência/gestos no Chrome/Edge real, Android/DeX, sessão xCloud autenticada e partida com controle.
 - **Próxima tarefa concreta:** continuar o teste isolado do encoder xHome contra um `RTCDataChannel` simulado, cobrindo sequência compartilhada, estado dos quatro eixos e 17 botões, triggers, deadzone aplicada uma vez, backpressure, sessão obsoleta e liberação neutra no encerramento. Depois, homologar separadamente com Xbox físico; não declarar controle/streaming xHome concluídos antes dessa prova.
 
+## 2026-11-12 — xHome: descritor browser e perfil de qualidade coerentes (4.12.87)
+
+- **SHA inicial consultado nesta execução:** `072d05bf5babbae6e869bc5eee203be84e746c43` (userscript 4.12.86; main continha somente a reorganização do painel desde o último código validado).
+- **SHA final de código/testes validado:** `58a5dd5f178a94d8bc7483f08afccda65e17322c`. **HEAD após changelog e antes deste registro:** `c80254e93f40a36f42435552c480d0010ebed8f3`. O commit desta entrada será o HEAD documental final.
+- **Versão publicada:** userscript `4.12.87`; `@version`, constante `VER` e chave de cache `@require nx_version` alinhadas. O módulo NimboTouch permanece `1.2.5`.
+- **Reconciliação do handoff anterior:** a tarefa de testar encoder/scheduler xHome com canais de dados simulados já estava implementada em `tests/xhome-discovery.test.cjs` no HEAD inicial. Os testes existentes cobrem pacote de 38 bytes, sequência, 17 botões, quatro eixos, triggers, deadzone/clamp, slots, neutralização, backpressure, sessão obsoleta, ausência de Gamepad API e retomada após suspensão. Não foi duplicado outro encoder nem outro scheduler; a tarefa anterior fica concluída por evidência de código/testes.
+- **Descoberta técnica:** o código NimboXcloud enviava `clientAppType:'native'`, `Microsoft.GamingApp` e modelo fictício `Surface Pro`, além de fixar `osName:'windows'` para todas as qualidades. Isso contrariava o objetivo de cliente web e a recomendação do próprio estudo comparativo de não afirmar um modelo físico inexistente. A UI oferecia 720p, 1080p e 1080p HQ, mas o descritor não acompanhava a escolha.
+- **Fonte externa conferida:** Better xCloud upstream, branch `typescript`, HEAD `ea4d19f2800cee9cfa387a0c9c37b3711cf208c7` (commit de 2026-11-11 14:29 UTC), arquivos `src/utils/network.ts` e `src/utils/xhome-interceptor.ts`; licença MIT conferida no arquivo `LICENSE`. A função upstream `getOsNameFromResolution` relaciona HQ a `tizen`, 1080p a `windows` e o fallback 720p a `android`; `generateMsDeviceInfo` descreve um cliente browser/SDK web e modelo desconhecido. Foi adaptado apenas esse contrato de metadados, não o userscript completo. Nenhum código AGPL do XStreaming foi incorporado.
+- **Correção em `NimboXcloud.user.js`:**
+  - adicionadas funções puras `nxRemoteResolutionProfile()` e `nxRemoteBuildDeviceInfo()`;
+  - descritor xHome agora declara `clientAppType:'browser'`, `sdktype:'web'`, modelo `unknown` e `clientAppId` do host atual, removendo a falsa identidade `Surface Pro`/aplicativo nativo;
+  - 720p usa perfil Android e 1280×720; 1080p usa Windows e 1920×1080; 1080p HQ usa Tizen e 1920×1080;
+  - o mesmo perfil é enviado no cabeçalho `X-MS-Device-Info`, em `settings.osName` e no payload `dimensionschanged`;
+  - o perfil é capturado no início da sessão e passado explicitamente a `nxRemoteInitDataChannels`, evitando que uma mudança posterior na seleção altere dimensões durante o handshake;
+  - autenticação, bearer, endpoints, autorização, SDP/ICE, canais e transporte de input não foram alterados.
+- **Arquivos afetados:** `NimboXcloud.user.js`, `tests/xhome-discovery.test.cjs`, `CHANGELOG.md` e este roadmap.
+- **Commits publicados nesta execução:**
+  - `8a82be8d740e770f8bf143df2f7926b994d4e135` — primeiro descritor browser/perfil; CI detectou referência fora de escopo durante inicialização dos canais.
+  - `5f4bdc9f2ef97cc07587fb59b93af61e7c19babe` — primeiro conjunto de testes; permaneceu vermelho pelo mesmo problema.
+  - `b5bcc718d2cb31e2e9e97b0afb1168a295819d7b` — captura do perfil no início e passagem explícita para a inicialização dos data channels.
+  - `58a5dd5f178a94d8bc7483f08afccda65e17322c` — regressões para dimensões 720p e coerência do perfil selecionado.
+  - `c80254e93f40a36f42435552c480d0010ebed8f3` — changelog.
+- **Validação final real no SHA `58a5dd5`:**
+  - Baseline [run 43302421854](https://github.com/breno-bgod/NimboXcloud/actions/runs/43302421854): PASS — sintaxe do userscript/módulo, suíte e relatório estático; 190 testes, 187 PASS, 0 FAIL, 3 TODO.
+  - NX/xHome regression [run 43302421958](https://github.com/breno-bgod/NimboXcloud/actions/runs/43302421958): PASS — 190 testes, 187 PASS, 0 FAIL, 3 TODO.
+  - As execuções anteriores `43302190733`, `43302190621`, `43302225189` e `43302225174` falharam pela variável de perfil não capturada no escopo de inicialização; a correção foi feita e os dois workflows finais passaram no mesmo SHA.
+  - Não existe `package.json` na raiz; build/lint npm não estão configurados. Não foram executados Chrome, Edge, Android, sessão autenticada nem Xbox físico.
+- **Riscos/limites:** o mapeamento de SO é um perfil de qualidade observado no Better xCloud, não um mecanismo de autenticação nem uma concessão de permissão. Os mocks confirmam apenas a consistência das requisições e do payload; o serviço pode ignorar ou rejeitar perfis, e a aceitação real de HQ ainda depende de sessão Xbox autorizada.
+- **Tarefas concluídas:** correção do descritor de cliente web; coerência entre resolução, header, body e data channel; teste de integração de encoder/scheduler reconhecido como já concluído; baseline e regressão verdes.
+- **Pendências prioritárias:** homologar autenticação, mídia e comandos com Xbox físico; confirmar os três perfis de qualidade no serviço; validar Stop→Start/reconexão e callbacks antigos; testar HUD em Tampermonkey Android/desktop; confirmar TAK em `play.xbox.com`; continuar auditoria de gyro/touchpad e estabilidade xCloud.
+- **Próxima tarefa concreta (P1 — regressão de reconexão xHome):** criar teste determinístico de Stop seguido de novo Start, com dois peers/sessões simulados. Critérios de aceite: DELETE da sessão antiga confirmado antes do novo POST; novo `requestId` e novo peer ativos; callbacks tardios de `ontrack`, ICE, data channel e estado do peer antigo não podem modificar mídia, status ou input da sessão nova; tokens não aparecem no estado/logs; ambos workflows baseline e NX/xHome PASS no mesmo SHA. Não declarar reconexão real concluída sem Xbox físico.
