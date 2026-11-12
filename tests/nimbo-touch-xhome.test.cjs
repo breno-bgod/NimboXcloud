@@ -50,7 +50,7 @@ test('xHome resume lifecycle is scoped to the remote adapter, not xCloud stream 
 });
 
 test('xHome HUD teardown releases virtual inputs before clearing its adapter', () => {
-  const stopStart = source.indexOf('stop(){\n    ++this.epoch;\n    this.releaseKeys();');
+  const stopStart = source.indexOf('stop() {\n    ++this.epoch;\n    this.releaseKeys();');
   const stopEnd = source.indexOf('\n  bindSurface', stopStart);
   assert.ok(stopStart >= 0 && stopEnd > stopStart, 'base HUD stop method exists');
   const stopBlock = source.slice(stopStart, stopEnd);
