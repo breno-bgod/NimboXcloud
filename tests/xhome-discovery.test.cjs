@@ -8,7 +8,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
   let timerId=0;
   const fakeTimers=new Map();
@@ -1008,4 +1008,67 @@ test('gamepad scheduler: keeps a slot registered until a disconnect neutral fram
   api.tickGamepads([],true);
   assert.deepEqual(Array.from(api.registeredSlots()),[]);
   assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===1&&message.wasAdded===false).length,1);
+});
+
+
+test('keyboard encoder: writes the VKey report, one-frame count, state and virtual key code',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const packet=api.encodeKeyboardFrame({code:'KeyA',keyCode:0,pressed:true},0x100000002,12.5);
+  assert.equal(packet.byteLength,18);
+  const view=new DataView(packet);
+  assert.equal(view.getUint16(0,true),64,'ReportTypes.Keyboard');
+  assert.equal(view.getUint32(2,true),2,'sequence wraps to uint32');
+  assert.equal(view.getFloat64(6,true),12.5);
+  assert.equal(view.getUint8(14),1,'one keyboard frame');
+  assert.equal(view.getUint8(15),2,'VKey frame type');
+  assert.equal(view.getUint8(16),1,'keydown');
+  assert.equal(view.getUint8(17),65,'KeyA virtual key');
+  const release=api.encodeKeyboardFrame({code:'KeyA',keyCode:65,pressed:false},3,13);
+  const releaseView=new DataView(release);
+  assert.equal(releaseView.getUint8(16),0,'keyup');
+  assert.equal(releaseView.getUint8(17),65);
+});
+
+test('keyboard virtual-key mapping: handles physical codes, function keys and legacy fallback',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  assert.equal(api.virtualKey('KeyZ',0),0x5A);
+  assert.equal(api.virtualKey('Digit7',0),0x37);
+  assert.equal(api.virtualKey('Numpad3',0),0x63);
+  assert.equal(api.virtualKey('ArrowUp',0),0x26);
+  assert.equal(api.virtualKey('F12',0),0x7B);
+  assert.equal(api.virtualKey('ShiftLeft',0),0xA0);
+  assert.equal(api.virtualKey('Unidentified',13),13);
+  assert.equal(api.virtualKey('Unidentified',0),null);
+  assert.equal(api.encodeKeyboardFrame({code:'Unidentified',keyCode:0,pressed:true},0,1),null);
+  assert.equal(api.encodeKeyboardFrame({code:'KeyA',keyCode:0,pressed:1},0,1),null);
+});
+
+test('mouse encoder: writes signed relative movement, wheel deltas and button mask',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const packet=api.encodeMouseFrame({X:-12,Y:345,WheelX:-120,WheelY:240,Buttons:5,Relative:0},7,33.25);
+  assert.equal(packet.byteLength,33);
+  const view=new DataView(packet);
+  assert.equal(view.getUint16(0,true),32,'ReportTypes.Mouse');
+  assert.equal(view.getUint32(2,true),7);
+  assert.equal(view.getFloat64(6,true),33.25);
+  assert.equal(view.getUint8(14),1,'one mouse frame');
+  assert.equal(view.getInt32(15,true),-12);
+  assert.equal(view.getInt32(19,true),345);
+  assert.equal(view.getInt32(23,true),-120);
+  assert.equal(view.getInt32(27,true),240);
+  assert.equal(view.getUint8(31),5,'left and middle button bitmask');
+  assert.equal(view.getUint8(32),0,'relative pointer mode');
+});
+
+test('mouse encoder: clamps integer fields and rejects invalid pointer mode',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const packet=api.encodeMouseFrame({X:1e20,Y:-1e20,WheelX:NaN,WheelY:2.9,Buttons:999,Relative:1},8,34);
+  const view=new DataView(packet);
+  assert.equal(view.getInt32(15,true),2147483647);
+  assert.equal(view.getInt32(19,true),-2147483648);
+  assert.equal(view.getInt32(23,true),0);
+  assert.equal(view.getInt32(27,true),2);
+  assert.equal(view.getUint8(31),255);
+  assert.equal(view.getUint8(32),1,'absolute pointer mode');
+  assert.equal(api.encodeMouseFrame({X:0,Y:0,Relative:2},0,0),null);
 });
