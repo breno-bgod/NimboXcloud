@@ -1834,10 +1834,44 @@
       // Um único acesso: o botão da barra substitui a pílula flutuante.
       // Se o botão integrado estiver recortado/invisível, preservar o fallback.
       const buttonRect = nxLibraryButton.getBoundingClientRect();
-      const buttonVisible = buttonRect.width >= 18 && buttonRect.height >= 18 &&
+      let buttonVisible = buttonRect.width >= 18 && buttonRect.height >= 18 &&
         buttonRect.top >= 0 && buttonRect.bottom <= innerHeight &&
         buttonRect.left >= 0 && buttonRect.right <= innerWidth;
-      if (pillEl) pillEl.style.display = 'none';
+      // A geometria do botão pode existir mesmo quando um ancestral o oculta
+      // (display/visibility/opacity) durante fullscreen, rotação ou transição do shell.
+      for (let n = nxLibraryButton; buttonVisible && n && n !== document.documentElement; n = n.parentElement) {
+        const st = getComputedStyle(n);
+        if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) < 0.15) buttonVisible = false;
+      }
+      if (fsHost && !fsHost.contains(nxLibraryButton)) buttonVisible = false;
+      if (pillEl) {
+        pillEl.style.display = buttonVisible ? 'none' : 'inline-flex';
+        if (!buttonVisible) {
+          pillEl.style.width = '44px';
+          pillEl.style.height = '44px';
+          pillEl.style.padding = '0';
+          pillEl.style.gap = '0';
+          pillEl.style.justifyContent = 'center';
+          pillEl.style.borderRadius = '14px';
+          if (dotEl) dotEl.style.display = 'none';
+          if (pillTxt) pillTxt.style.display = 'none';
+          wrap.style.width = '44px';
+          wrap.style.maxWidth = '44px';
+          wrap.style.right = 'max(12px, env(safe-area-inset-right, 12px))';
+          wrap.style.top = 'max(12px, env(safe-area-inset-top, 12px))';
+        } else {
+          pillEl.style.width = '';
+          pillEl.style.height = '';
+          pillEl.style.padding = '';
+          pillEl.style.gap = '';
+          pillEl.style.justifyContent = '';
+          pillEl.style.borderRadius = '';
+          if (dotEl) dotEl.style.display = '';
+          if (pillTxt) pillTxt.style.display = '';
+          wrap.style.width = '360px';
+          wrap.style.maxWidth = 'calc(100vw - 16px)';
+        }
+      }
     } else {
       // Barra do site ainda não carregou: fallback temporário com a pílula.
       nxHideDetachedControls();
