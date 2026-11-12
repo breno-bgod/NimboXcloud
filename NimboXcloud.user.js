@@ -3751,7 +3751,7 @@
         for(const item of configs) if(!sendMessage(item[0],item[1])) throw new Error('canal message indisponível');
         nxRemotePlay.dataChannelsReady=true;
         nxRemoteAttachTouchAdapter(requestId,peer,channels);
-        nxRemotePlay.status='Canais de dados xHome prontos; gamepad físico e HUD de toque podem ser encaminhados quando WebRTC conectar.';
+        nxRemotePlay.status='Canais de dados xHome prontos; gamepad físico encaminhado quando detectado; HUD de toque aguarda WebRTC.';
       } catch(e) {
         fail('falha ao inicializar: '+String(e && e.message||'erro'));
       }
