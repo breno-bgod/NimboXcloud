@@ -20,6 +20,7 @@ jobs:
       - name: Touch HUD module syntax check
         run: node --check modules/NimboXcloud-Touch-HUD.user.js
       - name: Baseline tests
-        run: node --test tests/*.test.cjs
+        run: node --test tests/*.test.cjs tests/*.test.mjs
       - name: Static risk report
         run: node tools/static-risk-report.cjs
+

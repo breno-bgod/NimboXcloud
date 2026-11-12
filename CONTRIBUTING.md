@@ -21,7 +21,7 @@ Ao alterar o status de um recurso, atualize a matriz de decisões; ao alterar co
 1. Faça uma alteração por objetivo, preferencialmente em branch própria.
 2. Preserve a funcionalidade existente: toque, gamepad, configurações e painel.
 3. Não transforme automaticamente dispositivos móveis em controles de teclado e mouse.
-4. Execute `node --check NimboXcloud.user.js`.
+4. Execute `node --check NimboXcloud.user.js`, `node --check modules/NimboXcloud-Touch-HUD.user.js`, `node --test tests/*.test.cjs tests/*.test.mjs` e `node tools/static-risk-report.cjs`.
 5. Descreva o que foi testado de verdade e o que continua sem validação.
 6. Atualize `CHANGELOG.md` ao modificar comportamento visível.
 
@@ -30,3 +30,4 @@ Inclua resumo, motivação, riscos, passos de teste, resultado esperado e result
 
 ## Conduta e suporte
 Trate relatos de incompatibilidade como informação técnica reproduzível. Não prometa desbloqueio regional ou qualidade de vídeo garantidos. O projeto não é afiliado à Microsoft ou ao Xbox.
+

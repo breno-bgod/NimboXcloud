@@ -16,6 +16,14 @@ A documentação oficial é um **registro do estado atual e do trabalho futuro a
 
 O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que precisa ser corrigido e o que será desenvolvido**, sem confundir experimentos abandonados com compromissos futuros.
 
+## Revisão incremental — 2026-11-12 / v4.12.88
+
+O mantenedor definiu acessibilidade mobile/desktop, streaming, servidores, áudio/voz e estatísticas como eixos de evolução, preservando o que já funciona e os diferenciais próprios, especialmente o mouse por toque. A [avaliação e plano incremental](./PLANO_ATUALIZACAO.md) registra o estado observado e os critérios dos próximos lotes; paridade integral com Better xCloud não é requisito.
+
+Neste lote: seleção HQ/Windows passa a respeitar a preferência salva; HQ continua padrão sem preferência. Corrigidos perda negativa, unidades de bitrate e teste smoke fora do CI. Não foram reativados recursos congelados nem alterados transportes de entrada, áudio ou xHome. A retomada de áudio/remapeamento será precedida de revisão e teste, conforme o plano.
+
+As versões indicadas nas auditorias anteriores são históricas. A seção de revisão e o plano detalham as mudanças mais recentes sem declarar homologação de gameplay.
+
 ## Propósito e princípios
 
 O NimboXcloud é um userscript independente para a nova experiência de Xbox Cloud Gaming em `https://play.xbox.com/`. Busca oferecer monitoramento, personalização, controles e recursos de acessibilidade sem substituir o serviço Xbox. Prioridade: **iniciar e manter partidas estáveis**, preservar controle/toque nativos e permitir recuperação quando uma opção falhar.
@@ -103,3 +111,4 @@ Antes de reativar um módulo:
 - **2026-11-12 — decisão do mantenedor:** retomada técnica do Remote Play xHome autorizada. Desenvolvimento de descoberta, sessão, WebRTC e teardown pode continuar; a aba permanece oculta e o recurso não pode ser anunciado como jogável antes de comprovar mídia e controles em Xbox real.
 
 > **Política de transparência:** nunca confundir "opção aparece", "código existe", "teste automatizado passa" e "funcionou em partida real". São níveis distintos de evidência.
+

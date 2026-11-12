@@ -17,9 +17,18 @@ O [workflow baseline #43313714460](https://github.com/breno-bgod/NimboXcloud/act
 | HUD nativo, multitouch e controle físico | **NÃO VERIFICADO em sessão real nesta revisão** | Testes estáticos e mocks não comprovam integração com o cliente Xbox |
 | Remote Play xHome | **NÃO HOMOLOGADO** | Manter UI oculta conforme a matriz de decisões; sucesso de testes não comprova mídia e entrada |
 
-## Lacuna a corrigir
+## Revisão local 4.12.88 — 2026-11-12
 
-Os dois workflows atuais executam somente `tests/*.test.cjs`. O arquivo `tests/smoke.test.mjs` fica excluído e falharia ao tentar ler o caminho antigo. Sua atualização deve conciliar as expectativas legadas com a política vigente de preservar F9 e Pointer Lock nativos e com o estado experimental do xHome. Não basta alterar o caminho ou remover asserções para obter sucesso.
+A lacuna do smoke legado foi corrigida: arquivo correto, contratos atuais e inclusão de `tests/*.test.mjs` nos dois workflows. O teste do relatório estático executa o corpo real do CLI em VM, sem subprocessos; o CLI também foi executado diretamente.
+
+- Ambiente local: Node 24.22.1.
+- Comando: `node --test --test-isolation=none tests/*.test.cjs tests/*.test.mjs`.
+- Resultado: **204 testes, 201 PASS, zero FAIL, três TODO**.
+- Sintaxe dos dois scripts: passou. Relatório estático: executado; quatro achados de hooks, não classificados automaticamente como bugs.
+- A opção sem isolamento foi usada porque a criação de subprocessos Node retorna EPERM neste ambiente. O CI em Node 22 executa o comando padrão com isolamento; seu resultado será registrado separadamente.
+- Não houve teste de navegador/sessão autenticada nesta revisão. Os três TODO continuam pendentes.
+
+A linha do teste legado na tabela acima descreve a base 4.12.87, antes desta correção. Consulte o [plano comparativo](./PLANO_ATUALIZACAO.md) para alterações e riscos.
 
 ## Critério de aceite para mudanças futuras
 
@@ -30,3 +39,4 @@ Os dois workflows atuais executam somente `tests/*.test.cjs`. O arquivo `tests/s
 5. Validar início, encerramento, reconexão, controles e toque em sessão real antes de declarar estabilidade.
 
 Esta evidência se refere exclusivamente ao commit identificado. Não equivale à execução local nesta conversa nem certifica commits posteriores.
+

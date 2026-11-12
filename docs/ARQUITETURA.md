@@ -10,17 +10,18 @@ O arquivo `NimboXcloud.user.js` é um userscript executado pelo Tampermonkey em 
 4. Aplica preferências de negociação do streaming, incluindo `osName` para os perfis de qualidade e ajustes relacionados a WebRTC/SDP.
 5. Exibe painel de configurações e telemetria de qualidade de conexão obtida pelo navegador.
 
-## Perfis de qualidade
-| Preferência | Identificação usada na negociação | Objetivo |
+## Perfis de qualidade xCloud — revisão 4.12.88
+
+| Escolha no painel | Identificação solicitada | Objetivo |
 | --- | --- | --- |
-| Automático / padrão | `windows` | Solicitar perfil 1080p |
-| 1080p HQ (experimental) | `tizen` | Solicitar perfil 1080p HQ |
-| 1080p | `windows` | Solicitar perfil 1080p |
-| 720p | `android` | Solicitar perfil 720p |
+| Máximo | `tizen` | Solicitar 1080p HQ |
+| Equilibrado / Compatível | `windows` | Solicitar 1080p padrão; os dois botões são aliases |
 
-O perfil padrão atual prioriza 1080p/Windows para preservar a experiência nativa de toque. HQ/Tizen permanece experimental.
+Sem preferência salva ou com valor desconhecido, mantém HQ. O seletor respeita `xcu.resolution`: `hq` ou `auto`. Antes da 4.12.88, o runtime ignorava essa escolha e sempre retornava HQ; preferências `auto` existentes agora passam a solicitar Windows na próxima partida. Selecionar Máximo retorna a HQ. Nenhuma alteração da sessão já ativa é forçada.
 
-Essas identificações são utilizadas no contexto de negociação de streaming; não significam que o navegador ou o sistema operacional foi realmente alterado. **Não há garantia de 1080p efetivos, 1440p ou bitrate fixo**, pois a entrega depende do serviço, dispositivo, navegador e rede.
+A identificação usada na negociação não altera o navegador nem comprova resolução/bitrate recebidos. `bitrateCfg()` mantém automático; a tabela legada de limites não significa que exista teto manual ativo. Preferências de resolução de xHome pertencem a outro fluxo.
+
+Toque e Gamepad API não são modificados pelo seletor. A compatibilidade de cada perfil com a partida real precisa ser verificada no dispositivo.
 
 ## Componentes de rede
 O código referencia, entre outros:
@@ -53,4 +54,5 @@ Ao alterar interceptações de rede, verificar se os dados esperados ainda exist
 - **Riscos a validar:** montagem em fullscreen, arrasto por toque, limite da viewport, acessibilidade por gamepad, sobreposição do HUD nativo e compatibilidade com mudanças de DOM do xCloud.
 
 **Estado:** código em desenvolvimento; verificação de presença no repositório não substitui teste autenticado em navegador real.
+
 

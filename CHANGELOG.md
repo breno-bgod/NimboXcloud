@@ -1,3 +1,12 @@
+## [4.12.88] — 2026-11-12
+- Corrigido o seletor de qualidade xCloud: Máximo solicita HQ/Tizen; Equilibrado e Compatível solicitam Windows. Preferências `auto` antes ignoradas passam a valer na próxima partida; novas instalações e valores desconhecidos mantêm HQ. Sem mudanças no transporte de entrada.
+- A qualidade exibida acompanha o perfil solicitado; cartão de bitrate usa Mbps. Não há garantia de resolução ou bitrate recebido.
+- Corrigida a apresentação de perda acumulada negativa em estatísticas WebRTC.
+- Recuperado o smoke legado e incluídos testes ESM nos dois workflows, com regressões comportamentais de QoS, preservação do toque e seleção de qualidade.
+- Teste do relatório estático executa o CLI em VM, sem depender da criação de subprocessos. O workflow continua executando o CLI diretamente.
+- Publicada avaliação comparativa e plano incremental em `docs/PLANO_ATUALIZACAO.md`, preservando mouse por toque, HUD e outros sistemas existentes.
+- Verificação local: 204 testes, 201 aprovados, zero falhas, três TODO; Node 24.22.1 sem isolamento entre arquivos. Sintaxe dos dois scripts e relatório estático verificados. Validação de CI e partida real são evidências separadas.
+
 ## [4.12.87] — 2026-11-12
 - Corrigido o descritor de cliente xHome: a sessão agora declara o cliente web/browser, SDK web e modelo de hardware desconhecido, em vez de afirmar que o navegador é o aplicativo nativo Microsoft GamingApp em um Surface Pro.
 - A qualidade selecionada agora controla de forma consistente o perfil de resolução no cabeçalho `X-MS-Device-Info`, em `settings.osName` e nas dimensões enviadas pelo data channel: 720p/Android, 1080p/Windows e 1080p HQ/Tizen.
@@ -263,3 +272,4 @@ Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR
 
 ## Próximas versões
 As alterações futuras devem incluir: versão, data, recursos adicionados, correções, incompatibilidades conhecidas e evidências de testes.
+

@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.87
+// @version      4.12.88
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch e controle virtual experimental exclusivo do xHome.
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.87
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.88
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.87';
+  const VER = '4.12.88';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -545,9 +545,10 @@
     return SERVERS.auto;
   }
   function resCfg() {
-    // HQ/Tizen solicitado em toda sessao, independente de viewport e preferencias legadas.
-    // O servidor controla a resolucao real; nenhuma alteracao nos controles ou touch.
-    return RES_MODES.hq;
+    // Respeita os perfis existentes sem mudar o padrão HQ de novas instalações.
+    // A preferência só afeta a próxima negociação; não altera a entrada nativa.
+    const mode = getPref(LS_RES, 'hq');
+    return Object.prototype.hasOwnProperty.call(RES_MODES, mode) ? RES_MODES[mode] : RES_MODES.hq;
   }
   function v4on() { return getPref(LS_V4, '1') !== '0'; }
 
@@ -1120,7 +1121,8 @@
 
       if (video) {
         const recv = video.packetsReceived || 0;
-        const lost = video.packetsLost || 0;
+        // WebRTC pode reportar perda acumulada negativa após correções de sequência.
+        const lost = Number.isFinite(video.packetsLost) ? Math.max(0, video.packetsLost) : 0;
         out.loss = (recv + lost) > 0 ? (lost / (recv + lost) * 100) : 0;
         out.recv = recv;
         out.lost = lost;
@@ -4479,7 +4481,7 @@
       }));
       grid.appendChild(statTile('Bitrate', function () {
         const q = S.qos;
-        return { text: q && q.kbps != null ? fmtN(q.kbps / 1000, ' Mb', 1) : '—', color: q ? C.text : C.dim };
+        return { text: q && q.kbps != null ? fmtN(q.kbps / 1000, ' Mbps', 1) : '—', color: q ? C.text : C.dim };
       }));
       grid.appendChild(statTile('Resolução', function () {
         const q = S.qos;
@@ -4600,7 +4602,7 @@
       root.appendChild(g1.root);
 
       const g2 = group('Qualidade de vídeo');
-      g2.add(infoRow('Qualidade solicitada', function () { return '1080p (máxima disponível)'; }, 'A resolução efetiva depende da negociação com o servidor.'));
+      g2.add(infoRow('Qualidade solicitada', function () { return resCfg().label; }, 'A resolução efetiva depende da negociação com o servidor.'));
       g2.add(infoRow('Bitrate recebido', function () { return S.qos && Number.isFinite(S.qos.kbps) ? (S.qos.kbps / 1000).toFixed(1) + ' Mbps' : 'Aguardando transmissão'; }, 'Valor medido, não um limite.'));
       root.appendChild(g2.root);
 
@@ -5382,10 +5384,10 @@
     if(target)root.appendChild(target);
   }
   function nxQualityPresets(root){
-    const pg=group('Perfis de qualidade','Mantêm a resolução máxima disponível e o bitrate automático, sem limitar a transmissão a valores baixos.');
+    const pg=group('Perfis de qualidade','Máximo solicita 1080p HQ; Equilibrado e Compatível solicitam 1080p padrão. A taxa de transmissão é automática.');
     const row=mk('div','display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 0');
     PRESETS.forEach(function(p){
-      const on=getPref(LS_RES,'auto')===p.res&&getPref(LS_BITRATE,'auto')===p.br;
+      const on=resCfg()===RES_MODES[p.res]&&bitrateCfg()===BITRATE_MODES[p.br];
       const button=mk('button','all:unset;box-sizing:border-box;cursor:pointer;text-align:center;padding:9px 4px;border-radius:10px;border:1px solid '+(on?C.accent:C.line)+';background:'+(on?'rgba(74,222,128,.12)':'transparent')+';-webkit-tap-highlight-color:transparent');
       button.appendChild(mk('div','font-size:12.5px;font-weight:700;color:'+(on?C.accent:C.text),p.name));
       button.appendChild(mk('div','font-size:10px;color:'+C.dim+';margin-top:2px',p.sub));

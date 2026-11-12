@@ -25,6 +25,10 @@ Minha intenção é estudar como levar à nova versão recursos de controle, ace
 
 **O NimboXcloud é um userscript experimental e de código aberto.** Estou desenvolvendo-o para funcionar sobre o site oficial do Xbox Cloud Gaming; ele não hospeda jogos, não substitui o serviço e não garante acesso ou recursos que dependem da Microsoft.
 
+## Avaliação e próxima atualização
+
+Consulte a [avaliação comparativa e o plano de atualização](./docs/PLANO_ATUALIZACAO.md): preservação dos sistemas próprios, ajustes atuais e prioridades para servidores, acessibilidade, streaming, áudio e voz.
+
 ## Estado do projeto e funcionalidades congeladas
 
 **Antes de instalar, contribuir ou criar um fork:** leia o [registro oficial de decisões, funcionalidades congeladas, recursos experimentais e problemas conhecidos](./docs/PROJECT_STATUS_AND_DECISIONS.md).
@@ -41,7 +45,7 @@ O NimboXcloud ainda **não está homologado como versão estável**. Algumas fun
 
 ## HUD de teclado e mouse por toque (experimental)
 
-O módulo [`NimboXcloud Touch HUD v1.1.9`](./modules/NimboXcloud-Touch-HUD.user.js) está incluído no repositório e é **carregado pelo userscript principal via `@require`**, com acesso em **NX → Teclado e mouse → Ativar teclado e mouse**. Permite testar movimento relativo do mouse pelo dedo, joystick WASD, botões de teclado e edição do HUD. Requer jogo/sessão com suporte a mouse e teclado; não transforma mouse em analógico. **Não instale simultaneamente versões antigas do Nimbo Touch.**
+O módulo [`NimboXcloud Touch HUD v1.2.5`](./modules/NimboXcloud-Touch-HUD.user.js) está incluído no repositório e é **carregado pelo userscript principal via `@require`**, com acesso em **NX → Teclado e mouse → Ativar teclado e mouse**. Permite testar movimento relativo do mouse pelo dedo, joystick WASD, botões de teclado e edição do HUD. Requer jogo/sessão com suporte a mouse e teclado; não transforma mouse em analógico. **Não instale simultaneamente versões antigas do Nimbo Touch.**
 
 Para testar: atualize/reinstale o userscript principal no Tampermonkey para aplicar o novo `@require`, abra um jogo compatível em `play.xbox.com` e acesse **NX → Teclado e mouse → Ativar teclado e mouse**. Desative instalações separadas antigas do Nimbo Touch para evitar duplicidade. Os testes reais de streaming continuam pendentes.
 
@@ -138,3 +142,4 @@ Este é um projeto **não oficial**, sem afiliação à Microsoft ou ao Xbox. Al
 *Projeto pessoal de KReight · Em desenvolvimento · Open source · MIT · play.xbox.com*
 
 </div>
+
