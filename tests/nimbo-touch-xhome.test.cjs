@@ -12,6 +12,7 @@ test('NimboTouch exposes a narrow xHome adapter without replacing its xCloud ses
   assert.match(source, /startRemote:\(\)=>ui\?\.startRemote/);
   assert.match(source, /stopRemote:\(\)=>ui\?\.stopRemote/);
   assert.match(source, /isRemoteActive:\(\)=>/);
+  assert.match(source, /isRemoteEnabled:\(\)=>/);
 });
 
 test('NimboTouch routes touch HUD mouse, keyboard, scroll and release through the explicit xHome adapter', () => {
