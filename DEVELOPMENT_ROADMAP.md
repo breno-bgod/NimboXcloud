@@ -606,3 +606,17 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Tarefas concluídas nesta etapa: encoders de teclado/mouse; sequência de entrada compartilhada; captura física opt-in; liberação no ciclo de vida; roteamento do gamepad com o vídeo focado; regressões automatizadas.
 - Prioridades restantes: validação de mídia e controles em Xbox real; integração do HUD touch ao xHome por um contrato único; investigação do Touch Adaptation Kit antes de qualquer editor/renderizador de HUD próprio; reconexão real e regressões de Cloud Gaming.
 - **Próxima tarefa concreta:** executar uma prova de conceito passiva/read-only do Touch Adaptation Kit no runtime atual de \`play.xbox.com\`, mantendo a prioridade arquitetural definida na revisão mais recente. Critérios de aceite: verificar com guardas se \`testTouchLayout\` existe e qual assinatura/retorno apresenta; identificar o formato TAK efetivamente usado (incluindo versão e componentes) sem alterar sessão, DOM ou controles; comparar xCloud e Remote Play separadamente; documentar diferença entre retail e sideload/dev tooling; adicionar testes de detecção sem hooks de entrada, mutações ou listeners permanentes. Só depois dessa evidência planejar um teste de layout reversível em ambiente autorizado.
+
+## 2026-11-12 — NimboTouch: primeira camada visual NX Minimal Touch
+
+- SHA inicial consultado: `6b922f8634fae50e566a66ddc1eb52041368943a` (userscript `4.12.69`).
+- Implementado no módulo `modules/NimboXcloud-Touch-HUD.user.js`:
+  - Botões atuais com superfície preta translúcida, contorno branco discreto e rótulos brancos.
+  - Joystick atual com base mais transparente e knob compacto.
+  - Área touch/mouse permanece transparente durante o uso; no editor recebe contorno leve e marcador de mira.
+  - Realce de pressionamento sutil, sem animações ou brilho excessivo.
+- O skin é somente visual. Não transforma bindings de teclado/mouse em comandos Xbox, não cria D-pad nativo, não adiciona eixos analógicos nem altera o protocolo de entrada. Perfis e geometria existentes não foram migrados ou sobrescritos.
+- Versões: userscript `4.12.70`; módulo Touch HUD `1.1.7`.
+- Testes nesta execução: inspeção estática dos pontos de montagem/renderização e transformação textual dos arquivos. Não foi possível executar `node --check`, suíte automatizada, navegador, sessão xCloud ou hardware Xbox por esta integração; portanto não há alegação de validação funcional.
+- Limitação conhecida: a superfície touch atual é a área de mouse/mira existente, não um touchpad TAK com gestos/cursor completo. D-pad e botões Xbox funcionais dependem da prova de conceito TAK/ponte de gamepad.
+- **Próxima tarefa concreta:** validar a camada visual em Android e desktop; em paralelo, concluir inspeção passiva do runtime TAK e identificar assets/ícones e mecanismo de aplicação em sessão retail. Critérios: sem regressão de captura de ponteiros/edição, sem obstrução excessiva do vídeo, preservar layouts salvos, confirmar comportamento de fullscreen/rotação e documentar assets/licenças antes de incorporá-los.
