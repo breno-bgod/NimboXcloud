@@ -29,3 +29,29 @@ test('xHome HUD mode does not install a second Gamepad API hook or alter the xCl
   assert.match(source, /new NimboXboxTransport\(raw\)/);
   assert.match(source, /if\(!remote\)await transport\.activateKeyboardMouse\(\)/);
 });
+
+
+test('xHome resume lifecycle is scoped to the remote adapter, not xCloud stream state', () => {
+  const canResume = source.match(/canResume\\(\\)\\{\\s*if\\(this\\.remoteMode\\)\\{([\\s\\S]*?)\\n \\}\\n if\\(!this\\.root/);
+  assert.ok(canResume, 'remote canResume branch exists');
+  assert.match(canResume[1], /this\\.remoteAdapter!==remoteInputAdapter/);
+  assert.match(canResume[1], /this\\.desiredSession!==this\\.remoteAdapter\\.id/);
+  assert.match(canResume[1], /this\\.remoteAdapter\\.isReady\\?\\.\\(\\)/);
+  assert.doesNotMatch(canResume[1], /api\\.streamSession|STATES\\.isPlaying/);
+
+  const checkResume = source.match(/checkResume\\(\\)\\{\\s*if\\(!this\\.wanted\\|\\|!this\\.root\\)return;\\s*if\\(this\\.remoteMode\\)\\{([\\s\\S]*?)\\n    \\}\\n    const session=api\\?\\.streamSession;/);
+  assert.ok(checkResume, 'remote checkResume branch exists');
+  assert.match(checkResume[1], /this\\.stopRemote\\(\\)/);
+  assert.match(checkResume[1], /this\\.startRemote\\(adapter,true\\)/);
+});
+
+test('xHome HUD teardown releases virtual inputs before clearing its adapter', () => {
+  assert.match(source, /if\\(this\\.remoteMode\\)try\\{this\\.remoteAdapter\\?\\.release\\?\\.\\(\\);\\}catch\\{\\}/);
+  assert.match(source, /stopRemote\\(\\)\\{\\s*if\\(!this\\.remoteMode\\)return false;\\s*this\\.stop\\(\\);\\s*this\\.remoteMode=false;this\\.remoteAdapter=null;/);
+});
+
+test('xHome HUD startup selects the remote transport without changing xCloud input configuration', () => {
+  assert.match(source, /const remote=this\\.remoteMode===true;\\s*const transport=remote\\?this\\.remoteAdapter:nimboTransport;/);
+  assert.match(source, /if\\(!remote\\)await transport\\.activateKeyboardMouse\\(\\);/);
+  assert.match(source, /if\\(remote\\)\\{\\s*if\\(!transport\\|\\|transport!==remoteInputAdapter\\|\\|!transport\\.isReady\\?\\.\\(\\)\\)/);
+});
