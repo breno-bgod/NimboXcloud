@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.55
+// @version      4.12.56
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.55
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.56
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -1770,7 +1770,7 @@
     if (playing) {
       const nativeAnchor=findInGameToolbar();
       nxNativeMenuPriority(!!nativeAnchor&&toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor),nativeAnchor);
-      if (nxCompactMobile()) { if (micTestStream) stopMicrophoneTest(); const expanded=!!nativeAnchor&&toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor);if(expanded)nxMountNativeActions(nativeAnchor,true);else nxHideDetachedControls();if(!openUI&&wrap)wrap.style.display='none';return; }
+      if (nxCompactMobile()) { if (micTestStream) stopMicrophoneTest(); const expanded=!!nativeAnchor&&toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor);if(expanded)nxMountNativeActions(nativeAnchor,true);else nxHideDetachedControls();if(!openUI&&wrap){wrap.style.display='flex';wrap.style.right='12px';wrap.style.left='auto';wrap.style.top='12px';if(pillEl)pillEl.style.display=expanded?'none':'inline-flex';}return; }
       if (micTestStream) stopMicrophoneTest(); // Nunca manter a captura de diagnóstico durante a sessão.
       const gameAnchor = findInGameToolbar();
       if (gameAnchor && gameAnchor.parentElement) {
@@ -1786,10 +1786,10 @@
           else { wrap.style.left='8px'; wrap.style.right='auto'; wrap.style.top='58px'; wrap.style.width=Math.min(380,innerWidth-16)+'px'; }
         }
       } else {
-        // Enquanto a barra nativa está recolhida, não deixar um ícone independente na tela.
+        // Quando a barra nativa não é reconhecida, manter acesso NX independente.
         if (nxLibraryButton) nxLibraryButton.style.display = 'none';
-        if (pillEl) pillEl.style.display = 'none';
-        wrap.style.display = 'none';
+        if (pillEl) pillEl.style.display = openUI ? 'none' : 'inline-flex';
+        wrap.style.display = 'flex';
         if (openUI) {
           wrap.style.left = '8px'; wrap.style.right = 'auto'; wrap.style.top = '58px';
           wrap.style.width = Math.min(380, innerWidth - 16) + 'px';
@@ -1831,7 +1831,7 @@
     } else {
       // Barra do site ainda não carregou: fallback temporário com a pílula.
       nxHideDetachedControls();
-      wrap.style.display = 'none';
+      wrap.style.display = 'flex';
       wrap.style.position = 'fixed';
       wrap.style.transform = 'none';
       wrap.style.left = 'auto';
