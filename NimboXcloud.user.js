@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.51
+// @version      4.12.52
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.51
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.52
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -3126,13 +3126,13 @@
         const remoteSeen=new Set(remoteList.map(function(c){return JSON.stringify(c);}));
         let icePollCount=0;
         const pollIce=async function(){
-          if(requestId!==nxRemotePlay.requestId || !nxRemotePlay.peer || peer.connectionState==='closed' || peer.connectionState==='failed' || peer.connectionState==='connected' || icePollCount++>=30)return;
+          if(requestId!==nxRemotePlay.requestId || controller.signal.aborted || nxRemotePlay.peer!==peer || peer.connectionState==='closed' || peer.connectionState==='failed' || peer.connectionState==='connected' || icePollCount++>=30)return;
           try{
             const res=await fetch(sessionUrl+'/ice',{method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+login.gsToken}});
-            if(requestId!==nxRemotePlay.requestId)return;
+            if(requestId!==nxRemotePlay.requestId || controller.signal.aborted)return;
             if(!res.ok)throw new Error('HTTP '+res.status);
             const payload=await res.json();
-            if(requestId!==nxRemotePlay.requestId)return;
+            if(requestId!==nxRemotePlay.requestId || controller.signal.aborted)return;
             const entries=Array.isArray(payload)?payload:Array.isArray(payload&&payload.candidates)?payload.candidates:[];
             for(const entry of entries){
               const key=JSON.stringify(entry);
@@ -3140,10 +3140,12 @@
               remoteSeen.add(key);
               let c=entry;
               if(typeof c==='string'){try{c=JSON.parse(c);}catch(_){continue;}}
+              if(requestId!==nxRemotePlay.requestId || controller.signal.aborted || peer.signalingState==='closed')return;
               if(c && typeof c.candidate==='string' && c.candidate.length<8192)await peer.addIceCandidate(c);
+              if(requestId!==nxRemotePlay.requestId || controller.signal.aborted)return;
             }
           }catch(e){
-            if(requestId===nxRemotePlay.requestId){nxRemotePlay.status='ICE: '+String(e&&e.message||e);if(tabId==='remote')renderBody();}
+            if(requestId===nxRemotePlay.requestId && !controller.signal.aborted){nxRemotePlay.status='ICE: '+String(e&&e.message||e);if(tabId==='remote')renderBody();}
           }
           if(requestId===nxRemotePlay.requestId && !controller.signal.aborted && (peer.connectionState==='new'||peer.connectionState==='connecting'))nxRemotePlay.iceTimer=setTimeout(pollIce,1000);
         };
