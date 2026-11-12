@@ -1,3 +1,8 @@
+## [4.12.86] — 2026-11-12
+- Ajuste final da reorganização: o NX Stream Monitor e suas opções de ativação, posição, layout, aparência e métricas ficam exclusivamente na aba **Estatísticas**; a página Início preserva apenas resumo e atalhos.
+- A enumeração de dispositivos de saída de áudio é executada somente ao abrir a página **Áudio**, sem trabalho de descoberta nas páginas Vídeo e Imagens.
+- Suíte baseline e regressões de painel/xHome aprovadas no commit de validação `d4c083c`.
+
 ## [4.12.85] — 2026-11-12
 - Reorganizado o painel NX por responsabilidade: Vídeo, Imagens, Streaming, Estatísticas, Gamepad, Teclado e mouse, Áudio, Voz, Remote Play, Região da loja, Interface, Compatibilidade e Sistema.
 - Separados os ajustes de perfil do dispositivo, enquadramento e tela cheia dos filtros de imagem e do processamento gráfico WebGL2.
