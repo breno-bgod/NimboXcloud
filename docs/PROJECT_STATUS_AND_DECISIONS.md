@@ -41,7 +41,7 @@ O NimboXcloud é um userscript independente para a nova experiência de Xbox Clo
 | Editor de HUD | **Manter em desenvolvimento experimental** | Implementação parcial; não anunciar como editor funcional completo | Validar movimentação real dos controles nativos, persistência e compatibilidade com HUD touch. |
 | GPU / WebGL2 | **Manter experimental** | Código e opção de teste presentes | Medir consumo, bateria, latência, FPS e fallback antes de ativação geral. |
 | Curvas do analógico | **Congelar / ocultar** | Controles da UI ocultados na 4.12.27; código preservado | Pesquisar funcionamento, segurança da interceptação de Gamepad API e compatibilidade. Conferir estado de preferência antiga antes de considerar congelamento completo de runtime. |
-| Remote Play (xHome) | **Congelar / ocultar** | Aba removida da navegação na 4.12.27; implementação preservada | Há código de descoberta, autenticação, sessão e WebRTC, **sem comprovação de partida jogável**; retomar após validar mídia, comandos, segurança e encerramento. |
+| Remote Play (xHome) | **Retomada técnica autorizada; UI oculta** | Aba permanece oculta; fluxo xHome experimental em desenvolvimento desde 2026-11-12 | Descoberta, autenticação, criação de sessão, SDP/ICE e DELETE best-effort estão no código; vídeo, áudio e controles jogáveis não foram comprovados. Manter UI oculta até homologação real. |
 | Laboratório de identidade Xbox | **Congelar / ocultar ferramentas específicas** | Código e parte da UI avançada ainda presentes; limpeza pendente | Não existe prova de que alterar UA/Client Hints simule hardware Xbox ou libere serviços. Não expandir até obter evidências reproduzíveis. |
 | Xbox One / Xbox Series X|S | **Ocultar e preservar** | Seletores específicos retirados; código legado preservado | Retomar apenas com dados confiáveis de negociação e compatibilidade. |
 | Smart TV | **Retirar da interface** | Seletor retirado; perfil antigo migra para Automático | Fora do escopo atual. |
@@ -85,7 +85,8 @@ Antes de reativar um módulo:
 ## Guia para quem clonar ou usar outra IA
 
 - **Leia primeiro:** `README.md` → **este arquivo** → `docs/ROADMAP.md` → `CONTRIBUTING.md` → auditorias em `docs/`.
-- **Não reative** Remote Play, curvas do analógico, equalizador ou identidade Xbox apenas porque existem no código.
+- Remote Play (xHome) teve retomada técnica explicitamente autorizada pelo mantenedor em 2026-11-12; continuar o trabalho incremental, mas manter a aba/controles ocultos até mídia e comandos serem comprovados em Xbox real.
+- **Não reative** curvas do analógico, equalizador ou identidade Xbox apenas porque existem no código.
 - **Não remova** Fortnite experimental, giroscópio ou seletor de servidor sem nova decisão fundamentada.
 - **Não presuma** que a opção de 50 Mbps força 50 Mbps, que a escolha de perfil muda a identidade aceita pelo servidor, ou que WebRTC provisionado significa Remote Play jogável.
 - Preserve as opções nativas de toque e gamepad; evite múltiplos wrappers concorrentes para `navigator.getGamepads`.
@@ -99,5 +100,6 @@ Antes de reativar um módulo:
 - **2026-11-11 — v4.12.26:** Smart TV retirado; Original renomeado para Automático; Android/Desktop/Console mantidos.
 - **2026-11-11 — v4.12.27:** aba Remote Play e controles de curvas do analógico ocultados; código preservado; versão interna sincronizada.
 - **2026-11-11 — decisão de produto:** equalizador congelado; laboratório Xbox congelado; Fortnite e gyro continuam experimentais; seletor de servidor mantido; bitrate priorizado para investigação. **A implementação integral dessas decisões ainda não foi concluída.**
+- **2026-11-12 — decisão do mantenedor:** retomada técnica do Remote Play xHome autorizada. Desenvolvimento de descoberta, sessão, WebRTC e teardown pode continuar; a aba permanece oculta e o recurso não pode ser anunciado como jogável antes de comprovar mídia e controles em Xbox real.
 
 > **Política de transparência:** nunca confundir "opção aparece", "código existe", "teste automatizado passa" e "funcionou em partida real". São níveis distintos de evidência.
