@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.81
+// @version      4.12.82
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.81
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.82
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/fix/virtual-gamepad-panel-integration/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/fix/virtual-gamepad-panel-integration/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.81';
+  const VER = '4.12.82';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -6029,17 +6029,17 @@
   ];
   function nxVirtualPadLoadLayout(){
     try{const saved=JSON.parse(localStorage.getItem(NX_VPAD_LAYOUT_KEY)||'null');if(!Array.isArray(saved))return NX_VPAD_DEFAULTS.map(function(c){return Object.assign({},c);});
-      return NX_VPAD_DEFAULTS.map(function(base){const item=saved.find(function(x){return x&&x.id===base.id;});return Object.assign({},base,item?{x:item.x,y:item.y,size:item.size,visible:item.visible,mode:['tap','hold','toggle'].includes(item.mode)?item.mode:'tap',opacity:Number.isFinite(item.opacity)?Math.max(.2,Math.min(1,item.opacity)):1,deadzone:Number.isFinite(item.deadzone)?Math.max(0,Math.min(.5,item.deadzone)):.08,combo:Array.isArray(item.combo)?item.combo.filter(function(v){return Number.isInteger(v)&&v>=0&&v<=16;}):[]}:null);});
+      return NX_VPAD_DEFAULTS.map(function(base){const item=saved.find(function(x){return x&&x.id===base.id;});return Object.assign({},base,item?{x:item.x,y:item.y,size:item.size,visible:item.visible,opacity:Number.isFinite(item.opacity)?Math.max(.2,Math.min(1,item.opacity)):1,deadzone:Number.isFinite(item.deadzone)?Math.max(0,Math.min(.5,item.deadzone)):.08}:null);});
     }catch(_){return NX_VPAD_DEFAULTS.map(function(c){return Object.assign({},c);});}
   }
   nxVirtualGamepad.layout=nxVirtualGamepad.layout||nxVirtualPadLoadLayout();
   nxVirtualGamepad.editing=false;nxVirtualGamepad.opacity=nxVirtualGamepad.opacity||0.82;
   function nxVirtualPadSaveLayout(){
-    try{localStorage.setItem(NX_VPAD_LAYOUT_KEY,JSON.stringify(nxVirtualGamepad.layout.map(function(c){return {id:c.id,x:c.x,y:c.y,size:c.size,visible:c.visible,mode:c.mode||'tap',opacity:Number.isFinite(c.opacity)?c.opacity:1,deadzone:Number.isFinite(c.deadzone)?c.deadzone:.08,combo:Array.isArray(c.combo)?c.combo:[]};})));toast('Layout do controle salvo');}
+    try{localStorage.setItem(NX_VPAD_LAYOUT_KEY,JSON.stringify(nxVirtualGamepad.layout.map(function(c){return {id:c.id,x:c.x,y:c.y,size:c.size,visible:c.visible,opacity:Number.isFinite(c.opacity)?c.opacity:1,deadzone:Number.isFinite(c.deadzone)?c.deadzone:.08};})));toast('Layout do controle salvo');}
     catch(e){nxVirtualGamepad.error='Falha ao salvar layout: '+String(e&&e.message||e);toast(nxVirtualGamepad.error);}
   }
   function nxVirtualPadSetEditing(value){nxVirtualGamepad.editing=!!value;if(!nxVirtualGamepad.hud)nxVirtualPadMountHud();nxVirtualPadRenderHud();if(typeof renderBody==='function')renderBody();}
-  function nxVirtualPadOutputIndices(control,index){const a=control&&Array.isArray(control.combo)?control.combo.filter(function(v){return Number.isInteger(v)&&v>=0&&v<=16;}):[];return a.length?a:[index];}
+  function nxVirtualPadOutputIndices(control,index){return [index];}
   function nxVirtualPadRefreshOutput(index){const held=nxVirtualGamepad.buttonPointers.has(index)&&nxVirtualGamepad.buttonPointers.get(index).size>0;const toggled=nxVirtualGamepad.toggledButtons.has(index);const tapped=(nxVirtualGamepad.tapCounts.get(index)||0)>0;nxVirtualPadSetButton(index,held||toggled||tapped?1:0);}
   function nxVirtualPadTap(indices){indices.forEach(function(index){const old=nxVirtualGamepad.tapTimers.get(index);if(old)clearTimeout(old);nxVirtualGamepad.tapCounts.set(index,1);nxVirtualPadRefreshOutput(index);const timer=setTimeout(function(){const count=Math.max(0,(nxVirtualGamepad.tapCounts.get(index)||1)-1);if(count)nxVirtualGamepad.tapCounts.set(index,count);else nxVirtualGamepad.tapCounts.delete(index);nxVirtualGamepad.tapTimers.delete(index);nxVirtualPadRefreshOutput(index);},110);nxVirtualGamepad.tapTimers.set(index,timer);});}
   function nxVirtualPadSelectedControl(){return nxVirtualGamepad.layout.find(function(c){return c.id===nxVirtualGamepad.selectedId;})||null;}
@@ -6057,12 +6057,9 @@
     panel.querySelector('.nx-vpad-size-range').value=String(c.size);
     panel.querySelector('.nx-vpad-opacity-value').textContent=Math.round((c.opacity==null?1:c.opacity)*100)+'%';
     panel.querySelector('.nx-vpad-opacity-range').value=String(Math.round((c.opacity==null?1:c.opacity)*100));
-    panel.querySelector('.nx-vpad-mode').value=c.mode||'tap';
-    panel.querySelector('.nx-vpad-mode-row').hidden=c.type==='stick';
     panel.querySelector('.nx-vpad-deadzone-row').hidden=c.type!=='stick';
     panel.querySelector('.nx-vpad-deadzone').value=String(Math.round((c.deadzone==null?.08:c.deadzone)*100));
     panel.querySelector('.nx-vpad-deadzone-value').textContent=Math.round((c.deadzone==null?.08:c.deadzone)*100)+'%';
-    panel.querySelectorAll('[data-combo-index]').forEach(function(input){input.checked=Array.isArray(c.combo)&&c.combo.includes(Number(input.dataset.comboIndex));});
     panel.hidden=!nxVirtualGamepad.editing||nxVirtualGamepad.panelCollapsed;
   }
   function nxVirtualPadRenderHud(){
@@ -6093,7 +6090,7 @@
     toolbar.innerHTML='<select class="nx-vpad-add" aria-label="Adicionar controle"></select><button type="button" class="nx-vpad-save">Salvar layout</button><button type="button" class="nx-vpad-done">Concluir edição</button>';root.appendChild(toolbar);
     const panelToggle=document.createElement('button');panelToggle.type='button';panelToggle.className='nx-vpad-panel-toggle';panelToggle.hidden=true;panelToggle.textContent='Configurar controle';root.appendChild(panelToggle);
     const panel=document.createElement('div');panel.className='nx-vpad-editor-panel';panel.hidden=true;
-    panel.innerHTML='<div class="nx-vpad-panel-titlebar"><div class="nx-vpad-panel-title">Configurações do controle</div><button type="button" class="nx-vpad-panel-collapse">Recolher</button></div><label class="nx-vpad-panel-field">Tamanho <span class="nx-vpad-size-value">—</span><input class="nx-vpad-size-range" type="range" min="28" max="190" step="2" value="42"></label><label class="nx-vpad-panel-field">Transparência <span class="nx-vpad-opacity-value">100%</span><input class="nx-vpad-opacity-range" type="range" min="20" max="100" step="1" value="100"></label><label class="nx-vpad-panel-field nx-vpad-mode-row">Modo de acionamento<select class="nx-vpad-mode"><option value="tap">Toque único</option><option value="hold">Manter pressionado</option><option value="toggle">Alternar (liga/desliga)</option></select></label><label class="nx-vpad-panel-field nx-vpad-deadzone-row">Zona morta do analógico <span class="nx-vpad-deadzone-value">8%</span><input class="nx-vpad-deadzone" type="range" min="0" max="50" step="1" value="8"></label><div class="nx-vpad-combo-title">Combinação de botões</div><div class="nx-vpad-combo-options"></div><div class="nx-vpad-panel-actions"><button type="button" class="nx-vpad-hide-selected">Ocultar controle</button><button type="button" class="nx-vpad-save-selected">Salvar</button></div>';
+    panel.innerHTML='<div class="nx-vpad-panel-titlebar"><div class="nx-vpad-panel-title">Configurações do controle</div><button type="button" class="nx-vpad-panel-collapse">Recolher</button></div><label class="nx-vpad-panel-field">Tamanho <span class="nx-vpad-size-value">—</span><input class="nx-vpad-size-range" type="range" min="28" max="190" step="2" value="42"></label><label class="nx-vpad-panel-field">Transparência <span class="nx-vpad-opacity-value">100%</span><input class="nx-vpad-opacity-range" type="range" min="20" max="100" step="1" value="100"></label><label class="nx-vpad-panel-field nx-vpad-deadzone-row">Zona morta do analógico <span class="nx-vpad-deadzone-value">8%</span><input class="nx-vpad-deadzone" type="range" min="0" max="50" step="1" value="8"></label><div class="nx-vpad-panel-actions"><button type="button" class="nx-vpad-hide-selected">Ocultar controle</button><button type="button" class="nx-vpad-save-selected">Salvar</button></div>';
     root.appendChild(panel);
     const stage=document.createElement('div');stage.className='nx-vpad-stage';root.appendChild(stage);
     const close=document.createElement('button');close.type='button';close.className='nx-vpad-close';close.textContent='Ocultar HUD';root.appendChild(close);
@@ -6107,9 +6104,7 @@
     panelToggle.addEventListener('click',function(){nxVirtualGamepad.panelCollapsed=!nxVirtualGamepad.panelCollapsed;nxVirtualPadRenderEditorPanel();});
     panel.querySelector('.nx-vpad-size-range').addEventListener('input',function(e){const c=nxVirtualPadSelectedControl();if(!c)return;c.size=Number(e.target.value);nxVirtualPadRenderHud();});
     panel.querySelector('.nx-vpad-opacity-range').addEventListener('input',function(e){const c=nxVirtualPadSelectedControl();if(!c)return;c.opacity=Number(e.target.value)/100;nxVirtualPadRenderHud();});
-    panel.querySelector('.nx-vpad-mode').addEventListener('change',function(e){const c=nxVirtualPadSelectedControl();if(!c)return;c.mode=['tap','hold','toggle'].includes(e.target.value)?e.target.value:'tap';nxVirtualPadSaveLayout();});
     panel.querySelector('.nx-vpad-deadzone').addEventListener('input',function(e){const c=nxVirtualPadSelectedControl();if(!c)return;c.deadzone=Number(e.target.value)/100;panel.querySelector('.nx-vpad-deadzone-value').textContent=e.target.value+'%';});
-    const comboBox=panel.querySelector('.nx-vpad-combo-options');[{i:0,l:'A'},{i:1,l:'B'},{i:2,l:'X'},{i:3,l:'Y'},{i:4,l:'LB'},{i:5,l:'RB'},{i:6,l:'LT'},{i:7,l:'RT'},{i:8,l:'VIEW'},{i:9,l:'MENU'},{i:10,l:'L3'},{i:11,l:'R3'},{i:12,l:'↑'},{i:13,l:'↓'},{i:14,l:'←'},{i:15,l:'→'},{i:16,l:'HOME'}].forEach(function(item){const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.dataset.comboIndex=String(item.i);input.addEventListener('change',function(){const c=nxVirtualPadSelectedControl();if(!c)return;c.combo=Array.from(comboBox.querySelectorAll('[data-combo-index]:checked')).map(function(n){return Number(n.dataset.comboIndex);});nxVirtualPadSaveLayout();});label.appendChild(input);label.appendChild(document.createTextNode(item.l));comboBox.appendChild(label);});
     panel.querySelector('.nx-vpad-panel-collapse').addEventListener('click',function(){nxVirtualGamepad.panelCollapsed=true;nxVirtualPadRenderEditorPanel();});
     const panelHandle=panel.querySelector('.nx-vpad-panel-titlebar');panelHandle.addEventListener('pointerdown',function(e){if(e.target.closest('button'))return;const rect=panel.getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ox=rect.left,oy=rect.top;panelHandle.setPointerCapture(e.pointerId);const move=function(ev){const x=Math.max(0,Math.min(window.innerWidth-panel.offsetWidth,ox+ev.clientX-sx)),y=Math.max(0,Math.min(window.innerHeight-panel.offsetHeight,oy+ev.clientY-sy));nxVirtualGamepad.panelPosition={x:x,y:y};panel.style.left=x+'px';panel.style.top=y+'px';panel.style.right='auto';};const done=function(){panelHandle.removeEventListener('pointermove',move);panelHandle.removeEventListener('pointerup',done);panelHandle.removeEventListener('pointercancel',done);};panelHandle.addEventListener('pointermove',move);panelHandle.addEventListener('pointerup',done);panelHandle.addEventListener('pointercancel',done);});
     panel.querySelector('.nx-vpad-hide-selected').addEventListener('click',function(){const c=nxVirtualPadSelectedControl();if(!c)return;c.visible=false;nxVirtualGamepad.selectedId=null;nxVirtualGamepad.panelCollapsed=false;nxVirtualPadRenderHud();});
@@ -6134,17 +6129,12 @@
         stick.addEventListener('pointermove',move);stick.addEventListener('pointerup',up);stick.addEventListener('pointercancel',up);return;
       }
       const btn=e.target.closest('[data-nx-vpad-button]');if(!btn)return;
-      const index=Number(btn.dataset.nxVpadButton),control=nxVirtualGamepad.layout.find(function(c){return c.type==='button'&&c.index===index;}),indices=nxVirtualPadOutputIndices(control,index),mode=control&&control.mode||'tap';
-      e.preventDefault();nxVirtualGamepad.pointers.set(e.pointerId,{type:'button',index:index,indices:indices,mode:mode,element:btn});
-      if(mode==='tap')nxVirtualPadTap(indices);
-      else if(mode==='toggle'){const turnOn=!nxVirtualGamepad.toggledButtons.has(indices[0]);indices.forEach(function(i){if(turnOn)nxVirtualGamepad.toggledButtons.add(i);else nxVirtualGamepad.toggledButtons.delete(i);nxVirtualPadRefreshOutput(i);});}
-      else{
-        const pointerId=e.pointerId;
-        const leave=function(){nxVirtualPadReleaseButtonPointer(pointerId);};
-        const pointer=nxVirtualGamepad.pointers.get(pointerId);
-        if(pointer){pointer.leave=leave;btn.addEventListener('pointerleave',leave);}
-        indices.forEach(function(i){if(!nxVirtualGamepad.buttonPointers.has(i))nxVirtualGamepad.buttonPointers.set(i,new Set());nxVirtualGamepad.buttonPointers.get(i).add(pointerId);nxVirtualPadRefreshOutput(i);});
-      }
+      const index=Number(btn.dataset.nxVpadButton),indices=[index],pointerId=e.pointerId;
+      e.preventDefault();
+      const leave=function(){nxVirtualPadReleaseButtonPointer(pointerId);};
+      nxVirtualGamepad.pointers.set(pointerId,{type:'button',index:index,indices:indices,mode:'hold',element:btn,leave:leave});
+      btn.addEventListener('pointerleave',leave);
+      indices.forEach(function(i){if(!nxVirtualGamepad.buttonPointers.has(i))nxVirtualGamepad.buttonPointers.set(i,new Set());nxVirtualGamepad.buttonPointers.get(i).add(pointerId);nxVirtualPadRefreshOutput(i);});
     },true);
     nxVirtualPadRenderHud();
   }
