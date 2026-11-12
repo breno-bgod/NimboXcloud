@@ -619,6 +619,7 @@ test('session: negotiates xHome data channels and initializes protocol bootstrap
     throw new Error('unexpected request '+url);
   },null,FakePeer);
   api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  api.state.resolution='720p';
   await api.startSession();
   const channels=api.channels();
   assert.deepEqual(Object.keys(channels).sort(),['chat','control','input','message']);
@@ -646,6 +647,10 @@ test('session: negotiates xHome data channels and initializes protocol bootstrap
   assert.equal(messages.length,6);
   assert.equal(messages[0].target,'/streaming/systemUi/configuration');
   assert.equal(messages[3].target,'/streaming/characteristics/touchinputenabledchanged');
+  const dimensions=JSON.parse(messages[5].content);
+  assert.equal(messages[5].target,'/streaming/characteristics/dimensionschanged');
+  assert.equal(dimensions.horizontal,1280);
+  assert.equal(dimensions.vertical,720);
   assert.equal(api.state.status.includes('gamepad físico encaminhado quando detectado'),true);
   assert.equal(JSON.stringify(channels).includes('TEST_BEARER'),false);
   await api.stop();
