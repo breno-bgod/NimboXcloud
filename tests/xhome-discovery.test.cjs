@@ -1985,3 +1985,125 @@ test('xHome ICE poll does not reschedule when the peer connects or fails during 
   }
   for(const state of ['connected','failed','closed'])await verifyTransition(state);
 });
+
+
+test('xHome ICE candidates are normalized and deduplicated across JSON string/object forms',async()=>{
+  const candidateA={candidate:'candidate:1 1 udp 2122260223 192.0.2.10 5000 typ host',sdpMid:'0',sdpMLineIndex:0};
+  const candidateAString=JSON.stringify({sdpMLineIndex:0,sdpMid:'0',candidate:candidateA.candidate});
+  const candidateB={candidate:'candidate:2 1 udp 2122260222 192.0.2.11 5001 typ host',sdpMid:'0',sdpMLineIndex:0};
+  const scenarios=[
+    {initial:candidateAString,polled:candidateA},
+    {initial:candidateA,polled:candidateAString}
+  ];
+  for(let index=0;index<scenarios.length;index++){
+    const scenario=scenarios[index];
+    const timers=new Map(),peers=[];
+    let timerId=0,iceReads=0;
+    const timerOverrides={
+      setTimeout(fn,ms){const id=++timerId;timers.set(id,{fn,ms});return id;},
+      clearTimeout(id){timers.delete(id);}
+    };
+    class FakePeer{
+      constructor(){this.connectionState='new';this.signalingState='stable';this.channels={};this.remoteCandidates=[];peers.push(this);}
+      createDataChannel(label,options){
+        const channel={label,protocol:options.protocol,ordered:options.ordered,readyState:'open',bufferedAmount:0,
+          send(){},close(){this.readyState='closed';}};
+        this.channels[label]=channel;return channel;
+      }
+      addTransceiver(){}
+      async createOffer(){return {type:'offer',sdp:'v=0'};}
+      async setLocalDescription(value){this.localDescription=value;}
+      async setRemoteDescription(value){this.remoteDescription=value;}
+      async addIceCandidate(value){this.remoteCandidates.push(value);}
+      close(){this.connectionState='closed';this.signalingState='closed';}
+    }
+    const api=harness(async(url,opts)=>{
+      const method=opts&&opts.method||'GET';
+      if(url.endsWith('/v2/login/user'))return ok(login);
+      if(url.endsWith('/v5/sessions/home/play'))return ok({sessionId:index===0?
+        '77777777-7777-4777-8777-777777777777':'88888888-8888-4888-8888-888888888888'});
+      if(url.endsWith('/state'))return ok({state:'Provisioned'});
+      if(url.endsWith('/sdp')&&method==='POST')return {ok:true,status:204};
+      if(url.endsWith('/sdp')&&method==='GET')return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0'})});
+      if(url.endsWith('/ice')&&method==='GET'){
+        iceReads++;
+        if(iceReads===1)return ok({candidates:[scenario.initial,'{malformed-json',{candidate:42},null,[]]});
+        if(iceReads===2)return ok({candidates:[scenario.polled,'{still-malformed',{candidate:false},candidateB]});
+        return ok({candidates:[]});
+      }
+      if(method==='DELETE')return {ok:true,status:204};
+      throw new Error('unexpected request '+method+' '+url);
+    },null,FakePeer,timerOverrides);
+    api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+    await api.startSession();
+    assert.equal(peers.length,1);
+    assert.equal(iceReads,1,'the initial candidate list is read exactly once before polling');
+    assert.equal(peers[0].remoteCandidates.length,1,'the initial valid candidate is applied once');
+    const pollTimer=Array.from(timers.entries()).find(([,timer])=>timer.ms===1000);
+    assert.ok(pollTimer,'the active peer schedules one ICE poll');
+    timers.delete(pollTimer[0]);
+    await pollTimer[1].fn();
+    const applied=JSON.parse(JSON.stringify(peers[0].remoteCandidates));
+    assert.deepEqual(applied,[candidateA,candidateB],
+      'string/object representations of the same ICE candidate are applied once; malformed entries are ignored');
+    assert.equal(iceReads,2);
+    await api.stop();
+  }
+});
+
+test('xHome ICE candidate rejection is diagnosed and does not reschedule after terminal peer state',async()=>{
+  const timers=new Map(),peers=[];
+  let timerId=0,iceReads=0;
+  const timerOverrides={
+    setTimeout(fn,ms){const id=++timerId;timers.set(id,{fn,ms});return id;},
+    clearTimeout(id){timers.delete(id);}
+  };
+  class FakePeer{
+    constructor(){this.connectionState='new';this.signalingState='stable';this.channels={};peers.push(this);}
+    createDataChannel(label,options){
+      const channel={label,protocol:options.protocol,ordered:options.ordered,readyState:'open',bufferedAmount:0,
+        send(){},close(){this.readyState='closed';}};
+      this.channels[label]=channel;return channel;
+    }
+    addTransceiver(){}
+    async createOffer(){return {type:'offer',sdp:'v=0'};}
+    async setLocalDescription(value){this.localDescription=value;}
+    async setRemoteDescription(value){this.remoteDescription=value;}
+    async addIceCandidate(){
+      this.connectionState='failed';
+      if(this.onconnectionstatechange)this.onconnectionstatechange();
+      throw new Error('candidate rejected by peer');
+    }
+    close(){this.connectionState='closed';this.signalingState='closed';}
+  }
+  const api=harness(async(url,opts)=>{
+    const method=opts&&opts.method||'GET';
+    if(url.endsWith('/v2/login/user'))return ok(login);
+    if(url.endsWith('/v5/sessions/home/play'))return ok({sessionId:'99999999-9999-4999-8999-999999999999'});
+    if(url.endsWith('/state'))return ok({state:'Provisioned'});
+    if(url.endsWith('/sdp')&&method==='POST')return {ok:true,status:204};
+    if(url.endsWith('/sdp')&&method==='GET')return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0'})});
+    if(url.endsWith('/ice')&&method==='GET'){
+      iceReads++;
+      return ok({candidates:iceReads===1?[]:[{
+        candidate:'candidate:9 1 udp 2122260220 192.0.2.19 5009 typ host',sdpMid:'0',sdpMLineIndex:0
+      }]});
+    }
+    if(method==='DELETE')return {ok:true,status:204};
+    throw new Error('unexpected request '+method+' '+url);
+  },null,FakePeer,timerOverrides);
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  const pollTimer=Array.from(timers.entries()).find(([,timer])=>timer.ms===1000);
+  assert.ok(pollTimer);
+  timers.delete(pollTimer[0]);
+  await pollTimer[1].fn();
+  assert.equal(api.state.sessionStatus,'disconnected');
+  assert.match(api.state.error,/candidate rejected by peer/i,
+    'a candidate application failure remains visible even when the peer enters a terminal state');
+  assert.equal(api.state.iceTimer,null);
+  assert.equal(Array.from(timers.values()).filter(timer=>timer.ms===1000).length,0,
+    'a terminal peer must not schedule another ICE poll');
+  assert.equal(iceReads,2);
+  await api.stop();
+});
