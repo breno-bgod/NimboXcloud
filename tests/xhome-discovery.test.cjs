@@ -1849,7 +1849,7 @@ test('reconnect: pending ICE poll from old session cannot mutate the new session
   const newPollId=api.state.iceTimer;
   assert.ok(newPollId&&timers.has(newPollId),'session B must own a new ICE poll timer');
   assert.notEqual(newPollId,oldPollId);
-  assert.deepEqual(newPeer.remoteCandidates,[candidateB],'only session B initial candidates may reach peer B');
+  assert.deepEqual(JSON.parse(JSON.stringify(newPeer.remoteCandidates)),[candidateB],'only session B initial candidates may reach peer B');
   const activeRequestId=api.state.requestId;
   const activeStatus=api.state.status;
   const activeSessionStatus=api.state.sessionStatus;
