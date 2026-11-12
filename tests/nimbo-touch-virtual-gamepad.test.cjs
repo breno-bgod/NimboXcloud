@@ -45,6 +45,7 @@ test('virtual HUD is xHome-only and does not patch the browser Gamepad API',()=>
   assert.match(moduleSource,/renderVirtualGamepadControls\(\)\s*\{\s*if\(!this\.mapped\|\|!this\.remoteMode\)return;/);
   assert.match(moduleSource,/this\.remoteAdapter\?\.sendGamepad\?\.\(state\)===true/);
   assert.match(moduleSource,/this\.virtualGamepad\.suspend\(\)/);
+  assert.match(moduleSource,/if\(this\.remoteMode&&this\.virtualGamepad\?\.enabled&&!this\.editingHud\)element\.hidden=true/);
   assert.match(moduleSource,/this\.virtualToggle=button\('Ativar controle virtual'/);
   assert.match(moduleSource,/this\.virtualToggle\.hidden=!virtualAvailable/);
   assert.match(moduleSource,/'vpad-left-stick'/);assert.match(moduleSource,/'vpad-home'/);
