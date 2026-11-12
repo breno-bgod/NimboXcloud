@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.54';
+  const VER = '4.12.61';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1489,6 +1489,18 @@
     }
     return null;
   }
+  function nxButtonActuallyVisible(button, host) {
+    if (!button || !button.isConnected) return false;
+    const r = button.getBoundingClientRect();
+    if (r.width < 18 || r.height < 18 || r.right <= 0 || r.bottom <= 0 ||
+        r.left >= innerWidth || r.top >= innerHeight) return false;
+    if (host && !host.contains(button)) return false;
+    for (let n = button; n && n !== document.documentElement; n = n.parentElement) {
+      const st = getComputedStyle(n);
+      if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) < 0.15) return false;
+    }
+    return true;
+  }
   function nxHideDetachedControls(){
     if(nxLibraryButton)nxLibraryButton.style.display='none';
     if(nxKeyboardMouseButton)nxKeyboardMouseButton.style.display='none';
@@ -1749,7 +1761,50 @@
     if (playing) {
       const nativeAnchor=findInGameToolbar();
       nxNativeMenuPriority(!!nativeAnchor&&toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor),nativeAnchor);
-      if (nxCompactMobile()) { if (micTestStream) stopMicrophoneTest(); const expanded=!!nativeAnchor&&toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor);if(expanded)nxMountNativeActions(nativeAnchor,true);else nxHideDetachedControls();if(!openUI&&wrap){wrap.style.display='flex';wrap.style.right='12px';wrap.style.left='auto';wrap.style.top='12px';if(pillEl)pillEl.style.display=expanded?'none':'inline-flex';}return; }
+      if (nxCompactMobile()) {
+        if (micTestStream) stopMicrophoneTest();
+        const expanded = !!nativeAnchor && toolbarExpanded(nativeAnchor) && nxNativeToolbarOpen(nativeAnchor);
+        if (expanded) nxMountNativeActions(nativeAnchor, true);
+        else nxHideDetachedControls();
+
+        // Em telas móveis (retrato/paisagem), nunca confiar apenas no estado
+        // "expanded" da barra: o botão pode estar fora da viewport, recortado
+        // por um ancestral ou fora do elemento real de tela cheia.
+        const fsHost = fullscreenHost();
+        const integratedVisible = expanded && nxButtonActuallyVisible(nxLibraryButton, fsHost);
+        if (!integratedVisible) {
+          if (nxLibraryButton) nxLibraryButton.style.display = 'none';
+          if (nxKeyboardMouseButton) nxKeyboardMouseButton.style.display = 'none';
+        }
+        if (!openUI && wrap) {
+          wrap.style.display = 'flex';
+          wrap.style.position = 'fixed';
+          wrap.style.transform = 'none';
+          wrap.style.left = 'auto';
+          wrap.style.right = 'max(12px, env(safe-area-inset-right, 12px))';
+          wrap.style.top = 'max(12px, env(safe-area-inset-top, 12px))';
+          wrap.style.bottom = 'auto';
+          wrap.style.width = '44px';
+          wrap.style.maxWidth = '44px';
+          wrap.style.alignItems = 'flex-end';
+          if (pillEl) {
+            pillEl.style.display = integratedVisible ? 'none' : 'inline-flex';
+            pillEl.style.width = '44px';
+            pillEl.style.minWidth = '44px';
+            pillEl.style.maxWidth = '44px';
+            pillEl.style.height = '44px';
+            pillEl.style.padding = '0';
+            pillEl.style.gap = '0';
+            pillEl.style.justifyContent = 'center';
+            pillEl.style.borderRadius = '14px';
+          }
+          if (!integratedVisible) {
+            if (dotEl) dotEl.style.display = 'none';
+            if (pillTxt) pillTxt.style.display = 'none';
+          }
+        }
+        return;
+      }
       if (micTestStream) stopMicrophoneTest(); // Nunca manter a captura de diagnóstico durante a sessão.
       const gameAnchor = findInGameToolbar();
       if (gameAnchor && gameAnchor.parentElement) {
