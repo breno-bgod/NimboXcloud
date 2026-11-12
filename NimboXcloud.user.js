@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.64
+// @version      4.12.65
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.64
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.65
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.64';
+  const VER = '4.12.65';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2976,7 +2976,7 @@
   nxHudAutoLoadGame();
   // Descoberta xHome: utiliza somente credenciais locais da sessão Xbox autenticada.
   // Não substitui a negociação WebRTC/ICE nem cria uma sessão Remote Play.
-  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:'', peer:null, mediaStream:null, videoElement:null, iceTimer:null, createPending:false, cancelAfterCreate:false, dataChannelsReady:false};
+  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:'', peer:null, mediaStream:null, videoElement:null, iceTimer:null, channelTimer:null, createPending:false, cancelAfterCreate:false, dataChannelsReady:false};
   // O token de sessão permanece somente em memória e nunca integra o estado exportável.
   let nxRemoteSessionToken='';
   let nxRemotePendingRelease=null;
@@ -3011,6 +3011,7 @@
     const channels=nxRemoteChannels;
     nxRemoteChannels=null;
     nxRemotePlay.dataChannelsReady=false;
+    if(nxRemotePlay.channelTimer!==null){clearTimeout(nxRemotePlay.channelTimer);nxRemotePlay.channelTimer=null;}
     if(!channels)return;
     Object.keys(channels).forEach(function(name){
       const channel=channels[name];
@@ -3029,6 +3030,26 @@
     const isCurrent=function(){
       return requestId===nxRemotePlay.requestId && !signal.aborted && nxRemotePlay.peer===peer && nxRemoteChannels===channels;
     };
+    let failureHandled=false;
+    const fail=function(reason){
+      if(failureHandled || !isCurrent())return;
+      failureHandled=true;
+      nxRemotePlay.dataChannelsReady=false;
+      const message='Falha nos canais de dados xHome: '+String(reason||'erro').slice(0,140)+'.';
+      const failureRequestId=requestId;
+      Promise.resolve(nxRemoteStop()).then(function(){
+        if(nxRemotePlay.requestId!==failureRequestId+1)return;
+        nxRemotePlay.status=message;
+        if(tabId==='remote')renderBody();
+      }).catch(function(){
+        if(nxRemotePlay.requestId!==failureRequestId+1)return;
+        nxRemotePlay.status=message;
+        if(tabId==='remote')renderBody();
+      });
+    };
+    nxRemotePlay.channelTimer=setTimeout(function(){
+      if(!initialized)fail('tempo limite de 12 segundos aguardando abertura dos canais e HandshakeAck');
+    },12000);
     const sendMessage=function(target,data){
       return nxRemoteChannelSend(channels.message,JSON.stringify({
         type:'Message',content:JSON.stringify(data),id:nxRemoteUuid(),target:target,cv:''
@@ -3038,6 +3059,7 @@
       if(!isCurrent() || initialized || !handshakeAck ||
         !Object.keys(channels).every(function(name){return channels[name] && channels[name].readyState==='open';})) return;
       initialized=true;
+      if(nxRemotePlay.channelTimer!==null){clearTimeout(nxRemotePlay.channelTimer);nxRemotePlay.channelTimer=null;}
       try {
         // Public controlV1 bootstrap key used by the MIT reference client; it is not a user credential.
         const controlMessages=[
@@ -3070,8 +3092,7 @@
         nxRemotePlay.dataChannelsReady=true;
         nxRemotePlay.status='Canais de dados xHome inicializados; envio de comandos ainda não implementado.';
       } catch(e) {
-        nxRemotePlay.dataChannelsReady=false;
-        nxRemotePlay.status='Falha ao inicializar canais xHome: '+String(e && e.message||'erro');
+        fail('falha ao inicializar: '+String(e && e.message||'erro'));
       }
       if(tabId==='remote')renderBody();
     };
@@ -3079,12 +3100,15 @@
       channels[name].onopen=function(){
         if(!isCurrent())return;
         if(name==='message'){
-          nxRemoteChannelSend(channels.message,JSON.stringify({
+          const sent=nxRemoteChannelSend(channels.message,JSON.stringify({
             type:'Handshake',version:'messageV1',id:'be0bfc6d-1e83-4c8a-90ed-fa8601c5a179',cv:'0'
           }));
+          if(!sent){fail('não foi possível enviar o handshake messageV1');return;}
         }
         initialize();
       };
+      channels[name].onclose=function(){if(isCurrent())fail('canal '+name+' fechado inesperadamente');};
+      channels[name].onerror=function(){if(isCurrent())fail('erro no canal '+name);};
     });
     channels.message.onmessage=function(event){
       if(!isCurrent() || handshakeAck || !event || typeof event.data!=='string')return;
