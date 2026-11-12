@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.1.6
+// @version      1.1.7
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD e HUD editável. Experimental; requer suporte K/M do jogo e do SDK.
 // @author       KReight / NimboPlay contributors
 // @license      MIT
@@ -1059,7 +1059,43 @@ class BxTouchpadProfiles extends BxTouchpadGain {
   mount(){
     if(this.root)return;
     super.mount();
+    this.root.classList.add('nx-minimal-skin');
     const style=document.createElement('style');style.textContent=`
+/* NX Minimal Touch — skin visual; não altera o protocolo nem o mapeamento de entrada. */
+#nimbo-touch-root.nx-minimal-skin .hud-button{
+  display:flex;align-items:center;justify-content:center;
+  padding:0!important;border:1px solid rgba(255,255,255,.48)!important;
+  border-radius:50%!important;background:rgba(5,7,10,.48)!important;
+  color:rgba(255,255,255,.94)!important;
+  font:600 clamp(11px,2.4vw,16px)/1 system-ui,sans-serif!important;
+  text-shadow:0 1px 2px rgba(0,0,0,.85);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 2px 8px rgba(0,0,0,.16);
+  -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+  transition:background .08s ease,border-color .08s ease,transform .08s ease;
+}
+#nimbo-touch-root.nx-minimal-skin .hud-button:active{
+  background:rgba(255,255,255,.24)!important;border-color:rgba(255,255,255,.82)!important;
+  transform:translate(-50%,-50%) scale(.94);
+}
+#nimbo-touch-root.nx-minimal-skin .hud-stick{
+  background:rgba(0,0,0,.16)!important;border:1px solid rgba(255,255,255,.42)!important;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.12);
+  -webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px);
+}
+#nimbo-touch-root.nx-minimal-skin .hud-stick-knob{
+  width:34%;height:34%;background:rgba(8,10,13,.58)!important;
+  border:1px solid rgba(255,255,255,.72)!important;
+  box-shadow:0 1px 4px rgba(0,0,0,.24);
+}
+#nimbo-touch-root.nx-minimal-skin .hud-stick-label{font:500 9px system-ui,sans-serif;color:rgba(255,255,255,.62);text-shadow:0 1px 2px #000}
+#nimbo-touch-root.nx-minimal-skin .pad{background:transparent!important;border:0!important;cursor:crosshair}
+#nimbo-touch-root.nx-minimal-skin.hud-editing .pad{
+  outline:1px dashed rgba(255,255,255,.30);outline-offset:-2px;border-radius:12px;
+}
+#nimbo-touch-root.nx-minimal-skin.hud-editing .pad:after{
+  content:'⌖';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  color:rgba(255,255,255,.48);font:20px system-ui,sans-serif;text-shadow:0 1px 3px #000;
+}
 #nimbo-touch-root.hud-editing{pointer-events:auto}
 #nimbo-touch-root .hud-delete-one{position:absolute;transform:translate(-50%,-50%);width:30px;height:30px;min-width:30px;min-height:30px;padding:0;border-radius:50%;border:2px solid white;background:#c62828;color:white;font:bold 19px Arial!important;line-height:26px!important;pointer-events:auto;touch-action:manipulation;z-index:32}
 #nimbo-touch-root .hud-properties{width:min(360px,82vw)}
