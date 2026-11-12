@@ -6081,9 +6081,13 @@
     if(next===nxVirtualGamepad.enabled)return;
     if(next){
       nxVirtualGamepad.error='';
-      nxInstallInputBridge();
-      if(!nxInputBridge.installed){nxVirtualGamepad.error=nxInputBridge.error||'Não foi possível conectar à Gamepad API';return;}
       nxVirtualGamepad.enabled=true;
+      nxInstallInputBridge();
+      if(!nxInputBridge.installed){
+        nxVirtualGamepad.enabled=false;
+        nxVirtualGamepad.error=nxInputBridge.error||'Não foi possível conectar à Gamepad API';
+        return;
+      }
       nxVirtualPadMountHud();
     }else{
       if(nxVirtualGamepad.lastIndex>=0)nxVirtualPadEvent('gamepaddisconnected',nxVirtualPadSnapshot(nxVirtualGamepad.lastIndex,false));
