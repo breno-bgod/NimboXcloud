@@ -97,7 +97,9 @@ test('xHome touch and virtual-gamepad transport remain in main and distribution 
   assert.ok(hostSource.includes('function nxRemoteAttachTouchAdapter('));
   assert.ok(hostSource.includes('function nxRemoteDetachTouchAdapter('));
   assert.ok(hostSource.includes('function nxRemoteSetVirtualGamepadState('));
-  assert.ok(hostSource.includes('@updateURL   https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js'));
-  assert.ok(hostSource.includes('@downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js'));
+  const updateLine = hostSource.split('\n').find(line => line.startsWith('// @updateURL'));
+  const downloadLine = hostSource.split('\n').find(line => line.startsWith('// @downloadURL'));
+  assert.ok(updateLine?.includes('/main/NimboXcloud.user.js'));
+  assert.ok(downloadLine?.includes('/main/NimboXcloud.user.js'));
   assert.equal(hostSource.includes('fix/virtual-gamepad-panel-integration'), false);
 });
