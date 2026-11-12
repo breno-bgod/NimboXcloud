@@ -1,3 +1,10 @@
+## [4.12.87] — 2026-11-12
+- Corrigido o descritor de cliente xHome: a sessão agora declara o cliente web/browser, SDK web e modelo de hardware desconhecido, em vez de afirmar que o navegador é o aplicativo nativo Microsoft GamingApp em um Surface Pro.
+- A qualidade selecionada agora controla de forma consistente o perfil de resolução no cabeçalho `X-MS-Device-Info`, em `settings.osName` e nas dimensões enviadas pelo data channel: 720p/Android, 1080p/Windows e 1080p HQ/Tizen.
+- Adaptado o formato público de dispositivo do Better xCloud upstream (MIT); autenticação, tokens, autorização, endpoints e transporte WebRTC não foram alterados.
+- Adicionados testes para os três perfis, fallback de resolução inválida, coerência entre cabeçalho/corpo e dimensões 720p após o handshake.
+- Baseline e regressões NX/xHome: 190 testes, 187 PASS, 0 FAIL, 3 TODO em ambos os workflows. Não houve teste com Xbox físico ou navegador real.
+
 ## [4.12.86] — 2026-11-12
 - Ajuste final da reorganização: o NX Stream Monitor e suas opções de ativação, posição, layout, aparência e métricas ficam exclusivamente na aba **Estatísticas**; a página Início preserva apenas resumo e atalhos.
 - A enumeração de dispositivos de saída de áudio é executada somente ao abrir a página **Áudio**, sem trabalho de descoberta nas páginas Vídeo e Imagens.
