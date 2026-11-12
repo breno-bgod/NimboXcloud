@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.44
+// @version      4.12.45
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.44
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.45
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -1683,9 +1683,31 @@
     if(pillEl)pillEl.style.display='none';
     if(nxLibraryButton)nxLibraryButton.style.display='none';
   }
+  // Native xCloud navigation always wins over the editable touch HUD.
+  // Disable touch hit targets while its toolbar is expanded, without changing
+  // the NimboTouch activation state or the saved HUD layout.
+  let nxNativeMenuParent=null;
+  function nxNativeMenuPriority(expanded,anchor){
+    const parent=expanded&&anchor?.parentElement||null;
+    if(nxNativeMenuParent&&nxNativeMenuParent!==parent){
+      nxNativeMenuParent.classList.remove('nx-native-menu-priority');
+    }
+    nxNativeMenuParent=parent;
+    if(parent)parent.classList.add('nx-native-menu-priority');
+    document.documentElement.classList.toggle('nx-native-menu-expanded',!!parent);
+  }
+  (function(){
+    const css=document.createElement('style');css.id='nx-native-menu-priority-style';
+    css.textContent=[
+      '.nx-native-menu-priority{position:relative!important;z-index:2147483100!important;isolation:isolate!important}',
+      'html.nx-native-menu-expanded #nimbo-touch-root .hud-button,html.nx-native-menu-expanded #nimbo-touch-root .hud-stick,html.nx-native-menu-expanded #nimbo-touch-root .pad{pointer-events:none!important}',
+      'html.nx-native-menu-expanded #nimbo-touch-root .mapped{pointer-events:none!important}'
+    ].join('');
+    (document.head||document.documentElement).appendChild(css);
+  })();
   function syncNXPlacement() {
     if (!wrap || !wrap.isConnected) return;
-    if (openUI) { nxDockPanel(); return; }
+    if (openUI) { nxNativeMenuPriority(false,null); nxDockPanel(); return; }
     const playing = isInGame();
     const mode = playing ? 'game' : 'library';
     if (nxMode !== mode) {
@@ -1695,6 +1717,8 @@
       if (pickEl) pickEl.style.display = 'none';
     }
     if (playing) {
+      const nativeAnchor=findInGameToolbar();
+      nxNativeMenuPriority(!!nativeAnchor&&toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor),nativeAnchor);
       if (nxCompactMobile()) { if (micTestStream) stopMicrophoneTest(); nxPositionMobileDrawer(); return; }
       if (micTestStream) stopMicrophoneTest(); // Nunca manter a captura de diagnóstico durante a sessão.
       const gameAnchor = findInGameToolbar();
@@ -1728,6 +1752,7 @@
       }
       return;
     }
+    nxNativeMenuPriority(false,null);
     const placement = findProfileAnchor();
     const anchor = placement && placement.node;
     if (anchor && anchor.parentElement) {
