@@ -420,7 +420,7 @@ test('session: negotiates xHome data channels and initializes protocol bootstrap
   assert.equal(messages.length,6);
   assert.equal(messages[0].target,'/streaming/systemUi/configuration');
   assert.equal(messages[3].target,'/streaming/characteristics/touchinputenabledchanged');
-  assert.equal(api.state.status.includes('envio de comandos ainda não implementado'),true);
+  assert.equal(api.state.status.includes('gamepad físico encaminhado quando detectado'),true);
   assert.equal(JSON.stringify(channels).includes('TEST_BEARER'),false);
   await api.stop();
   for(const name of ['chat','control','input','message'])assert.equal(channels[name].readyState,'closed');
