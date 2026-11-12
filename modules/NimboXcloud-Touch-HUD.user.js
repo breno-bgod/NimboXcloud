@@ -1352,7 +1352,7 @@ class BxTouchpadSession extends BxTouchpadExclusive {
     super.stop();this.rawTouches?.clear();this.refreshInputVisuals();this.refreshNativeSections();
   }
   canResume(){
- if(!this.root||this.editingHud||this.editor||document.hidden||touchPanel.isOpen||!STATES.isPlaying)return false;
+ if(!this.root||this.editingHud||this.editor||document.hidden||touchPanel.isOpen||this.menuBlocked||!STATES.isPlaying)return false;
  if(!this.desiredSession||api.streamSession!==this.desiredSession)return false;
  return !nativeDialogVisible();
 }
@@ -1661,15 +1661,16 @@ class BxTouchpadSettings extends BxTouchpadToolkit {
 }
 
 class NimboPlayControls extends BxTouchpadSettings {
-  constructor(){super();this.recoilTimer=null;this.recoilStartedAt=0;this.recoilRemainder=0;this.recoilConfig={enabled:false,strength:1,delay:100};try{const data=JSON.parse(localStorage.getItem('NimboTouch.recoil.v1')||'{}');this.recoilConfig={enabled:data.enabled===true,strength:Number.isFinite(data.strength)?Math.max(0,Math.min(8,data.strength)):1,delay:Number.isFinite(data.delay)?Math.max(0,Math.min(300,data.delay)):100};}catch{}}
+  constructor(){super();this.menuBlocked=false;this.recoilTimer=null;this.recoilStartedAt=0;this.recoilRemainder=0;this.recoilConfig={enabled:false,strength:1,delay:100};try{const data=JSON.parse(localStorage.getItem('NimboTouch.recoil.v1')||'{}');this.recoilConfig={enabled:data.enabled===true,strength:Number.isFinite(data.strength)?Math.max(0,Math.min(8,data.strength)):1,delay:Number.isFinite(data.delay)?Math.max(0,Math.min(300,data.delay)):100};}catch{}}
+  setMenuBlocked(blocked){const next=!!blocked;if(this.menuBlocked===next)return;this.menuBlocked=next;if(next){this.stopRecoil();if(this.active)this.pause('Menu NX/xCloud aberto');}else if(this.wanted){this.retryAt=0;this.ensureResumeWatch();this.checkResume();}}
   setRecoilConfig(patch){this.recoilConfig={...this.recoilConfig,...patch};try{localStorage.setItem('NimboTouch.recoil.v1',JSON.stringify(this.recoilConfig));}catch(e){NimboDiag.add('dados','Não foi possível salvar compensação',String(e));}this.syncRecoil();}
   syncRecoil(){
-    const firing=this.active&&!this.editingHud&&this.recoilConfig.enabled&&this.recoilConfig.strength>0&&(this.buttons&1)!==0&&!document.hidden&&document.hasFocus()&&!touchPanel.isOpen;
+    const firing=this.active&&!this.editingHud&&this.recoilConfig.enabled&&this.recoilConfig.strength>0&&(this.buttons&1)!==0&&!document.hidden&&document.hasFocus()&&!touchPanel.isOpen&&!this.menuBlocked;
     if(!firing){if(this.recoilTimer!==null){clearInterval(this.recoilTimer);this.recoilTimer=null;}this.recoilStartedAt=0;this.recoilRemainder=0;return;}
     if(this.recoilTimer!==null)return;
     this.recoilStartedAt=performance.now();const epoch=this.epoch;
     this.recoilTimer=setInterval(()=>{
-      if(epoch!==this.epoch||!this.active||!this.recoilConfig.enabled||!(this.buttons&1)||this.editingHud||document.hidden||!document.hasFocus()||touchPanel.isOpen){this.syncRecoil();return;}
+      if(epoch!==this.epoch||!this.active||!this.recoilConfig.enabled||!(this.buttons&1)||this.editingHud||document.hidden||!document.hasFocus()||touchPanel.isOpen||this.menuBlocked){this.syncRecoil();return;}
       if(performance.now()-this.recoilStartedAt<this.recoilConfig.delay)return;
       this.recoilRemainder+=this.recoilConfig.strength;const dy=Math.trunc(this.recoilRemainder);this.recoilRemainder-=dy;
       if(dy>0)try{this.send(0,dy);}catch(e){this.syncRecoil();this.handleInputFailure(e);}
@@ -1816,7 +1817,7 @@ function boot(){
  }catch(e){NimboDiag.add('inicialização','Falha ao iniciar Nimbo Touch',e.message);const notice=document.createElement('div');notice.textContent='Nimbo Touch não iniciou: '+e.message;notice.style.cssText='position:fixed;top:8px;left:8px;z-index:2147483647;background:#331a1a;color:white;padding:12px';document.documentElement.append(notice);}
 }
 // Public integration point for a future host. No Better xCloud globals are read or overwritten.
-window.NimboTouch=Object.freeze({version:VERSION,attachSession:nimboCapture,open:()=>touchPanel.open(),stop:()=>ui?.stop(),diagnostic,isEnabled:()=>!!ui?.wanted,toggle:()=>{touchPanel.mount();touchPanel.toggle.click();}});
+window.NimboTouch=Object.freeze({version:VERSION,attachSession:nimboCapture,open:()=>touchPanel.open(),stop:()=>ui?.stop(),diagnostic,isEnabled:()=>!!ui?.wanted,toggle:()=>{touchPanel.mount();touchPanel.toggle.click();},setMenuBlocked:blocked=>ui?.setMenuBlocked(blocked)});
 
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 
