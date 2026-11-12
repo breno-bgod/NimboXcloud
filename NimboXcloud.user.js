@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.78
+// @version      4.12.79
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.78
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.79
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.78';
+  const VER = '4.12.79';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3322,7 +3322,7 @@
   }
   function nxRemoteSetVirtualGamepadState(state,requestId,peer,channels) {
     if(!Number.isInteger(requestId) || requestId!==nxRemotePlay.requestId || peer!==nxRemotePlay.peer ||
-      channels!==nxRemoteChannels || !nxRemoteGamepadReady()) return false;
+      channels!==nxRemoteChannels || nxRemoteGamepadPaused || !nxRemoteGamepadReady()) return false;
     const pad=nxRemoteNormalizeVirtualGamepadState(state);
     if(!pad) return false;
     const previous=nxRemoteVirtualGamepad;
@@ -3663,7 +3663,10 @@
     return nxRemoteSendGamepadFrame(nxRemoteNeutralGamepad,slot,true,channelsOverride);
   }
   function nxRemoteGamepadSuspend() {
-    if(nxRemoteGamepadPaused) return;
+    if(nxRemoteGamepadPaused && !nxRemoteVirtualGamepad) return;
+    // A touch-held state is not a physical device state. Never replay it after
+    // focus/visibility/panel suspension; require a fresh pointer update on resume.
+    nxRemoteVirtualGamepad=null;
     let complete=true;
     Array.from(nxRemoteRegisteredGamepadSlots).forEach(function(slot){
       if(!nxRemoteSendNeutralGamepad(slot)) complete=false;
