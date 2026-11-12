@@ -917,3 +917,37 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - **Validação realizada:** consulta direta da branch main, commits recentes, árvore raiz, diretório de testes, roadmap, userscript principal e metadados de branches; comparação GitHub main...branches; leitura das instruções e do código do controle virtual nas duas branches; consulta dos workflows disponíveis. Não houve execução local de Node, parse, navegador, Tampermonkey ou jogo nesta revisão.
 - **Estado atual confirmado:** main permanece em `4.12.82`; a superfície visual de controle virtual não está integrada na main. O contrato de gamepad remoto xHome da main permanece separado e experimental. Nenhuma transmissão/entrada foi homologada em Xbox físico.
 - **Próxima tarefa concreta (P1 — portar seletivamente a HUD virtual para a main sem perder xHome):** comparar os builders/estado/estilos do painel experimental com o módulo Touch HUD e o contrato xHome atuais; portar somente a camada visual/editável e o mapeamento de gestos para `sendRemoteGamepadState()` em xHome, mantendo o caminho retail explicitamente separado e sem sobrescrever `navigator.getGamepads` até haver prova de contexto MAIN_WORLD e compatibilidade. Critérios de aceite: URLs de distribuição apontam para main; adaptador e lifecycle xHome atuais permanecem; layout antigo e preferências NimboTouch não são sobrescritos; testes de pointerId, multi-touch, cancelamento, blur, ocultação, Stop, sessão obsoleta e coexistência com controle físico; workflows baseline e xHome PASS no HEAD final; teste real no Tampermonkey documentado separadamente.
+
+
+
+## 2026-11-12 19:45 UTC — NimboTouch: HUD de gamepad virtual xHome
+
+- **SHA inicial da execução:** `393e2bf04219365585bd94df5bfc124ad689a010` — userscript `4.12.82`, módulo Touch HUD `1.2.3`.
+- **SHA final de código/testes/changelog antes desta entrada:** `09739f3ff1d7c556b5484c2e9ccdb144e8d382ac` — userscript `4.12.84`, módulo Touch HUD `1.2.5`.
+- **Lacuna confirmada no início:** a main já possuía normalizador de gamepad remoto com 4 eixos, 17 botões, deadzone radial de 0,08, encoder, slot compartilhado, scheduler único e descarte por sessão. Faltava a superfície de controle analógico por toque. As branches experimentais antigas não foram mescladas.
+- **Recurso implementado:** NimboTouch agora oferece um botão separado para ativar um controle Xbox virtual durante uma sessão xHome. A HUD inclui dois analógicos, A/B/X/Y, LB/RB, LT/RT com pressão analógica, D-pad, View/Menu, L3/R3 e botão Xbox oculto por padrão. O estado é enviado pelo adaptador `remoteAdapter.sendGamepad()` existente, sem inventar um transporte novo.
+- **Editor e persistência:** os controles usam o sistema de geometria já existente em `BxTouchpadProfiles`; posição, tamanho, opacidade e visibilidade ficam no layout do perfil ativo. Perfis antigos não exigem migração nem alteração de chaves. O editor continua mostrando ambos os conjuntos para que possam ser ajustados.
+- **Separação de modos:** quando o gamepad virtual está ligado, a área de mouse, o joystick WASD e os botões de teclado/mouse são ocultados. Ao desligar o gamepad, esses controles voltam. Em edição, ambos os conjuntos permanecem visíveis. O xCloud retail continua no caminho nativo/TAK e não recebe gamepad sintético.
+- **Segurança do input:** um helper sem DOM controla ownership por `pointerId`, permite os dois sticks simultaneamente e vários botões em paralelo, limita cada stick ao círculo unitário e mantém o deadzone somente no normalizador xHome. LT/RT preservam valores contínuos. `pointerup`, `pointercancel` e `lostpointercapture` liberam o estado; blur, página oculta, menu, pausa, Stop e teardown chamam a liberação do adaptador.
+- **Arquivos alterados:** `modules/NimboXcloud-Touch-HUD.user.js`, `tests/nimbo-touch-virtual-gamepad.test.cjs`, `NimboXcloud.user.js`, `CHANGELOG.md` e este documento. Versões/cache alinhados: userscript `4.12.84`, módulo `1.2.5`, `@require nx_version=4.12.84`.
+- **Commits publicados nesta execução:**
+  - `c295555a016334512347f93cbbbb08327f312c97` — superfície virtual xHome e helper de estado;
+  - `7930d29e101991924e04f1a9648ca9ec9946a944` — regressões de gestos e lifecycle;
+  - `314cdc8f4b692a7e0e5b26462b2692be9a6fb168` — versão/cache `4.12.83`;
+  - `c60a686c12484caedfa7ada73ac445aa6939f40f` — changelog `4.12.83`;
+  - `eea0486dee95041910e0f71c52ecb7ceec493ccd` — separação visual entre gamepad e teclado/mouse;
+  - `f61a3002e1194ed4e58cec1e96078a88a3c5fe5f` — teste de exclusividade dos modos;
+  - `c0e3dbfd5726a47b7e68ae62b8fc0e07c2b42c44` — versão/cache `4.12.84`;
+  - `09739f3ff1d7c556b5484c2e9ccdb144e8d382ac` — changelog `4.12.84`.
+- **Validação realmente executada:**
+  - Parse V8 `new Function` do módulo, userscript e novo arquivo de teste: PASS.
+  - Harness V8 do helper real extraído do módulo: PASS — clamp diagonal, triggers analógicos, suspensão/liberação, entrada nova após resume e desativação.
+  - GitHub Actions baseline [43293397053](https://github.com/breno-bgod/NimboXcloud/actions/runs/43293397053), SHA `09739f3`: PASS — syntax check, Touch HUD syntax check, baseline tests e static risk report.
+  - GitHub Actions regressions [43293386529](https://github.com/breno-bgod/NimboXcloud/actions/runs/43293386529), SHA `c0e3dbf`: PASS — syntax check e suíte NX/xHome; inclui o novo teste de gamepad virtual.
+  - GitHub Actions baseline [43293386316](https://github.com/breno-bgod/NimboXcloud/actions/runs/43293386316), SHA `c0e3dbf`: PASS.
+  - Não há build/lint separado configurado no repositório; os workflows executaram Node 22 e as suítes de teste.
+- **Limites e riscos:** não houve Chrome/Edge, Tampermonkey, Android, sessão xHome autenticada ou Xbox físico nesta execução. Os testes comprovam o helper e as regressões do repositório, não a aceitação dos comandos pelo console nem o funcionamento em jogos reais. Remote Play permanece experimental e não deve ser anunciado como homologado.
+- **Tarefas concluídas:** superfície analógica opcional; modo visual exclusivo em relação a K/M; layout editável por perfil; ownership multi-touch; triggers analógicos; neutralização no lifecycle; versão e cache atualizados; baseline e regressão verdes.
+- **Pendências prioritárias:** homologar input e streaming com Xbox físico; testar a HUD no Tampermonkey em Android e desktop; validar retomada e liberação em troca real de sessão; continuar a auditoria de compatibilidade xCloud e do caminho TAK; investigar a integração histórica de giroscópio sem duplicar gerenciadores.
+- **Próxima tarefa concreta (P1 — teste de integração do encoder xHome com canal de dados falso):** executar os métodos reais de normalização, registro de slot, encoder e scheduler contra um `RTCDataChannel` simulado. Critérios de aceite: verificar bytes/flags dos quatro eixos e 17 botões, pressão LT/RT, deadzone aplicada uma vez, registro único do slot, frames neutros e `gamepadChanged(false)` no release, backpressure, sessão obsoleta, ausência de Gamepad API e recuperação após suspensão; ambos workflows PASS. Depois disso, registrar separadamente o teste obrigatório em Xbox físico, sem declarar aceitação antes de realizá-lo.
+
