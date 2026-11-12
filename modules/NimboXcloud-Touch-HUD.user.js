@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.1.3
+// @version      1.1.4
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD e HUD editável. Experimental; requer suporte K/M do jogo e do SDK.
 // @author       KReight / NimboPlay contributors
 // @license      MIT
@@ -41,7 +41,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.1.3';
+const VERSION='1.1.4';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -228,6 +228,10 @@ html:has(#__xcu_panel__) #nimbo-touch-launcher{display:none!important}\n#nimbo-t
    slider.oninput=()=>{ui[key]=Number(slider.value);caption.textContent=title+': '+ui[key].toFixed(1);};
    slider.onchange=()=>{try{localStorage.setItem('BxTouchpad.motion.v7',JSON.stringify({version:1,touchGain:ui.sensitivity,touchX:ui.gainX,touchY:ui.gainY}));}catch(e){NimboDiag.add('dados','Não foi possível salvar sensibilidade',e.message);}};label.append(caption,slider);this.element.append(label);
   }
+  const recoilBox=document.createElement('section');recoilBox.style.cssText='border:1px solid #555b66;border-radius:10px;padding:12px;margin:12px 0';const recoilTitle=document.createElement('strong');recoilTitle.textContent='Compensação vertical · modo casual';recoilBox.append(recoilTitle);
+  const recoilEnabled=document.createElement('label');const recoilCheck=document.createElement('input');recoilCheck.type='checkbox';recoilCheck.checked=!!ui.recoilConfig?.enabled;recoilEnabled.append(recoilCheck,document.createTextNode(' Ativar durante o disparo virtual (desligado por padrão)'));recoilBox.append(recoilEnabled);
+  const recoilSlider=(name,key,min,max,step)=>{const label=document.createElement('label'),caption=document.createElement('span'),slider=document.createElement('input');slider.type='range';slider.min=min;slider.max=max;slider.step=step;slider.value=ui.recoilConfig?.[key]??min;const refresh=()=>caption.textContent=name+': '+slider.value+(key==='delay'?' ms':' unidades/passo');refresh();slider.oninput=()=>{refresh();ui.setRecoilConfig({[key]:Number(slider.value)});};label.append(caption,slider);recoilBox.append(label);return slider;};
+  recoilCheck.onchange=()=>ui.setRecoilConfig({enabled:recoilCheck.checked});recoilSlider('Intensidade','strength',0,8,.25);recoilSlider('Atraso','delay',0,300,25);const recoilNote=document.createElement('p');recoilNote.textContent='Aplica pequenos movimentos relativos para baixo somente enquanto o botão virtual de disparo estiver pressionado. Não detecta alvos; ajuste conforme a sensibilidade do jogo.';recoilBox.append(recoilNote);this.element.append(recoilBox);
   const note=document.createElement('p');note.textContent='No editor, arraste os controles, adicione uma tecla vazia e escolha seu comando, tamanho e opacidade. O joystick envia WASD. O jogo precisa aceitar mouse e teclado.';this.element.append(note);
   const diag=document.createElement('button');diag.textContent='Mostrar diagnóstico';this.report=document.createElement('pre');this.report.hidden=true;diag.onclick=()=>{this.report.hidden=!this.report.hidden;this.report.textContent=JSON.stringify(diagnostic(),null,2);};this.element.append(diag,this.report);
   this.reparent();this.refresh();
@@ -1657,6 +1661,24 @@ class BxTouchpadSettings extends BxTouchpadToolkit {
 }
 
 class NimboPlayControls extends BxTouchpadSettings {
+  constructor(){super();this.recoilTimer=null;this.recoilStartedAt=0;this.recoilRemainder=0;this.recoilConfig={enabled:false,strength:1,delay:100};try{const data=JSON.parse(localStorage.getItem('NimboTouch.recoil.v1')||'{}');this.recoilConfig={enabled:data.enabled===true,strength:Number.isFinite(data.strength)?Math.max(0,Math.min(8,data.strength)):1,delay:Number.isFinite(data.delay)?Math.max(0,Math.min(300,data.delay)):100};}catch{}}
+  setRecoilConfig(patch){this.recoilConfig={...this.recoilConfig,...patch};try{localStorage.setItem('NimboTouch.recoil.v1',JSON.stringify(this.recoilConfig));}catch(e){NimboDiag.add('dados','Não foi possível salvar compensação',String(e));}this.syncRecoil();}
+  syncRecoil(){
+    const firing=this.active&&!this.editingHud&&this.recoilConfig.enabled&&this.recoilConfig.strength>0&&(this.buttons&1)!==0&&!document.hidden&&document.hasFocus()&&!touchPanel.isOpen;
+    if(!firing){if(this.recoilTimer!==null){clearInterval(this.recoilTimer);this.recoilTimer=null;}this.recoilStartedAt=0;this.recoilRemainder=0;return;}
+    if(this.recoilTimer!==null)return;
+    this.recoilStartedAt=performance.now();const epoch=this.epoch;
+    this.recoilTimer=setInterval(()=>{
+      if(epoch!==this.epoch||!this.active||!this.recoilConfig.enabled||!(this.buttons&1)||this.editingHud||document.hidden||!document.hasFocus()||touchPanel.isOpen){this.syncRecoil();return;}
+      if(performance.now()-this.recoilStartedAt<this.recoilConfig.delay)return;
+      this.recoilRemainder+=this.recoilConfig.strength;const dy=Math.trunc(this.recoilRemainder);this.recoilRemainder-=dy;
+      if(dy>0)try{this.send(0,dy);}catch(e){this.syncRecoil();this.handleInputFailure(e);}
+    },40);
+  }
+  updateButtons(){super.updateButtons();this.syncRecoil();}
+  pause(reason){this.stopRecoil();super.pause(reason);}
+  stop(){this.stopRecoil();super.stop();}
+  stopRecoil(){if(this.recoilTimer!==null)clearInterval(this.recoilTimer);this.recoilTimer=null;this.recoilStartedAt=0;this.recoilRemainder=0;}
   static actions={'hud-visibility':'Ocultar/mostrar HUD','scroll-up':'Scroll ↑ · um passo','scroll-down':'Scroll ↓ · um passo','scroll-drag':'Scroll ↕ · deslizar'};
   special(b){return !!b&&!b.slot&&Object.hasOwn(NimboPlayControls.actions,b.action);}
   itemLabel(id){const b=this.bindings.find(b=>b.id===id);return this.special(b)?NimboPlayControls.actions[b.action]:super.itemLabel(id);}
