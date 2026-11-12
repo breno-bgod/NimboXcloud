@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.1.7
+// @version      1.1.8
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD e HUD editável. Experimental; requer suporte K/M do jogo e do SDK.
 // @author       KReight / NimboPlay contributors
 // @license      MIT
@@ -41,7 +41,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.1.6';
+const VERSION='1.1.8';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -117,22 +117,19 @@ class NimboXboxTransport {
   configure(options){
     return this.serialize(async()=>{
       this.assertConnected();
-      // As opções nativas não são convertidas em toque forçado.
-      const restore=options.enableKeyboardInput===false&&options.enableMouseInput===false&&options.enableTouchInput===true;
-      if(restore&&this.previous)return this.restoreNow();
+      // Nunca interceptar a configuração de toque solicitada pelo próprio xCloud.
+      // A interface nativa pode alternar Automático/Manual durante a sessão; essa chamada
+      // precisa chegar intacta ao SDK. O NimboTouch só restaura seus próprios campos K/M.
       const activating=options.enableMouseInput===true&&options.enableKeyboardInput===true;
       if(activating&&!this.previous){
         const config=this.raw.configuration.inputConfiguration;
-        this.previous=Object.fromEntries(['enableMouseInput','enableKeyboardInput','enableTouchInput','enableAbsoluteMouse'].map(key=>[key,config[key]]));
+        this.previous=Object.fromEntries(['enableMouseInput','enableKeyboardInput','enableAbsoluteMouse'].map(key=>[key,config[key]]));
       }
       // Keyboard packets are translated directly, never dispatched to the page.
-      // Keep the native physical-keyboard configuration at its original value.
+      // Native touch input is never changed, intercepted or restored by this adapter.
       const applied={...options};
       if(activating){
         applied.enableKeyboardInput=this.previous.enableKeyboardInput;
-        // O toque nativo permanece como o Xbox o deixou. Desligá-lo deixava a sessão sem
-        // nenhuma entrada por toque quando a HUD do Nimbo não estava visível.
-        applied.enableTouchInput=typeof this.previous.enableTouchInput==='boolean'?this.previous.enableTouchInput:true;
         this.applied={...applied};
       }
       try{return await nimboApplyInput(this.raw,applied);}
@@ -386,10 +383,9 @@ class BxTouchpad {
     const epoch = ++this.epoch;
     const session = api.streamSession;
     try {
-      // NimboTouch owns the touch-mode switch while its virtual keyboard/mouse HUD is active.
-      // Save the original xCloud configuration in NimboXboxTransport; explicit stop restores it.
-      // This is scoped to NimboTouch activation only and does not alter the main xCloud flow.
-      await session.updateInputConfigurationAsync({enableKeyboardInput: true, enableMouseInput: true, enableAbsoluteMouse: false, enableTouchInput: false});
+      // Ativar somente o canal de teclado/mouse. A configuração de toque nativa pertence
+      // exclusivamente ao xCloud e não pode ser desligada pela HUD do NimboTouch.
+      await session.updateInputConfigurationAsync({enableKeyboardInput: true, enableMouseInput: true, enableAbsoluteMouse: false});
       if (epoch !== this.epoch || !this.root) return;
       this.active = true; this.buttons = 0; this.remainder = [0, 0]; this.send();
       this.pad.hidden = false; this.mapped.hidden = false;
