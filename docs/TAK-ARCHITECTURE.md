@@ -68,6 +68,17 @@ Esse fluxo depende de Content Test Application e configuração de desenvolvedor
 - [ ] Comportamento de jogos com layout oficial comparado com jogos sem layout oficial.
 - [ ] Diferenças xCloud e Remote Play documentadas; nenhum recurso anunciado como universal sem teste.
 
+## Referência externa avaliada: Thunder Virtual Controller
+
+O [gist Thunder Virtual Controller](https://gist.github.com/Navneetkrh/8b224abcbe449a23b0360553663b8357), criado em 2025-11-30, demonstra uma interface virtual com editor de posições, swipe-to-look, gyro, deadzone e ajustes de sensibilidade. É uma referência conceitual, mas não é uma base segura para incorporar:
+- O userscript substitui globalmente `navigator.getGamepads` por um gamepad sintético, dispara `gamepadconnected` e mantém um loop `requestAnimationFrame` permanente.
+- O padrão conflita com o gerenciador único de entradas do NimboXcloud e pode ocultar controles físicos ou alterar o comportamento de outras partes da página.
+- A vibração usa `navigator.vibrate` como substituto, não comprova retorno háptico real do controle Xbox.
+- O cabeçalho do gist corresponde a `https://www.xbox.com/*/play*`, não ao domínio novo `play.xbox.com`.
+- Não foi identificada licença explícita no gist consultado; não copiar nem adaptar código sem autorização/licença clara.
+
+Conclusão: manter o TAK como caminho principal e usar esse gist apenas como referência de UX/controles para um fallback isolado. Não introduzir override global de `navigator.getGamepads`, gamepad sintético ou scheduler concorrente.
+
 ## Licenciamento e distribuição
 
 O repositório público de schemas/ferramentas Microsoft declara MIT. A documentação informa que o TAK CLI possui EULA própria; não redistribuir o executável nem presumir que a licença MIT do repositório substitua a EULA do CLI. O NimboXcloud pode referenciar o schema público e implementar seu próprio editor, mantendo atribuição e compatibilidade com a licença aplicável.
