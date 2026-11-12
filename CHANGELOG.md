@@ -1,3 +1,13 @@
+## [4.12.93] — 2026-11-12
+- Adicionados modos explícitos de entrada física: Automático, teclado/mouse e gamepad, separados do HUD por toque. O gamepad exige dispositivo reconhecido; não é criado um controle fictício.
+- Preferência pode ajustar campos conhecidos da configuração inicial e solicitar alteração na sessão conectada pelo adaptador existente. Schemas desconhecidos passam sem alteração; o recebimento de comandos pelo Fortnite ainda requer teste real.
+- Restauração de entrada física separada da HUD, com serialização, limpeza e recuperação de erro parcial. Toque nativo, Pointer Lock e F9 preservados.
+- Experiência DeX passa a ser apresentada como Desktop quando houver ponteiro fino, independentemente da largura da janela. Preferência antiga dex permanece legível; User-Agent e qualidade não são alterados pelo rótulo.
+- Monitor troca BR por Bitrate e reconhece a bandeira da Índia nas duas regiões conhecidas.
+- Módulo Touch HUD atualizado para 1.2.7; cache e metadados do principal sincronizados em 4.12.93.
+- Dezenove testes novos; suíte local: 242 testes, 239 PASS, zero FAIL, três TODO. Sintaxe e relatório estático verificados. Chromium bloqueado no ambiente; sem teste autenticado no DeX.
+- Roteiro de teste, limites e diagnóstico em docs/ENTRADA_FISICA.md.
+
 ## [4.12.92] — 2026-11-12
 - Corrigido o limite do polling ICE xHome: no máximo 30 consultas após a leitura inicial, sem agendar uma 31ª tentativa.
 - O timer agora pertence explicitamente ao requestId e ao peer ativos; callbacks cancelados ou obsoletos não podem limpar o timer de uma sessão nova.
@@ -309,5 +319,6 @@ Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR
 
 ## Próximas versões
 As alterações futuras devem incluir: versão, data, recursos adicionados, correções, incompatibilidades conhecidas e evidências de testes.
+
 
 

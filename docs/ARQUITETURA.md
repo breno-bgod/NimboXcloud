@@ -63,3 +63,10 @@ Ao alterar interceptações de rede, verificar se os dados esperados ainda exist
 O login cloud via fetch alimenta um catálogo em memória de regiões e origens validadas. O seletor mantém Automático e aliases legados, atualiza a lista pelo ciclo existente de UI e preserva a resposta nativa quando a região preferida não está disponível. O login xHome não participa desse catálogo.
 
 A escolha de servidor exige recarregar antes de iniciar outra partida para aplicar a preferência ao login. Preferência, pin aplicado e endpoint observado são estados distintos; nenhum deles comprova localização física da mídia. Consulte [implementação, testes e aceite](./SERVIDORES_DINAMICOS.md).
+
+
+## Entrada física e perfil Desktop — 4.12.93
+
+O modo físico é explícito e separado do HUD. O seletor pode ajustar apenas flags conhecidas de teclado/mouse da configuração inicial cloud e usar o método existente do SDK na sessão conectada. O adaptador mantém restauração física e virtual separadas e preserva toque nativo. O padrão Automático não reescreve a configuração de entrada.
+
+Desktop é uma classificação da experiência por capacidades de ponteiro, sem identificação específica de DeX, spoof de User-Agent ou escolha automática de controle. Consulte [contratos, limites e roteiro de teste](./ENTRADA_FISICA.md).

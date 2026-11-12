@@ -60,3 +60,8 @@ Registros técnicos de origem consultados (fora da interface do produto):
 
 A interceptação depende de o login cloud passar por fetch no contexto observado. Se o cliente migrar o login para Worker/XHR ou alterar seu schema, o catálogo pode ficar indisponível; o código preserva o fluxo nativo. A mudança não garante que uma região anunciada aceite qualquer jogo, não muda direitos da conta e não habilita 1440p. O próximo lote é investigar a negociação de qualidade preservando a entrada atual.
 
+
+
+## Retorno do mantenedor — 2026-11-12
+
+O mantenedor relatou selecionar South India e iniciar Fortnite em Samsung DeX. O monitor apresentou SOUTHINDIA, 60 FPS, RTT de 391 ms e perda de 0,0% na amostra descrita. Isso registra funcionamento observado pelo usuário para essa seleção; não comprova a localização física da mídia nem homologa todas as regiões. O problema de teclado/mouse encontrado no mesmo teste é tratado em [Entrada física](./ENTRADA_FISICA.md).

@@ -30,6 +30,14 @@ Catálogo de datacenters cloud agora deriva das regiões anunciadas no login, pr
 
 A implementação e dezesseis testes comportamentais novos estão concluídos; 221 testes locais, 218 PASS, zero FAIL e três TODO. Isso não homologa seleção real de datacenter. Teste visual de Chromium bloqueado por setsockopt; mouse/HUD/controles continuam exigindo validação de dispositivo. Consulte [roteiro de aceite](./SERVIDORES_DINAMICOS.md).
 
+## Revisão incremental — 2026-11-12 / v4.12.93
+
+O mantenedor relatou entrada em South India com Fortnite pela lista dinâmica, mas teclado/mouse físicos indisponíveis no Samsung DeX. Registro de uso real do mantenedor; a causa não foi atribuída ao rótulo DeX nem ao perfil HQ sem comprovação.
+
+Foram adicionadas solicitações explícitas de teclado/mouse e gamepad físicos, separadas do HUD virtual, e restauração de configurações do adaptador. O rótulo da experiência em DeX passa a Desktop por capacidades; o monitor escreve Bitrate. Padrão Automático, toque nativo e Pointer Lock preservados. O joystick virtual xCloud retail não foi implementado neste lote.
+
+Validação local: 242 testes, 239 PASS, zero FAIL, três TODO. Funcionalidade física no Fortnite/DeX ainda depende de teste autenticado. [Roteiro e limites](./ENTRADA_FISICA.md).
+
 ## Propósito e princípios
 
 O NimboXcloud é um userscript independente para a nova experiência de Xbox Cloud Gaming em `https://play.xbox.com/`. Busca oferecer monitoramento, personalização, controles e recursos de acessibilidade sem substituir o serviço Xbox. Prioridade: **iniciar e manter partidas estáveis**, preservar controle/toque nativos e permitir recuperação quando uma opção falhar.
@@ -117,5 +125,6 @@ Antes de reativar um módulo:
 - **2026-11-12 — decisão do mantenedor:** retomada técnica do Remote Play xHome autorizada. Desenvolvimento de descoberta, sessão, WebRTC e teardown pode continuar; a aba permanece oculta e o recurso não pode ser anunciado como jogável antes de comprovar mídia e controles em Xbox real.
 
 > **Política de transparência:** nunca confundir "opção aparece", "código existe", "teste automatizado passa" e "funcionou em partida real". São níveis distintos de evidência.
+
 
 

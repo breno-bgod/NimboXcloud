@@ -28,7 +28,7 @@ test('native touch configuration is returned unchanged', async () => {
   const start = source.indexOf('  function patchTouchSessionConfiguration(response) {');
   const end = source.indexOf('  // Pointer Lock pertence', start);
   assert.ok(start >= 0 && end > start);
-  const context = { Promise };
+  const context = { Promise, nxPhysicalInputMode: () => 'native', nxPhysicalInputState: {} };
   runInNewContext('let touchSessionDiagnostics;\n' + source.slice(start, end) +
     '\nglobalThis.patch = patchTouchSessionConfiguration;', context);
   const response = { configuration: { enableTouchInput: false } };
@@ -126,3 +126,4 @@ test('quality selection respects saved presets and defaults safely to HQ', () =>
   saved = 'constructor';
   assert.equal(context.selected(), modes.hq);
 });
+

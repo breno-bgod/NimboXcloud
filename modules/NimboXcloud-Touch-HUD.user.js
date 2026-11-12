@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.2.6
+// @version      1.2.7
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD, HUD editável e gamepad virtual experimental exclusivo do xHome.
 // @author       KReight / colaboradores (créditos nos avisos legais)
 // @license      GPL-3.0-or-later
@@ -63,7 +63,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.2.6';
+const VERSION='1.2.7';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -102,6 +102,9 @@ function nimboCapture(raw){
  if(ui)ui.stop(); // Releases held keys and mouse buttons safely.
  if(old)old.dispose().catch(e=>NimboDiag.add('sessão','Falha ao finalizar entrada',e.message));
  nimboTransport=new NimboXboxTransport(raw);
+ const physicalMode=nimboPhysicalPreference();
+ if(physicalMode!=='native'&&(physicalMode!=='gamepad'||nimboHasPhysicalGamepad()))
+  nimboTransport.setPhysicalInputMode(physicalMode).catch(e=>NimboDiag.add('entrada física','Não foi possível aplicar a preferência física',e.name));
  api.streamSession=nimboTransport.facade;api.inputChannel=nimboTransport.channel;
  STATES.isPlaying=true;
  if(ui){
@@ -122,6 +125,7 @@ class NimboXboxTransport {
   constructor(raw) {
     this.raw=raw;this.previous=null;this.applied=null;this.queue=Promise.resolve();this.buttons=0;
     this.hasInput=false;this.held=new Map();this.flushTimer=null;this.disposed=false;
+    this.physicalPrevious=null;this.physicalApplied=null;this.physicalMode='native';
     this.channel={
       queueMouseInput:reading=>this.mouse(reading),
       sendKeyboardInput:reading=>this.keyboard(reading)
@@ -142,6 +146,50 @@ class NimboXboxTransport {
     return this.serialize(async()=>{
       this.assertConnected();
       return nimboApplyInput(this.raw,options);
+    });
+  }
+  physicalInputStatus(){
+    const config=this.raw.configuration?.inputConfiguration||{};
+    const keyboard=typeof config.enableKeyboardInput==='boolean'?config.enableKeyboardInput:null;
+    const mouse=typeof config.enableMouseInput==='boolean'?config.enableMouseInput:null;
+    const confirmed=this.physicalMode==='keyboard-mouse'?keyboard===true&&mouse===true:
+      this.physicalMode==='gamepad'?keyboard===false&&mouse===false:false;
+    return {mode:this.physicalMode,connected:this.connected(),keyboardEnabled:keyboard,mouseEnabled:mouse,
+      state:this.physicalMode==='native'?'native':confirmed?'configured':'requested'};
+  }
+  async restorePhysicalNow(){
+    if(!this.physicalPrevious){this.physicalMode='native';return;}
+    const current=this.raw.configuration?.inputConfiguration||{},restore={};
+    for(const [key,value]of Object.entries(this.physicalPrevious)){
+      if(Object.hasOwn(this.physicalApplied||{},key)&&Object.is(current[key],this.physicalApplied[key]))restore[key]=value;
+    }
+    if(!this.raw.isShutdown&&Object.keys(restore).length)await nimboApplyInput(this.raw,restore);
+    this.physicalPrevious=null;this.physicalApplied=null;this.physicalMode='native';
+  }
+  setPhysicalInputMode(mode){
+    if(!['native','keyboard-mouse','gamepad'].includes(mode))return Promise.reject(Error('Modo de entrada inválido.'));
+    return this.serialize(async()=>{
+      this.assertConnected();
+      // Release virtual ownership before changing native physical configuration.
+      await this.restoreNow();
+      if(mode==='native'){await this.restorePhysicalNow();return this.physicalInputStatus();}
+      const config=this.raw.configuration?.inputConfiguration||{};
+      if(typeof config.enableKeyboardInput!=='boolean'||typeof config.enableMouseInput!=='boolean')
+        throw Error('Configuração de teclado/mouse indisponível no cliente. Reinicie a partida após salvar o modo.');
+      if(!this.physicalPrevious){
+        this.physicalPrevious={enableKeyboardInput:config.enableKeyboardInput,enableMouseInput:config.enableMouseInput};
+        if(typeof config.enableAbsoluteMouse==='boolean')this.physicalPrevious.enableAbsoluteMouse=config.enableAbsoluteMouse;
+      }
+      const enabled=mode==='keyboard-mouse';
+      const applied={enableKeyboardInput:enabled,enableMouseInput:enabled};
+      if(Object.hasOwn(this.physicalPrevious,'enableAbsoluteMouse'))
+        applied.enableAbsoluteMouse=enabled?false:this.physicalPrevious.enableAbsoluteMouse;
+      this.physicalApplied={...applied};
+      try{
+        await nimboApplyInput(this.raw,applied);
+        this.assertConnected();this.physicalMode=mode;
+        return this.physicalInputStatus();
+      }catch(error){try{await this.restorePhysicalNow();}catch{}throw error;}
     });
   }
   activateKeyboardMouse(){
@@ -212,9 +260,37 @@ class NimboXboxTransport {
     this.held.clear();this.buttons=0;this.hasInput=false;
     if(!this.raw.isShutdown)try{this.raw.onVirtualMouseInput({Type:0,X:0,Y:0,Buttons:0,WheelX:0,WheelY:0});}catch{}
   }
-  async dispose(){if(this.disposed)return;try{await this.restore();}finally{this.release();this.disposed=true;}}
+  async dispose(){
+    if(this.disposed)return;
+    return this.serialize(async()=>{
+      if(this.disposed)return;
+      try{await this.restoreNow();await this.restorePhysicalNow();}
+      finally{this.release();this.disposed=true;}
+    });
+  }
 }
 function nimboApplyInput(raw,options){return raw.updateInputConfigurationAsync(options);}
+function nimboPhysicalPreference(){
+ try{const mode=window.localStorage.getItem('nx.input.physicalMode.v1');return ['keyboard-mouse','gamepad'].includes(mode)?mode:'native';}
+ catch{return 'native';}
+}
+function nimboHasPhysicalGamepad(){
+ try{return Array.from(navigator.getGamepads?.()||[]).some(p=>p&&p.connected!==false);}
+ catch{return false;}
+}
+async function nimboSetPhysicalInputMode(mode){
+ if(!['native','keyboard-mouse','gamepad'].includes(mode))throw Error('Modo de entrada inválido.');
+ if(ui?.remoteMode)throw Error('Este seletor controla apenas a sessão xCloud.');
+ if(mode==='gamepad'&&!nimboHasPhysicalGamepad())throw Error('Conecte um controle físico antes de ativar este modo.');
+ if(!nimboTransport?.connected())return {mode,state:'waiting',connected:false};
+ const owner=nimboTransport;
+ // Do not start a virtual HUD or duplicate native keyboard/mouse listeners.
+ if(ui?.wanted||ui?.active)ui.stop();
+ const result=await owner.setPhysicalInputMode(mode);
+ if(nimboTransport!==owner||!owner.connected())throw Error('A sessão foi substituída. Tente novamente na partida atual.');
+ return result;
+}
+
 
 
 const touchPanel={isOpen:false,element:null,launcher:null,quickToggle:null,nxAccess:null,
@@ -2004,6 +2080,8 @@ window.NimboTouch=Object.freeze({
  version:VERSION,attachSession:nimboCapture,open:()=>touchPanel.open(),
  stop:()=>ui?.remoteMode?ui.stopRemote():ui?.stop(),
  diagnostic,isEnabled:()=>!!ui?.wanted,
+ setPhysicalInputMode:nimboSetPhysicalInputMode,
+ physicalInputStatus:()=>nimboTransport?.physicalInputStatus()||{mode:'native',state:'waiting',connected:false},
  toggle:()=>{touchPanel.mount();touchPanel.toggle.click();},
  attachRemoteInputAdapter:adapter=>{
   if(!adapter||typeof adapter.id!=='string'||!adapter.id||typeof adapter.isReady!=='function'||

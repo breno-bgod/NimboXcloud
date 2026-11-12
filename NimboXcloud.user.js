@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.92
+// @version      4.12.93
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch e controle virtual experimental exclusivo do xHome.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.92
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.93
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.92';
+  const VER = '4.12.93';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -113,6 +113,7 @@ SOFTWARE.
   const LS_AUTO_BEST = 'xcu.autoBestMeasured';
   const LS_NX_DIAG = 'xcu.diagnostics';
   const LS_DEVICE_PROFILE = 'xcu.deviceProfile';
+  const LS_PHYSICAL_INPUT = 'nx.input.physicalMode.v1';
   const LS_CONSOLE_LAB = 'xcu.consoleLab.profile.v1';
   const LS_CONSOLE_NOTES = 'xcu.consoleLab.notes.v1';
   const LS_FORTNITE_CONSOLE = 'nx.fortnite.consoleExperience.v1';
@@ -926,6 +927,69 @@ SOFTWARE.
     });
   }
 
+  const nxPhysicalInputState = { busy: false, message: '', negotiatedMode: null };
+  function nxPhysicalInputMode() {
+    const mode = getPref(LS_PHYSICAL_INPUT, 'native');
+    return ['keyboard-mouse', 'gamepad'].includes(mode) ? mode : 'native';
+  }
+  function nxPhysicalInputSummary() {
+    if (nxPhysicalInputState.busy) return 'Aplicando a preferência de entrada…';
+    if (nxPhysicalInputState.message) return nxPhysicalInputState.message;
+    const mode = nxPhysicalInputMode();
+    if (mode === 'gamepad' && !inputCapabilities().gamepadsConnected) return 'Aguardando um controle físico reconhecido pelo navegador.';
+    let status = null;
+    try { status = window.NimboTouch?.physicalInputStatus?.(); } catch (_) {}
+    if (mode === 'native' && nxPhysicalInputState.negotiatedMode && nxPhysicalInputState.negotiatedMode !== 'native')
+      return 'Automático salvo. Reinicie a partida para restaurar também a configuração recebida no início.';
+    if (mode === 'native' && (!status || status.mode === 'native')) return 'Entrada automática do Xbox; HUD de toque independente.';
+    if (!status?.connected || status.mode !== mode) return 'Preferência salva. Inicie ou reinicie a partida para aplicar.';
+    if (status.state === 'configured') return mode === 'keyboard-mouse'
+      ? 'Teclado e mouse habilitados no cliente. Feche o NX e clique no vídeo para jogar.'
+      : 'Modo de controle solicitado ao cliente. Use o controle conectado.';
+    return 'Solicitação enviada ao cliente; funcionamento no jogo ainda não confirmado.';
+  }
+  async function nxChoosePhysicalInputMode(mode) {
+    if (nxPhysicalInputState.busy || !['native', 'keyboard-mouse', 'gamepad'].includes(mode)) return false;
+    if (mode === 'gamepad' && !inputCapabilities().gamepadsConnected) {
+      nxPhysicalInputState.message = 'Conecte um controle físico antes de ativar este modo.'; renderBody(); return false;
+    }
+    setPref(LS_PHYSICAL_INPUT, mode);
+    if (nxPhysicalInputMode() !== mode) { toast('Não foi possível salvar a preferência de entrada.'); return false; }
+    nxPhysicalInputState.busy = true; nxPhysicalInputState.message = ''; renderBody();
+    try {
+      const apply = window.NimboTouch?.setPhysicalInputMode;
+      if (typeof apply === 'function') await apply(mode);
+      else nxPhysicalInputState.message = 'Preferência salva. Atualize o módulo e reinicie a partida para aplicar.';
+      return true;
+    } catch (_) {
+      nxPhysicalInputState.message = 'Preferência salva, mas a ativação nesta sessão não foi confirmada. Reinicie a partida para tentar novamente.';
+      return false;
+    } finally { nxPhysicalInputState.busy = false; renderBody(); }
+  }
+  function nxPhysicalInputGroup(root, category) {
+    const keyboard = category === 'keyboard';
+    const g = group(keyboard ? 'Teclado e mouse físicos' : 'Controle físico', keyboard
+      ? 'Para teclado e mouse conectados por USB ou Bluetooth. Requer suporte nativo do jogo; não converte mouse em joystick.'
+      : 'Use um gamepad conectado por USB ou Bluetooth. Este modo não cria um controle virtual.');
+    const activate = actBtn(keyboard ? 'Usar teclado e mouse físicos' : 'Usar controle físico', function () {
+      nxChoosePhysicalInputMode(keyboard ? 'keyboard-mouse' : 'gamepad');
+    }, 'primary');
+    const automatic = actBtn('Restaurar Automático', function () { nxChoosePhysicalInputMode('native'); }, 'ghost');
+    const refresh = function () {
+      activate.disabled = nxPhysicalInputState.busy || (!keyboard && !inputCapabilities().gamepadsConnected);
+      automatic.disabled = nxPhysicalInputState.busy;
+      activate.style.opacity = activate.disabled ? '.45' : '1';
+      automatic.style.opacity = automatic.disabled ? '.45' : '1';
+    };
+    liveFns.push(refresh); refresh();
+    const buttons = mk('div', 'display:flex;gap:8px;flex-wrap:wrap'); buttons.append(activate, automatic);
+    g.add(setRow('Entrada física', 'Tenta aplicar na sessão atual; se o jogo não responder, reinicie a partida. O HUD virtual é pausado ao trocar o modo físico.', buttons));
+    g.add(infoRow('Estado', nxPhysicalInputSummary));
+    if (keyboard) g.add(infoRow('Mouse capturado', function () { return document.pointerLockElement ? 'Sim' : 'Não — clique no vídeo após fechar o painel'; },
+      'A captura e o atalho F9 continuam sob controle do navegador e do Xbox.'));
+    root.appendChild(g.root);
+  }
+
   // ---------- 8. Faixa de qualidade: reescrever o corpo de /sessions/cloud/play ----------
   // O perfil HQ usa tizen apenas na negociacao do stream. 1440p real nao e garantido.
   // Diagnóstico sanitizado da negociação de entrada: somente nomes de campos e booleanos.
@@ -1337,16 +1401,34 @@ SOFTWARE.
   // Configuração independente de toque; preserva a negociação nativa.
   let touchSessionDiagnostics = { inspected: false, applied: false };
   function patchTouchSessionConfiguration(response) {
-    // A negociação e a execução dos controles touch pertencem ao xCloud.
-    // Alterar enableTouchInput/maxTouchPoints na resposta pode exibir botões
-    // sem que a sessão tenha sido preparada para transmitir seus comandos.
-    // Não modificar a resposta: preservar a configuração original do serviço.
-    touchSessionDiagnostics = {
-      inspected: false,
-      applied: false,
-      reason: 'native-xcloud-touch-negotiation-preserved'
-    };
-    return Promise.resolve(response);
+    // Apenas escolha física explícita; toque nativo e seus campos não são alterados.
+    let mode = nxPhysicalInputMode();
+    if (mode === 'gamepad' && !inputCapabilities().gamepadsConnected) mode = 'native';
+    touchSessionDiagnostics = { inspected: false, applied: false,
+      reason: 'native-xcloud-touch-negotiation-preserved', physicalMode: mode };
+    if (mode === 'native') { nxPhysicalInputState.negotiatedMode = 'native'; return Promise.resolve(response); }
+    if (!response || !response.ok) return Promise.resolve(response);
+    return rewriteJson(response, function (json) {
+      if (!json || typeof json !== 'object' || Array.isArray(json)) return false;
+      let holder = null, encoded = false;
+      if (Object.prototype.hasOwnProperty.call(json, 'clientStreamingConfigOverrides')) {
+        const value = json.clientStreamingConfigOverrides;
+        if (typeof value === 'string') { try { holder = JSON.parse(value); encoded = true; } catch (_) { return false; } }
+        else if (value && typeof value === 'object' && !Array.isArray(value)) holder = value;
+      } else if (json.inputConfiguration && typeof json.inputConfiguration === 'object') holder = json;
+      if (!holder || typeof holder !== 'object' || Array.isArray(holder)) return false;
+      const current = holder.inputConfiguration;
+      if (current != null && (typeof current !== 'object' || Array.isArray(current))) return false;
+      const enabled = mode === 'keyboard-mouse';
+      const changed = !current || current.enableKeyboardInput !== enabled || current.enableMouseInput !== enabled;
+      holder.inputConfiguration = Object.assign({}, current || {}, { enableKeyboardInput: enabled, enableMouseInput: enabled });
+      if (Object.prototype.hasOwnProperty.call(json, 'clientStreamingConfigOverrides'))
+        json.clientStreamingConfigOverrides = encoded ? JSON.stringify(holder) : holder;
+      touchSessionDiagnostics.inspected = true;
+      touchSessionDiagnostics.physicalApplied = true;
+      nxPhysicalInputState.negotiatedMode = mode;
+      return changed;
+    });
   }
 
   // Pointer Lock pertence ao xCloud e ao navegador. Nao simular F9 nem
@@ -5034,16 +5116,16 @@ SOFTWARE.
     controls: function (root, category) {
       const g1 = group('Dispositivo');
       const r1 = setRow('Perfil do dispositivo', '', chips([
-        { k: 'auto', label: 'Auto' }, { k: 'desktop', label: 'Desktop' }, { k: 'mobile', label: 'Celular' }, { k: 'dex', label: 'DeX' }
-      ], getPref(LS_DEVICE_PROFILE, 'auto'), function (k) {
+        { k: 'auto', label: 'Auto' }, { k: 'desktop', label: 'Desktop' }, { k: 'mobile', label: 'Celular' }
+      ], nxDeviceProfilePreference(), function (k) {
         setPref(LS_DEVICE_PROFILE, k);
         pushLog('device', 'Perfil local ' + k + ' (não altera User-Agent nem controles)');
         renderBody();
       }), true);
       g1.add(r1);
-      liveDesc(r1, function () { return 'Detectado: ' + S.deviceDetected + '. Não altera o User-Agent nem os controles.'; });
-      g1.add(infoRow('Dispositivo detectado', function () { return detectedDeviceProfile(); },
-        'Seleção automática. Não reduz qualidade ou bitrate.'));
+      liveDesc(r1, function () { return 'Experiência detectada: ' + nxDeviceProfileLabel(detectedDeviceProfile()) + '. Entrada física configurada separadamente; identidade do navegador preservada.'; });
+      g1.add(infoRow('Dispositivo detectado', function () { return nxDeviceProfileLabel(detectedDeviceProfile()); },
+        'Classifica a experiência pelo mouse/ponteiro disponível; não identifica especificamente o Samsung DeX.'));
       root.appendChild(g1.root);
 
       const g2 = group('Entradas detectadas');
@@ -5610,7 +5692,7 @@ SOFTWARE.
       ['Enquadramento','Tela cheia','Economia de recursos'],
       'Enquadramento, tela cheia e economia de filtros locais durante a aba oculta.');
     if(presentation)root.appendChild(presentation);
-    root.appendChild(note('Auto, Desktop, Celular e DeX são preferências de experiência. O navegador mantém sua identidade nativa.'));
+    root.appendChild(note('Auto, Desktop e Celular são preferências de interface. Um celular com mouse pode usar a experiência Desktop, mantendo toque e identidade nativa.'));
   };
   TAB_BUILDERS.images=function(root){
     const media=nxLegacyMediaGroups('images');
@@ -5622,6 +5704,7 @@ SOFTWARE.
     root.appendChild(note('O processamento gráfico disponível neste build usa WebGL2 e filtros locais. FSR 1 ainda não está implementado.'));
   };
   TAB_BUILDERS.gamepad=function(root){
+    nxPhysicalInputGroup(root,'gamepad');
     const nodes=nxLegacyControlGroups('gamepad');
     nxAppendControlRows(root,nodes,'Gamepad conectado',
       ['Controles conectados','Controles com atividade','Última alteração de conexão','Falhas de leitura'],
@@ -5636,12 +5719,13 @@ SOFTWARE.
   };
   TAB_BUILDERS.controls=TAB_BUILDERS.gamepad;
   TAB_BUILDERS.gyrotouch=function(root){
+    nxPhysicalInputGroup(root,'keyboard');
     const activation=group('Ativação','Ative ou desative o NimboTouch. O Gamepad físico permanece independente.');
-    activation.add(setRow('Ativar teclado e mouse','Liga ou desliga o NimboTouch para toque, mouse e teclado virtuais.',
+    activation.add(setRow('Ativar HUD de teclado e mouse por toque','Liga ou desliga apenas os botões virtuais e o touchpad do NimboTouch.',
       toggle(!!(window.NimboTouch&&window.NimboTouch.isEnabled()),function(){
         if(!window.NimboTouch||typeof window.NimboTouch.toggle!=='function'){toast('Módulo de teclado e mouse indisponível; atualize o userscript');renderBody();return;}
         window.NimboTouch.toggle();renderBody();
-      },'Ativar teclado e mouse')));
+      },'Ativar HUD de teclado e mouse por toque')));
     root.appendChild(activation.root);
     const nodes=nxLegacyControlGroups('keyboard');
     nxMoveGroup(root,nodes,'Teclado e mouse');
@@ -5876,9 +5960,9 @@ SOFTWARE.
     const n=nxTelemetryEnsure();if(!n)return;
     const host=mountTarget();if(host&&n.parentNode!==host)host.appendChild(n);
     const q=S.qos||{},p=nxMonitor;
-    const flags={JAPANEAST:'🇯🇵',KOREACENTRAL:'🇰🇷',EASTUS:'🇺🇸',WESTEUROPE:'🇪🇺',BRAZILSOUTH:'🇧🇷'};
+    const flags={JAPANEAST:'🇯🇵',KOREACENTRAL:'🇰🇷',EASTUS:'🇺🇸',WESTEUROPE:'🇪🇺',BRAZILSOUTH:'🇧🇷',SOUTHINDIA:'🇮🇳',CENTRALINDIA:'🇮🇳'};
     const srv=String(S.serverActual||'').toUpperCase();
-    const vals={server:(flags[srv]||'◈')+' '+(srv||'Servidor não identificado'),fps:'FPS '+fmtN(q.decodedFps||q.fps),rtt:'RTT '+fmtN(q.rtt,' ms'),bitrate:'BR '+(Number.isFinite(q.kbps)?fmtN(q.kbps/1000,' Mbps',1):'—'),loss:'Perda '+fmtN(curLoss(),'% ',1),resolution:'Res '+(q.h?q.h+'p':'—'),jitter:'Jitter '+fmtN(q.jitter,' ms')};
+    const vals={server:(flags[srv]||'◈')+' '+(srv||'Servidor não identificado'),fps:'FPS '+fmtN(q.decodedFps||q.fps),rtt:'RTT '+fmtN(q.rtt,' ms'),bitrate:'Bitrate '+(Number.isFinite(q.kbps)?fmtN(q.kbps/1000,' Mbps',1):'—'),loss:'Perda '+fmtN(curLoss(),'% ',1),resolution:'Res '+(q.h?q.h+'p':'—'),jitter:'Jitter '+fmtN(q.jitter,' ms')};
     const keys=p.layout==='compact'?['server','fps','rtt']:p.fields;
     const layout=p.layout==='auto'?(innerWidth<700?'vertical':'horizontal'):p.layout;
     n.textContent=keys.filter(function(k){return Object.prototype.hasOwnProperty.call(vals,k);}).map(function(k){return vals[k];}).join(layout==='vertical'?'\\n':'  ·  ');
@@ -6304,7 +6388,7 @@ SOFTWARE.
     try { anyCoarse = !!window.matchMedia('(any-pointer: coarse)').matches; } catch (e) {}
     try { hover = !!window.matchMedia('(any-hover: hover)').matches; } catch (e) {}
     let gamepads = 0;
-    try { gamepads = Array.from(navigator.getGamepads ? navigator.getGamepads() : []).filter(Boolean).length; } catch (e) {}
+    try { gamepads = Array.from(navigator.getGamepads ? navigator.getGamepads() : []).filter(function (pad) { return pad && pad.connected !== false; }).length; } catch (e) {}
     return {
       touch: touchPoints > 0 || ('ontouchstart' in window) || coarse || anyCoarse,
       maxTouchPoints: touchPoints, pointerCoarse: coarse,
@@ -6987,6 +7071,7 @@ SOFTWARE.
       v: VER,
       url: location.href,
       inputCapabilities: inputCapabilities(),
+      physicalInput: { requested: nxPhysicalInputMode(), summary: nxPhysicalInputSummary() },
       inputSources: nxInputSourcesReport(),
       relativeMouse: { samples: nxRelativeMouse.samples, lastAt: nxRelativeMouse.lastAt,
         distance: Math.round(nxRelativeMouse.distance), maxStep: Math.round(nxRelativeMouse.maxStep),
@@ -7115,24 +7200,26 @@ SOFTWARE.
 
   function detectedDeviceProfile() {
     const mobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-    const desktopPointer = window.matchMedia && window.matchMedia('(any-pointer:fine)').matches;
-    return mobile ? (desktopPointer && innerWidth >= 900 ? 'dex' : 'mobile') : 'desktop';
+    let desktopPointer = false;
+    try { desktopPointer = !!window.matchMedia?.('(any-pointer:fine)').matches; } catch (_) {}
+    return mobile && !desktopPointer ? 'mobile' : 'desktop';
   }
-  function applyDeviceProfile() {
+  function nxDeviceProfilePreference() {
     const pref = getPref(LS_DEVICE_PROFILE, 'auto');
+    return pref === 'dex' ? 'desktop' : ['auto','desktop','mobile'].includes(pref) ? pref : 'auto';
+  }
+  function nxDeviceProfileLabel(profile) { return profile === 'desktop' ? 'Desktop' : profile === 'mobile' ? 'Celular' : 'Automático'; }
+  function applyDeviceProfile() {
+    const pref = nxDeviceProfilePreference();
     const mode = pref === 'auto' ? detectedDeviceProfile() : pref;
-    // Configuração explícita, sem modificar User-Agent, pointer lock, gamepads ou touch.
-    // O perfil de dispositivo é informativo; não reduz bitrate nem resolução.
-    // A escolha do dispositivo não modifica a resolução definida pelo jogador.
-    // Preserva 1080p/1080p HQ e não aplica 720p automaticamente.
-    pushLog('device', 'Perfil ' + mode + ' aplicado (qualidade/limite SDP; próxima sessão)');
+    pushLog('device', 'Perfil de interface ' + nxDeviceProfileLabel(mode) + '; entrada física configurada separadamente');
     update();
   }
   function cycleDeviceProfile() {
-    const modes = ['auto', 'desktop', 'mobile', 'dex'];
-    const next = modes[(modes.indexOf(getPref(LS_DEVICE_PROFILE, 'auto')) + 1) % modes.length];
+    const modes = ['auto', 'desktop', 'mobile'];
+    const next = modes[(modes.indexOf(nxDeviceProfilePreference()) + 1) % modes.length];
     setPref(LS_DEVICE_PROFILE, next);
-    pushLog('device', 'Perfil local ' + next + ' (não altera User-Agent nem controles)');
+    pushLog('device', 'Perfil local ' + nxDeviceProfileLabel(next) + ' (não altera User-Agent nem controles)');
   }
   function cycleNxShortcut() {
     const modes = ['KeyH', 'KeyJ', 'KeyK'];
