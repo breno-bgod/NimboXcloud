@@ -111,7 +111,7 @@ test('streaming page keeps server and quality settings while statistics owns tel
  assert.ok(start>=0&&end>start);
  const body=src.slice(start,end);
  assert.match(body,/Data center|nxOriginalStreamBuilder/);
- assert.match(body,/Servidores medidos/);
+ assert.match(body,/system\[2\]/);
  assert.match(body,/nxQualityPresets\(root\)/);
  assert.match(body,/Monitor de transmissão/);
  assert.match(body,/nxGroupTitle\(node\)!=='Monitor de transmissão'/);
