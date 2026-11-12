@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.52
+// @version      4.12.53
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.52
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.53
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.42';
+  const VER = '4.12.53';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -522,9 +522,9 @@
     return SERVERS.auto;
   }
   function resCfg() {
-    // 1080p em todas as orientacoes, fullscreen e janela; HQ opcional.
-    // Preferencias legadas de 720p sao normalizadas para 1080p.
-    return getPref(LS_RES,'auto')==='hq' ? RES_MODES.hq : RES_MODES.auto;
+    // HQ/Tizen solicitado em toda sessao, independente de viewport e preferencias legadas.
+    // O servidor controla a resolucao real; nenhuma alteracao nos controles ou touch.
+    return RES_MODES.hq;
   }
   function v4on() { return getPref(LS_V4, '1') !== '0'; }
 
