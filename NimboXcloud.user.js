@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.54
+// @version      4.12.55
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.54
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.55
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -4757,16 +4757,10 @@
     const t = e.target;
     if (t && wrap && wrap.contains(t)) return;
     if (t && nxLibraryButton && nxLibraryButton.contains(t)) return;
-    // Fechar sem encaminhar o clique ao jogo.
-    e.preventDefault();e.stopImmediatePropagation();
+    // Fechar o painel sem cancelar eventos nativos de toque ou mouse.
+    // O xCloud deve continuar recebendo entrada mesmo com periféricos conectados.
     setOpen(false,true);
   }, true);
-  ['pointerup','mousedown','mouseup','click','wheel','touchstart','touchmove','touchend'].forEach(function(type){
-    document.addEventListener(type,function(e){
-      if(!openUI || (wrap&&e.target&&wrap.contains(e.target)))return;
-      e.preventDefault();e.stopImmediatePropagation();
-    },{capture:true,passive:false});
-  });
 
   function update() {
     if (!buildUI()) return;
