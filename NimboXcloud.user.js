@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.93
+// @version      4.12.94
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch e controle virtual experimental exclusivo do xHome.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.93
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.94
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.93';
+  const VER = '4.12.94';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -881,6 +881,8 @@ SOFTWARE.
 
   function rewriteIce(res, u, isSdp) {
     if (!res || !res.status || res.status < 200 || res.status >= 300) return Promise.resolve(res);
+    // xHome possui sinalização e ciclo de candidatos próprios; não aplicar a reescrita retail de IPv4.
+    if (u && /xhome/i.test(String(u.hostname || u.host || ''))) return Promise.resolve(res);
     if (!v4on()) return Promise.resolve(res);
 
     return rewriteJson(res, function (j) {
