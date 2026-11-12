@@ -867,7 +867,7 @@ function readyInputHarness() {
   const events=[];
   class FakeChannel {
     constructor(label){this.label=label;this.readyState='open';this.sent=[];this.bufferedAmount=0;}
-    send(data){this.sent.push(data);events.push({channel:this.label,data});}
+    send(data){if(this.failSend){this.failSend=false;throw new Error('simulated send failure');}this.sent.push(data);events.push({channel:this.label,data});}
     close(){this.readyState='closed';}
   }
   class FakePeer {
@@ -979,4 +979,33 @@ test('gamepad encoder: pressed digital button falls back when value is zero',()=
   buttons[0]={pressed:true,value:0};
   const packet=api.encodeGamepadFrame({mapping:'standard',buttons,axes:[0,0,0,0]},0,1,10);
   assert.equal(new DataView(packet).getUint16(16,true),16);
+});
+
+
+test('gamepad scheduler: retries neutralization when the data channel rejects a release frame',()=>{
+  const {api,channels}=readyInputHarness();
+  const pad=standardPad(0);
+  pad.buttons[0]={pressed:true,value:1};
+  api.tickGamepads([pad],true);
+  const before=xhomeFrames(channels.input).length;
+  channels.input.failSend=true;
+  api.suspendGamepads();
+  assert.equal(xhomeFrames(channels.input).length,before);
+  api.suspendGamepads();
+  assert.equal(xhomeFrames(channels.input).length,before+1);
+  api.tickGamepads([pad],true);
+  assert.equal(xhomeFrames(channels.input).length,before+2);
+});
+
+test('gamepad scheduler: keeps a slot registered until a disconnect neutral frame is accepted',()=>{
+  const {api,channels}=readyInputHarness();
+  const pad=standardPad(1);
+  pad.buttons[1]={pressed:true,value:1};
+  api.tickGamepads([pad],true);
+  channels.input.failSend=true;
+  api.tickGamepads([],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[1]);
+  api.tickGamepads([],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[]);
+  assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===1&&message.wasAdded===false).length,1);
 });
