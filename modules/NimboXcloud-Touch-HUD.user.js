@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.2.4
+// @version      1.2.5
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD, HUD editável e gamepad virtual experimental exclusivo do xHome.
 // @author       KReight / NimboPlay contributors
 // @license      MIT
@@ -41,7 +41,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.2.4';
+const VERSION='1.2.5';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -1886,6 +1886,7 @@ class NimboPlayControls extends BxTouchpadSettings {
   applyGeometry(id,element){
     super.applyGeometry(id,element);const b=this.bindings.find(b=>b.id===id);
     if(this.special(b)){element.hidden=!this.editingHud&&(!this.active||!this.geometry(id).visible);element.classList.remove('hud-unassigned');}
+    if(this.remoteMode&&this.virtualGamepad?.enabled&&!this.editingHud)element.hidden=true;
     if(id.startsWith('vpad-')||id.startsWith('dpad-')){const g=this.geometry(id);element.hidden=!this.editingHud&&(!this.remoteMode||!this.active||!this.virtualGamepad?.enabled||!g.visible);}
   }
   wheel(steps){
