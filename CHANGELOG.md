@@ -1,3 +1,10 @@
+## [4.12.92] — 2026-11-12
+- Corrigido o limite do polling ICE xHome: no máximo 30 consultas após a leitura inicial, sem agendar uma 31ª tentativa.
+- O timer agora pertence explicitamente ao requestId e ao peer ativos; callbacks cancelados ou obsoletos não podem limpar o timer de uma sessão nova.
+- A referência do timer é liberada quando a consulta começa; transições para connected, failed ou closed durante um GET pendente impedem novos polls.
+- Adicionadas regressões determinísticas para o limite de 30 consultas e para transições de estado durante uma consulta ICE pendente.
+- Sem alteração de autenticação, payload SDP/ICE, endpoints, protocolo de entrada ou transporte do xCloud retail.
+
 ## [4.12.91] — 2026-11-12
 - Seletor de datacenter passa a usar as regiões anunciadas pelo Xbox no login, inclusive no modo Automático. Nomes novos válidos não exigem nova tabela de endpoints.
 - Preservados atalhos salvos, resposta nativa em fallback e todas as regiões alternativas. Login xHome permanece separado e não pode substituir o catálogo cloud.

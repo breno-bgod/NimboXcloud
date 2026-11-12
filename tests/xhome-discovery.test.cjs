@@ -1874,3 +1874,114 @@ test('reconnect: pending ICE poll from old session cannot mutate the new session
   assert.deepEqual(Array.from(timers.keys()).sort((a,b)=>a-b),activeTimers,'a stale poll must not schedule another timer');
   await api.stop();
 });
+
+
+test('xHome ICE polling stops at 30 requests without scheduling a 31st timer',async()=>{
+  const timers=new Map(),peers=[];
+  let timerId=0,iceReads=0;
+  const timerOverrides={
+    setTimeout(fn,ms){const id=++timerId;timers.set(id,{fn,ms});return id;},
+    clearTimeout(id){timers.delete(id);}
+  };
+  class FakePeer{
+    constructor(){this.connectionState='new';this.signalingState='stable';this.channels={};peers.push(this);}
+    createDataChannel(label,options){
+      const channel={label,protocol:options.protocol,ordered:options.ordered,readyState:'open',bufferedAmount:0,
+        send(){},close(){this.readyState='closed';}};
+      this.channels[label]=channel;return channel;
+    }
+    addTransceiver(){}
+    async createOffer(){return {type:'offer',sdp:'v=0'};}
+    async setLocalDescription(value){this.localDescription=value;}
+    async setRemoteDescription(value){this.remoteDescription=value;}
+    async addIceCandidate(){}
+    close(){this.connectionState='closed';this.signalingState='closed';}
+  }
+  const api=harness(async(url,opts)=>{
+    const method=opts&&opts.method||'GET';
+    if(url.endsWith('/v2/login/user'))return ok(login);
+    if(url.endsWith('/v5/sessions/home/play'))return ok({sessionId:'55555555-5555-4555-8555-555555555555'});
+    if(url.endsWith('/state'))return ok({state:'Provisioned'});
+    if(url.endsWith('/sdp')&&method==='POST')return {ok:true,status:204};
+    if(url.endsWith('/sdp')&&method==='GET')return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0'})});
+    if(url.endsWith('/ice')&&method==='GET'){iceReads++;return ok({candidates:[]});}
+    if(method==='DELETE')return {ok:true,status:204};
+    throw new Error('unexpected request '+method+' '+url);
+  },null,FakePeer,timerOverrides);
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  assert.equal(peers.length,1);
+  let pollCallbacks=0;
+  while(pollCallbacks<31){
+    const next=Array.from(timers.entries()).find(([,timer])=>timer.ms===1000);
+    if(!next)break;
+    timers.delete(next[0]);
+    await next[1].fn();
+    pollCallbacks++;
+  }
+  assert.equal(pollCallbacks,30,'exactly 30 polling callbacks may execute');
+  assert.equal(iceReads,31,'one initial ICE read plus at most 30 polls');
+  assert.equal(Array.from(timers.values()).filter(timer=>timer.ms===1000).length,0,'the limit must not leave a 31st timer pending');
+  assert.equal(api.state.iceTimer,null,'the exhausted poll must not retain a stale timer id');
+  await api.stop();
+});
+
+test('xHome ICE poll does not reschedule when the peer connects or fails during a pending GET',async()=>{
+  async function verifyTransition(finalState){
+    const timers=new Map(),peers=[];
+    let timerId=0,iceReads=0,resolvePoll,notifyPoll;
+    const pollStarted=new Promise(resolve=>{notifyPoll=resolve;});
+    const timerOverrides={
+      setTimeout(fn,ms){const id=++timerId;timers.set(id,{fn,ms});return id;},
+      clearTimeout(id){timers.delete(id);}
+    };
+    class FakePeer{
+      constructor(){this.connectionState='new';this.signalingState='stable';this.channels={};peers.push(this);}
+      createDataChannel(label,options){
+        const channel={label,protocol:options.protocol,ordered:options.ordered,readyState:'open',bufferedAmount:0,
+          send(){},close(){this.readyState='closed';}};
+        this.channels[label]=channel;return channel;
+      }
+      addTransceiver(){}
+      async createOffer(){return {type:'offer',sdp:'v=0'};}
+      async setLocalDescription(value){this.localDescription=value;}
+      async setRemoteDescription(value){this.remoteDescription=value;}
+      async addIceCandidate(){}
+      close(){this.connectionState='closed';this.signalingState='closed';}
+    }
+    const api=harness(async(url,opts)=>{
+      const method=opts&&opts.method||'GET';
+      if(url.endsWith('/v2/login/user'))return ok(login);
+      if(url.endsWith('/v5/sessions/home/play'))return ok({sessionId:'66666666-6666-4666-8666-666666666666'});
+      if(url.endsWith('/state'))return ok({state:'Provisioned'});
+      if(url.endsWith('/sdp')&&method==='POST')return {ok:true,status:204};
+      if(url.endsWith('/sdp')&&method==='GET')return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0'})});
+      if(url.endsWith('/ice')&&method==='GET'){
+        iceReads++;
+        if(iceReads===1)return ok({candidates:[]});
+        if(iceReads===2){notifyPoll();return new Promise(resolve=>{resolvePoll=resolve;});}
+        return ok({candidates:[]});
+      }
+      if(method==='DELETE')return {ok:true,status:204};
+      throw new Error('unexpected request '+method+' '+url);
+    },null,FakePeer,timerOverrides);
+    api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+    await api.startSession();
+    const pollTimer=Array.from(timers.entries()).find(([,timer])=>timer.ms===1000);
+    assert.ok(pollTimer,'an ICE poll must be scheduled while the peer is new');
+    timers.delete(pollTimer[0]);
+    const pendingPoll=pollTimer[1].fn();
+    await pollStarted;
+    const peer=peers[0];
+    peer.connectionState=finalState;
+    peer.onconnectionstatechange();
+    assert.equal(api.state.iceTimer,null,'a connection-state transition must clear the active timer reference');
+    resolvePoll(ok({candidates:[]}));
+    await pendingPoll;
+    assert.equal(iceReads,2,'no additional ICE request may be started after the pending request settles');
+    assert.equal(Array.from(timers.values()).filter(timer=>timer.ms===1000).length,0,'a pending poll must not schedule another timer after state transition');
+    assert.equal(api.state.iceTimer,null);
+    await api.stop();
+  }
+  for(const state of ['connected','failed','closed'])await verifyTransition(state);
+});
