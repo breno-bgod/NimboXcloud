@@ -729,3 +729,17 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - **Regra de implementação:** não criar novo script concorrente nem novo wrapper de `getGamepads`. Adaptar/restaurar o algoritmo e o comportamento comprovados dentro do gerenciador único atual, preservando o canal do touchpad e a entrada física. Manter preferências existentes e migrar valores somente com compatibilidade explícita.
 - **Próxima tarefa concreta:** comparação linha a linha entre `GyroBridge_Gyropad_Enhanced.user.js` (fonte original de gyro-to-right-stick), NimboPlay/NimboTouch anterior e a implementação NX atual. Identificar primeiro o commit/alteração de regressão e reproduzir a lógica funcional dentro da ponte única; adicionar testes de equivalência para fusão/substituição dos eixos 2/3, alvo do controle, ativação `always`/gatilho, calibração por 90 amostras, freshness do sensor, preservação de botões/eixos e fallback. Critério de aceite: recuperar o comportamento anterior sem segundo interceptador e sem alterar a funcionalidade de touchpad/HUD.
 - **Testes nesta execução:** recuperação de arquivos históricos da Library e inspeção do código-fonte; nenhuma execução de navegador, sensor físico ou jogo. Nenhuma alteração funcional foi publicada.
+
+
+## 2026-11-12 — separação da aba Gyro Touch no painel NX
+
+- **Userscript antes da alteração:** `NimboXcloud.user.js` v4.12.73, blob `bec8b39f076cc3c497f8918bdf238b446d6d899a`.
+- **Commit funcional/documental desta alteração:** `fab85e9feb409484c0926aa9825240c0d35c0a66`.
+- **Organização do painel:** a aba `Controles` passa a concentrar configurações do joystick e do controle físico. Foi criada a aba independente `Gyro Touch` na navegação lateral.
+- **Conteúdo de Gyro Touch:** primeira seção é `Ativação`, com o controle `Ativar teclado e mouse`; abaixo ficam as seções de teclado/mouse, editor de HUD e giroscópio.
+- **Integração preservada:** o botão principal usa a API pública já existente `window.NimboTouch.toggle()` e consulta `window.NimboTouch.isEnabled()`. O módulo `modules/NimboXcloud-Touch-HUD.user.js` não foi alterado; não foi criado outro gerenciador de entradas.
+- **Separação de responsabilidades:** o controle físico permanece na aba `Controles`; o módulo externo integrado de teclado/mouse e seus ajustes passam para `Gyro Touch`. A ativação do teclado/mouse não altera o estado do controle físico.
+- **Compatibilidade:** nomes e chaves de preferências existentes foram preservados; a mudança é de navegação e agrupamento visual.
+- **Validação executada:** verificações estruturais do texto-fonte confirmaram a entrada da nova aba na lista e na rail, o builder próprio, o botão de ativação como primeiro controle da aba e a exclusão dos grupos Gyro Touch da página `Controles`. O SHA do userscript foi relido após o commit e conferido.
+- **Limitação dos testes:** não foi executado parser JavaScript, suíte automatizada, navegador, Android ou sessão de jogo nesta alteração. O botão utiliza a API existente do módulo; a interação real ainda precisa ser validada em sessão xCloud.
+- **Próxima validação:** abrir o painel em desktop e celular; confirmar que `Controles` mostra apenas joystick/controle físico, que `Gyro Touch` aparece na navegação, que o primeiro item ativa/desativa o NimboTouch e que editor/HUD/giroscópio continuam acessíveis e funcionais.
