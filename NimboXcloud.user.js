@@ -3087,8 +3087,11 @@
   }
   function nxRemoteGamepadSuspend() {
     if(nxRemoteGamepadPaused) return;
-    nxRemoteGamepadPaused=true;
-    Array.from(nxRemoteRegisteredGamepadSlots).forEach(function(slot){nxRemoteSendNeutralGamepad(slot);});
+    let complete=true;
+    Array.from(nxRemoteRegisteredGamepadSlots).forEach(function(slot){
+      if(!nxRemoteSendNeutralGamepad(slot)) complete=false;
+    });
+    nxRemoteGamepadPaused=complete;
   }
   function nxRemoteSetGamepadSlot(slot,wasAdded) {
     if(!Number.isInteger(slot) || slot<0 || slot>3 || typeof wasAdded!=='boolean') return false;
@@ -3130,8 +3133,7 @@
     }
     Array.from(nxRemoteRegisteredGamepadSlots).forEach(function(slot) {
       if(active.has(slot)) return;
-      nxRemoteSendNeutralGamepad(slot);
-      nxRemoteSetGamepadSlot(slot,false);
+      if(nxRemoteSendNeutralGamepad(slot)) nxRemoteSetGamepadSlot(slot,false);
     });
     if(allowInput!==true) {
       nxRemoteGamepadSuspend();
@@ -3618,16 +3620,19 @@
         nxRemotePlay.status='Candidatos ICE processados; aguardando conexão WebRTC.';
         peer.onconnectionstatechange=function(){
           if(requestId!==nxRemotePlay.requestId)return;
-          if(peer.connectionState==='connected'){
+          const connectionState=peer.connectionState||peer.iceConnectionState;
+          if(connectionState==='connected'){
             nxRemotePlay.sessionStatus='connected';
             nxRemotePlay.status='WebRTC conectado; aguardando mídia. O encaminhamento experimental de gamepad depende dos canais de dados.';
             if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
-          }else if(peer.connectionState==='failed'||peer.connectionState==='closed'){
+          }else if(connectionState==='disconnected'||connectionState==='failed'||connectionState==='closed'){
             nxRemotePlay.sessionStatus='disconnected';
-            nxRemotePlay.status='Conexão WebRTC '+peer.connectionState+'.';
+            nxRemotePlay.status='Conexão WebRTC '+connectionState+'.';
           }
           if(tabId==='remote')renderBody();
         };
+        // O estado pode ter mudado antes da instalação do listener; reconciliar sem aguardar outro evento.
+        if(peer.connectionState==='connected'||peer.iceConnectionState==='connected')peer.onconnectionstatechange();
       }else{
         nxRemotePlay.status='Xbox provisionado; WebRTC indisponível neste navegador.';
       }
