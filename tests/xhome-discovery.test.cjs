@@ -1253,6 +1253,33 @@ test('xHome touch gamepad adapter: registers once and sends normalized analog, t
   assert.equal(adapter.isReady(),true);
 });
 
+test('xHome virtual touch gamepad: suspension clears held state and requires fresh input after resume',()=>{
+  const {api,channels}=readyInputHarness();
+  const adapter=api.createTouchAdapter(api.state.requestId,api.state.peer,channels);
+  const state={axes:[0.75,0,0,0],buttons:[true]};
+  assert.equal(adapter.sendGamepad(state),true);
+  api.tickGamepads([],true);
+  assert.ok(api.virtualGamepad());
+  assert.deepEqual(Array.from(api.registeredSlots()),[0]);
+
+  const beforeSuspend=xhomeFrames(channels.input).length;
+  api.suspendGamepads();
+  assert.equal(api.virtualGamepad(),null,'suspension discards touch-held state');
+  assert.equal(xhomeFrames(channels.input).length,beforeSuspend+1,'suspension sends one neutral frame');
+  api.suspendGamepads();
+  assert.equal(xhomeFrames(channels.input).length,beforeSuspend+1,'repeated suspension does not flood neutral frames');
+  assert.equal(adapter.sendGamepad(state),false,'stale touch updates are rejected while suspended');
+
+  api.tickGamepads([],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[],'old virtual slot is unregistered on resume');
+  assert.equal(adapter.sendGamepad(state),true,'fresh touch input is accepted after scheduler resumes');
+  api.tickGamepads([],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[0]);
+  const active=new DataView(xhomeFrames(channels.input).at(-1));
+  assert.equal(active.getUint16(16,true),16);
+  assert.ok(active.getInt16(18,true)>0);
+});
+
 test('xHome touch gamepad adapter: reserves a free slot beside physical pads without replacing them',()=>{
   const {api,channels}=readyInputHarness();
   const adapter=api.createTouchAdapter(api.state.requestId,api.state.peer,channels);
