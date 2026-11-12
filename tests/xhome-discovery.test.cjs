@@ -8,7 +8,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;}};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
   const ctx = {
     AbortController, URL, Date,
@@ -359,6 +359,70 @@ test('session: remote ICE candidates are added to peer',async()=>{
   assert.equal(api.state.sessionStatus,'ice-pending');
 });
 
+test('session: negotiates xHome data channels and initializes protocol bootstrap after HandshakeAck',async()=>{
+  const peers=[];
+  class FakeChannel{
+    constructor(label,options){this.label=label;this.protocol=options.protocol;this.ordered=options.ordered;this.readyState='open';this.sent=[];peers[0].channels[label]=this;}
+    send(data){this.sent.push(data);}
+    close(){this.readyState='closed';}
+  }
+  class FakePeer{
+    constructor(){this.channels={};this.connectionState='new';this.signalingState='stable';peers.push(this);}
+    createDataChannel(label,options){return new FakeChannel(label,options);}
+    addTransceiver(){}
+    async createOffer(){return {type:'offer',sdp:'v=0\\r\\n'};}
+    async setLocalDescription(offer){this.localDescription=offer;}
+    async setRemoteDescription(answer){this.remoteDescription=answer;}
+    async addIceCandidate(candidate){this.remoteCandidate=candidate;}
+    close(){this.connectionState='closed';}
+  }
+  let n=0;
+  const api=harness(async(url,opts)=>{
+    n++;
+    if(n===1)return ok(login);
+    if(n===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    if(n===3)return ok({state:'Provisioned'});
+    if(n===4)return {ok:true,status:204};
+    if(n===5)return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0'})});
+    if(n===6)return ok({candidates:[]});
+    if(opts.method==='DELETE')return {ok:true,status:204};
+    throw new Error('unexpected request '+url);
+  },null,FakePeer);
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  const channels=api.channels();
+  assert.deepEqual(Object.keys(channels).sort(),['chat','control','input','message']);
+  assert.deepEqual(Object.values(channels).map(c=>[c.label,c.protocol,c.ordered]).sort((a,b)=>a[0].localeCompare(b[0])),[
+    ['chat','chatV1',true],['control','controlV1',true],['input','1.0',true],['message','messageV1',true]
+  ]);
+  assert.equal(api.state.dataChannelsReady,false);
+  for(const name of ['chat','control','input','message'])channels[name].onopen();
+  assert.equal(JSON.parse(channels.message.sent[0]).type,'Handshake');
+  assert.equal(channels.control.sent.length,0,'control authorization waits for message HandshakeAck');
+  channels.message.onmessage({data:JSON.stringify({type:'HandshakeAck'})});
+  assert.equal(api.state.dataChannelsReady,true);
+  const control=channels.control.sent.map(JSON.parse);
+  assert.equal(control[0].message,'authorizationRequest');
+  assert.equal(control[1].message,'gamepadChanged');
+  assert.equal(control[1].wasAdded,true);
+  assert.equal(control[2].wasAdded,false);
+  assert.equal(channels.input.sent.length,1);
+  const metadata=new DataView(channels.input.sent[0]);
+  assert.equal(channels.input.sent[0].byteLength,15);
+  assert.equal(metadata.getUint16(0,true),8);
+  assert.equal(metadata.getUint32(2,true),0);
+  assert.equal(metadata.getUint8(14),1);
+  const messages=channels.message.sent.slice(1).map(JSON.parse);
+  assert.equal(messages.length,6);
+  assert.equal(messages[0].target,'/streaming/systemUi/configuration');
+  assert.equal(messages[3].target,'/streaming/characteristics/touchinputenabledchanged');
+  assert.equal(api.state.status.includes('envio de comandos ainda não implementado'),true);
+  assert.equal(JSON.stringify(channels).includes('TEST_BEARER'),false);
+  await api.stop();
+  for(const name of ['chat','control','input','message'])assert.equal(channels[name].readyState,'closed');
+  assert.equal(api.state.dataChannelsReady,false);
+});
+ 
 test('stop: closes local resources even when remote auth context is unavailable',async()=>{
   const api=harness(async()=>{throw Error('unexpected fetch');});
   let closed=0;
