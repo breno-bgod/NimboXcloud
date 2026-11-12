@@ -1,3 +1,11 @@
+## Licenciamento — 2026-11-12
+
+- A distribuição atual do NimboXcloud passa de MIT para GPL-3.0-or-later por decisão do mantenedor.
+- LICENSE contém o texto integral da GPLv3; os dois userscripts recebem metadados e avisos GPL-3.0-or-later.
+- Preservados os avisos MIT de RoyLiu04 e redphx; publicado THIRD_PARTY_NOTICES.md com atribuições e explicação sobre versões anteriores.
+- Atualizados README em português/inglês, contribuição e matriz de proveniência.
+- Nenhum código PSBox incorporado, nenhuma alteração de comportamento ou versão de runtime e nenhum histórico reescrito.
+
 ## [4.12.89] — 2026-11-12
 - Fixed xHome cancellation after session setup: the active session retains its AbortController so Stop can abort pending ICE polling requests; failed setup still clears the controller.
 - Added a deterministic Stop→Start regression where a delayed ICE response from session A arrives after session B is active; stale candidates cannot alter the new peer, status or poll timer.

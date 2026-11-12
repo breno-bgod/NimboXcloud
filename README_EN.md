@@ -100,7 +100,7 @@ I'm developing the userscript for the **new website** (`https://play.xbox.com/*`
 
 I'm **KReight**, the creator and sole developer currently working on NimboXcloud. I'm learning, planning, coding, and testing its features incrementally; there is no company or development team behind it. Suggestions, code reviews, bug reports, and contributions are welcome.
 
-The code is available under the **MIT License**, retaining applicable third-party notices. Its technical foundation derives from [xbox-cloud-unlock by RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock); engineering references include [Better xCloud by redphx](https://github.com/redphx/better-xcloud) and [Xbox Cloud Gaming Optimizer by darkchaox](https://github.com/darkchaox/xbox-cloud-gaming-optimizer). References and credits **do not imply partnership or endorsement**.
+The code is available under the **GNU General Public License version 3 or later (GPL-3.0-or-later)**, retaining applicable third-party notices. Its technical foundation derives from [xbox-cloud-unlock by RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock); engineering references include [Better xCloud by redphx](https://github.com/redphx/better-xcloud) and [Xbox Cloud Gaming Optimizer by darkchaox](https://github.com/darkchaox/xbox-cloud-gaming-optimizer). References and credits **do not imply partnership or endorsement**.
 
 This is an **unofficial project**, not affiliated with Microsoft or Xbox. Experimental region adjustments may not work and may conflict with service terms.
 
@@ -119,6 +119,10 @@ This is an **unofficial project**, not affiliated with Microsoft or Xbox. Experi
 
 **NimboXcloud — Your xCloud. More control.**
 
-*KReight's solo project · Under development · Open source · MIT · play.xbox.com*
+*KReight's solo project · Under development · Open source · GPL-3.0-or-later · play.xbox.com*
 
 </div>
+
+## License
+
+The current distribution uses [GPL-3.0-or-later](./LICENSE). Redistribution and modifications must comply with the GPL, including providing corresponding source where required. Applicable [third-party MIT notices](./THIRD_PARTY_NOTICES.md) are retained. Earlier MIT releases keep their original grants.

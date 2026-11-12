@@ -120,9 +120,13 @@ O script está sendo desenvolvido para a **nova interface** (`https://play.xbox.
 
 Sou **KReight**, o criador e único responsável pelo desenvolvimento atual do NimboXcloud. Estou aprendendo, planejando, programando e testando suas funcionalidades gradualmente; não há uma equipe ou empresa por trás dele. Sugestões, análises de código, relatórios de problemas e contribuições são bem-vindos.
 
-O código está disponível sob a **licença MIT**, com preservação dos avisos aplicáveis às partes reutilizadas. A base técnica deriva de [xbox-cloud-unlock, de RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock); entre as referências de engenharia estão [Better xCloud, de redphx](https://github.com/redphx/better-xcloud) e [Xbox Cloud Gaming Optimizer, de darkchaox](https://github.com/darkchaox/xbox-cloud-gaming-optimizer). Referências e créditos **não significam parceria ou endosso**.
+O código está disponível sob a **GNU GPL versão 3 ou posterior (GPL-3.0-or-later)**, com preservação dos avisos aplicáveis às partes reutilizadas. A base técnica deriva de [xbox-cloud-unlock, de RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock); entre as referências de engenharia estão [Better xCloud, de redphx](https://github.com/redphx/better-xcloud) e [Xbox Cloud Gaming Optimizer, de darkchaox](https://github.com/darkchaox/xbox-cloud-gaming-optimizer). Referências e créditos **não significam parceria ou endosso**.
 
 Este é um projeto **não oficial**, sem afiliação à Microsoft ou ao Xbox. Alterações experimentais de região podem não funcionar e podem contrariar termos do serviço.
+
+## Licença
+
+A distribuição atual adota [GPL-3.0-or-later](./LICENSE). Redistribuições e modificações devem cumprir a GPL, incluindo a disponibilização do código-fonte correspondente quando exigida. Os [avisos MIT de terceiros](./THIRD_PARTY_NOTICES.md) permanecem preservados. As versões anteriormente publicadas sob MIT mantêm suas permissões originais.
 
 ## Explore o projeto
 
@@ -139,7 +143,7 @@ Este é um projeto **não oficial**, sem afiliação à Microsoft ou ao Xbox. Al
 
 **NimboXcloud — Seu xCloud. Mais controle.**
 
-*Projeto pessoal de KReight · Em desenvolvimento · Open source · MIT · play.xbox.com*
+*Projeto pessoal de KReight · Em desenvolvimento · Open source · GPL-3.0-or-later · play.xbox.com*
 
 </div>
 

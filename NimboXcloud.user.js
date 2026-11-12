@@ -4,7 +4,7 @@
 // @version      4.12.89
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch e controle virtual experimental exclusivo do xHome.
 // @author       KReight
-// @license      MIT
+// @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
@@ -13,6 +13,54 @@
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // ==/UserScript==
+
+/*
+ * NimboXcloud
+ * Copyright (c) 2026 KReight (NimboXcloud contributions).
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * Third-party portions retain their original notices; see
+ * https://github.com/breno-bgod/NimboXcloud/blob/main/THIRD_PARTY_NOTICES.md
+ */
+
+/*
+Original upstream: RoyLiu04/xbox-cloud-unlock
+https://github.com/RoyLiu04/xbox-cloud-unlock
+
+MIT License
+
+Copyright (c) 2026 RoyLiu04
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
 
 /*
  * Funcionalidades
@@ -44,7 +92,7 @@
  * Autoria e licenciamento
  *   · Desenvolvimento e manutenção do NimboXcloud: KReight.
  *   · Base derivada de RoyLiu04/xbox-cloud-unlock (MIT); copyright e licença
- *     originais preservados no arquivo LICENSE deste repositório.
+ *     originais preservados acima e em THIRD_PARTY_NOTICES.md.
  *
  * Projetos de referência
  *   · redphx/better-xcloud — https://github.com/redphx/better-xcloud

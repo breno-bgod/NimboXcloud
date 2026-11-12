@@ -4,12 +4,34 @@
 // @version      1.2.5
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD, HUD editável e gamepad virtual experimental exclusivo do xHome.
 // @author       KReight / NimboPlay contributors
-// @license      MIT
+// @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // ==/UserScript==
+
+/*
+ * NimboXcloud
+ * Copyright (c) 2026 KReight (NimboXcloud contributions).
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * Third-party portions retain their original notices; see
+ * https://github.com/breno-bgod/NimboXcloud/blob/main/THIRD_PARTY_NOTICES.md
+ */
+
 /* Extraído do módulo de HUD NimboPlay. Origem do projeto: Better xCloud (redphx, MIT)
    e Even Better xCloud (Endymi0n74). Não inclui seus serviços de entrada ou renderização. */
 (function(){'use strict';

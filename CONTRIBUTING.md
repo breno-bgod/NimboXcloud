@@ -1,8 +1,8 @@
 # Como contribuir
 
-O NimboXcloud é um projeto experimental de estudo, de código aberto sob licença MIT, mantido por **KReight**, estudante autodidata de JavaScript. Contribuições de qualquer nível de experiência são bem-vindas: conselhos, dúvidas, correções, testes, sugestões, documentação e pull requests.
+O NimboXcloud é um projeto experimental de estudo, de código aberto sob licença GPL-3.0-or-later, mantido por **KReight**, estudante autodidata de JavaScript. Contribuições de qualquer nível de experiência são bem-vindas: conselhos, dúvidas, correções, testes, sugestões, documentação e pull requests.
 
-Forks e adaptações são permitidos nos termos da licença MIT. É um pedido de cortesia mencionar **KReight / NimboXcloud** como inspiração; os avisos de copyright e licença exigidos pela MIT devem ser preservados.
+Forks e adaptações são permitidos nos termos da GPL-3.0-or-later. Preserve avisos de copyright e licença, identifique modificações e disponibilize o código-fonte correspondente nas condições exigidas pela GPL. Os trechos MIT de terceiros mantêm seus avisos em [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md). Contribuições novas devem permitir sua distribuição nos termos da GPL-3.0-or-later; registre separadamente a origem e a licença de código de terceiros.
 
 ## Antes de trabalhar em uma funcionalidade
 

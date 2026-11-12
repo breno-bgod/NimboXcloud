@@ -113,7 +113,7 @@ Locais previstos: perfis existentes, ponte de entrada e editor; sem segundo gere
 - [Issue #1028](https://github.com/redphx/better-xcloud/issues/1028): o autor informa trabalho em suporte a `play.xbox.com`; não determina viabilidade de cada recurso Nimbo.
 - [Greenlight: entrada](https://github.com/unknownskl/greenlight/blob/main-v2/packages/player/src/client/lib/input/gamepad.ts): mapeamentos, foco e attach/detach explícitos. [Gerenciamento de sessão](https://github.com/unknownskl/greenlight/blob/main-v2/packages/desktop/main/helpers/streammanager.ts): distinguir home/cloud e estados. Cliente próprio tem controle de transporte diferente do userscript.
 - [xbox-xcloud-player](https://github.com/unknownskl/xbox-xcloud-player): biblioteca de API/player WebRTC; não adicionada como dependência.
-- [XStreaming](https://github.com/Geocld/XStreaming): README declara controles virtuais/OTG/Bluetooth, Android TV e renderização nativa; recursos nativos não se transferem automaticamente ao navegador. Estudo conceitual, sem copiar código AGPL para o projeto MIT.
+- [XStreaming](https://github.com/Geocld/XStreaming): README declara controles virtuais/OTG/Bluetooth, Android TV e renderização nativa; recursos nativos não se transferem automaticamente ao navegador. Estudo conceitual, sem copiar código AGPL. Desde a revisão de licenciamento de 2026-11-12, o NimboXcloud é distribuído sob GPL-3.0-or-later; as obrigações específicas da AGPL continuam exigindo revisão.
 - XBPlayer: busca pelo nome retornou homônimos; o README de `xwipro/xbplayer` é de um player HLS/MP4, não referência Xbox confirmada. Não atribuir funcionalidades ou arquitetura a um projeto Xbox sem identificar o repositório correto.
 
 ## Checklist de teste real por lote
