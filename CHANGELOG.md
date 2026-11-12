@@ -1,3 +1,11 @@
+## [4.12.68] — 2026-11-12
+- Added pure xHome keyboard and mouse encoders using the shared 14-byte input header: Keyboard report 64 with a 3-byte VKey frame, and Mouse report 32 with an 18-byte frame.
+- Added physical KeyboardEvent.code to Windows virtual-key mapping with validated legacy keyCode fallback; unknown keys are rejected instead of emitting ambiguous input.
+- Mouse encoding preserves signed relative X/Y and wheel deltas, the browser button bitmask, and the relative/absolute flag; numeric fields are clamped to their protocol widths.
+- Refactored the gamepad encoder to use the same packet-header helper without changing its 38-byte wire layout.
+- Corrected stale xHome diagnostics/comments that still claimed authentication and gamepad forwarding were not implemented.
+- Encoders are still dormant: no global keyboard/mouse listeners, pointer lock, Touch HUD integration, or keyboard/mouse transmission was added. Xbox validation remains pending.
+
 ## [4.12.67] — 2026-11-12
 - Integra o gamepad físico ao canal input xHome usando o encoder binário já existente e o slot estável do índice do navegador (0–3).
 - Reutiliza o loop de leitura do painel NX: frequência adaptativa de 75 ms normalmente e 16 ms somente quando a sessão xHome, os quatro canais, o HandshakeAck e o foco permitem entrada.
