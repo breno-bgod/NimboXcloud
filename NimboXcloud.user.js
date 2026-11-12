@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.67
+// @version      4.12.68
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.67
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.68
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.67';
+  const VER = '4.12.68';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2993,9 +2993,9 @@
       }
     }} catch (_) {} return '';
   }
-  // Data-channel bootstrap is based on the public protocol shapes in
-  // unknownskl/xbox-xcloud-player (MIT): controlV1, input 1.0, messageV1 and chatV1.
-  // This initializes channels only; no gamepad, keyboard, mouse or touch frames are sent yet.
+  // Data-channel bootstrap uses the xHome channels controlV1, input 1.0, messageV1 and chatV1.
+  // Input packet fields are cross-checked against the MIT-licensed unknownskl/greenlight player package.
+  // Gamepad frames are forwarded after handshake; keyboard/mouse encoders remain pure and dormant.
   let nxRemoteChannels=null;
   function nxRemoteUuid() {
     try { if(typeof crypto!=='undefined' && typeof crypto.randomUUID==='function') return crypto.randomUUID(); } catch (_) {}
@@ -3007,8 +3007,8 @@
     if(!channel || channel.readyState!=='open') return false;
     try { channel.send(payload);return true; } catch (_) { return false; }
   }
-  // Binary input packet follows the public MIT InputPacket layout (ReportTypes.Gamepad=2).
-  // This is a pure encoder: it does not read Gamepad API, schedule polling, or send frames.
+  // Binary input packet follows the MIT-licensed Greenlight InputPacket field layout.
+  // Encoders remain pure: they do not read browser input, schedule polling, or send frames.
   function nxRemotePadButtonValue(pad,index) {
     const button=pad && pad.buttons && pad.buttons[index];
     if(typeof button==='number') return Math.max(0,Math.min(1,button));
@@ -3020,8 +3020,24 @@
     }
     return button.pressed?1:0;
   }
+  function nxRemoteCreateInputPacket(reportType,frameSize,sequence,timestamp) {
+    if(!Number.isInteger(reportType) || reportType<0 || reportType>65535 ||
+      !Number.isInteger(frameSize) || frameSize<0 || frameSize>65520) return null;
+    const frameSequence=Number.isFinite(sequence)?(Math.trunc(sequence)>>>0):0;
+    const frameTime=Number.isFinite(timestamp)?timestamp:
+      ((typeof performance!=='undefined' && performance.now)?performance.now():Date.now());
+    const buffer=new ArrayBuffer(15+frameSize),view=new DataView(buffer);
+    view.setUint16(0,reportType,true);
+    view.setUint32(2,frameSequence,true);
+    view.setFloat64(6,frameTime,true);
+    view.setUint8(14,1);
+    return {buffer:buffer,view:view,offset:15};
+  }
   function nxRemoteEncodeGamepadFrame(pad,remoteIndex,sequence,timestamp) {
     if(!pad || pad.mapping!=='standard' || !Number.isInteger(remoteIndex) || remoteIndex<0 || remoteIndex>3) return null;
+    const packet=nxRemoteCreateInputPacket(2,23,sequence,timestamp);
+    if(!packet) return null;
+    const buffer=packet.buffer,view=packet.view;
     const buttonValue=function(index){return nxRemotePadButtonValue(pad,index);};
     const maskMap=[[16,2],[9,4],[8,8],[0,16],[1,32],[2,64],[3,128],[12,256],[13,512],[14,1024],[15,2048],[4,4096],[5,8192],[10,16384],[11,32768]];
     let buttonMask=0;
@@ -3034,15 +3050,6 @@
       return Math.trunc(Math.max(-1,Math.min(1,value))*32767);
     };
     const triggerValue=function(index){return Math.trunc(buttonValue(index)*65535);};
-    const frameTime=Number.isFinite(timestamp)?timestamp:
-      ((typeof performance!=='undefined' && performance.now)?performance.now():Date.now());
-    const frameSequence=Number.isFinite(sequence)?(Math.trunc(sequence)>>>0):0;
-    // 14-byte packet header + 1-byte frame count + 23-byte GamepadFrame.
-    const buffer=new ArrayBuffer(38),view=new DataView(buffer);
-    view.setUint16(0,2,true); // ReportTypes.Gamepad
-    view.setUint32(2,frameSequence,true);
-    view.setFloat64(6,frameTime,true);
-    view.setUint8(14,1);
     view.setUint8(15,remoteIndex);
     view.setUint16(16,buttonMask,true);
     view.setInt16(18,axisValue(0,false),true);
@@ -3052,8 +3059,73 @@
     view.setUint16(26,triggerValue(6),true);
     view.setUint16(28,triggerValue(7),true);
     view.setUint32(30,1,true);  // PhysicalPhysicality
-    view.setUint32(34,1,false); // VirtualPhysicality (big-endian in reference client)
+    view.setUint32(34,1,false); // VirtualPhysicality (big-endian in MIT reference)
     return buffer;
+  }
+  const NX_REMOTE_VIRTUAL_KEYS=Object.freeze({
+    Backspace:0x08,Tab:0x09,Enter:0x0D,NumpadEnter:0x0D,
+    Pause:0x13,CapsLock:0x14,Escape:0x1B,Space:0x20,
+    PageUp:0x21,PageDown:0x22,End:0x23,Home:0x24,
+    ArrowLeft:0x25,ArrowUp:0x26,ArrowRight:0x27,ArrowDown:0x28,
+    PrintScreen:0x2C,Insert:0x2D,Delete:0x2E,
+    MetaLeft:0x5B,MetaRight:0x5C,ContextMenu:0x5D,
+    NumpadMultiply:0x6A,NumpadAdd:0x6B,NumpadComma:0x6C,
+    NumpadSubtract:0x6D,NumpadDecimal:0x6E,NumpadDivide:0x6F,
+    NumLock:0x90,ScrollLock:0x91,
+    ShiftLeft:0xA0,ShiftRight:0xA1,ControlLeft:0xA2,ControlRight:0xA3,
+    AltLeft:0xA4,AltRight:0xA5,
+    Backquote:0xC0,Minus:0xBD,Equal:0xBB,BracketLeft:0xDB,
+    BracketRight:0xDD,Backslash:0xDC,IntlBackslash:0xE2,
+    Semicolon:0xBA,Quote:0xDE,Comma:0xBC,Period:0xBE,Slash:0xBF
+  });
+  function nxRemoteVirtualKey(code,keyCode) {
+    const legacy=Number(keyCode);
+    if(Number.isInteger(legacy) && legacy>0 && legacy<=255) return legacy;
+    if(typeof code!=='string') return null;
+    if(/^Key[A-Z]$/.test(code)) return code.charCodeAt(3);
+    if(/^Digit[0-9]$/.test(code)) return code.charCodeAt(5);
+    if(/^Numpad[0-9]$/.test(code)) return 0x60+Number(code.slice(6));
+    const functionKey=/^F([1-9]|1[0-9]|2[0-4])$/.exec(code);
+    if(functionKey) return 0x6F+Number(functionKey[1]);
+    return Object.prototype.hasOwnProperty.call(NX_REMOTE_VIRTUAL_KEYS,code)
+      ? NX_REMOTE_VIRTUAL_KEYS[code] : null;
+  }
+  function nxRemoteEncodeKeyboardFrame(frame,sequence,timestamp) {
+    if(!frame || typeof frame!=='object' || typeof frame.pressed!=='boolean') return null;
+    const keyCode=nxRemoteVirtualKey(frame.code,frame.keyCode);
+    if(keyCode===null) return null;
+    const packet=nxRemoteCreateInputPacket(64,3,sequence,timestamp);
+    if(!packet) return null;
+    const view=packet.view,offset=packet.offset;
+    view.setUint8(offset,2); // 1=Known, 2=VKey, 3=AppCommand, 0=Unknown
+    view.setUint8(offset+1,frame.pressed?1:0);
+    view.setUint8(offset+2,keyCode);
+    return packet.buffer;
+  }
+  function nxRemoteInt32(value) {
+    const number=Number(value);
+    if(!Number.isFinite(number)) return 0;
+    return Math.max(-2147483648,Math.min(2147483647,Math.trunc(number)));
+  }
+  function nxRemoteByte(value) {
+    const number=Number(value);
+    if(!Number.isFinite(number)) return 0;
+    return Math.max(0,Math.min(255,Math.trunc(number)));
+  }
+  function nxRemoteEncodeMouseFrame(frame,sequence,timestamp) {
+    if(!frame || typeof frame!=='object') return null;
+    const relative=frame.Relative===undefined?0:Number(frame.Relative);
+    if(relative!==0 && relative!==1) return null;
+    const packet=nxRemoteCreateInputPacket(32,18,sequence,timestamp);
+    if(!packet) return null;
+    const view=packet.view,offset=packet.offset;
+    view.setInt32(offset,nxRemoteInt32(frame.X),true);
+    view.setInt32(offset+4,nxRemoteInt32(frame.Y),true);
+    view.setInt32(offset+8,nxRemoteInt32(frame.WheelX),true);
+    view.setInt32(offset+12,nxRemoteInt32(frame.WheelY),true);
+    view.setUint8(offset+16,nxRemoteByte(frame.Buttons));
+    view.setUint8(offset+17,relative);
+    return packet.buffer;
   }
   const nxRemoteRegisteredGamepadSlots=new Set();
   let nxRemoteGamepadSequence=0;
@@ -6672,7 +6744,9 @@ void main(){
     update();
   }
   function inspectRemotePlay() {
-    S.remotePlayStatus = 'Não conectado: protocolo/autenticação Xbox Remote Play não integrados';
+    S.remotePlayStatus = nxRemotePlay.sessionStatus==='connected'
+      ? 'Sessão xHome conectada; gamepad físico encaminhado experimentalmente, mídia ainda não homologada.'
+      : 'Sessão xHome: '+String(nxRemotePlay.status||'não conectada');
     update();
   }
   function cycleVideoFilter() {
@@ -6853,7 +6927,7 @@ void main(){
       'Contraste adicional: filtro CSS, não é nitidez real nem CAS',
       'Microfone: teste de captura local com permissão; transmissão ao jogo depende do xCloud',
       'Vibração: testes locais de controle e celular; sem remapeamento do feedback do streaming',
-      'Remote Play: protocolo xHome experimental; vídeo, áudio e comandos aguardam validação em Xbox real'
+      'Remote Play: xHome experimental; gamepad físico ainda não homologado em Xbox real; vídeo e áudio aguardam validação'
     ];
     S.deviceDetected = detectedDeviceProfile();
     // Observa apenas eventos relevantes; não coleta corpos de API, cookies ou tokens.
