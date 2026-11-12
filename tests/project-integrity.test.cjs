@@ -19,9 +19,13 @@ function valueBetween(source, startMarker, endMarker, label) {
 test('userscript metadata, runtime diagnostics and @require cache key share one version', () => {
   const metadataLine = main.split('\n').find(line => line.startsWith('// @version'));
   assert.ok(metadataLine, '@version exists');
-  const metadata = metadataLine.trim().split(' ').filter(Boolean).pop();
+  const metadata = metadataLine.trim().split(/\\s+/).pop();
   const runtime = valueBetween(main, "const VER = '", "';", 'runtime VER');
-  const dependency = valueBetween(main, 'NimboXcloud-Touch-HUD.user.js?nx_version=', "'", '@require cache key');
+  const dependencyLine = main.split('\\n').find(line => line.startsWith('// @require') && line.includes('NimboXcloud-Touch-HUD.user.js?nx_version='));
+  assert.ok(dependencyLine, '@require cache key exists');
+  const dependencyMatch = dependencyLine.match(/[?&]nx_version=([^\\s\"'`]+)/);
+  assert.ok(dependencyMatch, '@require cache key is parseable');
+  const dependency = dependencyMatch[1];
   assert.equal(runtime, metadata);
   assert.equal(dependency, metadata);
 });
