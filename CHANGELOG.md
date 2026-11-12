@@ -1,3 +1,10 @@
+## [4.12.65] — 2026-11-12
+- O bootstrap xHome agora possui timeout de 12 segundos para abertura dos quatro data channels e recebimento de `HandshakeAck`; o timer é cancelado somente após a inicialização completa.
+- Erro ou fechamento inesperado de qualquer canal provoca encerramento local e tentativa de liberação remota da sessão, evitando `dataChannelsReady` permanecer verdadeiro após perda do transporte.
+- Falha ao enviar o handshake ou ao inicializar os canais segue o mesmo caminho de teardown; Stop/Cancel limpam o timer.
+- Adicionados dois testes determinísticos para timeout sem ACK e fechamento inesperado após ACK.
+- Nenhum frame de controle foi enviado nesta versão; a interface xHome continua oculta e o recurso não está homologado em Xbox real.
+
 # Histórico de alterações
 
 ## [4.12.64] — 2026-11-12
