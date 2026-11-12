@@ -36,16 +36,17 @@ test('Touch HUD metadata and runtime constant share one module version', () => {
   assert.equal(runtime, metadata);
 });
 
-test('NX separates physical controls from keyboard and mouse navigation labels', () => {
-  assert.ok(main.includes("{ id: 'controls', label: 'Controles', desc: 'Joystick e controle físico' }"));
-  assert.ok(main.includes("{ id: 'gyrotouch', label: 'Teclado e mouse', desc: 'Teclado, mouse, giroscópio e HUD por toque' }"));
-  assert.ok(main.includes("['gyrotouch','Teclado e mouse']"));
-  assert.ok(main.includes("const touchGroups = ['Teclado e mouse', 'Editor de HUD — prévia arrastável', 'Giroscópio']"));
-  const builder = main.indexOf('TAB_BUILDERS.gyrotouch = function (root)');
-  const activation = main.indexOf("const activation = group('Ativação'", builder);
-  const legacy = main.indexOf('buildLegacyControls(temp);', builder);
-  const touchGroups = main.indexOf("const touchGroups = ['Teclado e mouse'", builder);
-  assert.ok(builder >= 0 && activation > builder && legacy > activation && touchGroups > legacy, 'activation precedes legacy keyboard/mouse groups');
+test('NX separates physical Gamepad from keyboard and mouse categories', () => {
+  assert.ok(main.includes("{ id: 'gamepad', label: 'Gamepad', desc: 'Controles físicos, giroscópio, vibração e atalhos' }"));
+  assert.ok(main.includes("{ id: 'gyrotouch', label: 'Teclado e mouse', desc: 'NimboTouch, HUD, toque e atalhos de teclado' }"));
+  assert.ok(main.includes("['gamepad','Gamepad']"));
+  assert.ok(main.includes("TAB_BUILDERS.controls=TAB_BUILDERS.gamepad;"));
+  assert.ok(main.includes("nxMoveGroup(root,nodes,'Giroscópio')"));
+  const builder = main.indexOf('TAB_BUILDERS.gyrotouch=function(root){');
+  const activation = main.indexOf("const activation=group('Ativação'", builder);
+  const legacy = main.indexOf("const nodes=nxLegacyControlGroups('keyboard')", builder);
+  const hud = main.indexOf("nxMoveGroup(root,nodes,'Editor de HUD — prévia arrastável')", builder);
+  assert.ok(builder >= 0 && activation > builder && legacy > activation && hud > legacy, 'activation precedes keyboard/mouse and HUD settings');
   assert.ok(main.includes("group('Teclado e mouse'"), 'legacy keyboard/mouse group exists');
   assert.ok(!main.includes('Gyro Touch'), 'old tab label is removed');
 });
