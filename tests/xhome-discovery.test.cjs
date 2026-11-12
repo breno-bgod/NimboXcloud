@@ -8,12 +8,16 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
+  let timerId=0;
+  const fakeTimers=new Map();
+  const browserSetTimeout=(fn,ms)=>{const id=++timerId;fakeTimers.set(id,{fn,ms});return id;};
+  const browserClearTimeout=(id)=>fakeTimers.delete(id);
   const ctx = {
     AbortController, URL, Date,
-    setTimeout:timerOverrides&&timerOverrides.setTimeout||setTimeout,
-    clearTimeout:timerOverrides&&timerOverrides.clearTimeout||clearTimeout,
+    setTimeout:timerOverrides&&timerOverrides.setTimeout||browserSetTimeout,
+    clearTimeout:timerOverrides&&timerOverrides.clearTimeout||browserClearTimeout,
     fetch: fetchImpl, tabId: 'other', renderBody() {}, navigator:{language:'pt-BR'},
     localStorage: {
       getItem(k) { return k === 'xboxcom_xbl_user_info' ? JSON.stringify({tokens:{'http://gssv.xboxlive.com/':{token:'TEST_GSSV'}}}) : null; },
@@ -759,4 +763,91 @@ test('data channels: unexpected close after HandshakeAck tears down the xHome se
   assert.match(api.state.status, /canal input fechado inesperadamente/i);
   assert.equal(peer.closed, true);
   assert.ok(Object.values(channels).every(channel => channel.readyState === 'closed'));
+});
+
+
+test('gamepad encoder: serializes standard controls into the 38-byte xHome packet', () => {
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const buttons=Array.from({length:17},()=>({pressed:false,value:0}));
+  for(const index of [0,1,2,3,4,5,8,9,10,11,12,13,14,15,16]) buttons[index]={pressed:true,value:1};
+  buttons[6]={pressed:true,value:0.25};
+  buttons[7]={pressed:true,value:0.75};
+  const packet=api.encodeGamepadFrame({mapping:'standard',buttons,axes:[1,-1,0.5,-0.5]},2,0x01020304,123.5);
+  assert.ok(packet instanceof ArrayBuffer);
+  assert.equal(packet.byteLength,38);
+  const view=new DataView(packet);
+  assert.equal(view.getUint16(0,true),2);
+  assert.equal(view.getUint32(2,true),0x01020304);
+  assert.equal(view.getFloat64(6,true),123.5);
+  assert.equal(view.getUint8(14),1);
+  assert.equal(view.getUint8(15),2);
+  assert.equal(view.getUint16(16,true),0xfffe);
+  assert.equal(view.getInt16(18,true),32767);
+  assert.equal(view.getInt16(20,true),32767);
+  assert.equal(view.getInt16(22,true),16383);
+  assert.equal(view.getInt16(24,true),16383);
+  assert.equal(view.getUint16(26,true),16383);
+  assert.equal(view.getUint16(28,true),49151);
+  assert.equal(view.getUint32(30,true),1);
+  assert.equal(view.getUint32(34,false),1);
+});
+
+test('gamepad encoder: clamps analog values, wraps sequence and rejects unsupported mapping or slot', () => {
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const buttons=Array.from({length:17},()=>({pressed:false,value:0}));
+  buttons[6]={value:2};buttons[7]={value:-1};
+  const pad={mapping:'standard',buttons,axes:[2,NaN,-2,Infinity]};
+  const packet=api.encodeGamepadFrame(pad,0,-1,10);
+  const view=new DataView(packet);
+  assert.equal(view.getUint32(2,true),0xffffffff);
+  assert.equal(view.getInt16(18,true),32767);
+  assert.equal(view.getInt16(20,true),0);
+  assert.equal(view.getInt16(22,true),-32767);
+  assert.equal(view.getInt16(24,true),0);
+  assert.equal(view.getUint16(26,true),65535);
+  assert.equal(view.getUint16(28,true),0);
+  assert.equal(api.encodeGamepadFrame({...pad,mapping:'custom'},0,0,0),null);
+  assert.equal(api.encodeGamepadFrame(pad,4,0,0),null);
+  assert.equal(api.encodeGamepadFrame(null,0,0,0),null);
+});
+
+test('gamepad slots: registration is gated, idempotent and released before channel teardown', () => {
+  const timers={
+    setTimeout(){return 1;},
+    clearTimeout(){}
+  };
+  class FakeChannel {
+    constructor(label){this.label=label;this.readyState='open';this.sent=[];}
+    send(data){this.sent.push(data);}
+    close(){this.readyState='closed';}
+  }
+  class FakePeer {
+    constructor(){this.channels={};}
+    createDataChannel(label){return (this.channels[label]=new FakeChannel(label));}
+    close(){}
+  }
+  const api=harness(async()=>{throw new Error('unexpected network');},null,null,timers);
+  const peer=new FakePeer();
+  api.state.peer=peer;
+  api.initChannels(peer,api.state.requestId,new AbortController().signal);
+  const channels=api.channels();
+  assert.equal(api.setGamepadSlot(0,true),false,'slot registration waits for completed handshake');
+  for(const name of ['chat','control','input','message'])channels[name].onopen();
+  channels.message.onmessage({data:JSON.stringify({type:'HandshakeAck'})});
+  assert.equal(api.state.dataChannelsReady,true);
+  const initialCount=channels.control.sent.length;
+  assert.equal(api.setGamepadSlot(0,true),true);
+  assert.equal(api.setGamepadSlot(0,true),true);
+  assert.equal(channels.control.sent.length,initialCount+1,'duplicate add is suppressed');
+  assert.deepEqual(api.registeredSlots(),[0]);
+  assert.equal(api.setGamepadSlot(0,false),true);
+  assert.equal(api.setGamepadSlot(0,false),true);
+  assert.equal(channels.control.sent.length,initialCount+2,'duplicate remove is suppressed');
+  assert.deepEqual(api.registeredSlots(),[]);
+  assert.equal(api.setGamepadSlot(1,true),true);
+  api.closeChannels();
+  assert.deepEqual(api.registeredSlots(),[]);
+  const release=JSON.parse(channels.control.sent.at(-1));
+  assert.deepEqual(release,{message:'gamepadChanged',gamepadIndex:1,wasAdded:false});
+  assert.ok(Object.values(channels).every(channel=>channel.readyState==='closed'));
 });

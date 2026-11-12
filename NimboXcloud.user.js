@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.65
+// @version      4.12.66
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.65
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.66
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.65';
+  const VER = '4.12.66';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3007,8 +3007,75 @@
     if(!channel || channel.readyState!=='open') return false;
     try { channel.send(payload);return true; } catch (_) { return false; }
   }
+  // Binary input packet follows the public MIT InputPacket layout (ReportTypes.Gamepad=2).
+  // This is a pure encoder: it does not read Gamepad API, schedule polling, or send frames.
+  function nxRemotePadButtonValue(pad,index) {
+    const button=pad && pad.buttons && pad.buttons[index];
+    if(typeof button==='number') return Math.max(0,Math.min(1,button));
+    if(!button) return 0;
+    const value=Number(button.value);
+    return Number.isFinite(value)?Math.max(0,Math.min(1,value)):(button.pressed?1:0);
+  }
+  function nxRemoteEncodeGamepadFrame(pad,remoteIndex,sequence,timestamp) {
+    if(!pad || pad.mapping!=='standard' || !Number.isInteger(remoteIndex) || remoteIndex<0 || remoteIndex>3) return null;
+    const buttonValue=function(index){return nxRemotePadButtonValue(pad,index);};
+    const maskMap=[[16,2],[9,4],[8,8],[0,16],[1,32],[2,64],[3,128],[12,256],[13,512],[14,1024],[15,2048],[4,4096],[5,8192],[10,16384],[11,32768]];
+    let buttonMask=0;
+    for(const item of maskMap) if(buttonValue(item[0])>0) buttonMask|=item[1];
+    const axes=pad.axes||[];
+    const axisValue=function(index,invert) {
+      let value=Number(axes[index]);
+      if(!Number.isFinite(value)) value=0;
+      if(invert) value=-value;
+      return Math.trunc(Math.max(-1,Math.min(1,value))*32767);
+    };
+    const triggerValue=function(index){return Math.trunc(buttonValue(index)*65535);};
+    const frameTime=Number.isFinite(timestamp)?timestamp:
+      ((typeof performance!=='undefined' && performance.now)?performance.now():Date.now());
+    const frameSequence=Number.isFinite(sequence)?(Math.trunc(sequence)>>>0):0;
+    // 14-byte packet header + 1-byte frame count + 23-byte GamepadFrame.
+    const buffer=new ArrayBuffer(38),view=new DataView(buffer);
+    view.setUint16(0,2,true); // ReportTypes.Gamepad
+    view.setUint32(2,frameSequence,true);
+    view.setFloat64(6,frameTime,true);
+    view.setUint8(14,1);
+    view.setUint8(15,remoteIndex);
+    view.setUint16(16,buttonMask,true);
+    view.setInt16(18,axisValue(0,false),true);
+    view.setInt16(20,axisValue(1,true),true);
+    view.setInt16(22,axisValue(2,false),true);
+    view.setInt16(24,axisValue(3,true),true);
+    view.setUint16(26,triggerValue(6),true);
+    view.setUint16(28,triggerValue(7),true);
+    view.setUint32(30,1,true);  // PhysicalPhysicality
+    view.setUint32(34,1,false); // VirtualPhysicality (big-endian in reference client)
+    return buffer;
+  }
+  const nxRemoteRegisteredGamepadSlots=new Set();
+  function nxRemoteSetGamepadSlot(slot,wasAdded) {
+    if(!Number.isInteger(slot) || slot<0 || slot>3 || typeof wasAdded!=='boolean') return false;
+    const channel=nxRemoteChannels && nxRemoteChannels.control;
+    if(!nxRemotePlay.dataChannelsReady || !channel || channel.readyState!=='open') return false;
+    const registered=nxRemoteRegisteredGamepadSlots.has(slot);
+    if(registered===wasAdded) return true;
+    const payload=JSON.stringify({message:'gamepadChanged',gamepadIndex:slot,wasAdded:wasAdded});
+    if(!nxRemoteChannelSend(channel,payload)) return false;
+    if(wasAdded) nxRemoteRegisteredGamepadSlots.add(slot);
+    else nxRemoteRegisteredGamepadSlots.delete(slot);
+    return true;
+  }
+  function nxRemoteReleaseGamepadSlots(channels) {
+    const channel=channels && channels.control;
+    if(channel && channel.readyState==='open') {
+      Array.from(nxRemoteRegisteredGamepadSlots).forEach(function(slot) {
+        nxRemoteChannelSend(channel,JSON.stringify({message:'gamepadChanged',gamepadIndex:slot,wasAdded:false}));
+      });
+    }
+    nxRemoteRegisteredGamepadSlots.clear();
+  }
   function nxRemoteCloseDataChannels() {
     const channels=nxRemoteChannels;
+    nxRemoteReleaseGamepadSlots(channels);
     nxRemoteChannels=null;
     nxRemotePlay.dataChannelsReady=false;
     if(nxRemotePlay.channelTimer!==null){clearTimeout(nxRemotePlay.channelTimer);nxRemotePlay.channelTimer=null;}
