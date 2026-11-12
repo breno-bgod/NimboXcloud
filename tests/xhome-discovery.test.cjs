@@ -511,7 +511,7 @@ test('session: autoplay rejection is diagnosed and Stop clears media listeners, 
   const videoTrack=fakeTrack('video-stop','video');
   const incoming={getTracks(){return [audioTrack,videoTrack];}};
   peers[0].ontrack({streams:[incoming],track:videoTrack});
-  await Promise.resolve();await Promise.resolve();
+  await new Promise(resolve=>setTimeout(resolve,0));
   assert.equal(api.state.mediaDiagnostics.playbackState,'blocked');
   assert.equal(api.state.mediaDiagnostics.playbackError,'NotAllowedError');
   assert.equal(audioTrack.listenerCount('mute'),1);
