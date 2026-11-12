@@ -3,6 +3,7 @@
 - Moved NimboTouch keyboard/mouse activation into an explicit transport method called only by the NimboTouch toggle. Its snapshot and rollback are limited to keyboard/mouse fields and never include `enableTouchInput`.
 - Captured the active transport for the asynchronous activation and aborts the UI transition if the streaming session is replaced mid-operation.
 - Added five Node regression tests for native touch on/off, native keyboard+mouse requests, explicit NimboTouch activation, and rollback after native touch-mode changes.
+- Added an xHome mock-WebRTC regression test for incoming audio/video tracks, duplicate-track suppression, media-stream attachment and playback invocation.
 - Added a CI syntax check for the required Touch HUD module.
 - Automated tests do not prove Chrome/Edge or authenticated xCloud runtime behavior; real-session validation remains pending.
 
