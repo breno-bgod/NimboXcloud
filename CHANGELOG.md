@@ -3,7 +3,7 @@
 - Added ordered shared input sequencing across metadata, gamepad, keyboard and mouse reports; the client metadata frame remains sequence 0 and the first input frame starts at 1.
 - Added key-state tracking, repeat suppression, relative mouse movement, button transitions, wheel deltas and forced release frames on blur, hidden page, Escape, pagehide, disconnect and Stop.
 - Capture is scoped to the remote video and enabled only by the user; touch pointers and untrusted synthetic keyboard events are ignored, NX shortcuts and configured push-to-talk are preserved, and no new permanent polling or Gamepad API hook is installed.
-- Fixed gamepad routing while the NX panel is open: focusing or pointer-locking the xHome video now routes the controller to the console and uses the 16 ms input loop instead of navigating the panel.
+- Fixed gamepad routing while the NX panel is open: focusing the xHome video routes the controller to the console and uses the 16 ms input loop instead of navigating the panel; no Pointer Lock request is made.
 - Touch HUD forwarding to xHome and Xbox hardware validation remain pending.
 
 ## [4.12.68] — 2026-11-12
