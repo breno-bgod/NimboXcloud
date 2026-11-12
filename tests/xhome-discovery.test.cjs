@@ -1827,6 +1827,7 @@ test('reconnect: pending ICE poll from old session cannot mutate the new session
   api.state.regionShortName='wus';
 
   await api.startSession();
+  assert.ok(api.state.abortController,'an active xHome session must retain its controller for pending ICE polls');
   const oldPeer=peers[0];
   const oldPollId=api.state.iceTimer;
   const oldPollTimer=timers.get(oldPollId);
@@ -1840,6 +1841,7 @@ test('reconnect: pending ICE poll from old session cannot mutate the new session
 
   await api.stop();
   assert.equal(oldPollSignal.aborted,true,'Stop must abort the old session controller');
+  assert.equal(api.state.abortController,null,'Stop must release the controller after aborting it');
   assert.equal(oldPeer.closed,true);
 
   await api.startSession();
