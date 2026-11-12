@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.77
+// @version      4.12.78
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.77
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.78
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/fix/virtual-gamepad-panel-integration/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/fix/virtual-gamepad-panel-integration/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.77';
+  const VER = '4.12.78';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -5578,7 +5578,7 @@
     });
     const groups=[
       {title:'Transmissão',sub:'Vídeo, qualidade, servidores e estatísticas',icon:ICONS.stream,links:[['video','Imagem e filtros'],['stream','Streaming e WebRTC'],['region','Servidores e regiões'],['dashboard','Dashboard e gráficos']]},
-      {title:'Controles',sub:'Gamepad, teclado, mouse e HUD',icon:ICONS.controls,links:[['controls','Gamepad e HUD'],['audio','Áudio'],['voice','Voz e acessórios']]},
+      {title:'Controles',sub:'Gamepad, teclado, mouse e HUD',icon:ICONS.controls,links:[['controls','Gamepad e HUD'],['virtualpad','Controle virtual (Xbox)'],['audio','Áudio'],['voice','Voz e acessórios']]},
       {title:'Personalização',sub:'Monitor, transparência e layout',icon:ICONS.overview,links:[['personalize','Configurar NX Stream Monitor']]},
       {title:'Sistema',sub:'Diagnósticos e manutenção',icon:ICONS.advanced,links:[['compatibility','Compatibilidade e identidade'],['advanced','Diagnósticos do sistema']]}
     ];
