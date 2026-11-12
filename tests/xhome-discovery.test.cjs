@@ -496,3 +496,130 @@ test('session failure after server creation attempts remote DELETE before report
   assert.match(api.state.error,/HTTP 503/);
   assert.match(api.state.error,/Sessão remota liberada/);
 });
+
+for (const status of [403, 500]) {
+  test(`stop: HTTP ${status} preserves remote release and retry remains available`, async () => {
+    const calls=[];
+    const api=harness(async(url,opts)=>{
+      calls.push({url,opts});
+      if(calls.length===1)return ok(login);
+      if(calls.length===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+      if(calls.length===3)return ok({state:'Provisioned'});
+      if(calls.length===4)return {ok:false,status};
+      return {ok:true,status:204};
+    });
+    api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+    await api.startSession();
+    let peerClosed=0,trackStopped=0;
+    api.state.peer={close(){peerClosed++;}};
+    api.state.mediaStream={getTracks(){return [{stop(){trackStopped++;}}];}};
+    await api.stop();
+    assert.equal(calls.length,4);
+    assert.equal(api.state.sessionStatus,'stopped-local-only');
+    assert.match(api.state.error,new RegExp('HTTP '+status));
+    assert.equal(peerClosed,1);
+    assert.equal(trackStopped,1);
+    await api.discover();
+    await api.startSession();
+    assert.equal(calls.length,4,'new discovery and start stay blocked while release is pending');
+    await api.retryRelease();
+    assert.equal(calls.length,5);
+    assert.equal(calls[4].opts.method,'DELETE');
+    assert.equal(api.state.sessionStatus,'stopped');
+    assert.equal(api.state.error,'');
+  });
+}
+
+for (const status of [404, 410]) {
+  test(`stop: HTTP ${status} is idempotent and does not create a retry`, async () => {
+    const calls=[];
+    const api=harness(async(url,opts)=>{
+      calls.push({url,opts});
+      if(calls.length===1)return ok(login);
+      if(calls.length===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+      if(calls.length===3)return ok({state:'Provisioned'});
+      return {ok:false,status};
+    });
+    api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+    await api.startSession();
+    await api.stop();
+    assert.equal(api.state.sessionStatus,'stopped');
+    assert.match(api.state.status,/já estava encerrada/i);
+    await api.stop();
+    await api.retryRelease();
+    assert.equal(calls.length,4,'404/410 must not be retried as pending releases');
+    assert.equal(api.state.sessionStatus,'stopped');
+  });
+}
+
+test('stop: network failure keeps the release pending and retry succeeds',async()=>{
+  const calls=[];
+  const api=harness(async(url,opts)=>{
+    calls.push({url,opts});
+    if(calls.length===1)return ok(login);
+    if(calls.length===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    if(calls.length===3)return ok({state:'Provisioned'});
+    if(calls.length===4)throw new TypeError('network offline');
+    return {ok:true,status:204};
+  });
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  await api.stop();
+  assert.equal(api.state.sessionStatus,'stopped-local-only');
+  assert.match(api.state.error,/falha de rede/i);
+  await api.retryRelease();
+  assert.equal(calls.length,5);
+  assert.equal(calls[4].opts.method,'DELETE');
+  assert.equal(api.state.sessionStatus,'stopped');
+});
+
+test('stop: repeated Stop while remote release is pending preserves status and sends no duplicate DELETE',async()=>{
+  const calls=[];
+  const api=harness(async(url,opts)=>{
+    calls.push({url,opts});
+    if(calls.length===1)return ok(login);
+    if(calls.length===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    if(calls.length===3)return ok({state:'Provisioned'});
+    if(calls.length===4)return {ok:false,status:503};
+    return {ok:true,status:204};
+  });
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  await api.stop();
+  const pendingStatus=api.state.status;
+  const pendingError=api.state.error;
+  await api.stop();
+  assert.equal(calls.length,4,'repeated Stop must not issue a second DELETE');
+  assert.equal(api.state.sessionStatus,'stopped-local-only');
+  assert.equal(api.state.status,pendingStatus);
+  assert.equal(api.state.error,pendingError);
+  await api.retryRelease();
+  assert.equal(calls.length,5);
+  assert.equal(api.state.sessionStatus,'stopped');
+});
+
+test('stop: repeated retry while DELETE is in flight sends only one request',async()=>{
+  const calls=[];
+  let resolveRetry,notifyRetry;
+  const retryStarted=new Promise(resolve=>{notifyRetry=resolve;});
+  const api=harness(async(url,opts)=>{
+    calls.push({url,opts});
+    if(calls.length===1)return ok(login);
+    if(calls.length===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    if(calls.length===3)return ok({state:'Provisioned'});
+    if(calls.length===4)return {ok:false,status:401};
+    notifyRetry();
+    return new Promise(resolve=>{resolveRetry=resolve;});
+  });
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  await api.stop();
+  const first=api.retryRelease();
+  await retryStarted;
+  await api.retryRelease();
+  assert.equal(calls.length,5,'only the first retry may issue DELETE');
+  resolveRetry({ok:true,status:204});
+  await first;
+  assert.equal(api.state.sessionStatus,'stopped');
+  assert.equal(calls.length,5);
+});
