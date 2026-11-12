@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.48
+// @version      4.12.49
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.48
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.49
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -1493,6 +1493,36 @@
     return !!document.querySelector('video[src^="blob:"][autoplay], video[data-testid*="stream"]');
   }
 
+  function nxViewportMode(){
+    const orientation=(innerWidth>innerHeight?'landscape':'portrait');
+    const fullscreen=!!(document.fullscreenElement||document.webkitFullscreenElement);
+    const mode=orientation+'-'+(fullscreen?'fullscreen':'window');
+    document.documentElement.dataset.nxViewportMode=mode;
+    return {orientation,fullscreen,mode};
+  }
+  function nxControllerAnchor(){
+    const nodes=document.querySelectorAll('header button,header [role="button"],header a,[role="banner"] button,[role="banner"] [role="button"],[data-testid*="header"] button,[class*="Header"] button,[class*="header"] button');
+    for(const n of nodes){
+      if(n.id==='nimboxcloud-library-button'||n.id==='nimboxcloud-native-keyboard-mouse'||n.closest('#__xcu_panel__'))continue;
+      const r=n.getBoundingClientRect();
+      if(r.width<18||r.height<18||r.top<0||r.top>Math.min(160,innerHeight*.25)||r.left<0||r.right>innerWidth)continue;
+      const label=[n.getAttribute('aria-label'),n.title,n.getAttribute('data-testid'),n.getAttribute('data-tooltip'),n.querySelector('[aria-label]')?.getAttribute('aria-label'),n.querySelector('svg title')?.textContent].filter(Boolean).join(' ').toLowerCase();
+      if(/controller|gamepad|controle|joystick|disconnected|desconectado|connected controller|controle conectado/.test(label))return n;
+    }
+    return null;
+  }
+  function nxHideDetachedControls(){
+    if(nxLibraryButton)nxLibraryButton.style.display='none';
+    if(nxKeyboardMouseButton)nxKeyboardMouseButton.style.display='none';
+    if(pillEl)pillEl.style.display='none';
+  }
+  function nxMountControllerActions(){
+    const anchor=nxControllerAnchor();
+    if(!anchor?.parentElement)return false;
+    nxMountNativeActions(anchor,true);
+    nxLibraryButton.title='NimboXcloud — painel NX';
+    return true;
+  }
   function findProfileAnchor() {
     // O novo xCloud pode usar header, banner ou uma barra sem semantica HTML.
     // Priorizar o indicador de controle mostrado ao lado das notificacoes/perfil.
@@ -1513,14 +1543,8 @@
         n.getAttribute('data-testid'),n.getAttribute('data-state'),
         n.textContent && n.textContent.trim().slice(0,80)].filter(Boolean).join(' ').toLowerCase();
     };
-    const controller = nodes.find(function (n) {
-      return /controller|gamepad|controle|joystick|disconnected|desconectado/.test(desc(n));
-    });
+    const controller = nxControllerAnchor();
     if (controller) return { node: controller, position: 'after' };
-    const profile = nodes.find(function (n) {
-      return /profile|perfil|account|conta|avatar|user|usuário|usuario/.test(desc(n));
-    });
-    if (profile) return { node: profile, position: 'before' };
     // Fallback conservador: nao anexar em um elemento arbitrario da barra.
     return null;
   }
@@ -1697,6 +1721,8 @@
     if(dotEl)dotEl.style.display='none';
     if(pillTxt)pillTxt.style.display='none';
     if(nxLibraryButton)nxLibraryButton.style.display='none';
+    if(nxKeyboardMouseButton)nxKeyboardMouseButton.style.display='none';
+    if(pillEl)pillEl.style.display='none';
   }
   function nxDockPanel() {
     if (!wrap || !cardEl) return;
@@ -1739,6 +1765,7 @@
     try{window.NimboTouch?.setMenuBlocked?.(!!nativeOpen||openUI);}catch(e){S.lastErr='NX touch menu: '+String(e?.message||e);}
   }
   function syncNXPlacement() {
+    nxViewportMode();
     if (!wrap || !wrap.isConnected) return;
     if (openUI) { nxNativeMenuPriority(false,null); nxDockPanel(); return; }
     const playing = isInGame();
@@ -1752,7 +1779,7 @@
     if (playing) {
       const nativeAnchor=findInGameToolbar();
       nxNativeMenuPriority(!!nativeAnchor&&toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor),nativeAnchor);
-      if (nxCompactMobile()) { if (micTestStream) stopMicrophoneTest(); if(nativeAnchor)nxMountNativeActions(nativeAnchor,toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor));else if(nxKeyboardMouseButton)nxKeyboardMouseButton.style.display='none'; nxPositionMobileDrawer(); return; }
+      if (nxCompactMobile()) { if (micTestStream) stopMicrophoneTest(); const expanded=!!nativeAnchor&&toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor);if(expanded)nxMountNativeActions(nativeAnchor,true);else nxHideDetachedControls();if(!openUI&&wrap)wrap.style.display='none';return; }
       if (micTestStream) stopMicrophoneTest(); // Nunca manter a captura de diagnóstico durante a sessão.
       const gameAnchor = findInGameToolbar();
       if (gameAnchor && gameAnchor.parentElement) {
@@ -1762,7 +1789,7 @@
         // O botão NX deve recolher junto com a barra nativa. Painel aberto permanece acessível.
         // Barra nativa recolhida não implica fechar o painel aberto pelo atalho.
         wrap.style.display = 'flex';
-        if (pillEl) pillEl.style.display = expanded ? 'none' : 'inline-flex';
+        if (pillEl) pillEl.style.display = 'none';
         if (openUI) {
           if (expanded) positionNXCard(nxLibraryButton);
           else { wrap.style.left='8px'; wrap.style.right='auto'; wrap.style.top='58px'; wrap.style.width=Math.min(380,innerWidth-16)+'px'; }
@@ -1771,8 +1798,7 @@
         // Enquanto a barra nativa está recolhida, não deixar um ícone independente na tela.
         if (nxLibraryButton) nxLibraryButton.style.display = 'none';
         if (pillEl) pillEl.style.display = 'none';
-        wrap.style.display = 'flex';
-        if (pillEl) pillEl.style.display = 'inline-flex';
+        wrap.style.display = 'none';
         if (openUI) {
           wrap.style.left = '8px'; wrap.style.right = 'auto'; wrap.style.top = '58px';
           wrap.style.width = Math.min(380, innerWidth - 16) + 'px';
@@ -1793,6 +1819,7 @@
         if (nxLibraryButton.parentElement !== anchor.parentElement || nxLibraryButton.nextElementSibling !== anchor) anchor.before(nxLibraryButton);
       }
       nxLibraryButton.style.display = 'inline-flex';
+      nxMountControllerActions();
       nxLibraryAnchor = anchor;
       wrap.style.display = 'flex';
       wrap.style.position = 'fixed';
@@ -1808,11 +1835,11 @@
       const buttonVisible = buttonRect.width >= 18 && buttonRect.height >= 18 &&
         buttonRect.top >= 0 && buttonRect.bottom <= innerHeight &&
         buttonRect.left >= 0 && buttonRect.right <= innerWidth;
-      if (pillEl) pillEl.style.display = buttonVisible ? 'none' : 'inline-flex';
+      if (pillEl) pillEl.style.display = 'none';
     } else {
       // Barra do site ainda não carregou: fallback temporário com a pílula.
-      if (nxLibraryButton) nxLibraryButton.style.display = 'none';
-      wrap.style.display = 'flex';
+      nxHideDetachedControls();
+      wrap.style.display = 'none';
       wrap.style.position = 'fixed';
       wrap.style.transform = 'none';
       wrap.style.left = 'auto';
