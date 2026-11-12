@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'NimboXcloud.user.js'), 'utf8');
-const start = source.indexOf('const nxRemotePlay =');
+const start = source.indexOf('function nxRemoteEmptyMediaDiagnostics()');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
 const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady,sendKeyboardFrame:nxRemoteSendKeyboardFrame,sendMouseFrame:nxRemoteSendMouseFrame,enableInput:nxRemoteInputCaptureEnable,disableInput:nxRemoteInputCaptureDisable,inputFocus:nxRemoteVideoHasInputFocus,heldKeys:function(){return Array.from(nxRemoteHeldKeys.keys());},mouseButtons:function(){return nxRemoteMouseButtons;},captureEnabled:function(){return !!nxRemoteInputCapture;},browser:{window:window,document:document}};';
