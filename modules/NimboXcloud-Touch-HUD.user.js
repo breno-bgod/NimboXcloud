@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.1.1
+// @version      1.1.2
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD e HUD editável. Experimental; requer suporte K/M do jogo e do SDK.
 // @author       KReight / NimboPlay contributors
 // @license      MIT
@@ -41,7 +41,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.1.1';
+const VERSION='1.1.2';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -196,7 +196,7 @@ class NimboXboxTransport {
 function nimboApplyInput(raw,options){return raw.updateInputConfigurationAsync(options);}
 
 
-const touchPanel={isOpen:false,element:null,launcher:null,
+const touchPanel={isOpen:false,element:null,launcher:null,quickToggle:null,
  mount(){
   if(this.element)return;
   const style=document.createElement('style');style.textContent=`
@@ -210,13 +210,14 @@ html:has(#__xcu_panel__) #nimbo-touch-launcher{display:none!important}\n#nimbo-t
 #nimbo-touch-root button{font-family:system-ui,sans-serif}#nimbo-touch-root .forma-save{background:#ffd43b;color:#171a20}
 #nimbo-touch-root [hidden]{display:none!important}
 `;document.documentElement.append(style);
+  this.quickToggle=document.createElement('button');this.quickToggle.type='button';this.quickToggle.id='nimbo-touch-quick-toggle';this.quickToggle.setAttribute('aria-label','Alternar NimboTouch');this.quickToggle.style.cssText='position:fixed;left:8px;top:8px;z-index:10002;border:1px solid #7b8998;border-radius:10px;background:rgba(18,23,31,.86);color:white;font:600 12px system-ui;padding:9px 12px;touch-action:manipulation;cursor:pointer';this.quickToggle.onclick=()=>this.toggle.click();document.documentElement.append(this.quickToggle);
   this.launcher=document.createElement('button');this.launcher.id='nimbo-touch-launcher';this.launcher.textContent='Nimbo Touch';this.launcher.type='button';this.launcher.onclick=()=>this.isOpen?this.close():this.open();
   this.element=document.createElement('section');this.element.id='nimbo-touch-panel';this.element.hidden=true;this.element.setAttribute('role','dialog');this.element.setAttribute('aria-label','Nimbo Touch — touchpad e HUD');
   const h=document.createElement('h2');h.textContent='Nimbo Touch';this.element.append(h);
   this.status=document.createElement('p');this.status.setAttribute('role','status');this.element.append(this.status);
   const row=document.createElement('div');row.className='row';
   const button=(text,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=fn;row.append(b);return b;};
-  this.toggle=button('Ativar touchpad',async()=>{if(ui.wanted){ui.stop();this.refresh();return;}if(!nimboTransport?.connected()){this.status.textContent='Sessão ainda não encontrada. Abra um jogo e aguarde.';return;}this.close();await ui.start();this.refresh();});this.toggle.className='primary';
+  this.toggle=button('Ativar touchpad',async()=>{if(ui.wanted){ui.stop();if(nimboTransport)try{await nimboTransport.restore();}catch(e){NimboDiag.add('entrada','Falha ao restaurar toque nativo',e.message);this.status.textContent='Não foi possível restaurar o toque nativo: '+e.message;return;}this.refresh();return;}if(!nimboTransport?.connected()){this.status.textContent='Sessão ainda não encontrada. Abra um jogo e aguarde.';return;}this.close();await ui.start();this.refresh();});this.toggle.className='primary';
   button('Editar HUD',()=>{this.close();ui.mount();ui.editHud();});
   button('Fechar',()=>this.close());this.element.append(row);
   const profileLabel=document.createElement('label');profileLabel.textContent='Perfil da HUD';this.profiles=document.createElement('select');this.profiles.style.cssText='display:block;width:100%;margin-top:8px';this.profiles.onchange=()=>{ui.switchProfile(this.profiles.value);this.refresh();};profileLabel.append(this.profiles);this.element.append(profileLabel);
@@ -230,10 +231,10 @@ html:has(#__xcu_panel__) #nimbo-touch-launcher{display:none!important}\n#nimbo-t
   const diag=document.createElement('button');diag.textContent='Mostrar diagnóstico';this.report=document.createElement('pre');this.report.hidden=true;diag.onclick=()=>{this.report.hidden=!this.report.hidden;this.report.textContent=JSON.stringify(diagnostic(),null,2);};this.element.append(diag,this.report);
   this.reparent();this.refresh();
  },
- reparent(){const host=document.fullscreenElement||document.documentElement;for(const el of [this.element,this.launcher])if(el&&el.parentElement!==host)host.append(el);},
+ reparent(){const host=document.fullscreenElement||document.documentElement;for(const el of [this.element,this.launcher,this.quickToggle])if(el&&el.parentElement!==host)host.append(el);},
  open(){if(!ui||ui.editingHud)return;this.mount();this.isOpen=true;ui.pause('Configurações do touchpad');this.element.hidden=false;this.reparent();this.refresh();},
  close(){this.isOpen=false;if(this.element)this.element.hidden=true;ui?.ensureResumeWatch();},
- refresh(){if(!ui||!this.element)return;this.status.textContent=nimboTransport?.connected()?(ui.wanted?'Touchpad ligado'+(ui.active?'':' · pausado enquanto o painel estiver aberto'):'Sessão conectada · touchpad desligado'):'Aguardando sessão do xCloud. Você já pode editar a HUD.';this.toggle.textContent=ui.wanted?'Desativar touchpad':'Ativar touchpad';this.launcher.textContent=ui.wanted?'Touchpad ligado':'Nimbo Touch';
+ refresh(){if(!ui||!this.element)return;this.status.textContent=nimboTransport?.connected()?(ui.wanted?'Touchpad ligado'+(ui.active?'':' · pausado enquanto o painel estiver aberto'):'Sessão conectada · touchpad desligado'):'Aguardando sessão do xCloud. Você já pode editar a HUD.';this.toggle.textContent=ui.wanted?'Desativar touchpad':'Ativar touchpad';this.launcher.textContent=ui.wanted?'Touchpad ligado':'Nimbo Touch';if(this.quickToggle){this.quickToggle.textContent=ui.wanted?'Touch: ON':'Touch: OFF';this.quickToggle.hidden=!nimboTransport?.connected()||this.isOpen;this.quickToggle.setAttribute('aria-pressed',String(!!ui.wanted));}
  const signature=JSON.stringify(ui.profileStore?.profiles.map(p=>[p.id,p.name]));if(signature!==this.signature){this.signature=signature;this.profiles.replaceChildren();for(const p of ui.profileStore?.profiles||[]){const opt=document.createElement('option');opt.value=p.id;opt.textContent=p.name;this.profiles.append(opt);}}this.profiles.value=ui.profileStore?.activeId||'';
  }
 };
@@ -395,8 +396,9 @@ class BxTouchpad {
     if (this.active) { this.buttons = 0; try { this.send(); } catch {} }
     this.active = false; this.pointers.clear(); this.remainder = [0, 0];
     if (this.pad) { this.pad.hidden = true; this.mapped.hidden = true; this.toggle.textContent = 'Ativar touchpad'; this.status.textContent = 'Pausado — comandos de mouse soltos.'; }
-    // Keep native input configured until the stream ends; changing it during a
-    // pending activation can race the streaming SDK. No input is sent while paused.
+    // stop() releases virtual inputs immediately. The transport restores the
+    // original Xbox input configuration on explicit stop; pause() retains it
+    // temporarily for editor, focus and fullscreen transitions.
   }
   bindSurface(element, kind, code = null) {
     element.addEventListener('pointerdown', e => {
