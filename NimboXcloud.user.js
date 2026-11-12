@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.76
+// @version      4.12.77
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.76
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.77
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.76';
+  const VER = '4.12.77';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -4252,22 +4252,22 @@
           const touchApi=window.NimboTouch;
           if(nxRemoteTouchAdapter&&touchApi&&typeof touchApi.startRemote==='function'&&touchApi.hasRemoteInputAdapter?.()){
             const touchActive=!!touchApi.isRemoteActive?.();
+            const touchEnabled=!!touchApi.isRemoteEnabled?.();
             const touchReady=!!nxRemoteTouchAdapter.isReady();
             const touchButton=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,
-              touchActive?'Desativar HUD de toque':touchReady?'Ativar HUD de toque':'Aguardando conexão para HUD de toque');
-            touchButton.disabled=!touchReady&&!touchActive;
+              touchEnabled?'Desativar HUD de toque':touchReady?'Ativar HUD de toque':'Aguardando conexão para HUD de toque');
+            touchButton.disabled=!touchReady&&!touchEnabled;
             touchButton.addEventListener('click',async function(e){
               e.stopPropagation();
-              if(touchApi.isRemoteActive?.())touchApi.stopRemote?.();
-              else{
-                const started=await touchApi.startRemote();
-                if(!started){const status=root.querySelector('[data-nx-xhome-touch-status]');if(status)status.textContent='Não foi possível ativar: confirme a conexão WebRTC e feche menus ou editores abertos.';}
-              }
+              let startFailed=false;
+              if(touchApi.isRemoteEnabled?.())touchApi.stopRemote?.();
+              else startFailed=!(await touchApi.startRemote());
               renderBody();
+              if(startFailed){const status=root.querySelector('[data-nx-xhome-touch-status]');if(status)status.textContent='Não foi possível ativar: confirme a conexão WebRTC e feche menus ou editores abertos.';}
             });
             root.appendChild(touchButton);
             const touchStatus=mk('div','font-size:11px;color:'+C.dim+';margin-top:6px',
-              touchActive?'HUD de toque ativo no transporte xHome.':'HUD de toque independente; as preferências e o layout do NimboTouch são preservados.');
+              touchActive?'HUD de toque ativo no transporte xHome.':touchEnabled?'HUD de toque ligado, mas pausado até a conexão e o foco estarem disponíveis.':'HUD de toque independente; as preferências e o layout do NimboTouch são preservados.');
             touchStatus.setAttribute('data-nx-xhome-touch-status','');
             root.appendChild(touchStatus);
           }
