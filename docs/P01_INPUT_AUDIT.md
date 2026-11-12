@@ -51,3 +51,14 @@
 - `86411a4d`: teste para os dois caminhos de erro de leitura de gamepad.
 - Verificação isolada da ponte: reinstalação idempotente e proprietário externo preservado — PASSOU.
 - **Não encerrado:** INPUT-001, INPUT-003, INPUT-004 e INPUT-005 ainda não comprovam uma camada de entrada jogável unificada; INPUT-002, INPUT-006 e INPUT-007 requerem validação real; AUD-01 permanece ABERTA. Não confundir observação passiva com integração de teclado/mouse virtual.
+
+
+## xHome — dispatcher único de teclado/mouse (2026-11-12)
+- Implementado como opt-in após WebRTC conectado, canais prontos e trilha de vídeo ao vivo; bloqueia a ativação quando uma sessão Cloud Gaming está conectada e suspende o modo automaticamente se ela surgir durante o xHome.
+- Eventos físicos confiáveis passam pelo dispatcher xHome; `keydown/keyup` são integrados aos listeners existentes do NX, sem adicionar um segundo par global.
+- Pointer move/down/up/cancel/wheel/contextmenu e pointerlockchange usam uma única instalação idempotente; nenhum `requestPointerLock` ou `navigator.getGamepads` é sobrescrito.
+- NimboTouch recebe um adaptador host opcional e envia estados virtuais ao mesmo encoder/canal; sem ativação xHome, o transporte SDK do Cloud Gaming permanece inalterado.
+- Ownership por origem (physical/touch) impede que soltar uma origem libere uma tecla ou botão ainda mantido pela outra.
+- Neutralização cobre blur, visibility hidden, abertura do NX, abertura do painel NimboTouch, Stop e pagehide.
+- O mapeamento absoluto usa dimensões decodificadas da trilha/vídeo, com fallback para o perfil selecionado e compensação de letterboxing.
+- **Estado:** implementação automatizável/experimental; protocolo e comportamento de captura ainda exigem validação em Xbox físico e Chrome/Edge/Android. P01/AUD-01 continuam abertos.
