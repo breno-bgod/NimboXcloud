@@ -1,5 +1,13 @@
+## [4.12.69] — 2026-11-12
+- Added an opt-in xHome input dispatcher for trusted physical keyboard and mouse events, gated by a connected WebRTC peer, open input channel, live video track, focused page, and absence of an active Cloud Gaming session.
+- Unified the input sequence counter across gamepad, keyboard, and mouse reports; key ownership is reference-counted across physical input and NimboTouch to prevent premature key-up.
+- Added absolute video-coordinate mapping using decoded/track dimensions (with profile fallback), letterbox-aware pointer mapping, relative Pointer Lock movement, mouse-button release outside the video, normalized wheel reports, and neutral release on blur, visibility loss, NX panel opening, Touch panel opening, Stop, and pagehide.
+- Added automatic xHome-input suspension when NimboTouch detects a Cloud Gaming session, preventing the alternate input path from remaining active during Cloud Gaming.
+- Added a single host adapter to NimboTouch so its existing virtual HUD routes keyboard/mouse reports to xHome only when explicitly enabled; the original Xbox SDK transport remains the default for Cloud Gaming.
+- Input capture remains opt-in and experimental. No Pointer Lock override, Gamepad API override, additional gamepad polling loop, or global keyboard listener was introduced. Xbox hardware validation remains pending.
+
 ## [4.12.68] — 2026-11-12
-- Added pure xHome keyboard and mouse encoders using the shared 14-byte input header: Keyboard report 64 with a 3-byte VKey frame, and Mouse report 32 with an 18-byte frame.
+- Added pure xHome keyboard and mouse encoders using the shared 15-byte input header (14 fixed bytes plus the frame-count byte): Keyboard report 64 with a 3-byte VKey frame, and Mouse report 32 with an 18-byte frame.
 - Added physical KeyboardEvent.code to Windows virtual-key mapping with validated legacy keyCode fallback; unknown keys are rejected instead of emitting ambiguous input.
 - Mouse encoding preserves signed relative X/Y and wheel deltas, the browser button bitmask, and the relative/absolute flag; numeric fields are clamped to their protocol widths.
 - Refactored the gamepad encoder to use the same packet-header helper without changing its 38-byte wire layout.
