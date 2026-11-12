@@ -1,3 +1,9 @@
+## [4.12.70] — 2026-11-12
+- Added the NX Minimal Touch visual skin to the existing NimboTouch HUD: compact translucent-black key buttons with white labels, a lighter analog-stick base and knob, and a discreet touch/mouse surface with an editor-only aiming marker.
+- The skin is presentation-only: it does not convert keyboard/mouse bindings into Xbox gamepad buttons, add a native TAK D-pad, or claim analog gamepad output. Existing input behavior and saved HUD geometry remain unchanged.
+- Bumped the Touch HUD module to 1.1.7 and updated the userscript dependency cache key.
+- Native TAK assets/runtime application and a true Xbox virtual gamepad remain separate validation tasks.
+
 ## [4.12.69] — 2026-11-12
 - Integrated opt-in physical keyboard and mouse capture into the xHome input channel, using the existing pure Keyboard (64) and Mouse (32) encoders.
 - Added ordered shared input sequencing across metadata, gamepad, keyboard and mouse reports; the client metadata frame remains sequence 0 and the first input frame starts at 1.
