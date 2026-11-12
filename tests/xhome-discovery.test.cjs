@@ -8,13 +8,14 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('function nxRemoteEmptyMediaDiagnostics()');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},setChannels:function(value){nxRemoteChannels=value;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,normalizeVirtualGamepadState:nxRemoteNormalizeVirtualGamepadState,setVirtualGamepadState:function(state){return nxRemoteSetVirtualGamepadState(state,nxRemotePlay.requestId,nxRemotePlay.peer,nxRemoteChannels);},releaseVirtualGamepad:function(){return nxRemoteReleaseVirtualGamepad(nxRemotePlay.requestId,nxRemotePlay.peer,nxRemoteChannels);},virtualGamepad:function(){return nxRemoteVirtualGamepad;},encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady,sendKeyboardFrame:nxRemoteSendKeyboardFrame,sendMouseFrame:nxRemoteSendMouseFrame,createTouchAdapter:nxRemoteCreateTouchInputAdapter,attachTouchAdapter:nxRemoteAttachTouchAdapter,detachTouchAdapter:nxRemoteDetachTouchAdapter,touchAdapter:function(){return nxRemoteTouchAdapter;},enableInput:nxRemoteInputCaptureEnable,disableInput:nxRemoteInputCaptureDisable,inputFocus:nxRemoteVideoHasInputFocus,heldKeys:function(){return Array.from(nxRemoteHeldKeys.keys());},mouseButtons:function(){return nxRemoteMouseButtons;},captureEnabled:function(){return !!nxRemoteInputCapture;},browser:{window:window,document:document}};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},setChannels:function(value){nxRemoteChannels=value;},initChannels:nxRemoteInitDataChannels,resolutionProfile:nxRemoteResolutionProfile,buildDeviceInfo:nxRemoteBuildDeviceInfo,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,normalizeVirtualGamepadState:nxRemoteNormalizeVirtualGamepadState,setVirtualGamepadState:function(state){return nxRemoteSetVirtualGamepadState(state,nxRemotePlay.requestId,nxRemotePlay.peer,nxRemoteChannels);},releaseVirtualGamepad:function(){return nxRemoteReleaseVirtualGamepad(nxRemotePlay.requestId,nxRemotePlay.peer,nxRemoteChannels);},virtualGamepad:function(){return nxRemoteVirtualGamepad;},encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady,sendKeyboardFrame:nxRemoteSendKeyboardFrame,sendMouseFrame:nxRemoteSendMouseFrame,createTouchAdapter:nxRemoteCreateTouchInputAdapter,attachTouchAdapter:nxRemoteAttachTouchAdapter,detachTouchAdapter:nxRemoteDetachTouchAdapter,touchAdapter:function(){return nxRemoteTouchAdapter;},enableInput:nxRemoteInputCaptureEnable,disableInput:nxRemoteInputCaptureDisable,inputFocus:nxRemoteVideoHasInputFocus,heldKeys:function(){return Array.from(nxRemoteHeldKeys.keys());},mouseButtons:function(){return nxRemoteMouseButtons;},captureEnabled:function(){return !!nxRemoteInputCapture;},browser:{window:window,document:document}};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides, mediaStreamClass) {
   let timerId=0;
   const fakeTimers=new Map();
   const browserSetTimeout=(fn,ms)=>{const id=++timerId;fakeTimers.set(id,{fn,ms});return id;};
   const browserClearTimeout=(id)=>fakeTimers.delete(id);
   const fakeWindow=fakeEventTarget();
+  fakeWindow.location={host:'play.xbox.com'};
   const fakeDocument=fakeEventTarget();
   fakeDocument.visibilityState='visible';
   fakeDocument.activeElement=null;
@@ -314,6 +315,23 @@ test('wrong relyingParty token: do not send token to xHome',async()=>{
   assert.match(api.state.error,/GSSV/);
 });
 
+test('xHome resolution profile maps quality tiers to the browser client descriptor',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const profile=value=>JSON.parse(JSON.stringify(api.resolutionProfile(value)));
+  assert.deepEqual(profile('720p'),{resolution:'720p',osName:'android',width:1280,height:720});
+  assert.deepEqual(profile('1080p'),{resolution:'1080p',osName:'windows',width:1920,height:1080});
+  assert.deepEqual(profile('1080p-hq'),{resolution:'1080p-hq',osName:'tizen',width:1920,height:1080});
+  assert.deepEqual(profile('invalid'),{resolution:'1080p',osName:'windows',width:1920,height:1080});
+  const descriptor=JSON.parse(JSON.stringify(api.buildDeviceInfo('1080p-hq')));
+  assert.equal(descriptor.appInfo.env.clientAppId,'play.xbox.com');
+  assert.equal(descriptor.appInfo.env.clientAppType,'browser');
+  assert.equal(descriptor.dev.os.name,'tizen');
+  assert.equal(descriptor.dev.hw.model,'unknown');
+  assert.equal(descriptor.dev.hw.sdktype,'web');
+  assert.equal(descriptor.dev.browser.browserName,'chrome');
+  assert.doesNotMatch(JSON.stringify(descriptor),/Surface Pro|Microsoft\\.GamingApp|"clientAppType":"native"/);
+});
+
 test('session: valid selected console requests xHome play without leaking bearer in state',async()=>{
   const calls=[];
   const api=harness(async(url,opts)=>{
@@ -325,10 +343,17 @@ test('session: valid selected console requests xHome play without leaking bearer
   api.state.consoles=[{id:'console-1',name:'Xbox'}];
   api.state.selectedId='console-1';
   api.state.regionShortName='wus';
+  api.state.resolution='1080p-hq';
   await api.startSession();
   assert.equal(calls.length,3);
   assert.match(calls[1].url,/^https:\/\/wus\.core\.gssv-play-prodxhome\.xboxlive\.com\/v5\/sessions\/home\/play$/);
-  assert.equal(JSON.parse(calls[1].opts.body).serverId,'console-1');
+  const playBody=JSON.parse(calls[1].opts.body);
+  const deviceInfo=JSON.parse(calls[1].opts.headers['X-MS-Device-Info']);
+  assert.equal(playBody.serverId,'console-1');
+  assert.equal(playBody.settings.osName,'tizen','the session body must match the selected HQ profile');
+  assert.equal(deviceInfo.appInfo.env.clientAppType,'browser');
+  assert.equal(deviceInfo.dev.os.name,'tizen','the device header must match the selected HQ profile');
+  assert.equal(deviceInfo.dev.hw.model,'unknown','do not claim a Surface Pro hardware model');
   assert.equal(calls[1].opts.redirect,'error');
   assert.equal(api.state.sessionStatus,'provisioned');
   assert.ok(!JSON.stringify(api.state).includes('TEST_BEARER'));
