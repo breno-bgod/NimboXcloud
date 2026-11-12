@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.1.2
+// @version      1.1.3
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD e HUD editável. Experimental; requer suporte K/M do jogo e do SDK.
 // @author       KReight / NimboPlay contributors
 // @license      MIT
@@ -41,7 +41,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.1.2';
+const VERSION='1.1.3';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -196,7 +196,7 @@ class NimboXboxTransport {
 function nimboApplyInput(raw,options){return raw.updateInputConfigurationAsync(options);}
 
 
-const touchPanel={isOpen:false,element:null,launcher:null,quickToggle:null,
+const touchPanel={isOpen:false,element:null,launcher:null,quickToggle:null,nxAccess:null,
  mount(){
   if(this.element)return;
   const style=document.createElement('style');style.textContent=`
@@ -211,6 +211,7 @@ html:has(#__xcu_panel__) #nimbo-touch-launcher{display:none!important}\n#nimbo-t
 #nimbo-touch-root [hidden]{display:none!important}
 `;document.documentElement.append(style);
   this.quickToggle=document.createElement('button');this.quickToggle.type='button';this.quickToggle.id='nimbo-touch-quick-toggle';this.quickToggle.setAttribute('aria-label','Alternar NimboTouch');this.quickToggle.style.cssText='position:fixed;left:8px;top:8px;z-index:10002;border:1px solid #7b8998;border-radius:10px;background:rgba(18,23,31,.86);color:white;font:600 12px system-ui;padding:9px 12px;touch-action:manipulation;cursor:pointer';this.quickToggle.onclick=()=>this.toggle.click();document.documentElement.append(this.quickToggle);
+  this.nxAccess=document.createElement('button');this.nxAccess.type='button';this.nxAccess.id='nimbo-touch-nx-access';this.nxAccess.textContent='NX';this.nxAccess.setAttribute('aria-label','Abrir ou fechar painel NimboXcloud');this.nxAccess.style.cssText='position:fixed;right:8px;bottom:8px;z-index:2147483000;border:1px solid #7b8998;border-radius:12px;background:rgba(18,23,31,.92);color:white;font:700 13px system-ui;min-width:46px;min-height:42px;touch-action:manipulation;cursor:pointer';this.nxAccess.addEventListener('pointerdown',e=>{e.stopPropagation();});this.nxAccess.onclick=e=>{e.preventDefault();e.stopPropagation();const shell=document.getElementById('__xcu_panel__');const pill=shell?.firstElementChild;if(pill&&typeof pill.click==='function')pill.click();else{this.status.textContent='Painel NX ainda não disponível.';this.open();}};document.documentElement.append(this.nxAccess);
   this.launcher=document.createElement('button');this.launcher.id='nimbo-touch-launcher';this.launcher.textContent='Nimbo Touch';this.launcher.type='button';this.launcher.onclick=()=>this.isOpen?this.close():this.open();
   this.element=document.createElement('section');this.element.id='nimbo-touch-panel';this.element.hidden=true;this.element.setAttribute('role','dialog');this.element.setAttribute('aria-label','Nimbo Touch — touchpad e HUD');
   const h=document.createElement('h2');h.textContent='Nimbo Touch';this.element.append(h);
@@ -231,10 +232,10 @@ html:has(#__xcu_panel__) #nimbo-touch-launcher{display:none!important}\n#nimbo-t
   const diag=document.createElement('button');diag.textContent='Mostrar diagnóstico';this.report=document.createElement('pre');this.report.hidden=true;diag.onclick=()=>{this.report.hidden=!this.report.hidden;this.report.textContent=JSON.stringify(diagnostic(),null,2);};this.element.append(diag,this.report);
   this.reparent();this.refresh();
  },
- reparent(){const host=document.fullscreenElement||document.documentElement;for(const el of [this.element,this.launcher,this.quickToggle])if(el&&el.parentElement!==host)host.append(el);},
+ reparent(){const host=document.fullscreenElement||document.documentElement;for(const el of [this.element,this.launcher,this.quickToggle,this.nxAccess])if(el&&el.parentElement!==host)host.append(el);},
  open(){if(!ui||ui.editingHud)return;this.mount();this.isOpen=true;ui.pause('Configurações do touchpad');this.element.hidden=false;this.reparent();this.refresh();},
  close(){this.isOpen=false;if(this.element)this.element.hidden=true;ui?.ensureResumeWatch();},
- refresh(){if(!ui||!this.element)return;this.status.textContent=nimboTransport?.connected()?(ui.wanted?'Touchpad ligado'+(ui.active?'':' · pausado enquanto o painel estiver aberto'):'Sessão conectada · touchpad desligado'):'Aguardando sessão do xCloud. Você já pode editar a HUD.';this.toggle.textContent=ui.wanted?'Desativar touchpad':'Ativar touchpad';this.launcher.textContent=ui.wanted?'Touchpad ligado':'Nimbo Touch';if(this.quickToggle){this.quickToggle.textContent=ui.wanted?'Touch: ON':'Touch: OFF';this.quickToggle.hidden=!nimboTransport?.connected()||this.isOpen;this.quickToggle.setAttribute('aria-pressed',String(!!ui.wanted));}
+ refresh(){if(!ui||!this.element)return;this.status.textContent=nimboTransport?.connected()?(ui.wanted?'Touchpad ligado'+(ui.active?'':' · pausado enquanto o painel estiver aberto'):'Sessão conectada · touchpad desligado'):'Aguardando sessão do xCloud. Você já pode editar a HUD.';this.toggle.textContent=ui.wanted?'Desativar touchpad':'Ativar touchpad';this.launcher.textContent=ui.wanted?'Touchpad ligado':'Nimbo Touch';if(this.quickToggle){this.quickToggle.textContent=ui.wanted?'Touch: ON':'Touch: OFF';this.quickToggle.hidden=!nimboTransport?.connected()||this.isOpen;this.quickToggle.setAttribute('aria-pressed',String(!!ui.wanted));}if(this.nxAccess)this.nxAccess.hidden=!ui?.active||this.isOpen;
  const signature=JSON.stringify(ui.profileStore?.profiles.map(p=>[p.id,p.name]));if(signature!==this.signature){this.signature=signature;this.profiles.replaceChildren();for(const p of ui.profileStore?.profiles||[]){const opt=document.createElement('option');opt.value=p.id;opt.textContent=p.name;this.profiles.append(opt);}}this.profiles.value=ui.profileStore?.activeId||'';
  }
 };
