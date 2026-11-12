@@ -502,3 +502,5 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 
 - Revisão de robustez antes do PR: neutralização agora só marca pausa após envio aceito; desconexão mantém o slot registrado até o frame neutro ser aceito. O callback WebRTC reconcilia o estado atual imediatamente após ser instalado, evitando perder o evento connected se ele ocorrer antes do listener.
 - Testes adicionais: retry de neutralização após falha simulada de send e manutenção do slot até a liberação ser aceita.
+
+- CI do PR #3: a primeira execução de regressão encontrou apenas uma expectativa textual antiga (a mensagem de status ainda dizia que o envio não existia). A implementação passou nos testes novos 124–130; a asserção foi atualizada para o status v4.12.67. O workflow baseline passou na validação sintática; a suíte será reexecutada no novo HEAD.
