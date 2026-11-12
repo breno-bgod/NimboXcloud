@@ -3,7 +3,7 @@
 > Documento operacional. Toda execução autônoma deve reler a versão atual de `main` e atualizar este plano conforme evidências. Nunca presumir que a versão indicada aqui ainda é a mais recente.
 
 ## Estado de referência
-- Versão auditada do userscript: 4.12.80 (correção integrada em `fa5466b5049feabefb042ec2a970516186ccf5ea`; HEAD e histórico consultados diretamente em 2026-11-12).
+- Versão auditada do userscript: 4.12.86 (painel reorganizado; código principal atualizado em `6faed997f6669f1b6749ad742934c9ff50b944d9`; validação de código e testes no commit `d4c083c31c755a1ffc22be70e3f6d9f0b81ca350`; consulta de HEAD em 2026-11-12).
 - Arquivo principal: `NimboXcloud.user.js`.
 - Plataforma prioritária: navegador em `play.xbox.com`, sem reescrever como aplicativo nativo.
 - Objetivo: estabilidade real do cliente web, manutenção das funções existentes e investigação verificável das diferenças entre cliente web e cliente Xbox.
@@ -17,22 +17,19 @@
 6. Atualizar este documento com itens concluídos, evidências, novas pendências e próximo passo. Não declarar concluído sem prova.
 7. Registrar no resumo: commit, arquivos alterados, testes executados, riscos, itens pendentes e descoberta externa relevante.
 
-## Frente NX — reformulação minimalista (2026-11-11)
+## Frente NX — organização funcional do painel (2026-11-12)
 
-- [x] Estrutura de navegação inicial em quatro categorias recolhíveis, preservando páginas técnicas existentes.
-- [x] NX Stream Monitor opcional com métricas da coleta WebRTC já existente.
-- [x] Preferências de layout horizontal, vertical, compacto e automático; opacidade, cor, escala e posição.
-- [x] Bandeiras associadas a datacenters conhecidos quando identificados.
-- [ ] **P0:** testar abertura/fechamento do painel, links das quatro categorias, retorno e manutenção das funções originais em catálogo e partida.
-- [ ] **P0:** testar NX Stream Monitor em Chrome/Edge, Android, DeX, fullscreen, rotação e telas pequenas; verificar sobreposição de controles touch.
-- [ ] **P0:** auditar unidades e frescor das métricas (RTT WebRTC não é ping do jogo; bitrate e FPS podem estar indisponíveis).
-- [ ] **P1:** aprimorar responsividade e acessibilidade por toque/controle; validar arrasto, reposicionamento e restauração das preferências.
-- [ ] **P1:** avaliar dashboard de gráficos em apresentação imersiva, sem duplicar rotinas de telemetria.
-- [ ] **P1:** criar comparador visual do histórico por datacenter com indicação de idade, quantidade de amostras e método de medição.
-- [ ] **P2:** pesquisar endpoints regionais legítimos e acessíveis; somente depois considerar sondagens opt-in em segundo plano com limites de frequência e timeout.
-- [ ] **P2:** testes de regressão reproduzíveis para as categorias e para a sobreposição.
+- [x] Navegação por responsabilidades: Início, Vídeo, Imagens, Streaming, Estatísticas, Gamepad, Teclado e mouse, Áudio, Voz, Remote Play, Região da loja, Interface, Compatibilidade e Sistema.
+- [x] Separar Gamepad de Teclado e mouse: giroscópio, vibração, diagnóstico de gamepad e atalho do controle ficam em Gamepad; NimboTouch, editor de HUD, diagnóstico de toque/mouse e atalho de teclado ficam em Teclado e mouse.
+- [x] Separar Vídeo de Imagens: perfil Auto/Desktop/Celular/DeX, enquadramento e tela cheia em Vídeo; filtros, perfis visuais, captura e processamento WebGL2 em Imagens.
+- [x] Corrigir Voz para exibir somente o grupo de microfone e separar a vibração do grupo de acessórios.
+- [x] Transferir métricas e opções do NX Stream Monitor para Estatísticas; remover a configuração duplicada da página Início.
+- [x] Preservar chaves e preferências locais existentes e reutilizar os builders legados, sem criar novo gerenciador de entradas.
+- [ ] **P0:** validar navegação e renderização das 14 categorias em Chrome/Edge, Android, DeX, tela cheia e rotação; conferir acessibilidade por toque e controle físico.
+- [ ] **P0:** confirmar no xCloud que o Gamepad físico, NimboTouch e HUD nativo coexistem sem mudança de comportamento.
+- [ ] **P1:** conferir visualmente a hierarquia, rolagem do rail, foco/retorno e tamanhos do painel em telas pequenas.
 
-**Limite atual:** nenhuma sondagem ativa multi-região foi comprovada no código. O histórico de RTT é alimentado por sessões efetivamente utilizadas; não prometer latência atual de servidores alternativos.
+**Limite atual:** a reorganização foi verificada por sintaxe e testes automatizados do repositório; ainda não houve teste visual autenticado no navegador, Android/DeX ou jogo real. O código atual usa WebGL2 e filtros locais; não há implementação de FSR 1 neste build.
 
 ## Backlog prioritário (reavaliar a cada execução)
 - [ ] P0 — Auditar interceptações de `fetch` e XHR, `patchPlayRequest`, `rewriteExp`, `rewriteRegions`, `rewriteIce`; comparar com Cloud Play Debug Panel original e procurar regressões.
@@ -42,7 +39,8 @@
 - [ ] P1 — Comparar autenticação, ofertas, criação de sessão e WebRTC com projetos open source: xbox-xcloud-player, XStreaming, Greenlight, OpenXCloud, PSBox, green-nx, XCloud4 e novos projetos.
 - [ ] P1 — Documentar hipóteses de identidade de console, separar identificação declarada de autorização real; testar apenas com conta e sessões autorizadas. Não presumir que UA ou headers liberam catálogo.
 - [ ] P1 — Melhorar diagnóstico de falhas, logging sanitizado, timeout, tratamento de erro e relatório exportável.
-- [ ] P2 — Revisar organização do painel, acessibilidade por controle e divisão de módulos sem reescrita arriscada.
+- [x] P2 — Reorganizar a taxonomia do painel por responsabilidade, sem recriar os gerenciadores de input.
+- [ ] P1 — Validar navegação acessível do painel por controle físico e toque em navegadores reais.
 - [ ] P2 — Avaliar automação de testes estáticos e testes de regressão reproduzíveis.
 
 ## Registro de execução
@@ -950,4 +948,20 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - **Tarefas concluídas:** superfície analógica opcional; modo visual exclusivo em relação a K/M; layout editável por perfil; ownership multi-touch; triggers analógicos; neutralização no lifecycle; versão e cache atualizados; baseline e regressão verdes.
 - **Pendências prioritárias:** homologar input e streaming com Xbox físico; testar a HUD no Tampermonkey em Android e desktop; validar retomada e liberação em troca real de sessão; continuar a auditoria de compatibilidade xCloud e do caminho TAK; investigar a integração histórica de giroscópio sem duplicar gerenciadores.
 - **Próxima tarefa concreta (P1 — teste de integração do encoder xHome com canal de dados falso):** executar os métodos reais de normalização, registro de slot, encoder e scheduler contra um `RTCDataChannel` simulado. Critérios de aceite: verificar bytes/flags dos quatro eixos e 17 botões, pressão LT/RT, deadzone aplicada uma vez, registro único do slot, frames neutros e `gamepadChanged(false)` no release, backpressure, sessão obsoleta, ausência de Gamepad API e recuperação após suspensão; ambos workflows PASS. Depois disso, registrar separadamente o teste obrigatório em Xbox físico, sem declarar aceitação antes de realizá-lo.
+
+
+
+## Registro de execução — 2026-11-12 — reorganização do painel NX (4.12.86)
+
+- **HEAD inicial consultado:** `9b87a89e056d2471a336cf90d6f2985182223f86`.
+- **Commits de código e validação:** `4a92f65215b2448794c0cfc7650e506a3b5aa47b` (primeira organização), `6faed997f6669f1b6749ad742934c9ff50b944d9` (configuração do monitor somente em Estatísticas e enumeração de áudio escopada), `d4c083c31c755a1ffc22be70e3f6d9f0b81ca350` (testes alinhados e verdes).
+- **Arquivos alterados:** `NimboXcloud.user.js`, `tests/nx-panel-regression.test.cjs`, `tests/project-integrity.test.cjs`, `CHANGELOG.md` e este documento.
+- **Correções estruturais:** criada a categoria Gamepad; renomeada a página de controles por toque para Teclado e mouse; separados Vídeo, Imagens, Streaming e Estatísticas; adicionados Remote Play e Interface à navegação; separado Região da loja dos data centers de streaming.
+- **Correções de classificação:** voz agora extrai a linha Microfone de Acessórios, não o terceiro grupo de diagnóstico; vibração migrou para Gamepad; giroscópio migrou para Gamepad; atalhos de controle e teclado foram divididos; perfis visuais JSON passaram para Imagens; enquadramento e tela cheia passaram para Vídeo.
+- **Telemetria:** monitor configurável e métricas estão em Estatísticas; Início mantém o resumo e as categorias. Streaming mostra data center, rede, qualidade e medições de servidores.
+- **Preferências e arquitetura:** as chaves locais existentes foram mantidas; os builders originais são reutilizados e seus nós movidos por categoria. Nenhum transporte, Gamepad API, módulo NimboTouch ou gerenciador de input foi reimplementado.
+- **Precisão de recursos:** o processamento gráfico existente é WebGL2/Clarity Boost e filtros locais. FSR 1 não foi encontrado e não é apresentado como disponível.
+- **Validação:** [baseline 43299048415](https://github.com/breno-bgod/NimboXcloud/actions/runs/43299048415) PASS no commit `d4c083c` — Node 22, `node --check` do userscript e Touch HUD, `node --test tests/*.test.cjs` e relatório estático. [Regressões 43299046977](https://github.com/breno-bgod/NimboXcloud/actions/runs/43299046977) PASS no mesmo commit — sintaxe e testes NX/xHome. As primeiras execuções falharam por duas asserções desatualizadas; elas foram atualizadas e a execução final passou.
+- **Não validado:** aparência/gestos no Chrome/Edge real, Android/DeX, sessão xCloud autenticada e partida com controle.
+- **Próxima tarefa concreta:** continuar o teste isolado do encoder xHome contra um `RTCDataChannel` simulado, cobrindo sequência compartilhada, estado dos quatro eixos e 17 botões, triggers, deadzone aplicada uma vez, backpressure, sessão obsoleta e liberação neutra no encerramento. Depois, homologar separadamente com Xbox físico; não declarar controle/streaming xHome concluídos antes dessa prova.
 
