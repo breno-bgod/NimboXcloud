@@ -113,6 +113,7 @@ test('NET-004: retail IPv4 rewriting leaves xHome SDP and ICE endpoints untouche
       return (fields[4] || '').includes(':');
     },
     S: { v6dropped: 0 },
+    nowStr: () => 'test',
     addCap() {}
   };
   vm.runInNewContext(code, context);
