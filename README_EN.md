@@ -77,7 +77,8 @@ See the [architecture](./docs/ARQUITETURA.md) and [development roadmap](./DEVELO
 | --- | --- |
 | **Present in code** | Streaming preferences, visual filters, audio processing, NX panel, diagnostics, and layout management. |
 | **Experimental / requires gameplay testing** | Native HUD repositioning, applied analog curves, in-game gyro output, and compatibility profiles. |
-| **Not implemented or not demonstrated** | True CAS/FSR/DLSS upscaling, frame generation, full touch-based virtual keyboard and mouse, steering wheel with pedals, contextual aim assist, and integrated Remote Play. |
+| **Experimental / technical validation in progress** | Remote Play xHome: console discovery, session creation, SDP/ICE, and best-effort remote DELETE are present in code; playable video, audio, and controls are not yet verified. |
+| **Not implemented or not demonstrated** | True CAS/FSR/DLSS upscaling, frame generation, full touch-based virtual keyboard and mouse, steering wheel with pedals, and contextual aim assist. |
 
 **The Xbox compatibility lab does not turn a browser into a real console or unlock console-only games.** We do not present unverified features as completed.
 
