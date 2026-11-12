@@ -1,5 +1,15 @@
 # Histórico de alterações
 
+## [4.12.64] — 2026-11-12
+- Remote Play xHome agora cria os quatro data channels usados pelo protocolo observado no cliente de referência: `chat/chatV1`, `control/controlV1`, `input/1.0` e `message/messageV1`, todos ordenados.
+- Implementado handshake `messageV1`; após `HandshakeAck`, o cliente envia a autorização `controlV1`, os eventos iniciais de registro do gamepad, metadados binários iniciais do canal `input` e seis mensagens de configuração de sessão.
+- Os canais são fechados no Stop, Cancel e falha de inicialização. A flag `dataChannelsReady` só fica ativa após o bootstrap completo.
+- Referência técnica: estruturas públicas de protocolo de [unknownskl/xbox-xcloud-player](https://github.com/unknownskl/xbox-xcloud-player), cujo `package.json` declara MIT. Não foi incorporado o cliente completo.
+- **Limite explícito:** ainda não são enviados frames de gamepad, teclado, mouse ou toque. O bootstrap dos canais não comprova comandos jogáveis, mídia ou sessão Xbox real.
+- Validação CI no commit `c61a13f5689429a00b00f775e7d26c24e07b7063`: baseline e regression workflows PASS; 118 testes, 115 PASS, 0 FAIL, 3 TODO; `node --check` e relatório estático concluídos.
+
+# Histórico de alterações
+
 ## [4.12.63] — 2026-11-12
 - Corrigido o acionamento repetido de Stop quando a liberação remota xHome está pendente: o estado de pendência, a mensagem de erro e o retry existente são preservados; nenhuma segunda requisição DELETE é emitida.
 - Ampliada a suíte de `tests/xhome-discovery.test.cjs` com cenários HTTP 403/500, 404/410 idempotentes, falha de rede, Stop repetido e retry concorrente.
