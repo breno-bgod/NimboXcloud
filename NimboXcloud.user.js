@@ -8,7 +8,7 @@
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.67
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.68
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.67';
+  const VER = '4.12.68';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3182,6 +3182,7 @@
     const channels=channelsOverride || nxRemoteChannels;
     const channel=channels && channels.input;
     if(!channel || channel.readyState!=='open')return false;
+    if(!force && !nxRemoteGamepadReady())return false;
     if(!force && Number(channel.bufferedAmount)>4096)return false;
     const sequence=nxRemoteInputSequence>>>0;
     const timestamp=(typeof performance!=='undefined' && performance.now)?performance.now():Date.now();
