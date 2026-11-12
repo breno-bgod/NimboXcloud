@@ -239,7 +239,7 @@ html:has(#__xcu_panel__) #nimbo-touch-launcher{display:none!important}\n#nimbo-t
  reparent(){const host=document.fullscreenElement||document.documentElement;for(const el of [this.element,this.launcher,this.quickToggle,this.nxAccess])if(el&&el.parentElement!==host)host.append(el);},
  open(){if(!ui||ui.editingHud)return;this.mount();this.isOpen=true;ui.pause('Configurações do touchpad');this.element.hidden=false;this.reparent();this.refresh();},
  close(){this.isOpen=false;if(this.element)this.element.hidden=true;ui?.ensureResumeWatch();},
- refresh(){if(!ui||!this.element)return;this.status.textContent=nimboTransport?.connected()?(ui.wanted?'Touchpad ligado'+(ui.active?'':' · pausado enquanto o painel estiver aberto'):'Sessão conectada · touchpad desligado'):'Aguardando sessão do xCloud. Você já pode editar a HUD.';this.toggle.textContent=ui.wanted?'Desativar touchpad':'Ativar touchpad';this.launcher.textContent=ui.wanted?'Touchpad ligado':'Nimbo Touch';if(this.quickToggle){this.quickToggle.textContent=ui.wanted?'Touch: ON':'Touch: OFF';this.quickToggle.hidden=!nimboTransport?.connected()||this.isOpen;this.quickToggle.setAttribute('aria-pressed',String(!!ui.wanted));}if(this.nxAccess)this.nxAccess.hidden=!ui?.active||this.isOpen;
+ refresh(){if(!ui||!this.element)return;this.status.textContent=nimboTransport?.connected()?(ui.wanted?'Touchpad ligado'+(ui.active?'':' · pausado enquanto o painel estiver aberto'):'Sessão conectada · touchpad desligado'):'Aguardando sessão do xCloud. Você já pode editar a HUD.';this.toggle.textContent=ui.wanted?'Desativar touchpad':'Ativar touchpad';this.launcher.textContent=ui.wanted?'Touchpad ligado':'Nimbo Touch';if(this.quickToggle){this.quickToggle.textContent=ui.wanted?'Touch: ON':'Touch: OFF';this.quickToggle.hidden=true;this.quickToggle.setAttribute('aria-pressed',String(!!ui.wanted));}if(this.nxAccess)this.nxAccess.hidden=true;
  const signature=JSON.stringify(ui.profileStore?.profiles.map(p=>[p.id,p.name]));if(signature!==this.signature){this.signature=signature;this.profiles.replaceChildren();for(const p of ui.profileStore?.profiles||[]){const opt=document.createElement('option');opt.value=p.id;opt.textContent=p.name;this.profiles.append(opt);}}this.profiles.value=ui.profileStore?.activeId||'';
  }
 };
@@ -1816,7 +1816,7 @@ function boot(){
  }catch(e){NimboDiag.add('inicialização','Falha ao iniciar Nimbo Touch',e.message);const notice=document.createElement('div');notice.textContent='Nimbo Touch não iniciou: '+e.message;notice.style.cssText='position:fixed;top:8px;left:8px;z-index:2147483647;background:#331a1a;color:white;padding:12px';document.documentElement.append(notice);}
 }
 // Public integration point for a future host. No Better xCloud globals are read or overwritten.
-window.NimboTouch=Object.freeze({version:VERSION,attachSession:nimboCapture,open:()=>touchPanel.open(),stop:()=>ui?.stop(),diagnostic});
+window.NimboTouch=Object.freeze({version:VERSION,attachSession:nimboCapture,open:()=>touchPanel.open(),stop:()=>ui?.stop(),diagnostic,isEnabled:()=>!!ui?.wanted,toggle:()=>{touchPanel.mount();touchPanel.toggle.click();}});
 
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 
