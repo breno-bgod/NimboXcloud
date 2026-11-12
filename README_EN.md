@@ -46,6 +46,10 @@ I'm building **NX** to bring settings and diagnostics into one interface. The ai
 
 My priority is **preserving native inputs**, including touch and physical controllers, rather than indiscriminately replacing the website's input systems.
 
+## Touch keyboard and mouse HUD (experimental)
+
+The integrated **NimboTouch** module is loaded by the main userscript through `@require`. It provides relative mouse movement by touch, a WASD joystick, keyboard buttons, and an editable HUD. Open **NX → Keyboard and mouse → Enable keyboard and mouse**. It requires a game/session that accepts keyboard and mouse input; it does not convert mouse movement into an analog stick. Do not install older standalone NimboTouch copies alongside the main userscript.
+
 ## The new NX experience — minimal interface (in development)
 
 The **NX** panel is being reorganized to reduce clutter during gameplay without removing advanced tools. Its home screen now provides four collapsible categories: **Streaming, Controls, Personalization, and Advanced**. Audio, voice, server, graph, and diagnostic pages remain accessible through these groups.
