@@ -31,7 +31,8 @@ Minha intenção é estudar como levar à nova versão recursos de controle, ace
 
 O NimboXcloud ainda **não está homologado como versão estável**. Algumas funções estão no código, mas foram retiradas da interface ou congeladas para evitar expectativas incorretas:
 
-- **Congelados:** Remote Play, curvas do analógico, laboratório de identidade Xbox e equalizador avançado. A ocultação e a desativação completa de todos os módulos ainda estão em andamento.
+- **Congelados:** curvas do analógico, laboratório de identidade Xbox e equalizador avançado. A ocultação e a desativação completa desses módulos ainda estão em andamento.
+- **Em retomada técnica experimental:** Remote Play xHome, por autorização explícita do mantenedor em 2026-11-12. A interface permanece oculta; descoberta, criação de sessão, negociação WebRTC e encerramento remoto best-effort estão em desenvolvimento, mas vídeo, áudio e controles jogáveis ainda não foram comprovados.
 - **Experimentais disponíveis para testes:** Fortnite Console e giroscópio aplicado ao jogo; GPU/WebGL2 e editor de HUD continuam sob avaliação, sem garantia de funcionamento.
 - **Mantidos:** painel NX, diagnóstico e seleção de servidor (troca de servidor já relatada como funcional pelo mantenedor).
 - **Em revisão:** bitrate/qualidade (50 Mbps configurados não garantem 50 Mbps recebidos), perfil Automático e estabilidade do CI.
@@ -96,7 +97,8 @@ Para detalhes técnicos e pendências, consulte [Arquitetura](./docs/ARQUITETURA
 | --- | --- |
 | **Presente no código** | Configurações de streaming, filtros de imagem, processamento de áudio, painel NX, diagnósticos e gerenciamento de layouts. |
 | **Experimental / precisa de testes reais** | Reposicionamento do HUD nativo, curvas aplicadas aos analógicos, giroscópio controlando o jogo e perfis de compatibilidade. |
-| **Ainda não implementado ou não demonstrado** | Upscaling real por CAS/FSR/DLSS, geração de quadros, teclado e mouse virtuais completos por toque, volante com pedais, assistência de mira contextual e Remote Play integrado. |
+| **Experimental / em validação técnica** | Remote Play xHome: descoberta, criação de sessão, SDP/ICE e DELETE remoto best-effort presentes no código; vídeo, áudio e controles jogáveis ainda não comprovados. |
+| **Ainda não implementado ou não demonstrado** | Upscaling real por CAS/FSR/DLSS, geração de quadros, teclado e mouse virtuais completos por toque, volante com pedais e assistência de mira contextual. |
 
 **O laboratório Xbox não transforma um navegador em um console real e não desbloqueia jogos exclusivos de console.** Não anunciamos como concluído aquilo que ainda precisa de comprovação.
 
