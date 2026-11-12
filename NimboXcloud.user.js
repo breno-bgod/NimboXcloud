@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.80
+// @version      4.12.81
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.80
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.81
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/fix/virtual-gamepad-panel-integration/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/fix/virtual-gamepad-panel-integration/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.80';
+  const VER = '4.12.81';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -5977,7 +5977,23 @@
     nxVirtualGamepad.buttons[index]=Math.max(0,Math.min(1,Number(value)||0));
     nxVirtualPadUpdateButtons();
   }
+  function nxVirtualPadReleaseButtonPointer(pointerId) {
+    const pointer=nxVirtualGamepad.pointers.get(pointerId);
+    if(!pointer)return;
+    nxVirtualGamepad.pointers.delete(pointerId);
+    if(pointer.element&&pointer.leave)pointer.element.removeEventListener('pointerleave',pointer.leave);
+    if(pointer.mode==='hold')pointer.indices.forEach(function(i){
+      const set=nxVirtualGamepad.buttonPointers.get(i);
+      if(set){set.delete(pointerId);if(!set.size)nxVirtualGamepad.buttonPointers.delete(i);}
+      nxVirtualPadRefreshOutput(i);
+    });
+  }
+  window.addEventListener('pointerup',function(e){nxVirtualPadReleaseButtonPointer(e.pointerId);},true);
+  window.addEventListener('pointercancel',function(e){nxVirtualPadReleaseButtonPointer(e.pointerId);},true);
   function nxVirtualPadReset() {
+    nxVirtualGamepad.pointers.forEach(function(pointer,pointerId){
+      if(pointer&&pointer.type==='button'&&pointer.element&&pointer.leave)pointer.element.removeEventListener('pointerleave',pointer.leave);
+    });
     nxVirtualGamepad.axes=[0,0,0,0];
     nxVirtualGamepad.buttons.fill(0);
     nxVirtualGamepad.pointers.clear();nxVirtualGamepad.buttonPointers.clear();nxVirtualGamepad.toggledButtons.clear();nxVirtualGamepad.tapCounts.clear();nxVirtualGamepad.tapTimers.forEach(function(t){clearTimeout(t);});nxVirtualGamepad.tapTimers.clear();
@@ -6119,12 +6135,16 @@
       }
       const btn=e.target.closest('[data-nx-vpad-button]');if(!btn)return;
       const index=Number(btn.dataset.nxVpadButton),control=nxVirtualGamepad.layout.find(function(c){return c.type==='button'&&c.index===index;}),indices=nxVirtualPadOutputIndices(control,index),mode=control&&control.mode||'tap';
-      e.preventDefault();btn.setPointerCapture(e.pointerId);nxVirtualGamepad.pointers.set(e.pointerId,{type:'button',index:index,indices:indices,mode:mode});
+      e.preventDefault();nxVirtualGamepad.pointers.set(e.pointerId,{type:'button',index:index,indices:indices,mode:mode,element:btn});
       if(mode==='tap')nxVirtualPadTap(indices);
       else if(mode==='toggle'){const turnOn=!nxVirtualGamepad.toggledButtons.has(indices[0]);indices.forEach(function(i){if(turnOn)nxVirtualGamepad.toggledButtons.add(i);else nxVirtualGamepad.toggledButtons.delete(i);nxVirtualPadRefreshOutput(i);});}
-      else{indices.forEach(function(i){if(!nxVirtualGamepad.buttonPointers.has(i))nxVirtualGamepad.buttonPointers.set(i,new Set());nxVirtualGamepad.buttonPointers.get(i).add(e.pointerId);nxVirtualPadRefreshOutput(i);});}
-      const up=function(ev){const p=nxVirtualGamepad.pointers.get(ev.pointerId);nxVirtualGamepad.pointers.delete(ev.pointerId);if(p&&p.mode==='hold')p.indices.forEach(function(i){const set=nxVirtualGamepad.buttonPointers.get(i);if(set){set.delete(ev.pointerId);if(!set.size)nxVirtualGamepad.buttonPointers.delete(i);}nxVirtualPadRefreshOutput(i);});btn.removeEventListener('pointerup',up);btn.removeEventListener('pointercancel',up);};
-      btn.addEventListener('pointerup',up);btn.addEventListener('pointercancel',up);
+      else{
+        const pointerId=e.pointerId;
+        const leave=function(){nxVirtualPadReleaseButtonPointer(pointerId);};
+        const pointer=nxVirtualGamepad.pointers.get(pointerId);
+        if(pointer){pointer.leave=leave;btn.addEventListener('pointerleave',leave);}
+        indices.forEach(function(i){if(!nxVirtualGamepad.buttonPointers.has(i))nxVirtualGamepad.buttonPointers.set(i,new Set());nxVirtualGamepad.buttonPointers.get(i).add(pointerId);nxVirtualPadRefreshOutput(i);});
+      }
     },true);
     nxVirtualPadRenderHud();
   }
