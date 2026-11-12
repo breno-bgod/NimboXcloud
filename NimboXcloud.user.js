@@ -1997,6 +1997,7 @@
     audio: 'M11 5L6 9H2v6h4l5 4V5z M15.5 8.5a5 5 0 0 1 0 7 M19 5a10 10 0 0 1 0 14',
     voice: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z M5 10v2a7 7 0 0 0 14 0v-2 M12 19v3 M8 22h8',
     controls: 'M6 12h4 M8 10v4 M15 13h.01 M18 11h.01 M17.3 5H6.7a4 4 0 0 0-3.9 3.3L1.5 15a3 3 0 0 0 5.3 2L8 15h8l1.2 2a3 3 0 0 0 5.3-2l-1.3-6.7A4 4 0 0 0 17.3 5z',
+    gyrotouch: 'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z M9 6h6 M9 18h6 M12 10v4 M10 12h4',
     region: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M2 12h20 M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20',
     advanced: 'M9 2h6v4H9z M7 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2 M8 12h8 M8 16h5',
     close: 'M18 6L6 18 M6 6l12 12'
@@ -2006,7 +2007,8 @@
     { id: 'stream', label: 'Streaming', desc: 'Qualidade, conexão e imagem' },
     { id: 'audio', label: 'Áudio', desc: 'Volume, equalizador e reprodução' },
     { id: 'voice', label: 'Voz e acessórios', desc: 'Microfone e vibração' },
-    { id: 'controls', label: 'Controles', desc: 'Entrada, gamepad e toque' },
+    { id: 'controls', label: 'Controles', desc: 'Joystick e controle físico' },
+    { id: 'gyrotouch', label: 'Gyro Touch', desc: 'Teclado, mouse e HUD por toque' },
     { id: 'region', label: 'Rede e região', desc: 'Servidores e disponibilidade' },
     { id: 'advanced', label: 'Sistema', desc: 'Diagnóstico e manutenção' }
   ];
@@ -4558,8 +4560,8 @@
       root.appendChild(coordination.root);
 
       // Touch HUD é carregado pelo @require oficial: um único módulo e nenhuma instalação separada.
-      const nxTouchGroup = group('HUD de teclado e mouse por toque',
-        'Mouse relativo pelo dedo, joystick WASD, botões configuráveis e editor próprio. Requer suporte de teclado/mouse no jogo e na sessão.');
+      const nxTouchGroup = group('Teclado e mouse',
+        'Mouse relativo pelo dedo, joystick WASD e botões virtuais. Requer suporte de teclado/mouse no jogo e na sessão.');
       nxTouchGroup.add(infoRow('Módulo', function () {
         return window.NimboTouch ? 'Carregado · v' + window.NimboTouch.version : 'Indisponível';
       }, 'Integração experimental: não converte mouse em analógico e não garante compatibilidade com todos os jogos.'));
@@ -4592,8 +4594,8 @@
         nxHudEditor(), true));
       root.appendChild(hudEditorGroup.root);
 
-      const gyroGroup = group('Giroscópio — calibração experimental',
-        'Leitura e calibração dos sensores. A integração com a câmera é experimental e precisa ser ativada separadamente.');
+      const gyroGroup = group('Giroscópio',
+        'Calibração, orientação e ajustes da contribuição do giroscópio para a mira.');
       gyroGroup.add(infoRow('Orientação da tela', function () {
         const g = nxGyroPreviewState();
         return g.screenAngle === null ? 'Aguardando sensor' : g.screenAngle + '°';
@@ -5042,7 +5044,34 @@
   TABS.push({id:'video',label:'Vídeo',desc:'Filtros, renderização e ajustes locais'});
   TAB_BUILDERS.controls = function (root) {
     const temp = document.createElement('div'); buildLegacyControls(temp);
-    Array.from(temp.children).forEach(function (node) { root.appendChild(node); });
+    const touchGroups = ['Teclado e mouse', 'Editor de HUD — prévia arrastável', 'Giroscópio'];
+    Array.from(temp.children).forEach(function (node) {
+      if (!touchGroups.some(function (name) { return (node.textContent || '').includes(name); })) {
+        root.appendChild(node);
+      }
+    });
+  };
+  TAB_BUILDERS.gyrotouch = function (root) {
+    const activation = group('Ativação', 'Ative ou desative o sistema de teclado e mouse por toque sem procurar essa opção entre as configurações do controle físico.');
+    activation.add(setRow('Ativar teclado e mouse', 'Liga ou desliga o NimboTouch. O controle físico continua independente.', toggle(!!(window.NimboTouch && window.NimboTouch.isEnabled()), function () {
+      if (!window.NimboTouch || typeof window.NimboTouch.toggle !== 'function') {
+        toast('Módulo Gyro Touch indisponível; atualize o userscript');
+        renderBody();
+        return;
+      }
+      window.NimboTouch.toggle();
+      renderBody();
+    }, 'Ativar teclado e mouse')));
+    root.appendChild(activation.root);
+
+    const temp = document.createElement('div');
+    buildLegacyControls(temp);
+    const touchGroups = ['Teclado e mouse', 'Editor de HUD — prévia arrastável', 'Giroscópio'];
+    Array.from(temp.children).forEach(function (node) {
+      if (touchGroups.some(function (name) { return (node.textContent || '').includes(name); })) {
+        root.appendChild(node);
+      }
+    });
   };
 
   function setTab(id) {
@@ -5206,7 +5235,7 @@
     cardEl.insertBefore(navBar,el.body);
     const rail=mk('div','flex:0 0 48px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;background:#101419;border-right:1px solid '+C.line+';overflow-y:auto');
     el.nxRailButtons=[];
-    [['overview','Início'],['video','Vídeo'],['stream','Streaming'],['audio','Áudio'],['controls','Controles'],['voice','Voz'],['region','Servidores'],['personalize','Personalizar'],['compatibility','Compatibilidade'],['advanced','Sistema']].forEach(function(item){
+    [['overview','Início'],['video','Vídeo'],['stream','Streaming'],['audio','Áudio'],['controls','Controles'],['gyrotouch','Gyro Touch'],['voice','Voz'],['region','Servidores'],['personalize','Personalizar'],['compatibility','Compatibilidade'],['advanced','Sistema']].forEach(function(item){
       const btn=mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 42px;width:40px;border-radius:8px;color:'+C.dim);
       btn.title=item[1];btn.setAttribute('aria-label',item[1]);btn.appendChild(ico(ICONS[item[0]]||ICONS.overview,22));
       btn.addEventListener('click',function(e){e.stopPropagation();setTab(item[0]);});rail.appendChild(btn);
