@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.74
+// @version      4.12.75
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.74
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.75
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.73';
+  const VER = '4.12.75';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1997,7 +1997,7 @@
     audio: 'M11 5L6 9H2v6h4l5 4V5z M15.5 8.5a5 5 0 0 1 0 7 M19 5a10 10 0 0 1 0 14',
     voice: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z M5 10v2a7 7 0 0 0 14 0v-2 M12 19v3 M8 22h8',
     controls: 'M6 12h4 M8 10v4 M15 13h.01 M18 11h.01 M17.3 5H6.7a4 4 0 0 0-3.9 3.3L1.5 15a3 3 0 0 0 5.3 2L8 15h8l1.2 2a3 3 0 0 0 5.3-2l-1.3-6.7A4 4 0 0 0 17.3 5z',
-    gyrotouch: 'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z M9 6h6 M9 18h6 M12 10v4 M10 12h4',
+    gyrotouch: 'M3 5h13v14H3z M6 8h.01 M9 8h.01 M12 8h.01 M6 11h.01 M9 11h.01 M12 11h.01 M6 14h4 M18 5a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V8a3 3 0 0 0-3-3z M18 8v2',
     region: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M2 12h20 M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20',
     advanced: 'M9 2h6v4H9z M7 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2 M8 12h8 M8 16h5',
     close: 'M18 6L6 18 M6 6l12 12'
@@ -2008,7 +2008,7 @@
     { id: 'audio', label: 'Áudio', desc: 'Volume, equalizador e reprodução' },
     { id: 'voice', label: 'Voz e acessórios', desc: 'Microfone e vibração' },
     { id: 'controls', label: 'Controles', desc: 'Joystick e controle físico' },
-    { id: 'gyrotouch', label: 'Gyro Touch', desc: 'Teclado, mouse e HUD por toque' },
+    { id: 'gyrotouch', label: 'Teclado e mouse', desc: 'Teclado, mouse, giroscópio e HUD por toque' },
     { id: 'region', label: 'Rede e região', desc: 'Servidores e disponibilidade' },
     { id: 'advanced', label: 'Sistema', desc: 'Diagnóstico e manutenção' }
   ];
@@ -3001,10 +3001,127 @@
   nxHudAutoLoadGame();
   // Descoberta xHome: utiliza somente credenciais locais da sessão Xbox autenticada.
   // Não substitui a negociação WebRTC/ICE nem cria uma sessão Remote Play.
-  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:'', peer:null, mediaStream:null, videoElement:null, iceTimer:null, channelTimer:null, createPending:false, cancelAfterCreate:false, dataChannelsReady:false};
+  function nxRemoteEmptyMediaDiagnostics() {
+    return {audioTracks:0,videoTracks:0,liveAudioTracks:0,liveVideoTracks:0,mutedAudioTracks:0,mutedVideoTracks:0,endedAudioTracks:0,endedVideoTracks:0,videoMetadataReady:false,videoFrameReady:false,videoWidth:0,videoHeight:0,playbackState:'not-attempted',playbackError:'',updatedAt:0};
+  }
+  const nxRemotePlay = {busy:false, consoles:[], status:'Aguardando consulta', error:'', region:'', checkedAt:0, attempts:[], selectedId:'', resolution:'1080p', abortController:null, requestId:0, regionShortName:'', sessionStatus:'idle', sessionId:'', peer:null, mediaStream:null, videoElement:null, mediaDiagnostics:nxRemoteEmptyMediaDiagnostics(), iceTimer:null, channelTimer:null, createPending:false, cancelAfterCreate:false, dataChannelsReady:false};
   // O token de sessão permanece somente em memória e nunca integra o estado exportável.
   let nxRemoteSessionToken='';
   let nxRemotePendingRelease=null;
+  let nxRemoteTrackBindings=[];
+  let nxRemoteVideoBindings=[];
+  function nxRemoteMediaIsCurrent(requestId,stream) {
+    return requestId===nxRemotePlay.requestId && !!stream && stream===nxRemotePlay.mediaStream;
+  }
+  function nxRemoteDetachTrackBindings() {
+    for(const binding of nxRemoteTrackBindings){try{binding.track.removeEventListener(binding.type,binding.listener);}catch(_){}}
+    nxRemoteTrackBindings=[];
+  }
+  function nxRemoteDetachVideoBindings() {
+    for(const binding of nxRemoteVideoBindings){try{binding.video.removeEventListener(binding.type,binding.listener);}catch(_){}}
+    nxRemoteVideoBindings=[];
+  }
+  function nxRemoteRefreshMediaDiagnostics(requestId,stream) {
+    if(!nxRemoteMediaIsCurrent(requestId,stream))return false;
+    const diag=nxRemotePlay.mediaDiagnostics;
+    const tracks=typeof stream.getTracks==='function'?stream.getTracks():[];
+    diag.audioTracks=0;diag.videoTracks=0;diag.liveAudioTracks=0;diag.liveVideoTracks=0;
+    diag.mutedAudioTracks=0;diag.mutedVideoTracks=0;diag.endedAudioTracks=0;diag.endedVideoTracks=0;
+    for(const track of tracks){
+      if(!track || (track.kind!=='audio' && track.kind!=='video'))continue;
+      const kind=track.kind;
+      diag[kind+'Tracks']++;
+      if(track.readyState==='ended')diag['ended'+(kind==='audio'?'Audio':'Video')+'Tracks']++;
+      else diag['live'+(kind==='audio'?'Audio':'Video')+'Tracks']++;
+      if(track.muted===true)diag['muted'+(kind==='audio'?'Audio':'Video')+'Tracks']++;
+    }
+    const video=nxRemotePlay.videoElement;
+    if(video && video.srcObject===stream){
+      const width=Number(video.videoWidth)||0,height=Number(video.videoHeight)||0;
+      diag.videoWidth=width;diag.videoHeight=height;
+      diag.videoMetadataReady=Number(video.readyState)>=1 && width>0 && height>0;
+      diag.videoFrameReady=Number(video.readyState)>=2 && width>0 && height>0;
+    }
+    diag.updatedAt=Date.now();
+    return true;
+  }
+  function nxRemoteBindTrackDiagnostics(track,requestId,stream) {
+    if(!track || !nxRemoteMediaIsCurrent(requestId,stream) || typeof track.addEventListener!=='function')return;
+    if(nxRemoteTrackBindings.some(function(binding){return binding.track===track;}))return;
+    const refresh=function(){
+      if(!nxRemoteMediaIsCurrent(requestId,stream))return;
+      nxRemoteRefreshMediaDiagnostics(requestId,stream);
+      if(tabId==='remote')renderBody();
+    };
+    for(const type of ['mute','unmute','ended']){
+      try{track.addEventListener(type,refresh);nxRemoteTrackBindings.push({track:track,type:type,listener:refresh});}catch(_){}
+    }
+  }
+  function nxRemoteBindVideoDiagnostics(video,requestId,stream) {
+    if(!video || typeof video.addEventListener!=='function' || !nxRemoteMediaIsCurrent(requestId,stream))return;
+    if(nxRemoteVideoBindings.some(function(binding){return binding.video===video && binding.requestId===requestId;}))return;
+    nxRemoteDetachVideoBindings();
+    const update=function(event){
+      if(!nxRemoteMediaIsCurrent(requestId,stream) || nxRemotePlay.videoElement!==video)return;
+      const diag=nxRemotePlay.mediaDiagnostics;
+      if(event && event.type==='playing'){diag.playbackState='playing';diag.playbackError='';}
+      else if(event && event.type==='pause' && diag.playbackState==='playing')diag.playbackState='paused';
+      else if(event && event.type==='error'){
+        diag.playbackState='error';
+        const code=video.error && Number(video.error.code);
+        diag.playbackError=Number.isFinite(code)&&code>0?'MediaError '+code:'MediaError';
+      }
+      nxRemoteRefreshMediaDiagnostics(requestId,stream);
+      if(tabId==='remote')renderBody();
+    };
+    for(const type of ['loadedmetadata','loadeddata','playing','pause','error']){
+      try{video.addEventListener(type,update);nxRemoteVideoBindings.push({video:video,type:type,listener:update,requestId:requestId});}catch(_){}
+    }
+  }
+  function nxRemoteTryPlayback(requestId,stream,video,force) {
+    if(!nxRemoteMediaIsCurrent(requestId,stream) || !video || nxRemotePlay.videoElement!==video)return;
+    const tracks=typeof stream.getTracks==='function'?stream.getTracks():[];
+    if(!tracks.length)return;
+    const diag=nxRemotePlay.mediaDiagnostics;
+    if(!force && diag.playbackState!=='not-attempted')return;
+    diag.playbackState='pending';diag.playbackError='';diag.updatedAt=Date.now();
+    let result;
+    try{result=video.play();}
+    catch(error){
+      if(!nxRemoteMediaIsCurrent(requestId,stream))return;
+      diag.playbackState=error && error.name==='NotAllowedError'?'blocked':'error';
+      diag.playbackError=error && typeof error.name==='string'?error.name.slice(0,40):'PlaybackError';
+      diag.updatedAt=Date.now();if(tabId==='remote')renderBody();return;
+    }
+    Promise.resolve(result).then(function(){
+      if(!nxRemoteMediaIsCurrent(requestId,stream) || nxRemotePlay.videoElement!==video)return;
+      if(diag.playbackState==='pending')diag.playbackState=video.paused===false?'playing':'requested';
+      diag.updatedAt=Date.now();if(tabId==='remote')renderBody();
+    }).catch(function(error){
+      if(!nxRemoteMediaIsCurrent(requestId,stream) || nxRemotePlay.videoElement!==video)return;
+      diag.playbackState=error && error.name==='NotAllowedError'?'blocked':'error';
+      diag.playbackError=error && typeof error.name==='string'?error.name.slice(0,40):'PlaybackError';
+      diag.updatedAt=Date.now();if(tabId==='remote')renderBody();
+    });
+  }
+  function nxRemoteAttachMedia(requestId,stream,video) {
+    if(!nxRemoteMediaIsCurrent(requestId,stream) || !video)return;
+    if(video.srcObject!==stream)video.srcObject=stream;
+    nxRemoteBindVideoDiagnostics(video,requestId,stream);
+    nxRemoteRefreshMediaDiagnostics(requestId,stream);
+    nxRemoteTryPlayback(requestId,stream,video,false);
+  }
+  function nxRemoteClearMedia() {
+    const stream=nxRemotePlay.mediaStream;
+    nxRemotePlay.mediaStream=null;
+    nxRemoteDetachTrackBindings();nxRemoteDetachVideoBindings();
+    const video=nxRemotePlay.videoElement;
+    if(video){try{video.pause();}catch(_){}try{video.srcObject=null;}catch(_){}}
+    if(stream && typeof stream.getTracks==='function'){
+      try{for(const track of stream.getTracks())try{track.stop();}catch(_){}}catch(_){}
+    }
+    nxRemotePlay.mediaDiagnostics=nxRemoteEmptyMediaDiagnostics();
+  }
   function nxRemoteGssvToken() {
     try { const v=JSON.parse(localStorage.getItem('xboxcom_xbl_user_info')||'null');
       const t=v && v.tokens && v.tokens['http://gssv.xboxlive.com/'];
@@ -3619,8 +3736,7 @@
     nxRemotePlay.createPending=false;nxRemotePlay.cancelAfterCreate=false;
     if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
     if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
-    if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){}}
-    if(nxRemotePlay.mediaStream){try{nxRemotePlay.mediaStream.getTracks().forEach(function(t){t.stop();});}catch(_){}nxRemotePlay.mediaStream=null;}
+    nxRemoteClearMedia();
     if(!release.sessionId){
       nxRemoteSessionToken='';
       nxRemotePlay.sessionId='';nxRemotePlay.sessionStatus='stopped';
@@ -3684,8 +3800,7 @@
     nxRemotePlay.consoles=[];nxRemotePlay.selectedId='';nxRemotePlay.region='';nxRemotePlay.regionShortName='';nxRemotePlay.checkedAt=0;nxRemotePlay.attempts=[];
     if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
     if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
-    if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){}}
-    if(nxRemotePlay.mediaStream){try{nxRemotePlay.mediaStream.getTracks().forEach(function(t){t.stop();});}catch(_){}nxRemotePlay.mediaStream=null;}
+    nxRemoteClearMedia();
     nxRemotePlay.createPending=false;nxRemotePlay.cancelAfterCreate=false;
     nxRemotePlay.status=nxRemotePlay.sessionStatus==='authenticating'||nxRemotePlay.sessionStatus==='requesting'?'Operação cancelada':'Consulta cancelada';nxRemotePlay.error='';nxRemotePlay.sessionStatus='cancelled';nxRemotePlay.sessionId='';
     if(tabId==='remote')renderBody();
@@ -3752,7 +3867,7 @@
   }
   // xHome session bootstrap: explicit user action, no persistent tokens or SDP logging.
   async function nxRemoteStartSession() {
-    if(nxRemotePlay.busy || nxRemotePlay.sessionId || nxRemotePlay.peer || nxRemotePendingRelease || !nxRemotePlay.selectedId) return;
+    if(nxRemotePlay.busy || nxRemotePlay.sessionId || nxRemotePlay.peer || nxRemotePlay.mediaStream || nxRemotePendingRelease || !nxRemotePlay.selectedId) return;
     const serverId=nxRemotePlay.selectedId;
     if(!nxRemotePlay.consoles.some(function(c){return c.id===serverId;})) return;
     const region=nxRemotePlay.regionShortName;
@@ -3761,6 +3876,7 @@
       if(tabId==='remote')renderBody();
       return;
     }
+    nxRemoteClearMedia();
     const controller=new AbortController(), requestId=++nxRemotePlay.requestId;
     nxRemotePlay.busy=true;nxRemotePlay.abortController=controller;
     nxRemoteSessionToken='';nxRemotePlay.createPending=false;nxRemotePlay.cancelAfterCreate=false;
@@ -3830,14 +3946,20 @@
         if(typeof MediaStream==='function'){
           const stream=new MediaStream();
           nxRemotePlay.mediaStream=stream;
+          nxRemotePlay.mediaDiagnostics=nxRemoteEmptyMediaDiagnostics();
           peer.ontrack=function(event){
-            if(requestId!==nxRemotePlay.requestId)return;
-            const tracks=event.streams&&event.streams[0]?event.streams[0].getTracks():[event.track];
-            for(const track of tracks)if(track && !stream.getTracks().some(function(t){return t.id===track.id;}))stream.addTrack(track);
-            if(nxRemotePlay.videoElement){
-              nxRemotePlay.videoElement.srcObject=stream;
-              nxRemotePlay.videoElement.play().catch(function(){});
+            if(!nxRemoteMediaIsCurrent(requestId,stream))return;
+            let tracks=[];
+            try{tracks=event && event.streams && event.streams[0] && typeof event.streams[0].getTracks==='function'?event.streams[0].getTracks():[event && event.track];}catch(_){tracks=[event && event.track];}
+            for(const track of tracks){
+              if(!track)continue;
+              let exists=false;
+              try{exists=stream.getTracks().some(function(t){return t===track || (t && track.id && t.id===track.id);});}catch(_){}
+              if(!exists)try{stream.addTrack(track);}catch(_){}
+              nxRemoteBindTrackDiagnostics(track,requestId,stream);
             }
+            nxRemoteRefreshMediaDiagnostics(requestId,stream);
+            if(nxRemotePlay.videoElement)nxRemoteAttachMedia(requestId,stream,nxRemotePlay.videoElement);
             if(tabId==='remote')renderBody();
           };
         }
@@ -3983,9 +4105,8 @@
         nxRemoteCloseDataChannels();
         if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
         if(nxRemotePlay.peer){try{nxRemotePlay.peer.close();}catch(_){}nxRemotePlay.peer=null;}
-        if(nxRemotePlay.videoElement){try{nxRemotePlay.videoElement.pause();nxRemotePlay.videoElement.srcObject=null;}catch(_){}}
-        if(nxRemotePlay.mediaStream){try{nxRemotePlay.mediaStream.getTracks().forEach(function(t){t.stop();});}catch(_){}}
-        nxRemotePlay.mediaStream=null;nxRemotePlay.sessionId='';nxRemoteSessionToken='';
+        nxRemoteClearMedia();
+        nxRemotePlay.sessionId='';nxRemoteSessionToken='';
         nxRemotePlay.sessionStatus='failed';nxRemotePlay.error=failure;nxRemotePlay.status='Falha ao criar sessão';
       }
     }finally{
@@ -4021,8 +4142,23 @@
           video.autoplay=true;video.playsInline=true;video.controls=true;video.tabIndex=0;video.style.cssText='display:block;width:100%;max-height:48vh;margin-top:12px;background:#000;border-radius:10px';
           nxRemotePlay.videoElement=video;
         }
-        nxRemotePlay.videoElement.srcObject=nxRemotePlay.mediaStream;
         root.appendChild(nxRemotePlay.videoElement);
+        nxRemoteAttachMedia(nxRemotePlay.requestId,nxRemotePlay.mediaStream,nxRemotePlay.videoElement);
+        const media=nxRemotePlay.mediaDiagnostics;
+        const mediaDetails=mk('details','font-size:11px;color:'+C.dim+';margin-top:8px');
+        mediaDetails.appendChild(mk('summary','cursor:pointer','Diagnóstico de mídia'));
+        mediaDetails.appendChild(mk('div','padding:3px 0','Áudio: '+media.audioTracks+' faixa(s), '+media.liveAudioTracks+' ativa(s), '+media.mutedAudioTracks+' mutada(s), '+media.endedAudioTracks+' encerrada(s)'));
+        const videoState=media.videoFrameReady?'quadros disponíveis':media.videoMetadataReady?'metadados recebidos':media.videoTracks?'faixa recebida; aguardando decodificação':'nenhuma faixa recebida';
+        const dimensions=media.videoWidth && media.videoHeight?' · '+media.videoWidth+'×'+media.videoHeight:'';
+        mediaDetails.appendChild(mk('div','padding:3px 0','Vídeo: '+media.videoTracks+' faixa(s), '+media.liveVideoTracks+' ativa(s), '+media.mutedVideoTracks+' mutada(s), '+media.endedVideoTracks+' encerrada(s) · '+videoState+dimensions));
+        const playbackLabels={'not-attempted':'não iniciado',pending:'solicitando reprodução',requested:'reprodução solicitada',playing:'reproduzindo',paused:'pausado',blocked:'reprodução bloqueada pelo navegador',error:'erro de reprodução'};
+        mediaDetails.appendChild(mk('div','padding:3px 0','Playback: '+(playbackLabels[media.playbackState]||media.playbackState)+(media.playbackError?' · '+media.playbackError:'')));
+        root.appendChild(mediaDetails);
+        if(media.playbackState==='blocked'){
+          const retryPlayback=mk('button','cursor:pointer;padding:8px 11px;margin-top:7px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,'Tentar reproduzir');
+          retryPlayback.addEventListener('click',function(e){e.stopPropagation();nxRemoteTryPlayback(nxRemotePlay.requestId,nxRemotePlay.mediaStream,nxRemotePlay.videoElement,true);});
+          root.appendChild(retryPlayback);
+        }
         if(nxRemoteGamepadReady()) {
           const inputButton=mk('button','cursor:pointer;padding:9px 12px;margin-top:8px;border:1px solid '+C.line+';border-radius:8px;background:'+C.panel+';color:'+C.text,
             nxRemoteInputCapture?'Desativar teclado/mouse':'Ativar teclado/mouse');
@@ -5055,7 +5191,7 @@
     const activation = group('Ativação', 'Ative ou desative o sistema de teclado e mouse por toque sem procurar essa opção entre as configurações do controle físico.');
     activation.add(setRow('Ativar teclado e mouse', 'Liga ou desliga o NimboTouch. O controle físico continua independente.', toggle(!!(window.NimboTouch && window.NimboTouch.isEnabled()), function () {
       if (!window.NimboTouch || typeof window.NimboTouch.toggle !== 'function') {
-        toast('Módulo Gyro Touch indisponível; atualize o userscript');
+        toast('Módulo de teclado e mouse indisponível; atualize o userscript');
         renderBody();
         return;
       }
@@ -5235,7 +5371,7 @@
     cardEl.insertBefore(navBar,el.body);
     const rail=mk('div','flex:0 0 48px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;background:#101419;border-right:1px solid '+C.line+';overflow-y:auto');
     el.nxRailButtons=[];
-    [['overview','Início'],['video','Vídeo'],['stream','Streaming'],['audio','Áudio'],['controls','Controles'],['gyrotouch','Gyro Touch'],['voice','Voz'],['region','Servidores'],['personalize','Personalizar'],['compatibility','Compatibilidade'],['advanced','Sistema']].forEach(function(item){
+    [['overview','Início'],['video','Vídeo'],['stream','Streaming'],['audio','Áudio'],['controls','Controles'],['gyrotouch','Teclado e mouse'],['voice','Voz'],['region','Servidores'],['personalize','Personalizar'],['compatibility','Compatibilidade'],['advanced','Sistema']].forEach(function(item){
       const btn=mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 42px;width:40px;border-radius:8px;color:'+C.dim);
       btn.title=item[1];btn.setAttribute('aria-label',item[1]);btn.appendChild(ico(ICONS[item[0]]||ICONS.overview,22));
       btn.addEventListener('click',function(e){e.stopPropagation();setTab(item[0]);});rail.appendChild(btn);
