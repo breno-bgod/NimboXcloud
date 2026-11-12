@@ -1630,3 +1630,139 @@ test('xHome touch adapter: backpressure and stale sessions reject new touch inpu
   assert.equal(sent.length,2);
   assert.equal(new DataView(sent[1]).getUint8(16),0);
 });
+
+
+test('reconnect: Stop releases the old xHome session before Start and ignores late peer callbacks',async()=>{
+  const calls=[],peers=[];
+  class FakeChannel{
+    constructor(label,options){this.label=label;this.protocol=options.protocol;this.ordered=options.ordered;this.readyState='open';this.sent=[];}
+    send(data){this.sent.push(data);}
+    close(){this.readyState='closed';}
+  }
+  class FakePeer{
+    constructor(){this.channels={};this.connectionState='new';this.signalingState='stable';this.remoteCandidates=[];this.closed=false;peers.push(this);}
+    createDataChannel(label,options){const channel=new FakeChannel(label,options);this.channels[label]=channel;return channel;}
+    addTransceiver(){}
+    async createOffer(){return {type:'offer',sdp:'v=0'};}
+    async setLocalDescription(value){this.localDescription=value;}
+    async setRemoteDescription(value){this.remoteDescription=value;}
+    async addIceCandidate(value){this.remoteCandidates.push(value);}
+    close(){this.closed=true;this.connectionState='closed';this.signalingState='closed';}
+  }
+  class FakeMediaStream{
+    constructor(){this.tracks=[];}
+    getTracks(){return this.tracks.slice();}
+    addTrack(track){this.tracks.push(track);}
+  }
+  const sessionIds=[
+    '11111111-1111-4111-8111-111111111111',
+    '22222222-2222-4222-8222-222222222222'
+  ];
+  let sessionIndex=0;
+  const api=harness(async(url,opts)=>{
+    const method=opts&&opts.method||'GET';
+    calls.push({url,opts:opts||{}});
+    if(url.endsWith('/v2/login/user'))return ok(login);
+    if(url.endsWith('/v5/sessions/home/play'))return ok({sessionId:sessionIds[sessionIndex++]});
+    if(url.endsWith('/state'))return ok({state:'Provisioned'});
+    if(url.endsWith('/sdp')&&method==='POST')return {ok:true,status:204};
+    if(url.endsWith('/sdp')&&method==='GET')return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0'})});
+    if(url.endsWith('/ice')&&method==='GET')return ok({candidates:[]});
+    if(method==='DELETE')return {ok:true,status:204};
+    throw new Error('unexpected request '+method+' '+url);
+  },null,FakePeer,null,FakeMediaStream);
+  api.state.consoles=[{id:'console-1'}];
+  api.state.selectedId='console-1';
+  api.state.regionShortName='wus';
+  const video=fakeVideo(api);
+  api.state.videoElement=video;
+
+  await api.startSession();
+  const oldPeer=peers[0],oldChannels=api.channels(),oldStream=api.state.mediaStream;
+  const oldRequestId=api.state.requestId,oldSessionId=api.state.sessionId;
+  assert.equal(oldSessionId,sessionIds[0]);
+  assert.ok(oldStream);
+  for(const name of ['chat','control','input','message'])oldChannels[name].onopen();
+  oldChannels.message.onmessage({data:JSON.stringify({type:'HandshakeAck'})});
+  oldPeer.connectionState='connected';
+  oldPeer.onconnectionstatechange();
+  assert.equal(api.state.sessionStatus,'connected');
+  const oldAdapter=api.createTouchAdapter(oldRequestId,oldPeer,oldChannels);
+  assert.ok(oldAdapter);
+  assert.equal(oldAdapter.sendKey('KeyW',true),true);
+
+  const oldTrack=fakeTrack('old-video','video');
+  oldPeer.ontrack({streams:[{getTracks(){return [oldTrack];}}],track:oldTrack});
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(oldStream.getTracks(),[oldTrack]);
+  assert.equal(video.srcObject,oldStream);
+
+  await api.stop();
+  assert.equal(oldPeer.closed,true);
+  assert.equal(oldTrack.readyState,'ended');
+  assert.equal(api.state.sessionStatus,'stopped');
+  assert.equal(api.state.peer,null);
+  assert.equal(api.state.mediaStream,null);
+  assert.equal(api.state.dataChannelsReady,false);
+  assert.ok(Object.values(oldChannels).every(channel=>channel.readyState==='closed'));
+  assert.equal(oldAdapter.sendKey('KeyW',false),false,'an adapter from the stopped session cannot send input');
+
+  const deleteIndex=calls.findIndex(call=>call.opts.method==='DELETE');
+  assert.ok(deleteIndex>=0,'the old session must be released remotely');
+  const stoppedRequestId=api.state.requestId;
+  await api.startSession();
+
+  const newPeer=peers[1],newChannels=api.channels(),newStream=api.state.mediaStream;
+  const newRequestId=api.state.requestId,newSessionId=api.state.sessionId;
+  assert.ok(newRequestId>oldRequestId);
+  assert.ok(newRequestId>stoppedRequestId);
+  assert.equal(newSessionId,sessionIds[1]);
+  assert.ok(newPeer&&newPeer!==oldPeer);
+  assert.ok(newStream&&newStream!==oldStream);
+  const secondPlayIndex=calls.findIndex((call,index)=>index>deleteIndex&&call.url.endsWith('/v5/sessions/home/play')&&call.opts.method==='POST');
+  assert.ok(secondPlayIndex>deleteIndex,'the new session POST must happen only after the old DELETE completes');
+
+  for(const name of ['chat','control','input','message'])newChannels[name].onopen();
+  newChannels.message.onmessage({data:JSON.stringify({type:'HandshakeAck'})});
+  newPeer.connectionState='connected';
+  newPeer.onconnectionstatechange();
+  assert.equal(api.state.sessionStatus,'connected');
+  const newTrack=fakeTrack('new-video','video');
+  newPeer.ontrack({streams:[{getTracks(){return [newTrack];}}],track:newTrack});
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(newStream.getTracks(),[newTrack]);
+  assert.equal(video.srcObject,newStream);
+  const activeStatus=api.state.status;
+  const activeDiagnostics=JSON.stringify(api.state.mediaDiagnostics);
+  const callsBeforeStaleCallbacks=calls.length;
+
+  const lateTrack=fakeTrack('late-old-video','video');
+  oldPeer.ontrack({streams:[{getTracks(){return [lateTrack];}}],track:lateTrack});
+  oldPeer.onicecandidate({candidate:{candidate:'candidate:stale 1 udp 1 127.0.0.1 9999 typ host',sdpMid:'0',sdpMLineIndex:0}});
+  oldPeer.connectionState='failed';
+  oldPeer.onconnectionstatechange();
+  oldChannels.input.onclose();
+  oldChannels.message.onmessage({data:JSON.stringify({type:'HandshakeAck'})});
+
+  assert.equal(oldAdapter.sendKey('KeyW',true),false);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(calls.length,callsBeforeStaleCallbacks,'late ICE from the old peer must not reach the server');
+  assert.equal(api.state.requestId,newRequestId);
+  assert.equal(api.state.peer,newPeer);
+  assert.equal(api.state.sessionId,newSessionId);
+  assert.equal(api.state.sessionStatus,'connected');
+  assert.equal(api.state.status,activeStatus);
+  assert.equal(api.state.mediaStream,newStream);
+  assert.deepEqual(newStream.getTracks(),[newTrack]);
+  assert.equal(newTrack.readyState,'live');
+  assert.equal(lateTrack.readyState,'live','a stale ontrack callback must not attach or stop its track');
+  assert.equal(api.state.mediaDiagnostics.videoTracks,1);
+  assert.equal(JSON.stringify(api.state.mediaDiagnostics),activeDiagnostics);
+  assert.ok(!JSON.stringify(api.state).includes('TEST_BEARER'));
+  assert.ok(!JSON.stringify(api.state).includes('TEST_GSSV'));
+
+  await api.stop();
+});
