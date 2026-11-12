@@ -9,7 +9,7 @@ const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
 const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady,sendKeyboardFrame:nxRemoteSendKeyboardFrame,sendMouseFrame:nxRemoteSendMouseFrame,enableInput:nxRemoteInputCaptureEnable,disableInput:nxRemoteInputCaptureDisable,inputFocus:nxRemoteVideoHasInputFocus,heldKeys:function(){return Array.from(nxRemoteHeldKeys.keys());},mouseButtons:function(){return nxRemoteMouseButtons;},captureEnabled:function(){return !!nxRemoteInputCapture;},browser:{window:window,document:document}};';
-function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
+function harness(fetchImpl, storageOverride, rtcClass, timerOverrides, mediaStreamClass) {
   let timerId=0;
   const fakeTimers=new Map();
   const browserSetTimeout=(fn,ms)=>{const id=++timerId;fakeTimers.set(id,{fn,ms});return id;};
@@ -33,6 +33,7 @@ function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
   };
   if(storageOverride) ctx.localStorage=storageOverride;
   if(rtcClass) ctx.RTCPeerConnection=rtcClass;
+  if(mediaStreamClass) ctx.MediaStream=mediaStreamClass;
   vm.createContext(ctx);
   vm.runInContext(code, ctx);
   ctx.api.browser={window:fakeWindow,document:fakeDocument};
@@ -393,6 +394,52 @@ test('session: WebRTC offer is sent and SDP answer is applied',async()=>{
   assert.ok(!JSON.stringify(api.state).includes('TEST_BEARER'));
 });
 
+test('session: incoming WebRTC audio/video tracks attach once to the media stream and start playback',async()=>{
+  const peers=[];
+  class FakePeer{
+    constructor(){this.localDescription=null;this.remoteDescription=null;peers.push(this);}
+    addTransceiver(){}
+    createDataChannel(){return {};}
+    async createOffer(){return {type:'offer',sdp:'v=0'};}
+    async setLocalDescription(value){this.localDescription=value;}
+    async setRemoteDescription(value){this.remoteDescription=value;}
+    async addIceCandidate(){}
+    close(){}
+  }
+  class FakeMediaStream{
+    constructor(){this.tracks=[];}
+    getTracks(){return this.tracks.slice();}
+    addTrack(track){this.tracks.push(track);}
+  }
+  let n=0;
+  const api=harness(async()=>{
+    if(++n===1)return ok(login);
+    if(n===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    if(n===3)return ok({state:'Provisioned'});
+    if(n===4)return {ok:true,status:204};
+    if(n===5)return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0'})});
+    return ok({candidates:[]});
+  },null,FakePeer,null,FakeMediaStream);
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  const video=fakeVideo(api);
+  let playCalls=0;
+  video.play=()=>{playCalls++;return Promise.resolve();};
+  api.state.videoElement=video;
+  await api.startSession();
+
+  const audioTrack={id:'audio-1',kind:'audio'};
+  const videoTrack={id:'video-1',kind:'video'};
+  const incoming={getTracks(){return [audioTrack,videoTrack];}};
+  peers[0].ontrack({streams:[incoming],track:videoTrack});
+  peers[0].ontrack({streams:[incoming],track:videoTrack});
+
+  assert.equal(api.state.mediaStream.getTracks().length,2);
+  assert.equal(api.state.mediaStream.getTracks()[0],audioTrack);
+  assert.equal(api.state.mediaStream.getTracks()[1],videoTrack);
+  assert.equal(video.srcObject,api.state.mediaStream);
+  assert.equal(playCalls,2);
+  assert.equal(api.state.sessionStatus,'ice-pending');
+});
 test('session: remote ICE candidates are added to peer',async()=>{
   const peers=[];
   class FakePeer{
