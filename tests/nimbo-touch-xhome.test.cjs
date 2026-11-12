@@ -79,13 +79,14 @@ test('NimboTouch exposes a narrow xHome virtual-gamepad forwarding contract', ()
   assert.match(source, /adapter\.releaseGamepad\(\)===true/);
 });
 
-test('xHome virtual gamepad can use the shared input loop without the browser Gamepad API', () => {
+test('xHome virtual gamepad keeps the shared loop alive without the browser Gamepad API', () => {
   const start = hostSource.indexOf('function nxGamepadUiTick()');
   const end = hostSource.indexOf('let nxGamepadLoopTimer', start);
   assert.ok(start >= 0 && end > start, 'shared gamepad loop exists');
   const block = hostSource.slice(start, end);
-  assert.match(block, /if \(document\.visibilityState === 'hidden'\)/);
-  assert.match(block, /typeof navigator\.getGamepads==='function'/);
-  assert.match(block, /else if\(!nxRemoteVirtualGamepad\)/);
-  assert.match(block, /nxRemoteGamepadTick\(pads,allowInput\)/);
+  assert.match(block, /if \\(document\\.visibilityState === 'hidden'\\)/);
+  assert.match(block, /typeof navigator\\.getGamepads==='function'/);
+  assert.doesNotMatch(block, /else if\\(!nxRemoteVirtualGamepad\\)/,
+    'missing or failing Gamepad API must not return before the shared xHome scheduler');
+  assert.match(block, /nxRemoteGamepadTick\\(pads,allowInput\\)/);
 });
