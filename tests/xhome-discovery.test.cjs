@@ -1732,6 +1732,8 @@ test('reconnect: Stop releases the old xHome session before Start and ignores la
   newPeer.ontrack({streams:[{getTracks(){return [newTrack];}}],track:newTrack});
   await Promise.resolve();
   await Promise.resolve();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(api.state.mediaDiagnostics.playbackState,'playing');
   assert.deepEqual(newStream.getTracks(),[newTrack]);
   assert.equal(video.srcObject,newStream);
   const activeStatus=api.state.status;
