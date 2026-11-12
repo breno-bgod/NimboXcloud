@@ -41,7 +41,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.1.9';
+const VERSION='1.2.0';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -58,7 +58,7 @@ const BxEventBus={Script:eventBus(),Stream:eventBus()};
 const BxEvent={XCLOUD_POLLING_MODE_CHANGED:'nimbo-touch-unused-polling'};
 const STATES={isPlaying:false};
 const api={streamSession:null,inputChannel:null};
-let ui=null,nimboTransport=null,nimboCandidate=null,nimboGameStream=null;
+let ui=null,nimboTransport=null,nimboCandidate=null,nimboGameStream=null,remoteInputAdapter=null;
 let nimboFiberRoot=null,nimboFiberQueue=[],nimboFiberIndex=0;
 const nimboModules=new Set();
 function nativeDialogVisible(){
@@ -217,7 +217,7 @@ html:has(#__xcu_panel__) #nimbo-touch-launcher{display:none!important}\n#nimbo-t
   this.status=document.createElement('p');this.status.setAttribute('role','status');this.element.append(this.status);
   const row=document.createElement('div');row.className='row';
   const button=(text,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=fn;row.append(b);return b;};
-  this.toggle=button('Ativar touchpad',async()=>{if(ui.wanted){ui.stop();if(nimboTransport)try{await nimboTransport.restore();}catch(e){NimboDiag.add('entrada','Falha ao restaurar toque nativo',e.message);this.status.textContent='Não foi possível restaurar o toque nativo: '+e.message;return;}this.refresh();return;}if(!nimboTransport?.connected()){this.status.textContent='Sessão ainda não encontrada. Abra um jogo e aguarde.';return;}this.close();await ui.start();this.refresh();});this.toggle.className='primary';
+  this.toggle=button('Ativar touchpad',async()=>{if(ui.remoteMode){ui.stopRemote();this.refresh();return;}if(ui.wanted){ui.stop();if(nimboTransport)try{await nimboTransport.restore();}catch(e){NimboDiag.add('entrada','Falha ao restaurar toque nativo',e.message);this.status.textContent='Não foi possível restaurar o toque nativo: '+e.message;return;}this.refresh();return;}if(!nimboTransport?.connected()){this.status.textContent='Sessão ainda não encontrada. Abra um jogo e aguarde.';return;}this.close();await ui.start();this.refresh();});this.toggle.className='primary';
   button('Editar HUD',()=>{this.close();ui.mount();ui.editHud();});
   button('Fechar',()=>this.close());this.element.append(row);
   const profileLabel=document.createElement('label');profileLabel.textContent='Perfil da HUD';this.profiles=document.createElement('select');this.profiles.style.cssText='display:block;width:100%;margin-top:8px';this.profiles.onchange=()=>{ui.switchProfile(this.profiles.value);this.refresh();};profileLabel.append(this.profiles);this.element.append(profileLabel);
@@ -238,11 +238,11 @@ html:has(#__xcu_panel__) #nimbo-touch-launcher{display:none!important}\n#nimbo-t
  reparent(){const host=document.fullscreenElement||document.documentElement;for(const el of [this.element,this.launcher,this.quickToggle,this.nxAccess])if(el&&el.parentElement!==host)host.append(el);},
  open(){if(!ui||ui.editingHud)return;this.mount();this.isOpen=true;ui.pause('Configurações do touchpad');this.element.hidden=false;this.reparent();this.refresh();},
  close(){this.isOpen=false;if(this.element)this.element.hidden=true;ui?.ensureResumeWatch();},
- refresh(){if(!ui||!this.element)return;this.status.textContent=nimboTransport?.connected()?(ui.wanted?'Touchpad ligado'+(ui.active?'':' · pausado enquanto o painel estiver aberto'):'Sessão conectada · touchpad desligado'):'Aguardando sessão do xCloud. Você já pode editar a HUD.';this.toggle.textContent=ui.wanted?'Desativar touchpad':'Ativar touchpad';this.launcher.textContent=ui.wanted?'Touchpad ligado':'Nimbo Touch';if(this.quickToggle){this.quickToggle.textContent=ui.wanted?'Touch: ON':'Touch: OFF';this.quickToggle.hidden=true;this.quickToggle.setAttribute('aria-pressed',String(!!ui.wanted));}if(this.nxAccess)this.nxAccess.hidden=true;
+ refresh(){if(!ui||!this.element)return;const connected=ui.remoteMode?!!ui.remoteAdapter?.isReady?.():!!nimboTransport?.connected();this.status.textContent=connected?(ui.wanted?'Touchpad ligado'+(ui.active?'':' · pausado enquanto o painel estiver aberto'):'Sessão conectada · touchpad desligado'):'Aguardando sessão do xCloud. Você já pode editar a HUD.';this.toggle.textContent=ui.wanted?'Desativar touchpad':'Ativar touchpad';this.launcher.textContent=ui.wanted?'Touchpad ligado':'Nimbo Touch';if(this.quickToggle){this.quickToggle.textContent=ui.wanted?'Touch: ON':'Touch: OFF';this.quickToggle.hidden=true;this.quickToggle.setAttribute('aria-pressed',String(!!ui.wanted));}if(this.nxAccess)this.nxAccess.hidden=true;
  const signature=JSON.stringify(ui.profileStore?.profiles.map(p=>[p.id,p.name]));if(signature!==this.signature){this.signature=signature;this.profiles.replaceChildren();for(const p of ui.profileStore?.profiles||[]){const opt=document.createElement('option');opt.value=p.id;opt.textContent=p.name;this.profiles.append(opt);}}this.profiles.value=ui.profileStore?.activeId||'';
  }
 };
-function diagnostic(){return {version:VERSION,connected:!!nimboTransport?.connected(),wanted:!!ui?.wanted,active:!!ui?.active,editing:!!ui?.editingHud,hidden:document.hidden,pointerLock:!!document.pointerLockElement,lastTouch:ui?.lastTouchEvent,viewport:[innerWidth,innerHeight],errors:errors.map(e=>({...e,detail:e.detail.replace(/https?:\/\/\S+/g,'[URL]')}))};}
+function diagnostic(){return {version:VERSION,connected:!!(ui?.remoteMode?ui.remoteAdapter?.isReady?.():nimboTransport?.connected()),inputMode:ui?.remoteMode?'xhome':nimboTransport?.connected()?'xcloud':'none',remoteActive:!!(ui?.remoteMode&&ui?.active),wanted:!!ui?.wanted,active:!!ui?.active,editing:!!ui?.editingHud,hidden:document.hidden,pointerLock:!!document.pointerLockElement,lastTouch:ui?.lastTouchEvent,viewport:[innerWidth,innerHeight],errors:errors.map(e=>({...e,detail:e.detail.replace(/https?:\/\/\S+/g,'[URL]')}))};}
 
 
 class BxTouchpad {
@@ -294,7 +294,7 @@ class BxTouchpad {
   // Feed the SDK's own DOM keyboard translator; do not guess its wire format.
   // Observe the exposed channel to detect synchronous forwarding, and stop with
   // an explicit error when the client rejects synthetic keys.
-  sendKey(code,pressed){if(!nimboTransport)throw Error('Sessão não encontrada');nimboTransport.sendKey(code,pressed,this.keysDown);}
+  sendKey(code,pressed){if(this.remoteMode){const adapter=this.remoteAdapter;if(!adapter?.isReady?.()||adapter.sendKey(code,pressed,this.keysDown)!==true)throw Error('Canal de teclado xHome indisponível ou congestionado.');return;}if(!nimboTransport)throw Error('Sessão não encontrada');nimboTransport.sendKey(code,pressed,this.keysDown);}
   syncKeys(wanted) {
     // Releases first, presses second; shared mappings stay held until all fingers lift.
     const old = new Set(this.keysDown);
@@ -363,10 +363,16 @@ class BxTouchpad {
     panel.append(title,note,rows,add,save,cancel); this.root.append(panel);
   }
 
-  send(x = 0, y = 0) {
+  send(x = 0, y = 0, wheelX = 0, wheelY = 0) {
+    const reading={Type:0,X:x,Y:y,Buttons:this.buttons,WheelX:wheelX,WheelY:wheelY};
+    if(this.remoteMode){
+      const adapter=this.remoteAdapter;
+      if(!adapter?.isReady?.()||adapter.sendMouse(reading)!==true)throw Error('Canal de mouse xHome indisponível ou congestionado.');
+      return;
+    }
     const channel = api?.inputChannel;
     if (typeof channel?.queueMouseInput !== 'function') throw Error('Canal de mouse indisponível. Os patches podem estar incompatíveis com o site.');
-    channel.queueMouseInput({Type: 0, X: x, Y: y, Buttons: this.buttons, WheelX: 0, WheelY: 0});
+    channel.queueMouseInput(reading);
   }
   move(dx, dy) {
     this.remainder[0] += dx * this.sensitivity;
@@ -379,20 +385,27 @@ class BxTouchpad {
   }
   async start() {
     if (this.busy || this.active) return;
-    if (!nimboTransport?.connected()) { this.status.textContent="Abra um jogo; aguardando a conexão com a sessão."; return; }
-    if (typeof api.inputChannel?.queueMouseInput !== 'function' || typeof api.streamSession?.updateInputConfigurationAsync !== 'function') { this.status.textContent = 'Canal indisponível; verifique a compatibilidade dos patches.'; return; }
+    const remote=this.remoteMode===true;
+    const transport=remote?this.remoteAdapter:nimboTransport;
+    if(remote){
+      if(!transport||transport!==remoteInputAdapter||!transport.isReady?.()){this.status.textContent='Sessão xHome indisponível; aguardando WebRTC e canais de entrada.';return;}
+    }else{
+      if (!nimboTransport?.connected()) { this.status.textContent="Abra um jogo; aguardando a conexão com a sessão."; return; }
+      if (typeof api.inputChannel?.queueMouseInput !== 'function' || typeof api.streamSession?.updateInputConfigurationAsync !== 'function') { this.status.textContent = 'Canal indisponível; verifique a compatibilidade dos patches.'; return; }
+    }
     this.busy = true;
     const epoch = ++this.epoch;
-    const transport = nimboTransport;
     try {
-      // Ativar somente o canal de teclado/mouse. A configuração de toque nativa pertence
-      // exclusivamente ao xCloud e não pode ser desligada pela HUD do NimboTouch.
-      await transport.activateKeyboardMouse();
-      if (epoch !== this.epoch || !this.root || nimboTransport !== transport) return;
+      // xHome uses the explicit host adapter; xCloud keeps its native transport.
+      if(!remote)await transport.activateKeyboardMouse();
+      if (epoch !== this.epoch || !this.root ||
+        (remote ? this.remoteAdapter !== transport || !transport.isReady?.() : nimboTransport !== transport)) return;
       this.active = true; this.buttons = 0; this.remainder = [0, 0]; this.send();
       this.pad.hidden = false; this.mapped.hidden = false;
       this.toggle.textContent = 'Pausar touchpad';
-      this.status.textContent = 'Ativo — WASD à esquerda; arraste à direita. Teclado virtual experimental.';
+      this.status.textContent = remote
+        ? 'Ativo — HUD de toque encaminhada ao Remote Play xHome.'
+        : 'Ativo — WASD à esquerda; arraste à direita. Teclado virtual experimental.';
     } catch (error) { this.handleInputFailure(error); if (this.status) this.status.textContent = 'Falha temporária: ' + error.message; }
     finally { this.busy = false; }
   }
@@ -400,11 +413,11 @@ class BxTouchpad {
     ++this.epoch;
     this.releaseKeys();
     if (this.active) { this.buttons = 0; try { this.send(); } catch {} }
+    if(this.remoteMode)try{this.remoteAdapter?.release?.();}catch{}
     this.active = false; this.pointers.clear(); this.remainder = [0, 0];
     if (this.pad) { this.pad.hidden = true; this.mapped.hidden = true; this.toggle.textContent = 'Ativar touchpad'; this.status.textContent = 'Pausado — comandos de mouse soltos.'; }
-    // stop() releases virtual inputs immediately. The transport restores the
-    // original Xbox input configuration on explicit stop; pause() retains it
-    // temporarily for editor, focus and fullscreen transitions.
+    // xCloud restoration remains owned by NimboXboxTransport; xHome releases
+    // only the virtual input state held by its explicit adapter.
   }
   bindSurface(element, kind, code = null) {
     element.addEventListener('pointerdown', e => {
@@ -1524,6 +1537,7 @@ class BxTouchpadToolkit extends BxTouchpadSession {
     this.refreshNativeSections();
   }
   async start(automatic=false){
+    if(this.remoteMode)return this.startRemote(this.remoteAdapter,true);
     if(!automatic){this.wanted=true;this.retryAt=0;this.retryDelay=1000;if(STATES.isPlaying)this.desiredSession=api?.streamSession;}
     if(!this.wanted)return;
     if(!this.canResume()||performance.now()<this.retryAt||this.busy||this.active){this.refreshNativeSections();this.ensureResumeWatch();return;}
@@ -1534,13 +1548,25 @@ class BxTouchpadToolkit extends BxTouchpadSession {
     this.refreshNativeSections();this.ensureResumeWatch();
   }
   canResume(){
- if(!this.root||this.editingHud||this.editor||document.hidden||touchPanel.isOpen||!STATES.isPlaying)return false;
+ if(this.remoteMode){
+  if(!this.root||this.editingHud||this.editor||document.hidden||touchPanel.isOpen||this.menuBlocked)return false;
+  if(!this.remoteAdapter||this.remoteAdapter!==remoteInputAdapter||this.desiredSession!==this.remoteAdapter.id||!this.remoteAdapter.isReady?.())return false;
+  return !nativeDialogVisible();
+ }
+ if(!this.root||this.editingHud||this.editor||document.hidden||touchPanel.isOpen||!STATES.isPlaying||this.menuBlocked)return false;
  if(!this.desiredSession||api.streamSession!==this.desiredSession)return false;
  return !nativeDialogVisible();
 }
   ensureResumeWatch(){if(!this.root||!this.wanted)return;super.ensureResumeWatch();}
   checkResume(){
     if(!this.wanted||!this.root)return;
+    if(this.remoteMode){
+      const adapter=this.remoteAdapter;
+      if(!adapter||adapter!==remoteInputAdapter||this.desiredSession!==adapter.id){this.stopRemote();return;}
+      if(this.canResume()){if(!this.active&&!this.busy&&performance.now()>=this.retryAt)this.startRemote(adapter,true);}
+      else if(this.active)this.pause('Menu ou página temporariamente indisponível');
+      this.ensureResumeWatch();return;
+    }
     const session=api?.streamSession;
     if(!STATES.isPlaying||!session){if(this.active)this.pause('Aguardando a sessão');this.ensureResumeWatch();return;}
     if(session!==this.desiredSession){this.pause('Reconectando à sessão');this.desiredSession=session;this.retryAt=0;}
@@ -1691,7 +1717,28 @@ class BxTouchpadSettings extends BxTouchpadToolkit {
 }
 
 class NimboPlayControls extends BxTouchpadSettings {
-  constructor(){super();this.menuBlocked=false;this.recoilTimer=null;this.recoilStartedAt=0;this.recoilRemainder=0;this.recoilConfig={enabled:false,strength:1,delay:100};try{const data=JSON.parse(localStorage.getItem('NimboTouch.recoil.v1')||'{}');this.recoilConfig={enabled:data.enabled===true,strength:Number.isFinite(data.strength)?Math.max(0,Math.min(8,data.strength)):1,delay:Number.isFinite(data.delay)?Math.max(0,Math.min(300,data.delay)):100};}catch{}}
+  constructor(){super();this.menuBlocked=false;this.remoteMode=false;this.remoteAdapter=null;this.recoilTimer=null;this.recoilStartedAt=0;this.recoilRemainder=0;this.recoilConfig={enabled:false,strength:1,delay:100};try{const data=JSON.parse(localStorage.getItem('NimboTouch.recoil.v1')||'{}');this.recoilConfig={enabled:data.enabled===true,strength:Number.isFinite(data.strength)?Math.max(0,Math.min(8,data.strength)):1,delay:Number.isFinite(data.delay)?Math.max(0,Math.min(300,data.delay)):100};}catch{}}
+  async startRemote(adapter=remoteInputAdapter,automatic=false){
+    if(!adapter||adapter!==remoteInputAdapter||typeof adapter.isReady!=='function'||!adapter.isReady())return false;
+    if(!automatic&&this.wanted&&!this.remoteMode){if(this.status)this.status.textContent='Desative o NimboTouch do xCloud antes de iniciar o HUD no Remote Play.';return false;}
+    if(this.remoteMode&&this.remoteAdapter!==adapter)return false;
+    if(!this.remoteMode){this.remoteMode=true;this.remoteAdapter=adapter;}
+    this.wanted=true;this.desiredSession=adapter.id;this.retryAt=0;
+    if(!this.root)this.mount();
+    if(!this.canResume()){this.refreshNativeSections();this.ensureResumeWatch();return false;}
+    if(this.busy||this.active){this.ensureResumeWatch();return !!this.active;}
+    try{await BxTouchpadExclusive.prototype.start.call(this);}catch(error){this.handleInputFailure(error);}
+    if(this.active){this.retryAt=0;this.retryDelay=1000;}
+    this.refreshNativeSections();this.ensureResumeWatch();syncTouchVisibility();
+    return !!this.active;
+  }
+  stopRemote(){
+    if(!this.remoteMode)return false;
+    this.stop();
+    this.remoteMode=false;this.remoteAdapter=null;this.desiredSession=null;
+    this.refreshNativeSections();syncTouchVisibility();this.updateShortcut();
+    return true;
+  }
   setMenuBlocked(blocked){const next=!!blocked;if(this.menuBlocked===next)return;this.menuBlocked=next;if(next){this.stopRecoil();if(this.active)this.pause('Menu NX/xCloud aberto');}else if(this.wanted){this.retryAt=0;this.ensureResumeWatch();this.checkResume();}}
   setRecoilConfig(patch){this.recoilConfig={...this.recoilConfig,...patch};try{localStorage.setItem('NimboTouch.recoil.v1',JSON.stringify(this.recoilConfig));}catch(e){NimboDiag.add('dados','Não foi possível salvar compensação',String(e));}this.syncRecoil();}
   syncRecoil(){
@@ -1760,9 +1807,8 @@ class NimboPlayControls extends BxTouchpadSettings {
   }
   wheel(steps){
     if(!this.active||this.editingHud||!steps)return;
-    try{const channel=api?.inputChannel;if(typeof channel?.queueMouseInput!=='function')throw Error('Canal de scroll indisponível');
-      // Same sign as WheelEvent.deltaY: negative up, positive down.
-      channel.queueMouseInput({Type:0,X:0,Y:0,Buttons:this.buttons,WheelX:0,WheelY:steps*120});
+    try{// Same sign as WheelEvent.deltaY: negative up, positive down.
+      this.send(0,0,0,steps*120);
     }catch(e){this.handleInputFailure(e);}
   }
   renderMappedButtons(){
@@ -1812,9 +1858,9 @@ function nimboFindReactSession(){
 // Only explicit stop restores configuration. Opening the HUD editor temporarily pauses input.
 const stop= NimboPlayControls.prototype.stop;
 NimboPlayControls.prototype.stop=function(...args){
- const owner=nimboTransport;
+ const owner=nimboTransport,wasRemote=this.remoteMode===true;
  try{return stop.apply(this,args);}finally{
-  queueMicrotask(()=>{if(this.wanted||!owner)return;owner.restore().catch(e=>NimboDiag.add('entrada','Falha ao restaurar a sessão',e.message));});
+  queueMicrotask(()=>{if(wasRemote||this.remoteMode||this.wanted||!owner)return;owner.restore().catch(e=>NimboDiag.add('entrada','Falha ao restaurar a sessão',e.message));});
  }
 };
 const start=NimboPlayControls.prototype.start;
@@ -1847,7 +1893,34 @@ function boot(){
  }catch(e){NimboDiag.add('inicialização','Falha ao iniciar Nimbo Touch',e.message);const notice=document.createElement('div');notice.textContent='Nimbo Touch não iniciou: '+e.message;notice.style.cssText='position:fixed;top:8px;left:8px;z-index:2147483647;background:#331a1a;color:white;padding:12px';document.documentElement.append(notice);}
 }
 // Public integration point for a future host. No Better xCloud globals are read or overwritten.
-window.NimboTouch=Object.freeze({version:VERSION,attachSession:nimboCapture,open:()=>touchPanel.open(),stop:()=>ui?.stop(),diagnostic,isEnabled:()=>!!ui?.wanted,toggle:()=>{touchPanel.mount();touchPanel.toggle.click();},setMenuBlocked:blocked=>ui?.setMenuBlocked(blocked)});
+window.NimboTouch=Object.freeze({
+ version:VERSION,attachSession:nimboCapture,open:()=>touchPanel.open(),
+ stop:()=>ui?.remoteMode?ui.stopRemote():ui?.stop(),
+ diagnostic,isEnabled:()=>!!ui?.wanted,
+ toggle:()=>{touchPanel.mount();touchPanel.toggle.click();},
+ attachRemoteInputAdapter:adapter=>{
+  if(!adapter||typeof adapter.id!=='string'||!adapter.id||typeof adapter.isReady!=='function'||
+    typeof adapter.sendMouse!=='function'||typeof adapter.sendKey!=='function'||typeof adapter.release!=='function')return false;
+  if(remoteInputAdapter===adapter)return true;
+  if(ui?.remoteMode)ui.stopRemote();
+  const old=remoteInputAdapter;remoteInputAdapter=adapter;
+  try{old?.dispose?.();}catch(e){NimboDiag.add('xHome','Falha ao substituir adaptador de entrada',e.message);}
+  return true;
+ },
+ clearRemoteInputAdapter:expected=>{
+  if(expected&&remoteInputAdapter!==expected)return false;
+  const old=remoteInputAdapter;if(!old)return false;
+  if(ui?.remoteMode&&ui.remoteAdapter===old)ui.stopRemote();
+  remoteInputAdapter=null;
+  try{old.dispose?.();}catch(e){NimboDiag.add('xHome','Falha ao liberar adaptador de entrada',e.message);}
+  return true;
+ },
+ startRemote:()=>ui?.startRemote(remoteInputAdapter,false)||Promise.resolve(false),
+ stopRemote:()=>ui?.stopRemote()||false,
+ isRemoteActive:()=>!!(ui?.remoteMode&&ui?.active),
+ hasRemoteInputAdapter:()=>!!remoteInputAdapter,
+ setMenuBlocked:blocked=>ui?.setMenuBlocked(blocked)
+});
 
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 
