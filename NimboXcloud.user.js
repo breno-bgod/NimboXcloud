@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.46
+// @version      4.12.47
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.46
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.47
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -408,7 +408,6 @@
   const RES_MODES = {
     auto: { osName: 'windows', label: '1080p' },
     hq: { osName: 'tizen', label: '1080p HQ' },
-    r720: { osName: 'android', label: '720p' }
   };
   const BITRATE_MODES = {
     auto: { mbps: 0, label: 'Auto' },
@@ -523,8 +522,9 @@
     return SERVERS.auto;
   }
   function resCfg() {
-    // Qualidade máxima solicitada, sem redução por dispositivo ou perfil legado.
-    return RES_MODES.auto;
+    // 1080p em todas as orientacoes, fullscreen e janela; HQ opcional.
+    // Preferencias legadas de 720p sao normalizadas para 1080p.
+    return getPref(LS_RES,'auto')==='hq' ? RES_MODES.hq : RES_MODES.auto;
   }
   function v4on() { return getPref(LS_V4, '1') !== '0'; }
 
@@ -1851,8 +1851,8 @@
   ];
   const PRESETS = [
     { name: 'Máximo', res: 'hq', br: 'auto', sub: 'Melhor imagem' },
-    { name: 'Equilibrado', res: 'auto', br: 'b10', sub: '1080p · 10 Mbps' },
-    { name: 'Economia', res: 'r720', br: 'b5', sub: '720p · 5 Mbps' }
+    { name: 'Equilibrado', res: 'auto', br: 'auto', sub: '1080p · bitrate automático' },
+    { name: 'Compatível', res: 'auto', br: 'auto', sub: '1080p · perfil desktop' }
   ];
 
   let tabId = 'overview';
@@ -4771,7 +4771,7 @@
       return false;
     }
     if (kind === 'bitrate') { setPref(LS_BITRATE, k); return false; }
-    if (kind === 'res') { setPref(LS_RES, k); return false; }
+    if (kind === 'res') { setPref(LS_RES, k === 'hq' ? 'hq' : 'auto'); return false; }
     if (kind === 'region') { setPref(LS_KEY, k); return true; }
     return false;
   }
