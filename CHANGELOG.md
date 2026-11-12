@@ -1,3 +1,12 @@
+## [4.12.75] — 2026-11-12
+- Added xHome media lifecycle diagnostics for received audio/video tracks, mute/unmute/ended transitions, video metadata/frame readiness, dimensions, playback state, and browser autoplay rejection.
+- Deduplicated playback requests for repeated WebRTC track events and added a user-triggered playback retry when autoplay is blocked.
+- Stop, cancel, and failed-session cleanup now detach media listeners, clear the video element, stop tracks, reset sanitized diagnostics, and reject stale callbacks from previous sessions.
+- Renamed the NX navigation tab from “Gyro Touch” to “Teclado e mouse” and updated its icon; the internal builder ID and existing settings remain unchanged.
+- Aligned the userscript metadata, runtime diagnostic version, and Touch HUD @require cache key at 4.12.75.
+- Added regressions for media lifecycle, autoplay rejection, duplicate playback, stale callbacks, tab organization, and version consistency.
+- Mock tests do not prove Xbox hardware compatibility, real ICE connectivity, decoded video, or audible audio; physical-console validation remains pending.
+
 ## [4.12.73] — 2026-11-12
 - Made the NimboTouch session facade forward every xCloud `updateInputConfigurationAsync` call unchanged. It no longer guesses NimboTouch activation from the values of keyboard/mouse flags, which could also be requested by the native client.
 - Moved NimboTouch keyboard/mouse activation into an explicit transport method called only by the NimboTouch toggle. Its snapshot and rollback are limited to keyboard/mouse fields and never include `enableTouchInput`.
