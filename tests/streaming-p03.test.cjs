@@ -95,7 +95,7 @@ test('NET-004: retail IPv4 rewriting leaves xHome SDP and ICE endpoints untouche
   const start = src.indexOf('  function rewriteIce(');
   const end = src.indexOf('  // ---------- 8.', start);
   assert.ok(start > 0 && end > start);
-  const code = src.slice(start, end) + '\\nglobalThis.__rewriteIce = rewriteIce;';
+  const code = src.slice(start, end) + '\nglobalThis.__rewriteIce = rewriteIce;';
   let rewriteCalls = 0;
   const context = {
     Promise,
@@ -103,13 +103,13 @@ test('NET-004: retail IPv4 rewriting leaves xHome SDP and ICE endpoints untouche
     rewriteJson(response, mutate) {
       rewriteCalls++;
       const payload = { exchangeResponse: JSON.stringify({ sdp:
-        'a=candidate:1 1 udp 1 2001:db8::1 5000 typ host\\r\\na=candidate:2 1 udp 1 192.0.2.1 5001 typ host'
+        'a=candidate:1 1 udp 1 2001:db8::1 5000 typ host\r\na=candidate:2 1 udp 1 192.0.2.1 5001 typ host'
       }) };
       mutate(payload);
       return Promise.resolve(response);
     },
     isV6Candidate(candidate) {
-      const fields = String(candidate).trim().split(/\\s+/);
+      const fields = String(candidate).trim().split(/\s+/);
       return (fields[4] || '').includes(':');
     },
     S: { v6dropped: 0 },
