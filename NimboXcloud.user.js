@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.86
+// @version      4.12.87
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch e controle virtual experimental exclusivo do xHome.
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.86
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.87
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.86';
+  const VER = '4.12.87';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3825,7 +3825,7 @@
         view.setFloat64(6,(typeof performance!=='undefined' && performance.now)?performance.now():Date.now(),true);
         view.setUint8(14,Math.max(1,Number(navigator.maxTouchPoints)||1));
         if(!nxRemoteChannelSend(channels.input,metadata)) throw new Error('canal input indisponível');
-        const dimensions=nxRemotePlay.resolution==='720p'?{width:1280,height:720}:{width:1920,height:1080};
+        const dimensions={width:qualityProfile.width,height:qualityProfile.height};
         const configs=[
           ['/streaming/systemUi/configuration',{version:[0,2,0],systemUis:[]}],
           ['/streaming/properties/clientappinstallidchanged',{clientAppInstallId:nxRemoteUuid()}],
@@ -4029,6 +4029,42 @@
     finally {clearTimeout(timeout);if(requestId===nxRemotePlay.requestId){nxRemotePlay.busy=false;nxRemotePlay.abortController=null;if(tabId==='remote')renderBody();}}
   }
   // xHome session bootstrap: explicit user action, no persistent tokens or SDP logging.
+  // Resolution profile follows the public MIT Better xCloud network descriptor mapping.
+  // This selects a stream profile only; it does not change authentication or console authorization.
+  function nxRemoteResolutionProfile(resolution) {
+    const profiles={
+      '720p':{osName:'android',width:1280,height:720},
+      '1080p':{osName:'windows',width:1920,height:1080},
+      '1080p-hq':{osName:'tizen',width:1920,height:1080}
+    };
+    const selected=profiles[resolution]||profiles['1080p'];
+    return {resolution:profiles[resolution]?resolution:'1080p',osName:selected.osName,width:selected.width,height:selected.height};
+  }
+  function nxRemoteBuildDeviceInfo(resolution) {
+    const profile=nxRemoteResolutionProfile(resolution);
+    let clientAppId='play.xbox.com';
+    try {
+      if(window.location && typeof window.location.host==='string' && window.location.host)
+        clientAppId=window.location.host;
+    } catch (_) {}
+    return {
+      appInfo:{env:{
+        clientAppId:clientAppId,
+        clientAppType:'browser',
+        clientAppVersion:'26.1.97',
+        clientSdkVersion:'10.3.7',
+        httpEnvironment:'prod',
+        sdkInstallId:''
+      }},
+      dev:{
+        os:{name:profile.osName,ver:'22631.2715',platform:'desktop'},
+        hw:{make:'Microsoft',model:'unknown',sdktype:'web'},
+        browser:{browserName:'chrome',browserVersion:'140.0.3485.54'},
+        displayInfo:{dimensions:{widthInPixels:1920,heightInPixels:1080},pixelDensity:{dpiX:1,dpiY:1}}
+      }
+    };
+  }
+
   async function nxRemoteStartSession() {
     if(nxRemotePlay.busy || nxRemotePlay.sessionId || nxRemotePlay.peer || nxRemotePlay.mediaStream || nxRemotePendingRelease || !nxRemotePlay.selectedId) return;
     const serverId=nxRemotePlay.selectedId;
@@ -4059,17 +4095,15 @@
       if(!login || typeof login.gsToken!=='string' || !login.gsToken)throw new Error('Credencial de sessão xHome inválida.');
       nxRemoteSessionToken=login.gsToken;
       const base='https://'+region+'.core.gssv-play-prodxhome.xboxlive.com';
-      const deviceInfo=JSON.stringify({
-        appInfo:{env:{clientAppId:'Microsoft.GamingApp',clientAppType:'native',clientAppVersion:'2203.1001.4.0',clientSdkVersion:'8.5.2',httpEnvironment:'prod',sdkInstallId:''}},
-        dev:{hw:{make:'Microsoft',model:'Surface Pro',sdktype:'native'},os:{name:'Windows 11',ver:'22631.2715',platform:'desktop'},displayInfo:{dimensions:{widthInPixels:1920,heightInPixels:1080},pixelDensity:{dpiX:1,dpiY:1}}}
-      });
+      const qualityProfile=nxRemoteResolutionProfile(nxRemotePlay.resolution);
+      const deviceInfo=JSON.stringify(nxRemoteBuildDeviceInfo(qualityProfile.resolution));
       nxRemotePlay.sessionStatus='requesting';nxRemotePlay.status='Solicitando sessão ao console…';
       if(tabId==='remote')renderBody();
       nxRemotePlay.createPending=true;
       const play=await fetch(base+'/v5/sessions/home/play',{
         method:'POST',redirect:'error',signal:controller.signal,
         headers:{'Content-Type':'application/json','X-MS-Device-Info':deviceInfo,Authorization:'Bearer '+login.gsToken},
-        body:JSON.stringify({clientSessionId:'',titleId:'',systemUpdateGroup:'',settings:{nanoVersion:'V3;WebrtcTransport.dll',enableTextToSpeech:false,highContrast:0,locale:navigator.language||'pt-BR',useIceConnection:false,timezoneOffsetMinutes:new Date().getTimezoneOffset(),sdkType:'web',osName:'windows'},serverId:serverId,fallbackRegionNames:[]})
+        body:JSON.stringify({clientSessionId:'',titleId:'',systemUpdateGroup:'',settings:{nanoVersion:'V3;WebrtcTransport.dll',enableTextToSpeech:false,highContrast:0,locale:navigator.language||'pt-BR',useIceConnection:false,timezoneOffsetMinutes:new Date().getTimezoneOffset(),sdkType:'web',osName:qualityProfile.osName},serverId:serverId,fallbackRegionNames:[]})
       });
       check();
       if(!play.ok)throw new Error('Criação de sessão recusada (HTTP '+play.status+').');
