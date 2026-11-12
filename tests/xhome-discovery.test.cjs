@@ -67,6 +67,7 @@ function fakeEventTarget() {
       return event;
     },
     listenerCount(type){return (listeners.get(type)||[]).length;},
+    listenersFor(type){return (listeners.get(type)||[]).slice();},
     contains(target){return target===this;}
   };
 }
@@ -75,6 +76,13 @@ function fakeVideo(api) {
   video.controls=true;
   video.tabIndex=-1;
   video.clientHeight=720;
+  video.paused=true;
+  video.readyState=0;
+  video.videoWidth=0;
+  video.videoHeight=0;
+  video.error=null;
+  video.play=function(){this.paused=false;return Promise.resolve();};
+  video.pause=function(){this.paused=true;};
   video.focus=function(){api.browser.document.activeElement=video;};
   video.requestPointerLock=function(){
     api.browser.document.pointerLockElement=video;
@@ -82,6 +90,12 @@ function fakeVideo(api) {
     return Promise.resolve();
   };
   return video;
+}
+function fakeTrack(id,kind) {
+  const track=fakeEventTarget();
+  track.id=id;track.kind=kind;track.readyState='live';track.muted=false;
+  track.stop=function(){if(this.readyState!=='ended'){this.readyState='ended';this.dispatch('ended',{});}};
+  return track;
 }
 function remoteInputPackets(channel,reportType) {
   return channel.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]' &&
@@ -394,7 +408,7 @@ test('session: WebRTC offer is sent and SDP answer is applied',async()=>{
   assert.ok(!JSON.stringify(api.state).includes('TEST_BEARER'));
 });
 
-test('session: incoming WebRTC audio/video tracks attach once to the media stream and start playback',async()=>{
+test('session: incoming tracks are deduplicated and media lifecycle diagnostics track audio/video readiness',async()=>{
   const peers=[];
   class FakePeer{
     constructor(){this.localDescription=null;this.remoteDescription=null;peers.push(this);}
@@ -423,22 +437,104 @@ test('session: incoming WebRTC audio/video tracks attach once to the media strea
   api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
   const video=fakeVideo(api);
   let playCalls=0;
-  video.play=()=>{playCalls++;return Promise.resolve();};
+  video.play=()=>{playCalls++;video.paused=false;return Promise.resolve();};
   api.state.videoElement=video;
   await api.startSession();
 
-  const audioTrack={id:'audio-1',kind:'audio'};
-  const videoTrack={id:'video-1',kind:'video'};
+  const audioTrack=fakeTrack('audio-1','audio');
+  const videoTrack=fakeTrack('video-1','video');
   const incoming={getTracks(){return [audioTrack,videoTrack];}};
   peers[0].ontrack({streams:[incoming],track:videoTrack});
   peers[0].ontrack({streams:[incoming],track:videoTrack});
+  await Promise.resolve();
 
   assert.equal(api.state.mediaStream.getTracks().length,2);
   assert.equal(api.state.mediaStream.getTracks()[0],audioTrack);
   assert.equal(api.state.mediaStream.getTracks()[1],videoTrack);
   assert.equal(video.srcObject,api.state.mediaStream);
-  assert.equal(playCalls,2);
+  assert.equal(playCalls,1,'duplicate ontrack events must not issue duplicate playback requests');
+  assert.equal(api.state.mediaDiagnostics.audioTracks,1);
+  assert.equal(api.state.mediaDiagnostics.videoTracks,1);
+  assert.equal(api.state.mediaDiagnostics.liveAudioTracks,1);
+  assert.equal(api.state.mediaDiagnostics.liveVideoTracks,1);
+
+  audioTrack.muted=true;audioTrack.dispatch('mute',{});
+  assert.equal(api.state.mediaDiagnostics.mutedAudioTracks,1);
+  audioTrack.muted=false;audioTrack.dispatch('unmute',{});
+  assert.equal(api.state.mediaDiagnostics.mutedAudioTracks,0);
+
+  video.readyState=1;video.videoWidth=1920;video.videoHeight=1080;video.dispatch('loadedmetadata',{});
+  assert.equal(api.state.mediaDiagnostics.videoMetadataReady,true);
+  assert.equal(api.state.mediaDiagnostics.videoWidth,1920);
+  video.readyState=2;video.dispatch('loadeddata',{});video.dispatch('playing',{});
+  assert.equal(api.state.mediaDiagnostics.videoFrameReady,true);
+  assert.equal(api.state.mediaDiagnostics.playbackState,'playing');
+  videoTrack.readyState='ended';videoTrack.dispatch('ended',{});
+  assert.equal(api.state.mediaDiagnostics.endedVideoTracks,1);
+  assert.equal(api.state.mediaDiagnostics.liveVideoTracks,0);
   assert.equal(api.state.sessionStatus,'ice-pending');
+});
+
+test('session: autoplay rejection is diagnosed and Stop clears media listeners, tracks and stale callbacks',async()=>{
+  const peers=[];
+  class FakePeer{
+    constructor(){this.localDescription=null;this.remoteDescription=null;this.closed=false;peers.push(this);}
+    addTransceiver(){}
+    createDataChannel(){return {};}
+    async createOffer(){return {type:'offer',sdp:'v=0'};}
+    async setLocalDescription(value){this.localDescription=value;}
+    async setRemoteDescription(value){this.remoteDescription=value;}
+    async addIceCandidate(){}
+    close(){this.closed=true;}
+  }
+  class FakeMediaStream{
+    constructor(){this.tracks=[];}
+    getTracks(){return this.tracks.slice();}
+    addTrack(track){this.tracks.push(track);}
+  }
+  let n=0;
+  const api=harness(async(_url,opts)=>{
+    if(++n===1)return ok(login);
+    if(n===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    if(n===3)return ok({state:'Provisioned'});
+    if(n===4)return {ok:true,status:204};
+    if(n===5)return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0'})});
+    if(opts && opts.method==='DELETE')return {ok:true,status:204};
+    return ok({candidates:[]});
+  },null,FakePeer,null,FakeMediaStream);
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  const video=fakeVideo(api);
+  video.play=()=>Promise.reject(Object.assign(new Error('autoplay denied'),{name:'NotAllowedError'}));
+  api.state.videoElement=video;
+  await api.startSession();
+  const audioTrack=fakeTrack('audio-stop','audio');
+  const videoTrack=fakeTrack('video-stop','video');
+  const incoming={getTracks(){return [audioTrack,videoTrack];}};
+  peers[0].ontrack({streams:[incoming],track:videoTrack});
+  await Promise.resolve();await Promise.resolve();
+  assert.equal(api.state.mediaDiagnostics.playbackState,'blocked');
+  assert.equal(api.state.mediaDiagnostics.playbackError,'NotAllowedError');
+  assert.equal(audioTrack.listenerCount('mute'),1);
+  assert.equal(video.listenerCount('playing'),1);
+  const staleMute=audioTrack.listenersFor('mute')[0];
+  const stalePlaying=video.listenersFor('playing')[0];
+
+  await api.stop();
+  assert.equal(peers[0].closed,true);
+  assert.equal(api.state.mediaStream,null);
+  assert.equal(video.srcObject,null);
+  assert.equal(audioTrack.readyState,'ended');
+  assert.equal(videoTrack.readyState,'ended');
+  assert.equal(audioTrack.listenerCount('mute'),0);
+  assert.equal(video.listenerCount('playing'),0);
+  assert.equal(api.state.mediaDiagnostics.audioTracks,0);
+  assert.equal(api.state.mediaDiagnostics.videoTracks,0);
+  assert.equal(api.state.mediaDiagnostics.playbackState,'not-attempted');
+
+  staleMute();stalePlaying();
+  assert.equal(api.state.mediaDiagnostics.audioTracks,0);
+  assert.equal(api.state.mediaDiagnostics.videoTracks,0);
+  assert.equal(api.state.mediaDiagnostics.playbackState,'not-attempted');
 });
 test('session: remote ICE candidates are added to peer',async()=>{
   const peers=[];
