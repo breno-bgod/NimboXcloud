@@ -3,7 +3,7 @@
 > Documento operacional. Toda execução autônoma deve reler a versão atual de `main` e atualizar este plano conforme evidências. Nunca presumir que a versão indicada aqui ainda é a mais recente.
 
 ## Estado de referência
-- Versão auditada do userscript: 4.12.68 (HEAD consultado diretamente em 2026-11-12).
+- Versão auditada do userscript: 4.12.71 (código integrado em `7bdf158c42b18a9a87364613ad464d7362494808`; HEAD consultado diretamente em 2026-11-12).
 - Arquivo principal: `NimboXcloud.user.js`.
 - Plataforma prioritária: navegador em `play.xbox.com`, sem reescrever como aplicativo nativo.
 - Objetivo: estabilidade real do cliente web, manutenção das funções existentes e investigação verificável das diferenças entre cliente web e cliente Xbox.
@@ -620,3 +620,29 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Testes nesta execução: inspeção estática dos pontos de montagem/renderização e transformação textual dos arquivos. Não foi possível executar `node --check`, suíte automatizada, navegador, sessão xCloud ou hardware Xbox por esta integração; portanto não há alegação de validação funcional.
 - Limitação conhecida: a superfície touch atual é a área de mouse/mira existente, não um touchpad TAK com gestos/cursor completo. D-pad e botões Xbox funcionais dependem da prova de conceito TAK/ponte de gamepad.
 - **Próxima tarefa concreta:** validar a camada visual em Android e desktop; em paralelo, concluir inspeção passiva do runtime TAK e identificar assets/ícones e mecanismo de aplicação em sessão retail. Critérios: sem regressão de captura de ponteiros/edição, sem obstrução excessiva do vídeo, preservar layouts salvos, confirmar comportamento de fullscreen/rotação e documentar assets/licenças antes de incorporá-los.
+
+
+## 2026-11-12 13:00 UTC — TAK: diagnóstico passivo do runtime e contrato de layout
+
+- SHA inicial desta execução: `6b922f8634fae50e566a66ddc1eb52041368943a` (userscript `4.12.69`). Durante a execução, outra alteração foi integrada na main: skin visual NX Minimal Touch e módulo `1.1.7` (HEAD intermediário `3f0ed28fba951fef00eb75536d786a0e177a2b64`). O trabalho TAK foi reaplicado sobre esse HEAD; nenhum arquivo dessa mudança concorrente foi descartado.
+- PR #11 foi fechado por conflito após a atualização concorrente da main. PR #12 foi aberto sobre o HEAD atualizado e squash-merged com sucesso: `7bdf158c42b18a9a87364613ad464d7362494808`. Versão final do userscript: `4.12.71`; módulo Touch HUD preservado em `1.1.7`.
+- Arquivos alterados pelo PR: `NimboXcloud.user.js`, `tests/tak-runtime.test.cjs`, `docs/TAK-ARCHITECTURE.md`, `CHANGELOG.md`. Este registro atualiza o roadmap.
+- Correção adicional encontrada durante reconciliação: a main já anunciava `@version 4.12.70`, mas a constante interna `VER` ainda era `4.12.69`. A constante foi alinhada em `4.12.71`, junto com o cache key de `@require`.
+- Implementado no userscript:
+  - Sondagem read-only do descritor próprio `window.testTouchLayout`.
+  - Resultado exposto em Compatibilidade de dispositivo e no relatório de protocolo.
+  - O hook nunca é chamado; acessores não são executados; nenhum DOM, sessão, controle, fetch/XHR, Gamepad API ou WebRTC é alterado.
+  - Ausência é descrita somente como “não visível no contexto do userscript”; isso não prova que a página não exponha o hook em outro mundo JavaScript.
+- Descoberta importante no schema oficial Microsoft v4.0: o modelo inclui joystick analógico, botões Xbox, D-pad, throttle, touchpad (com exemplo de saída `relativeMouse`), sensores gyroscope/accelerometer e propriedades de opacidade, escala, sensibilidade, deadzone e curvas. Isso confirma que touchpad e gyro fazem parte do TAK; disponibilidade real no cliente/dispositivo ainda depende de runtime e hardware.
+- Limite confirmado pelo schema: a composição usa zonas/rodas/grupos (`left`, `right`, `upper`, `lower`); não há coordenadas livres X/Y para cada controle individual. Portanto, o editor NX pode reorganizar slots e grupos e alterar propriedades permitidas, mas não deve prometer arrasto livre arbitrário de cada controle nativo.
+- A wiki do Better xCloud documenta `testTouchLayout(layout)` via DevTools, com Touch controller Availability = All games, reload e teste em jogo sem layout touch oficial. A própria wiki lista limitações de assets customizados e troca dinâmica por contexto nesse fluxo. Isso não comprova disponibilidade do hook no novo `play.xbox.com`, nem substituição de layouts oficiais em jogo que já possui touch.
+- A documentação oficial Microsoft de sideload exige TAK CLI/`tak serve` e Content Test Application com sideload habilitado; selecionar Developer > TAK é fluxo de desenvolvimento, não substituição automática de layout numa sessão retail comum. Evidências e links foram registrados em `docs/TAK-ARCHITECTURE.md`.
+- Testes:
+  - GitHub Actions PR #12 — baseline run `43222905223` PASS; regression run `43222905196` PASS.
+  - Node 22: 146 testes, 143 PASS, 0 FAIL, 3 TODO.
+  - `node --check NimboXcloud.user.js`: PASS; static risk report: PASS.
+  - Validação adicional no runtime de execução: parse integral do userscript e do novo teste via V8 `new Function` PASS; testes diretos do helper para hook ausente, função, accessor, Proxy hostil e escopo nulo PASS; função/accessor não foram invocados.
+  - Não executados Chrome/Edge, sessão autenticada `play.xbox.com`, jogo, Android/DeX ou Xbox físico. Não houve teste real do `testTouchLayout` em sessão retail. Sem build/lint separado configurado.
+- Estado TAK: schema e componentes confirmados; diagnóstico de visibilidade integrado; aplicação de layout e reversão ainda não comprovadas. NimboTouch Minimal Skin é apenas visual e continua sem gamepad virtual Xbox nativo.
+- Estado xHome: esta execução não alterou a negociação SDP/ICE, canais, entrada ou mídia. Gamepad físico e teclado/mouse continuam experimentais e sem homologação em Xbox real; HUD touch ainda não é encaminhado ao canal xHome.
+- **Próxima tarefa concreta:** obter evidência do runtime real de `play.xbox.com` usando o novo diagnóstico e, se o hook estiver visível, testar um layout TAK mínimo e reversível em jogo sem touch oficial. Critérios de aceite: identificar contexto/versão do hook sem invocação automática; aplicar e restaurar o layout somente por ação explícita e em ambiente autorizado; testar joystick, botões, D-pad, trigger e touchpad; registrar diferenças retail/xCloud/xHome; nenhum layout oficial sobrescrito e nenhuma regressão no NimboTouch.
