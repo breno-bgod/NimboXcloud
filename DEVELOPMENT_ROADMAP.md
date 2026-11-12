@@ -804,3 +804,38 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - **Tarefas concluídas nesta execução:** recuperação da suíte; correção dos testes de integridade; confirmação de CI verde; reconciliação do handoff de lifecycle; confirmação de que a sondagem TAK passiva já está implementada.
 - **Pendências prioritárias:** validar mídia e comandos com Xbox físico; criar transporte NimboTouch-to-xHome para mouse relativo e teclado virtual; depois definir separadamente o contrato de gamepad virtual (analógico/botões) sem falsificar Gamepad API; obter evidência real do TAK em `play.xbox.com`; continuar auditoria histórica do giroscópio e sua fusão com touchpad.
 - **Próxima tarefa concreta (P1 — contrato de transporte NimboTouch → xHome):** especificar e implementar um adaptador explícito no módulo Touch HUD para encaminhar mouse relativo, botões de mouse e teclas virtuais ao canal xHome já existente. Critérios de aceite: manter intacto `attachSession(raw)` do xCloud; ativar o modo xHome somente por ação explícita quando peer e canais estiverem prontos; reutilizar encoders/sequência xHome existentes; manter estado de teclas/botões e enviar releases em pointercancel, blur, visibilitychange, pagehide, troca de sessão e Stop; rejeitar callbacks de adaptador antigo; não criar `getGamepads` sintético nem scheduler adicional; testes mock cobrem movimento, botões, roda, teclas, multi-toque, cancelamento, backpressure e teardown; ambos workflows PASS. O resultado deve ser descrito como teclado/mouse virtual via toque, não como controle Xbox virtual nem analógico.
+
+
+## 2026-11-12 17:08 UTC — xHome: confirmar adaptador NimboTouch e fechar handoff desatualizado
+
+- **SHA inicial consultado nesta execução:** `7d90e2e7f16d538fa3fcebfe25d0884cb79e7dd3` (userscript `4.12.77`).
+- **SHA final do código/testes desta execução:** `f711a7f57e153751b0de888f6609209a79b778d0`. O commit seguinte é apenas o handoff deste roadmap.
+- **Versões confirmadas diretamente na main:** userscript `4.12.77`; módulo `modules/NimboXcloud-Touch-HUD.user.js` `1.2.1`.
+- **Reconciliação obrigatória do handoff anterior:** a tarefa descrita como “contrato de transporte NimboTouch → xHome” já foi implementada depois do último registro do roadmap. Não reimplementar:
+  - `fafef856b02ba53fd8c9351d87e96698220e95cc`: adaptador explícito no userscript e integração no módulo.
+  - `6b1f0bd009e3433dc3f52bf5d3c0b6494533ed51`: teste do contrato público do módulo.
+  - `0bb226ccdbb2c03072e32a3e791ca6734d7fa13a`: estado público `isRemoteEnabled`.
+  - `1ab97294f89f5f33dad392a96077951621fd0921`: permite desativar o HUD remoto mesmo quando pausado.
+  - `db44b020b368289650f7ec5f54bcd2e8f3f90c53`: regressão para o estado pausado.
+  - `7d90e2e7f16d538fa3fcebfe25d0884cb79e7dd3`: changelog da integração.
+- **Contrato existente confirmado no código atual:**
+  - O módulo mantém `attachSession(raw)` e o transporte xCloud. O caminho remoto é separado por `attachRemoteInputAdapter` / `clearRemoteInputAdapter`, `startRemote` / `stopRemote`, `isRemoteActive` / `isRemoteEnabled`.
+  - Em modo xHome, a HUD envia mouse relativo, botões do mouse, roda e teclas virtuais pelo adaptador explícito; o módulo não substitui `navigator.getGamepads`.
+  - O userscript vincula o adaptador a `requestId`, identidade do `RTCPeerConnection` e identidade dos data channels; exige sessão/WebRTC/canal `input` prontos, usa os encoders e a sequência compartilhada existentes, respeita backpressure e rejeita sessão obsoleta.
+  - Stop/pausa libera teclas e botões antes de desativar o modo remoto; o detach limpa o adaptador antes de fechar os canais.
+  - O modo remoto tem `canResume` e `checkResume` próprios; não depende de `STATES.isPlaying` ou `api.streamSession` do xCloud. A inicialização remota seleciona o adaptador xHome e não executa `activateKeyboardMouse()`, que permanece exclusivo do transporte xCloud.
+- **Alteração desta execução:** foram acrescentadas três regressões estruturais em `tests/nimbo-touch-xhome.test.cjs`:
+  1. isolamento do gate de retomada xHome em relação ao estado da sessão xCloud;
+  2. ordem de liberação dos inputs e descarte do adaptador no Stop;
+  3. seleção do transporte remoto sem alterar a configuração de entrada xCloud.
+- **Arquivos alterados nesta execução:** `tests/nimbo-touch-xhome.test.cjs` e este `DEVELOPMENT_ROADMAP.md`. Nenhum código de produção, configuração de usuário, credencial ou protocolo foi alterado.
+- **Commits de teste:** `3752020ae2033bace967dd2ea66223d57787979b` e `493c9af7a694f7f79a4ab13f340c0da06f41fe35` tiveram assertions incompletas e CI vermelho; os problemas eram exclusivamente os matchers de teste (escape duplicado e espaço no método `stop() {`). Corrigido em `f711a7f57e153751b0de888f6609209a79b778d0`. Nenhuma falha de produção foi identificada por essas execuções.
+- **Validação final no GitHub Actions, no SHA `f711a7f`:**
+  - Baseline run [43266212243](https://github.com/breno-bgod/NimboXcloud/actions/runs/43266212243): PASS — parse do userscript, parse do módulo Touch HUD, suíte completa e relatório estático.
+  - xHome regression run [43266212416](https://github.com/breno-bgod/NimboXcloud/actions/runs/43266212416): PASS — parse do userscript e suíte de regressão NX/xHome.
+  - Verificação estrutural adicional dos novos invariantes no runtime desta execução: PASS.
+  - O workflow executa Node 22; não há `package.json` nem build/lint separado configurado no repositório.
+- **Limites e riscos:** não houve teste em Chrome/Edge, Android, sessão autenticada ou Xbox físico. O adaptador confirma envio local ao data channel, não aceitação dos comandos pelo console. A HUD atual continua sendo teclado/mouse virtual (incluindo joystick WASD); não é um gamepad Xbox virtual analógico. O xHome ainda não foi homologado com vídeo/áudio e gameplay reais. A sondagem TAK continua passiva; `testTouchLayout` não foi invocado e sua disponibilidade no runtime retail de `play.xbox.com` não está comprovada.
+- **Tarefas concluídas nesta execução:** auditoria do HEAD real; confirmação de que a integração NimboTouch → xHome já existe; fechamento do handoff obsoleto; três testes de regressão do lifecycle remoto; ambos workflows verdes.
+- **Pendências prioritárias:** validar transmissão e entrada em Xbox físico; implementar um caminho de gamepad virtual verdadeiro sem falsificar Gamepad API; confirmar runtime TAK em `play.xbox.com`; retomar comparação do algoritmo histórico de giroscópio/touchpad; continuar estabilidade do xCloud atual.
+- **Próxima tarefa concreta (P1 — contrato de gamepad virtual por toque para xHome, sem UI inicialmente):** criar um adaptador puro que aceite estado normalizado de analógicos e botões e encaminhe diretamente pelo encoder/canal de gamepad xHome já existente. Critérios de aceite: reutilizar `nxRemoteEncodeGamepadFrame`, `nxRemoteSendGamepadFrame` e o lifecycle de slots existente; registrar um slot virtual apenas uma vez; mapear eixos em `[-1,1]`, aplicar deadzone e limitar diagonais sem alterar a magnitude intencional; enviar estado neutro e `gamepadChanged(false)` em Stop, pausa, desconexão, troca de sessão e descarte; rejeitar frames de adaptadores antigos e respeitar backpressure; testes cobrem eixos, botões, diagonais, slot, release e sessão obsoleta; não sobrescrever `navigator.getGamepads`, não criar RAF/scheduler paralelo e não chamar isso de gamepad funcional antes de validação com Xbox físico. Para xCloud retail, manter TAK como caminho preferencial e não assumir que o transporte xHome é reutilizável no streaming em nuvem.
