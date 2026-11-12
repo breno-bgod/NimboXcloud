@@ -1,3 +1,11 @@
+## [4.12.73] — 2026-11-12
+- Made the NimboTouch session facade forward every xCloud `updateInputConfigurationAsync` call unchanged. It no longer guesses NimboTouch activation from the values of keyboard/mouse flags, which could also be requested by the native client.
+- Moved NimboTouch keyboard/mouse activation into an explicit transport method called only by the NimboTouch toggle. Its snapshot and rollback are limited to keyboard/mouse fields and never include `enableTouchInput`.
+- Captured the active transport for the asynchronous activation and aborts the UI transition if the streaming session is replaced mid-operation.
+- Added five Node regression tests for native touch on/off, native keyboard+mouse requests, explicit NimboTouch activation, and rollback after native touch-mode changes.
+- Added a CI syntax check for the required Touch HUD module.
+- Automated tests do not prove Chrome/Edge or authenticated xCloud runtime behavior; real-session validation remains pending.
+
 ## [4.12.71] — 2026-11-12
 - Added a read-only TAK runtime probe for the `window.testTouchLayout` own-property descriptor. It never invokes the hook, executes accessors, inspects layout contents, or mutates the stream.
 - Exposed the probe in the NX device-compatibility diagnostic and protocol report; absence is explicitly scoped to the userscript-visible window and is not treated as proof that the page runtime lacks TAK.
