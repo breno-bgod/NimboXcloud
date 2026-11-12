@@ -1291,8 +1291,9 @@ class BxTouchpadOverlay extends BxTouchpadProfiles {
 
 class BxTouchpadExclusive extends BxTouchpadOverlay {
   syncNativeTouchVisibility(){
-    const exclusive=!!this.root&&(this.active||this.editingHud);
-    document.documentElement.classList.toggle('nimbo-touch-exclusive',exclusive);
+    // Native xCloud touch must coexist with Bluetooth mouse, keyboard and gamepad.
+    // Never hide the native touch surface just because the custom HUD is active.
+    document.documentElement.classList.remove('nimbo-touch-exclusive');
   }
   mount(){
     if(this.root)return;
@@ -1301,16 +1302,8 @@ class BxTouchpadExclusive extends BxTouchpadOverlay {
     // These IDs are the native touch surface used by NimboPlay's TouchController.
     // Deliberately do not match all canvases, the video renderer, #StreamHud or Guide.
     // CSS also applies if Xbox inserts/replaces its touch surface after activation.
-    style.textContent=`
-html.nimbo-touch-exclusive #BabylonCanvasContainer-main,
-html.nimbo-touch-exclusive #BabylonCanvasContainer-main *,
-html.nimbo-touch-exclusive #babylon-canvas,
-html.nimbo-touch-exclusive #babylon-canvas * {
-  visibility:hidden!important;
-  pointer-events:none!important;
-}
-`;
-    this.root.append(style);this.syncNativeTouchVisibility();
+    style.textContent = '/* Native Xbox touch remains enabled alongside NimboTouch. */';
+
   }
   async start(){
     try{await super.start();}
