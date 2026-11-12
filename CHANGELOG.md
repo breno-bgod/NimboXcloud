@@ -4,6 +4,7 @@
 - Corrigido o acionamento repetido de Stop quando a liberação remota xHome está pendente: o estado de pendência, a mensagem de erro e o retry existente são preservados; nenhuma segunda requisição DELETE é emitida.
 - Ampliada a suíte de `tests/xhome-discovery.test.cjs` com cenários HTTP 403/500, 404/410 idempotentes, falha de rede, Stop repetido e retry concorrente.
 - A versão do cabeçalho, constante interna e parâmetro de cache do módulo Touch HUD foi alinhada em 4.12.63.
+- README PT/EN, matriz de decisões e roadmap público foram sincronizados com a retomada técnica autorizada do xHome; a interface permanece oculta e o recurso continua sem homologação de vídeo/áudio/controles.
 - **Validação desta execução:** inspeção estática dos trechos e dos testes adicionados. Execução Node/CI e teste em Xbox real ainda não confirmados; não declarar a matriz aprovada até obter resultados dos workflows.
 
 ## [Reformulação visual NX — etapas 1 e 2] — 2026-11-11
