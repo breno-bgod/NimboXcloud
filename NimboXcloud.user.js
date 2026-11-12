@@ -91,15 +91,7 @@ SOFTWARE.
  *
  * Autoria e licenciamento
  *   · Desenvolvimento e manutenção do NimboXcloud: KReight.
- *   · Base derivada de RoyLiu04/xbox-cloud-unlock (MIT); copyright e licença
- *     originais preservados acima e em THIRD_PARTY_NOTICES.md.
- *
- * Projetos de referência
- *   · redphx/better-xcloud — https://github.com/redphx/better-xcloud
- *     (reescrita da ordem de regions, faixas de qualidade por osName, disfarce de dispositivo
- *      x-ms-device-info, método de interceptação do gssv)
- *   · darkchaox/xbox-cloud-gaming-optimizer — https://github.com/darkchaox/xbox-cloud-gaming-optimizer
- *     (ideia de desbloqueio de região em versões antigas da página; este projeto partiu daí)
+ *   · Avisos e licenças dos componentes incorporados: THIRD_PARTY_NOTICES.md.
  *
  * Aviso legal
  *   Apenas para estudo e pesquisa. Contornar restrições regionais pode violar os termos de
@@ -210,7 +202,7 @@ SOFTWARE.
     xboxseries: { label: 'Xbox Series X|S compatível (experimental)', sessionOs: null, input: 'gamepad-preferred' }
   }[nxConsoleLabProfile]);
   const nxProfileSessionState = { attempted: 0, patched: 0, lastRequestedOs: null, lastOutcome: 'not-observed' };
-  // Diagnóstico passivo inspirado no XFly: não lê tokens, payloads ou identificadores.
+  // Diagnóstico passivo: não lê tokens, payloads ou identificadores.
   const nxSessionTrace = [];
   function nxSessionHealth() {
     const attempts = nxSessionTrace.filter(function (x) { return x.stage === 'play'; });
@@ -1245,7 +1237,7 @@ SOFTWARE.
   }
 
 
-  // Configuracao independente de toque, inspirada no Better xCloud.
+  // Configuração independente de toque; preserva a negociação nativa.
   let touchSessionDiagnostics = { inspected: false, applied: false };
   function patchTouchSessionConfiguration(response) {
     // A negociação e a execução dos controles touch pertencem ao xCloud.
@@ -3196,7 +3188,7 @@ SOFTWARE.
     }} catch (_) {} return '';
   }
   // Data-channel bootstrap uses the xHome channels controlV1, input 1.0, messageV1 and chatV1.
-  // Input packet fields are cross-checked against the MIT-licensed unknownskl/greenlight player package.
+  // Input packet field provenance is recorded in THIRD_PARTY_NOTICES.md.
   // Gamepad and opt-in physical keyboard/mouse capture share one ordered input sequence.
   let nxRemoteChannels=null;
   let nxRemoteTouchAdapter=null;
@@ -3210,7 +3202,7 @@ SOFTWARE.
     if(!channel || channel.readyState!=='open') return false;
     try { channel.send(payload);return true; } catch (_) { return false; }
   }
-  // Binary input packet follows the MIT-licensed Greenlight InputPacket field layout.
+  // Binary input packet uses the documented field layout; see THIRD_PARTY_NOTICES.md.
   // Encoders remain pure: they do not read browser input, schedule polling, or send frames.
   function nxRemotePadButtonValue(pad,index) {
     const button=pad && pad.buttons && pad.buttons[index];
@@ -4080,7 +4072,7 @@ SOFTWARE.
     finally {clearTimeout(timeout);if(requestId===nxRemotePlay.requestId){nxRemotePlay.busy=false;nxRemotePlay.abortController=null;if(tabId==='remote')renderBody();}}
   }
   // xHome session bootstrap: explicit user action, no persistent tokens or SDP logging.
-  // Resolution profile follows the public MIT Better xCloud network descriptor mapping.
+  // Resolution profile follows the documented device descriptor mapping; see THIRD_PARTY_NOTICES.md.
   // This selects a stream profile only; it does not change authentication or console authorization.
   function nxRemoteResolutionProfile(resolution) {
     const profiles={
@@ -5358,7 +5350,7 @@ SOFTWARE.
         chips([{k:'off',label:'Automático'},{k:'android',label:'Mobile'},{k:'windows',label:'Desktop'}],
           nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
       lab.add(setRow('Fortnite: experiência de console (experimental)',
-        'Inspirado no Better xCloud: desativa a sinalização de toque na configuração da sessão do Fortnite. Não muda User-Agent, não emula Xbox e pode não alterar a experiência no cliente novo. Requer reiniciar a sessão.',
+        'Desativa a sinalização de toque na configuração da sessão do Fortnite. Não muda User-Agent, não emula Xbox e pode não alterar a experiência no cliente novo. Requer reiniciar a sessão.',
         chips([{k:'off',label:'Desligado'},{k:'on',label:'Ativar'}],
           nxFortniteConsoleEnabled ? 'on' : 'off', function (k) {
             try { localStorage.setItem(LS_FORTNITE_CONSOLE, k === 'on' ? '1' : '0'); } catch (_) {}
@@ -5366,7 +5358,7 @@ SOFTWARE.
           }), true));
       lab.add(infoRow('Fortnite: aplicação', function () { return nxFortniteConsoleState.patched ? 'Configuração de toque modificada' : (nxFortniteConsoleEnabled ? 'Aguardando configuração da sessão' : 'Desligado'); }));
       lab.add(setRow('Client Hints (avançado)',
-        'Ocultar navigator.userAgentData apenas no JavaScript, conforme Xperience XCloud. Não altera headers e pode prejudicar compatibilidade.',
+        'Ocultar navigator.userAgentData apenas no JavaScript. Não altera headers e pode prejudicar compatibilidade.',
         chips([{k:'off',label:'Normal'},{k:'on',label:'Ocultar JS'}],
           nxClientHintsMode ? 'on' : 'off', function (k) {
             try { localStorage.setItem('nx.consoleLab.hideClientHints.v1', k === 'on' ? '1' : '0'); } catch (_) {}

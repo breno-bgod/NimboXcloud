@@ -100,7 +100,7 @@ I'm developing the userscript for the **new website** (`https://play.xbox.com/*`
 
 I'm **KReight**, the creator and sole developer currently working on NimboXcloud. I'm learning, planning, coding, and testing its features incrementally; there is no company or development team behind it. Suggestions, code reviews, bug reports, and contributions are welcome.
 
-The code is available under the **GNU General Public License version 3 or later (GPL-3.0-or-later)**, retaining applicable third-party notices. Its technical foundation derives from [xbox-cloud-unlock by RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock); engineering references include [Better xCloud by redphx](https://github.com/redphx/better-xcloud) and [Xbox Cloud Gaming Optimizer by darkchaox](https://github.com/darkchaox/xbox-cloud-gaming-optimizer). References and credits **do not imply partnership or endorsement**.
+The code is available under the **GNU General Public License version 3 or later (GPL-3.0-or-later)**. Applicable copyright and license notices for incorporated components are retained in [Third-party notices](./THIRD_PARTY_NOTICES.md).
 
 This is an **unofficial project**, not affiliated with Microsoft or Xbox. Experimental region adjustments may not work and may conflict with service terms.
 

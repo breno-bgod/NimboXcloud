@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.2.5
+// @version      1.2.6
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD, HUD editável e gamepad virtual experimental exclusivo do xHome.
-// @author       KReight / NimboPlay contributors
+// @author       KReight / colaboradores (créditos nos avisos legais)
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
@@ -63,7 +63,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.2.5';
+const VERSION='1.2.6';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -789,7 +789,7 @@ class BxTouchpadHud extends BxTouchpad {
     this.root.append(style);
     const edit=document.createElement('button');edit.type='button';edit.textContent='Editar HUD';edit.onclick=()=>this.editHud();
     const hide=document.createElement('button');hide.type='button';hide.textContent='Recolher menu';hide.onclick=()=>this.showMenu(false);
-    const better=document.createElement('button');better.type='button';better.textContent='NimboPlay';better.onclick=()=>this.openTouchSettings();
+    const better=document.createElement('button');better.type='button';better.textContent='NimboXcloud';better.onclick=()=>this.openTouchSettings();
     this.toolbar.prepend(edit);this.toolbar.append(better,hide);
     this.applyAllGeometry();
   }
@@ -1372,7 +1372,7 @@ class BxTouchpadExclusive extends BxTouchpadOverlay {
     if(this.root)return;
     super.mount();
     const style=document.createElement('style');style.dataset.bxTouchpadExclusive='true';
-    // These IDs are the native touch surface used by NimboPlay's TouchController.
+    // These IDs identify the native touch surface.
     // Deliberately do not match all canvases, the video renderer, #StreamHud or Guide.
     // CSS also applies if Xbox inserts/replaces its touch surface after activation.
     style.textContent = '/* Native Xbox touch remains enabled alongside NimboTouch. */';
@@ -1999,7 +1999,7 @@ function boot(){
   pollSession();setInterval(pollSession,1500);
  }catch(e){NimboDiag.add('inicialização','Falha ao iniciar Nimbo Touch',e.message);const notice=document.createElement('div');notice.textContent='Nimbo Touch não iniciou: '+e.message;notice.style.cssText='position:fixed;top:8px;left:8px;z-index:2147483647;background:#331a1a;color:white;padding:12px';document.documentElement.append(notice);}
 }
-// Public integration point for a future host. No Better xCloud globals are read or overwritten.
+// Public integration point for a host; existing third-party globals are left untouched.
 window.NimboTouch=Object.freeze({
  version:VERSION,attachSession:nimboCapture,open:()=>touchPanel.open(),
  stop:()=>ui?.remoteMode?ui.stopRemote():ui?.stop(),

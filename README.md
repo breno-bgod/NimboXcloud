@@ -45,7 +45,7 @@ O NimboXcloud ainda **não está homologado como versão estável**. Algumas fun
 
 ## HUD de teclado e mouse por toque (experimental)
 
-O módulo [`NimboXcloud Touch HUD v1.2.5`](./modules/NimboXcloud-Touch-HUD.user.js) está incluído no repositório e é **carregado pelo userscript principal via `@require`**, com acesso em **NX → Teclado e mouse → Ativar teclado e mouse**. Permite testar movimento relativo do mouse pelo dedo, joystick WASD, botões de teclado e edição do HUD. Requer jogo/sessão com suporte a mouse e teclado; não transforma mouse em analógico. **Não instale simultaneamente versões antigas do Nimbo Touch.**
+O módulo [`NimboXcloud Touch HUD v1.2.6`](./modules/NimboXcloud-Touch-HUD.user.js) está incluído no repositório e é **carregado pelo userscript principal via `@require`**, com acesso em **NX → Teclado e mouse → Ativar teclado e mouse**. Permite testar movimento relativo do mouse pelo dedo, joystick WASD, botões de teclado e edição do HUD. Requer jogo/sessão com suporte a mouse e teclado; não transforma mouse em analógico. **Não instale simultaneamente versões antigas do Nimbo Touch.**
 
 Para testar: atualize/reinstale o userscript principal no Tampermonkey para aplicar o novo `@require`, abra um jogo compatível em `play.xbox.com` e acesse **NX → Teclado e mouse → Ativar teclado e mouse**. Desative instalações separadas antigas do Nimbo Touch para evitar duplicidade. Os testes reais de streaming continuam pendentes.
 
@@ -120,7 +120,7 @@ O script está sendo desenvolvido para a **nova interface** (`https://play.xbox.
 
 Sou **KReight**, o criador e único responsável pelo desenvolvimento atual do NimboXcloud. Estou aprendendo, planejando, programando e testando suas funcionalidades gradualmente; não há uma equipe ou empresa por trás dele. Sugestões, análises de código, relatórios de problemas e contribuições são bem-vindos.
 
-O código está disponível sob a **GNU GPL versão 3 ou posterior (GPL-3.0-or-later)**, com preservação dos avisos aplicáveis às partes reutilizadas. A base técnica deriva de [xbox-cloud-unlock, de RoyLiu04](https://github.com/RoyLiu04/xbox-cloud-unlock); entre as referências de engenharia estão [Better xCloud, de redphx](https://github.com/redphx/better-xcloud) e [Xbox Cloud Gaming Optimizer, de darkchaox](https://github.com/darkchaox/xbox-cloud-gaming-optimizer). Referências e créditos **não significam parceria ou endosso**.
+O código está disponível sob a **GNU GPL versão 3 ou posterior (GPL-3.0-or-later)**. Os avisos de autoria e licença aplicáveis aos componentes incorporados estão em [Avisos legais de terceiros](./THIRD_PARTY_NOTICES.md).
 
 Este é um projeto **não oficial**, sem afiliação à Microsoft ou ao Xbox. Alterações experimentais de região podem não funcionar e podem contrariar termos do serviço.
 
