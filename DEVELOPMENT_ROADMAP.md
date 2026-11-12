@@ -478,14 +478,14 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Avisos não bloqueantes: punycode depreciado e actions/checkout@v4 + setup-node@v4 sinalizados por runtime Node 20; não afetam o resultado atual, mas merecem atualização futura.
 - Validação executada: GitHub Actions; node --check; node --test tests/*.test.cjs; node tools/static-risk-report.cjs. Não houve build/lint separado configurado, nem execução em Chrome/Edge, Android, stream xCloud ou Xbox físico.
 - O userscript permanece 4.12.66. O encoder e o registro de slots estão disponíveis internamente, mas não há envio contínuo de frames e o Remote Play não está homologado.
-- Próxima prioridade permanece: um único scheduler xHome para Gamepad API, com envio de frames somente após handshake, neutralização, controle de bufferedAmount e teardown completo.
+- Status: CONCLUÍDO no PR #3; o scheduler único, envio de frames, neutralização, controle de bufferedAmount e teardown foram integrados na versão 4.12.67.
 
 
 ## 2026-11-12 — xHome: encaminhamento experimental do gamepad físico
 - SHA inicial da main consultada diretamente nesta execução: 255cd7c7e9480293ff91675bbbd686d32922600e; versão inicial 4.12.66.
 - Branch de trabalho: automation/xhome-gamepad-stream-2026-11-12.
 - Auditoria do estado inicial: o encoder binário de 38 bytes e o registro idempotente de slots já existiam, mas nenhum frame era enviado. O nxGamepadUiTick lia a Gamepad API a cada 75 ms e nxSampleGamepads fazia uma segunda leitura nativa a cada 750 ms.
-- Alteração proposta em NimboXcloud.user.js v4.12.67:
+- Implementação integrada em NimboXcloud.user.js v4.12.67:
   - envia frames do gamepad padrão pelo data channel input somente quando dataChannelsReady, HandshakeAck, peer conectado e canal aberto;
   - associa Gamepad.index a slots estáveis 0–3, registra uma vez e remove no disconnect;
   - reutiliza o loop existente de leitura do painel NX com temporização adaptativa: 16 ms apenas quando a sessão xHome está conectada, o painel está fechado e a janela tem foco; 75 ms no restante do tempo;
@@ -495,7 +495,7 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Testes acrescentados em tests/xhome-discovery.test.cjs: gate de prontidão, estabilidade de slot, frame ativo, neutralização antes de unregister, suspensão/resume, backpressure e fallback de botão digital.
 - Arquivos alterados: NimboXcloud.user.js, tests/xhome-discovery.test.cjs, CHANGELOG.md e DEVELOPMENT_ROADMAP.md.
 - Referência de protocolo: encoder continua baseado em observação independente do layout InputPacket (14-byte header, frame count e registro Gamepad de 23 bytes). O repositório público unknownskl/xbox-xcloud-player não expõe licença detectável pela API GitHub (license=null); nenhum código-fonte dele foi copiado nesta etapa. O userscript Better xCloud 6.7.13 MIT fornecido pelo usuário foi localizado na Library; sua implementação de polling reforça a necessidade de respeitar o intervalo e liberar botões ao terminar o estado de atalho.
-- Validação local desta etapa: parse sintático integral via new Function e verificações de âncoras estáticas serão executados antes do commit. GitHub Actions ainda pendentes neste registro; nenhum teste real de navegador, stream, áudio/vídeo ou Xbox físico foi realizado.
+- Validação pré-commit: parse integral do userscript e do teste via new Function PASS; verificações estáticas PASS (sem novo override de getGamepads e sem setInterval paralelo). Primeiro workflow de regressão falhou somente por uma asserção textual antiga sobre o status; a expectativa foi atualizada. Reexecução final PASS nos dois workflows, tanto no PR quanto após o merge na main: 130 testes, 127 PASS, 0 FAIL, 3 TODO. node --check PASS; testes baseline PASS; static risk report PASS. Não há build/lint separado configurado. Nenhum teste real de navegador, stream, áudio/vídeo ou Xbox físico foi realizado.
 - Riscos: formato binário, mapeamento de botões e endianness ainda não foram confirmados com console Xbox real; apenas mapping standard é encaminhado; o threshold de 4096 bytes pode descartar frames temporariamente em rede congestionada. O Cloud Gaming continua recebendo a Gamepad API normalmente, inclusive se o Remote Play estiver ativo.
 - Próxima tarefa concreta: implementar encoders puros de teclado e mouse xHome, ainda sem interceptar eventos globais. Critérios de aceite: offsets, endianness e códigos de tecla documentados; eventos keydown/keyup e mouse down/up/move/scroll com neutralização e teardown; testes determinísticos de tamanho, estados e ordenação; nenhum listener concorrente com o Touch HUD; node --check, suíte completa e ambos workflows PASS.
 
@@ -503,4 +503,7 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - Revisão de robustez antes do PR: neutralização agora só marca pausa após envio aceito; desconexão mantém o slot registrado até o frame neutro ser aceito. O callback WebRTC reconcilia o estado atual imediatamente após ser instalado, evitando perder o evento connected se ele ocorrer antes do listener.
 - Testes adicionais: retry de neutralização após falha simulada de send e manutenção do slot até a liberação ser aceita.
 
-- CI do PR #3: a primeira execução de regressão encontrou apenas uma expectativa textual antiga (a mensagem de status ainda dizia que o envio não existia). A implementação passou nos testes novos 124–130; a asserção foi atualizada para o status v4.12.67. O workflow baseline passou na validação sintática; a suíte será reexecutada no novo HEAD.
+- CI do PR #3: primeiro run de regressão falhou por expectativa textual obsoleta; correção aplicada somente no teste. Segunda execução do PR: regression run 43179830547 PASS (130 testes, 127 PASS, 0 FAIL, 3 TODO) e baseline run 43179831053 PASS. Após o squash merge, main run 43179894260 PASS (mesmos 130 testes) e baseline run 43179893968 PASS (syntax check, baseline tests e static risk report PASS).
+
+- Publicação: PR #3 https://github.com/breno-bgod/NimboXcloud/pull/3 foi squash-merged em 2026-11-12 08:03:44 UTC. SHA inicial desta execução: 255cd7c7e9480293ff91675bbbd686d32922600e. SHA final da implementação integrada na main: c9f7cf0c4772101ac3bb11d2a577032972e745ce. Versão final do userscript: 4.12.67.
+- Estado final: o gamepad físico agora é encaminhado ao canal input após handshake e conexão WebRTC; o xCloud continua usando a Gamepad API existente sem novo override. Remote Play ainda NÃO está completo: vídeo/áudio e controle em Xbox físico aguardam validação real, e teclado/mouse ainda não foram integrados.
