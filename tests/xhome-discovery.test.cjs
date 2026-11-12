@@ -8,10 +8,12 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,startSession:nxRemoteStartSession};';
-function harness(fetchImpl, storageOverride, rtcClass) {
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession};';
+function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
   const ctx = {
-    AbortController, URL, Date, setTimeout, clearTimeout,
+    AbortController, URL, Date,
+    setTimeout:timerOverrides&&timerOverrides.setTimeout||setTimeout,
+    clearTimeout:timerOverrides&&timerOverrides.clearTimeout||clearTimeout,
     fetch: fetchImpl, tabId: 'other', renderBody() {}, navigator:{language:'pt-BR'},
     localStorage: {
       getItem(k) { return k === 'xboxcom_xbl_user_info' ? JSON.stringify({tokens:{'http://gssv.xboxlive.com/':{token:'TEST_GSSV'}}}) : null; },
@@ -351,16 +353,140 @@ test('session: remote ICE candidates are added to peer',async()=>{
   assert.equal(api.state.sessionStatus,'ice-pending');
 });
 
-test('stop: closes an established peer and clears session without needing busy state',async()=>{
+test('stop: closes local resources even when remote auth context is unavailable',async()=>{
   const api=harness(async()=>{throw Error('unexpected fetch');});
   let closed=0;
   api.state.busy=false;
   api.state.peer={close(){closed++;}};
   api.state.sessionId='12345678-1234-1234-1234-123456789abc';
   api.state.sessionStatus='connected';
-  api.stop();
+  await api.stop();
   assert.equal(closed,1);
   assert.equal(api.state.peer,null);
   assert.equal(api.state.sessionId,'');
+  assert.equal(api.state.sessionStatus,'stopped-local-only');
+  assert.match(api.state.error,/região inválida/);
+});
+
+
+test('stop: sends authenticated regional DELETE and keeps the bearer out of UI state',async()=>{
+  const calls=[];
+  const api=harness(async(url,opts)=>{
+    calls.push({url,opts});
+    if(calls.length===1)return ok(login);
+    if(calls.length===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    if(calls.length===3)return ok({state:'Provisioned'});
+    return {ok:true,status:204};
+  });
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  assert.equal(api.state.sessionStatus,'provisioned');
+  assert.ok(!JSON.stringify(api.state).includes('TEST_BEARER'));
+  await api.stop();
+  assert.equal(calls.length,4);
+  assert.equal(calls[3].url,'https://wus.core.gssv-play-prodxhome.xboxlive.com/v5/sessions/home/12345678-1234-1234-1234-123456789abc');
+  assert.equal(calls[3].opts.method,'DELETE');
+  assert.equal(calls[3].opts.headers.Authorization,'Bearer TEST_BEARER');
+  assert.equal(calls[3].opts.redirect,'error');
+  assert.equal(api.state.sessionId,'');
   assert.equal(api.state.sessionStatus,'stopped');
+  assert.ok(!JSON.stringify(api.state).includes('TEST_BEARER'));
+});
+
+test('stop: HTTP rejection preserves local cleanup and offers an in-memory retry',async()=>{
+  const calls=[];
+  const api=harness(async(url,opts)=>{
+    calls.push({url,opts});
+    if(calls.length===1)return ok(login);
+    if(calls.length===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    if(calls.length===3)return ok({state:'Provisioned'});
+    if(calls.length===4)return {ok:false,status:401};
+    return {ok:true,status:204};
+  });
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  await api.stop();
+  assert.equal(api.state.sessionId,'');
+  assert.equal(api.state.sessionStatus,'stopped-local-only');
+  assert.match(api.state.error,/HTTP 401/);
+  const before=calls.length;
+  await api.discover();
+  assert.equal(calls.length,before,'discovery is blocked while remote release is pending');
+  await api.retryRelease();
+  assert.equal(calls.length,before+1);
+  assert.equal(calls.at(-1).opts.method,'DELETE');
+  assert.equal(api.state.sessionStatus,'stopped');
+  assert.equal(api.state.error,'');
+});
+
+test('stop: timeout is bounded and local media resources are still released',async()=>{
+  const calls=[];
+  const marker={immediate:true};
+  const timers={
+    setTimeout(fn,ms){if(ms===8000){fn();return marker;}return setTimeout(fn,ms);},
+    clearTimeout(id){if(id!==marker)clearTimeout(id);}
+  };
+  const api=harness(async(url,opts)=>{
+    calls.push({url,opts});
+    if(calls.length===1)return ok(login);
+    if(calls.length===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    if(calls.length===3)return ok({state:'Provisioned'});
+    if(opts.method==='DELETE'){
+      assert.equal(opts.signal.aborted,true);
+      const error=new Error('aborted');error.name='AbortError';throw error;
+    }
+    throw new Error('unexpected request');
+  },null,null,timers);
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  let stopped=0;
+  api.state.mediaStream={getTracks(){return [{stop(){stopped++;}}];}};
+  await api.stop();
+  assert.equal(stopped,1);
+  assert.equal(api.state.sessionId,'');
+  assert.equal(api.state.sessionStatus,'stopped-local-only');
+  assert.match(api.state.error,/timeout/);
+});
+
+test('cancel during session creation waits for the response and then DELETEs the created session',async()=>{
+  let resolvePlay,notifyPlay;
+  const playStarted=new Promise(resolve=>{notifyPlay=resolve;});
+  const calls=[];
+  const api=harness(async(url,opts)=>{
+    calls.push({url,opts});
+    if(calls.length===1)return ok(login);
+    if(calls.length===2){notifyPlay();return new Promise(resolve=>{resolvePlay=resolve;});}
+    return {ok:true,status:204};
+  });
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  const pending=api.startSession();
+  await playStarted;
+  assert.equal(api.state.createPending,true);
+  api.cancel();
+  assert.equal(api.state.cancelAfterCreate,true);
+  resolvePlay(ok({sessionId:'12345678-1234-1234-1234-123456789abc'}));
+  await pending;
+  assert.equal(calls.length,3);
+  assert.equal(calls[2].opts.method,'DELETE');
+  assert.equal(api.state.sessionId,'');
+  assert.equal(api.state.sessionStatus,'stopped');
+});
+
+test('session failure after server creation attempts remote DELETE before reporting failure',async()=>{
+  const calls=[];
+  const api=harness(async(url,opts)=>{
+    calls.push({url,opts});
+    if(calls.length===1)return ok(login);
+    if(calls.length===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+    if(calls.length===3)return {ok:false,status:503};
+    return {ok:true,status:204};
+  });
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  assert.equal(calls.length,4);
+  assert.equal(calls[3].opts.method,'DELETE');
+  assert.equal(api.state.sessionId,'');
+  assert.equal(api.state.sessionStatus,'failed');
+  assert.match(api.state.error,/HTTP 503/);
+  assert.match(api.state.error,/Sessão remota liberada/);
 });
