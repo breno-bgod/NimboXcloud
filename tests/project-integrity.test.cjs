@@ -17,23 +17,21 @@ function valueBetween(source, startMarker, endMarker, label) {
 }
 
 test('userscript metadata, runtime diagnostics and @require cache key share one version', () => {
-  const metadataLine = main.split('\n').find(line => line.startsWith('// @version'));
-  assert.ok(metadataLine, '@version exists');
-  const metadata = metadataLine.trim().split(/\\s+/).pop();
+  const metadataMatch = main.match(/^\/\/ @version\s+(\S+)/m);
+  assert.ok(metadataMatch, '@version exists');
+  const metadata = metadataMatch[1];
   const runtime = valueBetween(main, "const VER = '", "';", 'runtime VER');
-  const dependencyLine = main.split('\\n').find(line => line.startsWith('// @require') && line.includes('NimboXcloud-Touch-HUD.user.js?nx_version='));
-  assert.ok(dependencyLine, '@require cache key exists');
-  const dependencyMatch = dependencyLine.match(/[?&]nx_version=([^\\s\"'`]+)/);
-  assert.ok(dependencyMatch, '@require cache key is parseable');
+  const dependencyMatch = main.match(/^\/\/ @require\s+.*NimboXcloud-Touch-HUD\.user\.js\?nx_version=([^\s]+)$/m);
+  assert.ok(dependencyMatch, '@require cache key exists');
   const dependency = dependencyMatch[1];
   assert.equal(runtime, metadata);
   assert.equal(dependency, metadata);
 });
 
 test('Touch HUD metadata and runtime constant share one module version', () => {
-  const metadataLine = touch.split('\n').find(line => line.startsWith('// @version'));
-  assert.ok(metadataLine, 'Touch HUD @version exists');
-  const metadata = metadataLine.trim().split(' ').filter(Boolean).pop();
+  const metadataMatch = touch.match(/^\/\/ @version\s+(\S+)/m);
+  assert.ok(metadataMatch, 'Touch HUD @version exists');
+  const metadata = metadataMatch[1];
   const runtime = valueBetween(touch, "const VERSION='", "';", 'Touch HUD VERSION');
   assert.equal(runtime, metadata);
 });
@@ -45,7 +43,9 @@ test('NX separates physical controls from keyboard and mouse navigation labels',
   assert.ok(main.includes("const touchGroups = ['Teclado e mouse', 'Editor de HUD — prévia arrastável', 'Giroscópio']"));
   const builder = main.indexOf('TAB_BUILDERS.gyrotouch = function (root)');
   const activation = main.indexOf("const activation = group('Ativação'", builder);
-  const keyboard = main.indexOf("group('Teclado e mouse'", builder);
-  assert.ok(builder >= 0 && activation > builder && keyboard > activation, 'activation appears before keyboard/mouse settings');
+  const legacy = main.indexOf('buildLegacyControls(temp);', builder);
+  const touchGroups = main.indexOf("const touchGroups = ['Teclado e mouse'", builder);
+  assert.ok(builder >= 0 && activation > builder && legacy > activation && touchGroups > legacy, 'activation precedes legacy keyboard/mouse groups');
+  assert.ok(main.includes("group('Teclado e mouse'"), 'legacy keyboard/mouse group exists');
   assert.ok(!main.includes('Gyro Touch'), 'old tab label is removed');
 });
