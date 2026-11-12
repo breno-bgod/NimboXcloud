@@ -1,3 +1,9 @@
+## [4.12.93] — 2026-11-12
+- Isolado o sinalizador de IPv4 do xCloud retail: o helper compartilhado `rewriteIce` não altera mais SDP/ICE de hosts xHome.
+- A sessão xHome recebe seus candidatos originais até existir uma política IPv4 específica para o formato de sinalização xHome; evita filtragem parcial entre SDP e respostas diretas de candidatos.
+- Teste verifica os hosts de login e região xHome e confirma que o rewrite IPv4 retail continua ativo.
+- Sem alteração de autenticação, endpoints, SDP/ICE enviado, canais de dados ou roteamento de controles.
+
 ## [4.12.92] — 2026-11-12
 - Corrigido o limite do polling ICE xHome: no máximo 30 consultas após a leitura inicial, sem agendar uma 31ª tentativa.
 - O timer agora pertence explicitamente ao requestId e ao peer ativos; callbacks cancelados ou obsoletos não podem limpar o timer de uma sessão nova.
