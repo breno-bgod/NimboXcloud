@@ -24,6 +24,12 @@ Neste lote: seleção HQ/Windows passa a respeitar a preferência salva; HQ cont
 
 As versões indicadas nas auditorias anteriores são históricas. A seção de revisão e o plano detalham as mudanças mais recentes sem declarar homologação de gameplay.
 
+## Revisão incremental — 2026-11-12 / v4.12.91
+
+Catálogo de datacenters cloud agora deriva das regiões anunciadas no login, preserva aliases e alternativas e mantém login xHome separado. A preferência do usuário não altera o destino observado da partida atual. Para aplicar a escolha, recarregar antes da próxima partida; não prometer aplicação sem novo login.
+
+A implementação e dezesseis testes comportamentais novos estão concluídos; 221 testes locais, 218 PASS, zero FAIL e três TODO. Isso não homologa seleção real de datacenter. Teste visual de Chromium bloqueado por setsockopt; mouse/HUD/controles continuam exigindo validação de dispositivo. Consulte [roteiro de aceite](./SERVIDORES_DINAMICOS.md).
+
 ## Propósito e princípios
 
 O NimboXcloud é um userscript independente para a nova experiência de Xbox Cloud Gaming em `https://play.xbox.com/`. Busca oferecer monitoramento, personalização, controles e recursos de acessibilidade sem substituir o serviço Xbox. Prioridade: **iniciar e manter partidas estáveis**, preservar controle/toque nativos e permitir recuperação quando uma opção falhar.
@@ -111,4 +117,5 @@ Antes de reativar um módulo:
 - **2026-11-12 — decisão do mantenedor:** retomada técnica do Remote Play xHome autorizada. Desenvolvimento de descoberta, sessão, WebRTC e teardown pode continuar; a aba permanece oculta e o recurso não pode ser anunciado como jogável antes de comprovar mídia e controles em Xbox real.
 
 > **Política de transparência:** nunca confundir "opção aparece", "código existe", "teste automatizado passa" e "funcionou em partida real". São níveis distintos de evidência.
+
 

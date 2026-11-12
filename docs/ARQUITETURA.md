@@ -56,3 +56,10 @@ Ao alterar interceptações de rede, verificar se os dados esperados ainda exist
 **Estado:** código em desenvolvimento; verificação de presença no repositório não substitui teste autenticado em navegador real.
 
 
+
+
+## Catálogo de datacenters — 4.12.91
+
+O login cloud via fetch alimenta um catálogo em memória de regiões e origens validadas. O seletor mantém Automático e aliases legados, atualiza a lista pelo ciclo existente de UI e preserva a resposta nativa quando a região preferida não está disponível. O login xHome não participa desse catálogo.
+
+A escolha de servidor exige recarregar antes de iniciar outra partida para aplicar a preferência ao login. Preferência, pin aplicado e endpoint observado são estados distintos; nenhum deles comprova localização física da mídia. Consulte [implementação, testes e aceite](./SERVIDORES_DINAMICOS.md).

@@ -1,3 +1,13 @@
+## [4.12.91] — 2026-11-12
+- Seletor de datacenter passa a usar as regiões anunciadas pelo Xbox no login, inclusive no modo Automático. Nomes novos válidos não exigem nova tabela de endpoints.
+- Preservados atalhos salvos, resposta nativa em fallback e todas as regiões alternativas. Login xHome permanece separado e não pode substituir o catálogo cloud.
+- Preferência configurada, pin aplicado ao login e destino observado deixam de ser tratados como a mesma informação; mudar a seleção não altera a identificação da partida atual.
+- A associação do endpoint ao nome canônico permite histórico de RTT para regiões dinâmicas. A seleção por histórico considera apenas regiões disponíveis e dados recentes.
+- Interface inclui lista compacta, estado de disponibilidade e recarga explícita para aplicar a preferência no login, sem recarga automática durante a partida.
+- Corrigida leitura de catálogo antes pulada em Automático, indicação prematura de servidor atual e risco de preferência cloud reescrever login xHome.
+- Dezesseis testes novos de comportamento; suíte local: 221 testes, 218 PASS, zero FAIL, três TODO. Sintaxe dos scripts e relatório estático verificados.
+- Chromium bloqueado por restrição setsockopt do ambiente; sem validação visual real ou partida autenticada. Roteiro de aceite em docs/SERVIDORES_DINAMICOS.md.
+
 ## [4.12.90] — 2026-11-12
 - Removidas menções editoriais e promocionais a projetos de referência dos README e da apresentação do código principal.
 - Removidos nomes de projetos externos das descrições de opções do painel; preservadas as explicações de comportamento e limitações.
@@ -292,4 +302,5 @@ Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR
 
 ## Próximas versões
 As alterações futuras devem incluir: versão, data, recursos adicionados, correções, incompatibilidades conhecidas e evidências de testes.
+
 

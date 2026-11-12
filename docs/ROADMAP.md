@@ -1,6 +1,6 @@
 # Roteiro de desenvolvimento — NimboXcloud
 
-> Revisão incremental em 2026-11-12 · Referência: v4.12.88 · Este roteiro **não** significa que as tarefas estejam concluídas.
+> Revisão incremental em 2026-11-12 · Referência: v4.12.91 · Este roteiro **não** significa que as tarefas estejam concluídas.
 >
 > **Documento central:** [Estado do projeto e decisões](./PROJECT_STATUS_AND_DECISIONS.md). Leia a matriz de funcionalidades congeladas, experimentais, mantidas e pendentes antes de desenvolver.
 
@@ -55,3 +55,13 @@ O lote 4.12.88 corrige a seleção de qualidade, perda negativa e cobertura ESM.
 2. Atualize `CHANGELOG.md` quando o comportamento do usuário mudar.
 3. Vincule evidências de testes/CI e commit; nunca confunda código presente com funcionalidade comprovada.
 
+
+
+## Lote 4.12.91 — servidores dinâmicos
+
+- [x] Implementar catálogo por login cloud, aliases legados, seletor atualizado e fallback nativo.
+- [x] Separar preferência, pin aplicado e destino observado; isolar login xHome.
+- [x] Verificar dezesseis cenários novos e suíte completa local (218 PASS, zero FAIL, três TODO).
+- [ ] Confirmar aplicação da região, mouse/toque e controles em sessão real; Chromium local bloqueado por setsockopt.
+
+Detalhes e passos para o mantenedor: [Servidores dinâmicos](./SERVIDORES_DINAMICOS.md). Próxima frente: investigação da negociação de qualidade, preservando o transporte de entrada existente.

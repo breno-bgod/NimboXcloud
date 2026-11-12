@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.90
+// @version      4.12.91
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch e controle virtual experimental exclusivo do xHome.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.90
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.91
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.90';
+  const VER = '4.12.91';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -452,7 +452,7 @@ SOFTWARE.
   const DEFAULT_REGION = 'jp';
 
   // Data centers de streaming: name deve ser idêntico a offeringSettings.regions[].name do servidor.
-  // O /v2/login/user retorna na prática 19 regiões; na Ásia só Tóquio e Seul são opções reais.
+  // Chaves legadas são preservadas; disponibilidade vem da resposta de login.
   const SERVERS = {
     auto: { name: '', label: 'Auto' },
     ejp: { name: 'JAPANEAST', label: 'Tóquio' },
@@ -513,6 +513,9 @@ SOFTWARE.
     // v2.2
     serverPin: '',
     serverActual: '',
+    serverCatalog: null,
+    serverCatalogStatus: 'waiting',
+    serverFallback: '',
     v6dropped: 0,
     resApplied: '',
     playPatched: 0,
@@ -567,22 +570,111 @@ SOFTWARE.
     try { localStorage.setItem(k, v); } catch (e) { }
   }
 
+  // Catálogo da sessão: apenas metadados públicos de regiões, sem credenciais.
+  const NX_SERVER_LABELS = {
+    BRAZILSOUTH: 'Brasil — Sul', CHILECENTRAL: 'Chile — Central',
+    JAPANEAST: 'Tóquio', KOREACENTRAL: 'Seul',
+    EASTUS: 'Leste EUA', EASTUS2: 'Leste EUA 2', WESTUS: 'Oeste EUA',
+    WESTUS2: 'Oeste EUA 2', WESTUS3: 'Oeste EUA 3',
+    NORTHCENTRALUS: 'Centro-norte EUA', SOUTHCENTRALUS: 'Centro-sul EUA',
+    MEXICOCENTRAL: 'México — Central', CANADACENTRAL: 'Canadá — Central',
+    WESTEUROPE: 'Europa Ocidental', NORTHEUROPE: 'Europa do Norte',
+    UKSOUTH: 'Reino Unido — Sul', SWEDENCENTRAL: 'Suécia — Central',
+    AUSTRALIAEAST: 'Austrália — Leste', AUSTRALIASOUTHEAST: 'Austrália — Sudeste',
+    CENTRALINDIA: 'Índia — Central', SOUTHINDIA: 'Índia — Sul'
+  };
+  function nxServerName(value) {
+    if (typeof value !== 'string') return '';
+    if (Object.prototype.hasOwnProperty.call(SERVERS, value)) return SERVERS[value].name;
+    const name = value.trim().toUpperCase();
+    return /^[A-Z][A-Z0-9_-]{1,63}$/.test(name) ? name : '';
+  }
+  function nxServerLabel(name) {
+    return Object.prototype.hasOwnProperty.call(NX_SERVER_LABELS, name) ? NX_SERVER_LABELS[name] : name;
+  }
+  function nxCloudLogin(u) {
+    return !!(u && GSSV_RE.test(u.hostname) && !/xhome/i.test(u.hostname) &&
+      /\/v2\/login\/user$/i.test(u.pathname));
+  }
+  function nxServerRegion(region) {
+    if (!region || typeof region !== 'object' || typeof region.name !== 'string' ||
+        typeof region.baseUri !== 'string' || region.baseUri.length > 512) return null;
+    const name = nxServerName(region.name);
+    if (!name) return null;
+    try {
+      const url = new URL(region.baseUri);
+      const host = /^([a-z0-9-]+)\.core\.gssv-play-[a-z0-9-]+\.xboxlive\.com$/i.exec(url.hostname);
+      if (url.protocol !== 'https:' || url.username || url.password || url.port || !host || /xhome/i.test(url.hostname)) return null;
+      return { name: name, label: nxServerLabel(name), origin: url.origin, shortName: host[1].toUpperCase() };
+    } catch (_) { return null; }
+  }
+  function nxCaptureServerCatalog(json) {
+    const regions = json && json.offeringSettings && json.offeringSettings.regions;
+    const valid = Array.isArray(regions) && regions.length <= 128;
+    const seen = new Set();
+    const catalog = valid ? regions.map(nxServerRegion).filter(function (region) {
+      if (!region || seen.has(region.name)) return false;
+      seen.add(region.name); return true;
+    }) : [];
+    S.serverCatalog = catalog;
+    S.serverCatalogStatus = !valid || (regions.length && !catalog.length) ? 'invalid' : catalog.length ? 'ready' : 'empty';
+    schedule();
+    return valid;
+  }
+  function nxServerAvailable(name) {
+    if (Array.isArray(S.serverCatalog)) return S.serverCatalog.some(function (r) { return r.name === name; });
+    return Object.keys(SERVERS).some(function (id) { return SERVERS[id].name === name; });
+  }
+  function nxServerOptions() {
+    const options = [{ k: 'auto', label: 'Automático — recomendado' }];
+    if (Array.isArray(S.serverCatalog)) {
+      S.serverCatalog.forEach(function (r) { options.push({ k: r.name, label: r.label }); });
+    } else {
+      Object.keys(SERVERS).filter(function (id) { return id !== 'auto'; }).forEach(function (id) {
+        options.push({ k: SERVERS[id].name, label: SERVERS[id].label + ' — aguardando lista' });
+      });
+    }
+    const saved = nxServerName(getPref(LS_SRV, 'auto'));
+    if (saved && !options.some(function (option) { return option.k === saved; }))
+      options.push({ k: saved, label: nxServerLabel(saved) + ' — indisponível nesta lista', disabled: true });
+    return options;
+  }
+  function nxPickServer(key) {
+    const name = key === 'auto' ? '' : nxServerName(key);
+    if (key !== 'auto' && (!name || !nxServerAvailable(name))) return false;
+    setPref(LS_SRV, name || 'auto');
+    if (getPref(LS_SRV, 'auto') !== (name || 'auto')) return false;
+    // A preferência não é evidência do destino da sessão já ativa.
+    S.serverFallback = '';
+    schedule();
+    return true;
+  }
+  function nxObserveCloudServer(u) {
+    if (!u) return;
+    const region = Array.isArray(S.serverCatalog) && S.serverCatalog.find(function (r) { return r.origin === u.origin; });
+    if (region) { S.serverActual = region.name; return; }
+    const host = /^([a-z0-9-]+)\.core\./i.exec(u.hostname);
+    if (!host) return;
+    const short = host[1].toUpperCase();
+    const legacy = Object.keys(SERVERS).find(function (id) { return id.toUpperCase() === short; });
+    S.serverActual = legacy ? SERVERS[legacy].name : short;
+  }
   function srvCfg() {
     const k = getPref(LS_SRV, 'auto');
     if (k === 'auto' && getPref(LS_AUTO_BEST, '0') === '1') {
       const entries = Object.keys(S.latencyByServer).filter(function (name) {
         const sample = S.latencyByServer[name];
-        if (!sample.at || Date.now() - sample.at > 24 * 3600 * 1000) return false;
-        return S.latencyByServer[name].samples >= 5 && Object.keys(SERVERS).some(function (id) { return SERVERS[id].name === name; });
+        return sample && Number.isFinite(sample.avg) && sample.avg >= 0 &&
+          Number.isFinite(sample.at) && Date.now() - sample.at >= 0 && Date.now() - sample.at < 24 * 3600 * 1000 &&
+          sample.samples >= 5 && nxServerAvailable(name);
       });
       if (entries.length) {
         entries.sort(function (a, b) { return S.latencyByServer[a].avg - S.latencyByServer[b].avg; });
-        return { name: entries[0], label: 'Medido: ' + entries[0] };
+        return { name: entries[0], label: 'Medido: ' + nxServerLabel(entries[0]) };
       }
     }
-    if (SERVERS[k]) return SERVERS[k];
-    if (/^[A-Z]{3,}$/.test(k)) return { name: k, label: k };
-    return SERVERS.auto;
+    const name = nxServerName(k);
+    return name ? { name: name, label: nxServerLabel(name) } : SERVERS.auto;
   }
   function resCfg() {
     // Respeita os perfis existentes sem mudar o padrão HQ de novas instalações.
@@ -725,47 +817,56 @@ SOFTWARE.
 
   // ---------- 6. Fixar data center: reescrever offeringSettings.regions ----------
   function rewriteRegions(res, u) {
-    const want = srvCfg();
-    if (!want.name) return Promise.resolve(res);
-
+    // xHome possui catálogo e ciclo de vida próprios; nunca reescrever seu login.
+    if (!nxCloudLogin(u)) return Promise.resolve(res);
+    if (!res || res.status !== 200) {
+      S.serverCatalog = []; S.serverCatalogStatus = 'unavailable'; S.serverPin = '';
+      S.serverFallback = ''; schedule();
+      return Promise.resolve(res);
+    }
+    let observed = false;
     return rewriteJson(res, function (j) {
+      observed = true;
+      nxCaptureServerCatalog(j);
       const os = j && j.offeringSettings;
-      if (!os || !Array.isArray(os.regions) || !os.regions.length) return false;
-
-      const hit = os.regions.filter(function (r) {
-        return String(r && r.name).toUpperCase() === want.name;
+      const want = srvCfg();
+      S.serverPin = ''; S.serverFallback = '';
+      if (!os || !Array.isArray(os.regions) || !os.regions.length || os.regions.length > 128) return false;
+      if (!want.name) return false;
+      const offered = S.serverCatalog.find(function (r) { return r.name === want.name; });
+      const hit = offered && os.regions.filter(function (r) {
+        const candidate = nxServerRegion(r);
+        return candidate && candidate.name === offered.name && candidate.origin === offered.origin;
       })[0];
       if (!hit) {
         // The server's original ordering remains authoritative on fallback.
         S.serverPin = '';
-        S.serverActual = 'região indisponível';
-        addCap({
-          at: nowStr(), host: u.host, path: u.pathname, status: res.status,
-          type: 'patched', body: 'Região alvo ' + want.name + ' não está na lista (disponíveis: ' +
-            os.regions.map(function (r) { return r.name; }).join(',') + ')'
-        });
+        S.serverFallback = nxServerLabel(want.name) + ' indisponível; seleção automática do Xbox mantida.';
+        addCap({ at: nowStr(), host: u.host, path: u.pathname, status: res.status,
+          type: 'fallback', body: 'Região solicitada não está na lista disponível.' });
         return false;
       }
-
       const rest = os.regions.filter(function (r) { return r !== hit; });
-      // Lógica do cliente: o que tem isDefault vai para o início com unshift, depois pega regions[0].
-      // Assim fixa a região sem perder as alternativas de reserva.
+      // Preserva alternativas e nunca inventa endpoints ou regiões na resposta.
       if (os.regions[0] === hit && hit.isDefault === true &&
-          rest.every(function (r) { return r.isDefault !== true; })) {
+          rest.every(function (r) { return !r || r.isDefault !== true; })) {
         S.serverPin = want.name;
         return false;
       }
       hit.isDefault = true;
-      rest.forEach(function (r) { r.isDefault = false; });
+      rest.forEach(function (r) { if (r && typeof r === 'object') r.isDefault = false; });
       os.regions = [hit].concat(rest);
-
       S.serverPin = want.name;
-      S.serverActual = want.name;
-      addCap({
-        at: nowStr(), host: u.host, path: u.pathname, status: res.status,
-        type: 'patched', body: 'streamRegion -> ' + want.name + ' (' + want.label + ')'
-      });
+      addCap({ at: nowStr(), host: u.host, path: u.pathname, status: res.status,
+        type: 'patched', body: 'streamRegion -> ' + want.name + ' (' + want.label + ')' });
       return true;
+    }).then(function (response) {
+      if (!observed) {
+        // JSON inválido ou corpo ilegível: não manter uma lista antiga como atual.
+        S.serverCatalog = []; S.serverCatalogStatus = 'invalid'; S.serverPin = '';
+        S.serverFallback = ''; schedule();
+      }
+      return response;
     });
   }
 
@@ -944,10 +1045,7 @@ SOFTWARE.
       } catch (e) { S.lastErr = String((e && e.message) || e); }
 
       const isPlay = !!(u && GSSV_RE.test(u.host) && /\/v5\/sessions\/cloud\/play$/i.test(u.pathname));
-      if (isPlay) {
-        const m = /^([a-z0-9]+)\.core\./i.exec(u.host);
-        if (m) S.serverActual = m[1].toUpperCase();
-      }
+      if (isPlay) nxObserveCloudServer(u);
 
       const go = isPlay
         ? patchPlayRequest(input, init).then(function (x) { return nativeFetch.call(this, x.input, x.init); }.bind(this))
@@ -983,7 +1081,6 @@ SOFTWARE.
 
       if (u && GSSV_RE.test(u.host) && /\/v2\/login\/user$/i.test(u.pathname)) {
         p = p.then(function (res) {
-          if (res.status !== 200) return res;
           return rewriteRegions(res, u);
         }, function (err) { throw err; });
       }
@@ -1120,7 +1217,7 @@ SOFTWARE.
         // Comparacao somente entre data centers efetivamente usados em partidas.
         // Nao confundir RTT WebRTC com ping do jogo nem sondar endpoints arbitrarios.
         const server = S.serverActual;
-        if (server && Object.keys(SERVERS).some(function (id) { return SERVERS[id].name === server; }) && Number.isFinite(q.rtt) && q.rtt >= 0) {
+        if (server && nxServerAvailable(server) && Number.isFinite(q.rtt) && q.rtt >= 0) {
           const prev = S.latencyByServer[server] || { avg: q.rtt, samples: 0 };
           prev.avg = prev.samples ? prev.avg * 0.8 + q.rtt * 0.2 : q.rtt;
           prev.samples++;
@@ -2183,6 +2280,34 @@ SOFTWARE.
       'word-break:break-word;font-variant-numeric:tabular-nums', '—');
     liveFns.push(function () { v.textContent = String(getter()); });
     return setRow(label, desc, v);
+  }
+
+  function nxServerSelect() {
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', 'Servidor de streaming');
+    select.style.cssText = 'width:100%;max-width:100%;min-height:44px;background:#161b22;color:#e8edf3;border:1px solid #30363d;border-radius:6px;padding:7px';
+    let signature = '';
+    const refresh = function () {
+      const options = nxServerOptions();
+      const selected = nxServerName(getPref(LS_SRV, 'auto')) || 'auto';
+      const next = JSON.stringify([options, selected]);
+      if (signature === next) return;
+      signature = next;
+      select.replaceChildren();
+      options.forEach(function (item) {
+        const option = document.createElement('option');
+        option.value = item.k; option.textContent = item.label; option.disabled = !!item.disabled;
+        select.appendChild(option);
+      });
+      select.value = selected;
+    };
+    select.addEventListener('change', function () {
+      if (nxPickServer(select.value)) toast('Servidor salvo. Recarregue a página para aplicar.');
+      else toast('Não foi possível salvar essa seleção. A preferência anterior foi mantida.');
+      signature = ''; refresh();
+    });
+    liveFns.push(refresh); refresh();
+    return select;
   }
 
   function chips(opts, cur, pick) {
@@ -4618,21 +4743,23 @@ SOFTWARE.
       }));
       healthGroup.add(infoRow('Codec', function () { return S.qos && S.qos.codec || '—'; }));
       root.appendChild(healthGroup.root);
-      root.appendChild(note('Alterações valem na próxima partida — não é preciso recarregar a página.'));
+      root.appendChild(note('Qualidade vale na próxima partida. Após mudar o servidor, recarregue a página para aplicar a preferência no login.'));
 
       const g1 = group('Data center');
-      const srvOpts = Object.keys(SERVERS).map(function (k) {
-        return { k: k, label: SERVERS[k].label + (k === 'auto' && S.serverActual ? ' · ' + S.serverActual : '') };
-      });
-      const rs = setRow('Servidor de streaming', 'Fixa o data center usado ao iniciar o jogo.',
-        chips(srvOpts, getPref(LS_SRV, 'auto'), function (k) {
-          setPref(LS_SRV, k);
-          S.serverActual = '';
-          S.serverPin = SERVERS[k].name;
-          renderBody();
-        }), true);
-      g1.add(rs);
-      g1.add(setRow('Escolher o mais rápido', 'No modo Auto, usa o data center com menor RTT medido nas últimas 24 h (mínimo 5 amostras).',
+      g1.add(setRow('Servidor de streaming', 'Aplicada no login após recarregar a página. A partida atual não muda de servidor; o Xbox mantém alternativas se a região estiver indisponível.',
+        nxServerSelect(), true));
+      const applyServer = actBtn('Recarregar para aplicar servidor', function () { location.reload(); }, 'ghost');
+      const refreshApplyServer = function () { applyServer.disabled = streaming(); };
+      liveFns.push(refreshApplyServer); refreshApplyServer();
+      g1.add(setRow('Aplicar seleção', 'Encerre a partida antes de recarregar. Suas preferências ficam salvas.', applyServer));
+      g1.add(infoRow('Regiões disponíveis', function () {
+        return S.serverCatalogStatus === 'ready' ? S.serverCatalog.length + ' anunciadas pelo Xbox nesta sessão' :
+          S.serverCatalogStatus === 'waiting' ? 'Aguardando login do Xbox' : 'Lista indisponível; seleção nativa preservada';
+      }));
+      g1.add(infoRow('Destino observado', function () { return S.serverActual || 'Ainda não observado'; },
+        'Identificado pelo endpoint de criação da sessão; não comprova a localização física do servidor.'));
+      g1.add(infoRow('Seleção', function () { return S.serverFallback || (srvCfg().name ? 'Preferência: ' + srvCfg().label : 'Automática'); }));
+      g1.add(setRow('Preferir conexão já medida', 'No modo Automático, considera apenas regiões disponíveis com RTT medido nas últimas 24 h (mínimo 5 amostras). O histórico não é uma medição atual.',
         toggle(getPref(LS_AUTO_BEST, '0') === '1', function () {
           const enabled = getPref(LS_AUTO_BEST, '0') === '1';
           setPref(LS_AUTO_BEST, enabled ? '0' : '1');
@@ -6122,9 +6249,7 @@ SOFTWARE.
   // ---------- 14. Aplicação de configurações ----------
   function pickApply(kind, k) {
     if (kind === 'srv') {
-      setPref(LS_SRV, k);
-      S.serverActual = '';
-      S.serverPin = SERVERS[k].name;
+      nxPickServer(k);
       return false;
     }
     if (kind === 'bitrate') { setPref(LS_BITRATE, k); return false; }
