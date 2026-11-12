@@ -278,18 +278,24 @@ test('session: HTTP rejection never reports created',async()=>{
   assert.match(api.state.error,/403/);
 });
 
-test('session: terminal provisioning error fails safely',async()=>{
+test('session: terminal provisioning error releases the created session before reporting failure',async()=>{
   let n=0;
-  const api=harness(async()=>{
+  const calls=[];
+  const api=harness(async(url,opts)=>{
+    calls.push({url,opts});
     if(++n===1)return ok(login);
     if(n===2)return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
-    return ok({state:'Failed'});
+    if(n===3)return ok({state:'Failed'});
+    return {ok:true,status:204};
   });
   api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
   await api.startSession();
-  assert.equal(n,3);
+  assert.equal(n,4);
+  assert.equal(calls[3].opts.method,'DELETE');
+  assert.equal(api.state.sessionId,'');
   assert.equal(api.state.sessionStatus,'failed');
   assert.match(api.state.error,/não provisionada/);
+  assert.match(api.state.error,/Sessão remota liberada/);
 });
 
 test('session: WebRTC offer is sent and SDP answer is applied',async()=>{
