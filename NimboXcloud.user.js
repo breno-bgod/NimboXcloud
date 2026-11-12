@@ -5222,7 +5222,8 @@
     root.appendChild(intro.root);
     const editor=group('Personalização','Arraste os controles na tela do jogo. Use − e + para alterar o tamanho, × para ocultar e o seletor para adicionar controles novamente.');
     editor.add(mk('div','font-size:11px;line-height:1.5;color:'+C.dim,'Salve o layout no próprio dispositivo. A edição só fica disponível enquanto a HUD estiver ativada.'));
-    editor.add(setRow('Transparência','Ajusta a transparência visual dos controles.',range(20,100,1,Math.round(nxVirtualGamepad.opacity*100),function(v){nxVirtualGamepad.opacity=Number(v)/100;if(nxVirtualGamepad.hud)nxVirtualGamepad.hud.style.setProperty('--nx-vpad-opacity',String(nxVirtualGamepad.opacity));})));
+    const opacity=document.createElement('input');opacity.type='range';opacity.min='20';opacity.max='100';opacity.step='1';opacity.value=String(Math.round(nxVirtualGamepad.opacity*100));opacity.style.cssText='width:100%;max-width:220px';opacity.addEventListener('input',function(){nxVirtualGamepad.opacity=Number(opacity.value)/100;if(nxVirtualGamepad.hud)nxVirtualGamepad.hud.style.setProperty('--nx-vpad-opacity',String(nxVirtualGamepad.opacity));});
+    editor.add(setRow('Transparência','Ajusta a transparência visual dos controles.',opacity));
     editor.add(actBtn('Restaurar layout original',function(){nxVirtualGamepad.layout=NX_VPAD_DEFAULTS.map(function(c){return Object.assign({},c);});nxVirtualPadSaveLayout();if(nxVirtualGamepad.hud)nxVirtualPadRenderHud();renderBody();},'ghost'));
     root.appendChild(editor.root);
   };
