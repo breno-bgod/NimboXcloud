@@ -1,42 +1,45 @@
 # P00 — Estado de validação e evidências
 
-Revisão: 2026-11-12. Commit verificado: `97a275564ca1b2433d2f3d350f42e544904582cb`. Runtime: v4.12.87.
+Revisão: 2026-11-12. Código verificado: `5b51cc3cb8d1ab1f93d5d7571cb20b578763e881`. Runtime: v4.12.89.
 
-## Evidência automatizada confirmada
+## Evidência automatizada confirmada na main
 
-O [workflow baseline #43313714460](https://github.com/breno-bgod/NimboXcloud/actions/runs/43313714460), executado em `main`, concluiu com sucesso no commit acima. O job e seus passos foram consultados diretamente pela integração GitHub.
+Após o merge do [PR #15](https://github.com/breno-bgod/NimboXcloud/pull/15), os dois workflows foram executados novamente no commit de código da main:
 
 | Verificação | Estado | Evidência / limitação |
 |---|---|---|
-| Sintaxe do userscript principal | **PASSOU no CI** | Passo `node --check NimboXcloud.user.js` concluído com sucesso |
-| Sintaxe do módulo Touch HUD | **PASSOU no CI** | Passo `node --check modules/NimboXcloud-Touch-HUD.user.js` concluído com sucesso |
-| Suíte CommonJS | **PASSOU no CI** | Passo `node --test tests/*.test.cjs` concluído com sucesso; contagem de testes não extraída nesta revisão |
-| Relatório estático | **EXECUTADO no CI** | `node tools/static-risk-report.cjs` concluiu; o programa relata padrões e não reprova automaticamente achados |
-| Teste legado `tests/smoke.test.mjs` | **FORA DO CI / DESATUALIZADO** | Lê `xbox-cloud-unlock-ptbr.user.js`, ausente na árvore verificada; contém expectativas antigas de F9/Pointer Lock e Remote Play |
-| Chrome/Edge, Android e xCloud | **NÃO VERIFICADO nesta revisão** | Exige sessão autenticada e dispositivos; CI não comprova jogabilidade |
-| HUD nativo, multitouch e controle físico | **NÃO VERIFICADO em sessão real nesta revisão** | Testes estáticos e mocks não comprovam integração com o cliente Xbox |
-| Remote Play xHome | **NÃO HOMOLOGADO** | Manter UI oculta conforme a matriz de decisões; sucesso de testes não comprova mídia e entrada |
+| Sintaxe do userscript principal | **PASSOU no CI** | `node --check NimboXcloud.user.js` |
+| Sintaxe do módulo Touch HUD | **PASSOU no CI** | `node --check modules/NimboXcloud-Touch-HUD.user.js` |
+| Suíte CommonJS + ESM | **PASSOU no CI** | 205 testes, 202 PASS, 0 FAIL, 3 TODO |
+| Relatório estático | **EXECUTADO no CI** | `node tools/static-risk-report.cjs`; padrões relatados exigem avaliação contextual |
+| Regressão xHome Stop→Start / ICE pendente | **PASSOU no CI** | O Stop aborta o controller ativo; resposta tardia da sessão A não altera a sessão B |
+| Smoke legado ESM | **INCLUÍDO NO CI** | `tests/*.test.mjs` é executado nos dois workflows |
+| Chrome/Edge, Android/DeX e jogo xCloud | **NÃO TESTADO nesta revisão** | Requer navegador, dispositivos e sessão autenticada |
+| Remote Play xHome | **NÃO HOMOLOGADO** | Mocks não comprovam mídia, áudio ou aceitação de comandos pelo console |
 
-## Revisão local 4.12.88 — 2026-11-12
+### Execuções
 
-A lacuna do smoke legado foi corrigida: arquivo correto, contratos atuais e inclusão de `tests/*.test.mjs` nos dois workflows. O teste do relatório estático executa o corpo real do CLI em VM, sem subprocessos; o CLI também foi executado diretamente.
+- [Baseline na main — run 43322395932](https://github.com/breno-bgod/NimboXcloud/actions/runs/43322395932): PASS; 205 testes, 202 PASS, 0 FAIL, 3 TODO.
+- [NX/xHome na main — run 43322395967](https://github.com/breno-bgod/NimboXcloud/actions/runs/43322395967): PASS; 205 testes, 202 PASS, 0 FAIL, 3 TODO.
+- Os mesmos dois workflows também passaram no head do PR antes do merge: [baseline 43322313258](https://github.com/breno-bgod/NimboXcloud/actions/runs/43322313258) e [NX/xHome 43322313707](https://github.com/breno-bgod/NimboXcloud/actions/runs/43322313707).
 
-- Ambiente local: Node 24.22.1.
-- Comando: `node --test --test-isolation=none tests/*.test.cjs tests/*.test.mjs`.
-- Resultado: **204 testes, 201 PASS, zero FAIL, três TODO**.
-- Sintaxe dos dois scripts: passou. Relatório estático: executado; quatro achados de hooks, não classificados automaticamente como bugs.
-- A opção sem isolamento foi usada porque a criação de subprocessos Node retorna EPERM neste ambiente. O CI em Node 22 executa o comando padrão com isolamento; seu resultado será registrado separadamente.
-- Não houve teste de navegador/sessão autenticada nesta revisão. Os três TODO continuam pendentes.
+## Correção 4.12.89 — cancelamento do polling ICE
 
-A linha do teste legado na tabela acima descreve a base 4.12.87, antes desta correção. Consulte o [plano comparativo](./PLANO_ATUALIZACAO.md) para alterações e riscos.
+O controller de `nxRemoteStartSession()` agora permanece associado à sessão enquanto houver `sessionId`. Isso permite que `nxRemoteStop()` aborte um GET `/ice` pendente. Quando a inicialização falha antes de criar uma sessão, a referência continua sendo limpa no `finally`.
 
-## Critério de aceite para mudanças futuras
+A regressão usa duas sessões e dois peers simulados. O fetch antigo ignora deliberadamente o AbortSignal e retorna depois que a sessão B está ativa. O teste confirma que o candidato antigo não é aplicado, o status/peer/timer de B permanecem intactos e nenhum poll adicional é agendado.
 
-1. Executar verificações de sintaxe nos dois userscripts.
-2. Executar a suíte CommonJS e qualquer suíte adicional mantida.
-3. Revisar o relatório de risco; sua saída bem-sucedida não significa ausência de riscos.
-4. Registrar execução, SHA, contagens quando disponíveis e limitações.
-5. Validar início, encerramento, reconexão, controles e toque em sessão real antes de declarar estabilidade.
+A primeira execução do teste falhou porque o controller já havia sido removido antes de Stop. Essa falha revelou o defeito real; a correção foi aplicada e os dois workflows passaram depois. O transporte ICE, autenticação, SDP, endpoints e caminho de input xCloud retail não foram modificados.
 
-Esta evidência se refere exclusivamente ao commit identificado. Não equivale à execução local nesta conversa nem certifica commits posteriores.
+## Ambiente e limitações
 
+- O CI executa Node 22, verifica a sintaxe dos dois userscripts, roda `tests/*.test.cjs` e `tests/*.test.mjs`, e executa o relatório estático.
+- Não há `package.json` na raiz; build/lint npm separados não estão configurados.
+- Não foi executado Node local nesta revisão.
+- Não houve teste em Chrome/Edge, Tampermonkey, Android/DeX, conta Xbox autenticada, console físico, NAT real, vídeo/áudio ou comandos de jogo.
+- Os 3 testes TODO permanecem pendentes.
+- Remote Play continua experimental; sucesso dos mocks não equivale a transmissão funcional ou controle homologado.
+
+## Próxima validação
+
+Testar o limite de 30 consultas do ICE poll e a transição para `connected` enquanto um GET está pendente. Aceite: nenhum timer novo após conexão, falha terminal ou esgotamento; Stop continua abortando; erros de uma sessão antiga não alteram uma sessão posterior; ambos workflows permanecem verdes.
