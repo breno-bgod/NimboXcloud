@@ -1,3 +1,14 @@
+## [4.12.85] — 2026-11-12
+- Reorganizado o painel NX por responsabilidade: Vídeo, Imagens, Streaming, Estatísticas, Gamepad, Teclado e mouse, Áudio, Voz, Remote Play, Região da loja, Interface, Compatibilidade e Sistema.
+- Separados os ajustes de perfil do dispositivo, enquadramento e tela cheia dos filtros de imagem e do processamento gráfico WebGL2.
+- Movidos giroscópio, vibração, diagnóstico de gamepad e atalho do controle para **Gamepad**.
+- Movidos NimboTouch, editor de HUD, diagnóstico de toque/mouse e atalho de teclado para **Teclado e mouse**.
+- Corrigida a associação da página **Voz**: agora ela exibe o grupo do microfone, em vez do terceiro grupo de diagnóstico de entradas.
+- Separados os grupos de microfone e vibração; as preferências e chaves locais existentes foram preservadas.
+- Transferidos métricas e configurações do NX Stream Monitor para **Estatísticas**; Streaming mantém data center, qualidade solicitada, rede e medições de servidores.
+- O módulo gráfico atual usa WebGL2/filtros locais; FSR 1 não está implementado nesta versão.
+- Adicionados testes estáticos para propriedade das categorias, navegação, atalhos e separação de telemetria.
+
 ## [4.12.84] — 2026-11-12
 - Made xHome virtual gamepad a separate presentation mode: while enabled, the K/M touch area, WASD joystick and mapped keyboard/mouse buttons are hidden. The shared HUD editor still exposes both layouts so each can be positioned and adjusted independently.
 - No input transport, xCloud retail path, Gamepad API hook or scheduler changed.
