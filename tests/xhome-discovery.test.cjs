@@ -8,7 +8,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('const nxRemotePlay =');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady};';
+const code = 'let openUI=false;let nxCaptureKeys=null;let nxCapturePad=null;\n' + source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady,setInputEnabled:nxRemoteInputSetEnabled,inputReady:nxRemoteInputReady,inputCanEnable:nxRemoteInputCanEnable,sendKeyboard:nxRemoteInputSendKeyboard,sendMouse:nxRemoteInputSendMouse,releaseSource:nxRemoteInputReleaseSource,releaseAll:nxRemoteInputReleaseAll,handleKey:nxRemoteInputHandleKeyboard,handlePointerMove:nxRemoteInputHandlePointerMove,handlePointerDown:nxRemoteInputHandlePointerDown,handlePointerUp:nxRemoteInputHandlePointerUp,handleWheel:nxRemoteInputHandleWheel,installInputListeners:nxRemoteInputInstallListeners,inputState:function(){return {keys:Array.from(nxRemoteHeldKeys.keys()),mouse:Array.from(nxRemoteMouseSources.entries()),sequence:nxRemoteInputSequence,listeners:nxRemoteInputListenersInstalled};},setUiOpen:function(v){openUI=!!v;},setCapturing:function(k,p){nxCaptureKeys=k;nxCapturePad=p;},setFocused:function(v){nxRemoteGamepadWindowFocused=!!v;},setPointerLock:function(v){document.pointerLockElement=v;},setCloudSession:function(v){window.NimboTouch.hasCloudSession=()=>!!v;},setPanelOpen:function(v){window.NimboTouch.isPanelOpen=()=>!!v;},documentListeners:function(type){return (document.listeners[type]||[]).length;}};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
   let timerId=0;
   const fakeTimers=new Map();
@@ -19,6 +19,8 @@ function harness(fetchImpl, storageOverride, rtcClass, timerOverrides) {
     setTimeout:timerOverrides&&timerOverrides.setTimeout||browserSetTimeout,
     clearTimeout:timerOverrides&&timerOverrides.clearTimeout||browserClearTimeout,
     fetch: fetchImpl, tabId: 'other', renderBody() {}, navigator:{language:'pt-BR'},
+    document:{visibilityState:'visible',pointerLockElement:null,hasFocus(){return true;},listeners:{},addEventListener(type,fn){(this.listeners[type]||(this.listeners[type]=[])).push(fn);}},
+    window:{listeners:{},addEventListener(type,fn){(this.listeners[type]||(this.listeners[type]=[])).push(fn);},NimboTouch:{hasCloudSession(){return false;},isPanelOpen(){return false;},refreshRemoteInput(){},stop(){},isRemoteInputActive(){return false;}}},
     localStorage: {
       getItem(k) { return k === 'xboxcom_xbl_user_info' ? JSON.stringify({tokens:{'http://gssv.xboxlive.com/':{token:'TEST_GSSV'}}}) : null; },
       get length() { return 0; }
@@ -1071,4 +1073,144 @@ test('mouse encoder: clamps integer fields and rejects invalid pointer mode',()=
   assert.equal(view.getUint8(31),255);
   assert.equal(view.getUint8(32),1,'absolute pointer mode');
   assert.equal(api.encodeMouseFrame({X:0,Y:0,Relative:2},0,0),null);
+});
+
+
+test('xHome input mode is opt-in and automatically suspends when Cloud Gaming becomes active',()=>{
+  const {api}=readyInputHarness();
+  api.state.mediaStream={getVideoTracks(){return [{readyState:'live'}];}};
+  api.state.videoElement={isConnected:true,getBoundingClientRect(){return {left:0,top:0,width:960,height:540,right:960,bottom:540};}};
+  assert.equal(api.state.inputEnabled,false);
+  assert.equal(api.sendKeyboard('KeyA',true,'physical'),false);
+  api.setCloudSession(true);
+  assert.equal(api.setInputEnabled(true,false),false);
+  assert.equal(api.state.inputEnabled,false);
+  api.setCloudSession(false);
+  assert.equal(api.setInputEnabled(true,false),true);
+  assert.equal(api.inputReady(),true);
+  api.setCloudSession(true);
+  assert.equal(api.inputReady(),false);
+  assert.equal(api.state.inputEnabled,false,'Cloud Gaming detection disables xHome input mode');
+});
+
+test('xHome keyboard dispatcher shares held keys between physical and NimboTouch sources',()=>{
+  const {api,channels}=readyInputHarness();
+  api.state.mediaStream={getVideoTracks(){return [{readyState:'live'}];}};
+  api.state.videoElement={isConnected:true,getBoundingClientRect(){return {left:0,top:0,width:960,height:540,right:960,bottom:540};}};
+  assert.equal(api.setInputEnabled(true,false),true);
+  assert.equal(api.sendKeyboard('KeyW',true,'physical'),true);
+  assert.equal(api.sendKeyboard('KeyW',true,'touch'),true);
+  let frames=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===18);
+  assert.equal(frames.length,1,'shared key emits one keydown');
+  assert.equal(new DataView(frames[0]).getUint8(16),1);
+  assert.equal(api.sendKeyboard('KeyW',false,'physical',true),true);
+  frames=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===18);
+  assert.equal(frames.length,1,'first owner release does not release a key still held by touch');
+  assert.equal(api.sendKeyboard('KeyW',false,'touch',true),true);
+  frames=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===18);
+  assert.equal(frames.length,2);
+  assert.equal(new DataView(frames[1]).getUint8(16),0);
+  assert.deepEqual(api.inputState().keys,[]);
+});
+
+test('xHome physical keyboard dispatcher ignores synthetic, repeated, editable and browser-shortcut events',()=>{
+  const {api,channels}=readyInputHarness();
+  api.state.mediaStream={getVideoTracks(){return [{readyState:'live'}];}};
+  api.state.videoElement={isConnected:true,getBoundingClientRect(){return {left:0,top:0,width:960,height:540,right:960,bottom:540};}};
+  api.setInputEnabled(true,false);
+  const event={isTrusted:false,code:'KeyA',target:{tagName:'BODY'},preventDefault(){this.prevented=true;}};
+  assert.equal(api.handleKey(event,true),false);
+  event.isTrusted=true;event.repeat=true;
+  assert.equal(api.handleKey(event,true),false);
+  event.repeat=false;event.target={tagName:'INPUT'};
+  assert.equal(api.handleKey(event,true),false);
+  event.target={tagName:'BODY'};event.ctrlKey=true;event.code='KeyR';
+  assert.equal(api.handleKey(event,true),false,'browser reload shortcut is not captured');
+  event.ctrlKey=false;event.code='KeyA';
+  assert.equal(api.handleKey(event,true),true);
+  assert.equal(event.prevented,true);
+  assert.equal(channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===18).length,1);
+});
+
+test('xHome mouse dispatcher maps decoded absolute coordinates and relative Pointer Lock movement',()=>{
+  const {api,channels}=readyInputHarness();
+  const video={isConnected:true,videoWidth:1920,videoHeight:1080,getBoundingClientRect(){return {left:100,top:50,width:960,height:540,right:1060,bottom:590};},contains(target){return target===this;}};
+  api.state.mediaStream={getVideoTracks(){return [{readyState:'live',getSettings(){return {width:1920,height:1080};}}];}};api.state.videoElement=video;api.setInputEnabled(true,false);
+  const absolute={isTrusted:true,pointerType:'mouse',target:video,clientX:580,clientY:320,movementX:0,movementY:0};
+  assert.equal(api.handlePointerMove(absolute),true);
+  let frames=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===33);
+  let view=new DataView(frames.at(-1));
+  assert.equal(view.getInt32(15,true),960);assert.equal(view.getInt32(19,true),540);assert.equal(view.getUint8(32),0);
+  api.setPointerLock(video);
+  const relative={...absolute,movementX:-7,movementY:11};
+  assert.equal(api.handlePointerMove(relative),true);
+  frames=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===33);
+  view=new DataView(frames.at(-1));
+  assert.equal(view.getInt32(15,true),-7);assert.equal(view.getInt32(19,true),11);assert.equal(view.getUint8(32),1);
+});
+
+test('xHome mouse dispatcher rejects letterbox bars and uses actual track dimensions',()=>{
+  const {api,channels}=readyInputHarness();
+  const video={isConnected:true,videoWidth:0,videoHeight:0,getBoundingClientRect(){return {left:0,top:0,width:1000,height:540,right:1000,bottom:540};},contains(target){return target===this;}};
+  api.state.mediaStream={getVideoTracks(){return [{readyState:'live',getSettings(){return {width:1920,height:1080};}}];}};api.state.videoElement=video;api.setInputEnabled(true,false);
+  assert.equal(api.handlePointerMove({isTrusted:true,pointerType:'mouse',target:video,clientX:10,clientY:270}),false,'letterbox bar is not mapped to an in-game coordinate');
+  assert.equal(api.handlePointerMove({isTrusted:true,pointerType:'mouse',target:video,clientX:500,clientY:270}),true);
+  const frames=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===33);
+  const view=new DataView(frames.at(-1));
+  assert.equal(view.getInt32(15,true),960);assert.equal(view.getInt32(19,true),540);
+});
+
+test('xHome mouse release works outside video and wheel deltas are normalized',()=>{
+  const {api,channels}=readyInputHarness();
+  const video={isConnected:true,videoWidth:1920,videoHeight:1080,getBoundingClientRect(){return {left:100,top:50,width:960,height:540,right:1060,bottom:590};},contains(target){return target===this;}};
+  api.state.mediaStream={getVideoTracks(){return [{readyState:'live',getSettings(){return {width:1920,height:1080};}}];}};api.state.videoElement=video;api.setInputEnabled(true,false);
+  const down={isTrusted:true,pointerType:'mouse',button:0,target:video,clientX:200,clientY:200,movementX:0,movementY:0,preventDefault(){}};
+  assert.equal(api.handlePointerDown(down),true);
+  const up={...down,target:{tagName:'BODY'},clientX:1400,clientY:900};
+  assert.equal(api.handlePointerUp(up),true);
+  let frames=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===33);
+  assert.equal(new DataView(frames.at(-1)).getUint8(31),0,'mouse button is released outside video');
+  const wheel={isTrusted:true,target:video,clientX:200,clientY:200,deltaX:0,deltaY:100,deltaMode:0,preventDefault(){this.prevented=true;}};
+  assert.equal(api.handleWheel(wheel),true);
+  frames=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===33);
+  assert.equal(new DataView(frames.at(-1)).getInt32(27,true),120);
+  assert.equal(wheel.prevented,true);
+});
+
+test('xHome input release-all sends keyup and neutral mouse frames',()=>{
+  const {api,channels}=readyInputHarness();
+  api.state.mediaStream={getVideoTracks(){return [{readyState:'live'}];}};
+  api.state.videoElement={isConnected:true,getBoundingClientRect(){return {left:0,top:0,width:960,height:540,right:960,bottom:540};}};
+  api.setInputEnabled(true,false);
+  api.sendKeyboard('KeyA',true,'physical');
+  api.sendMouse({X:0,Y:0,Buttons:1,WheelX:0,WheelY:0,Relative:1},'physical',false);
+  assert.equal(api.releaseAll(true),true);
+  const keyboard=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===18);
+  const mouse=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&data.byteLength===33);
+  assert.equal(new DataView(keyboard.at(-1)).getUint8(16),0);
+  assert.equal(new DataView(mouse.at(-1)).getUint8(31),0);
+  assert.deepEqual(api.inputState().keys,[]);assert.deepEqual(api.inputState().mouse,[]);
+});
+
+test('xHome keyboard, mouse and gamepad reports share one monotonic input sequence',()=>{
+  const {api,channels}=readyInputHarness();
+  api.state.mediaStream={getVideoTracks(){return [{readyState:'live'}];}};
+  api.state.videoElement={isConnected:true,getBoundingClientRect(){return {left:0,top:0,width:960,height:540,right:960,bottom:540};}};
+  api.setInputEnabled(true,false);
+  api.sendKeyboard('KeyA',true,'physical');
+  api.sendMouse({X:1,Y:2,Buttons:0,WheelX:0,WheelY:0,Relative:1},'physical',false);
+  api.tickGamepads([standardPad(0)],true);
+  const packets=channels.input.sent.filter(data=>Object.prototype.toString.call(data)==='[object ArrayBuffer]'&&[18,33,38].includes(data.byteLength));
+  assert.deepEqual(packets.map(packet=>new DataView(packet).getUint32(2,true)),[0,1,2]);
+});
+
+test('xHome input listener installation is idempotent and adds no duplicate keyboard listeners',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  assert.equal(api.installInputListeners(),true);
+  assert.equal(api.installInputListeners(),false);
+  assert.equal(api.inputState().listeners,true);
+  assert.equal(api.documentListeners('pointermove'),1);
+  assert.equal(api.documentListeners('wheel'),1);
+  assert.equal(api.documentListeners('keydown'),0);
+  assert.equal(api.documentListeners('keyup'),0);
 });
