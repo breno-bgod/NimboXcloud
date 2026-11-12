@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.45
+// @version      4.12.46
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.45
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.46
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -1562,12 +1562,41 @@
     return b;
   }
 
+  let nxKeyboardMouseButton=null;
+  function nxMountNativeActions(anchor,expanded){
+    if(!anchor?.parentElement)return;
+    const parent=anchor.parentElement;
+    if(!nxLibraryButton)nxLibraryButton=buildLibraryButton();
+    if(!nxKeyboardMouseButton){
+      const b=document.createElement('button');b.id='nimboxcloud-native-keyboard-mouse';b.type='button';
+      b.setAttribute('aria-label','Ativar ou desativar teclado e mouse NimboXcloud');
+      b.title='Teclado e mouse NimboTouch';
+      b.style.cssText='all:unset;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:40px;height:40px;min-width:40px;flex-shrink:0;cursor:pointer;border-radius:50%;color:white;position:relative;z-index:2147483000';
+      b.innerHTML='<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="pointer-events:none"><rect x="2" y="5" width="13" height="10" rx="2"/><path d="M4 9h9M5 12h7M7 18h6"/><rect x="17" y="4" width="5" height="12" rx="2.5"/><path d="M19.5 4v5"/></svg>';
+      b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();const api=window.NimboTouch;if(!api?.toggle){toast('NimboTouch indisponível nesta sessão');return;}api.toggle();nxUpdateNativeTouchButton();});
+      nxKeyboardMouseButton=b;
+    }
+    if(nxLibraryButton.parentElement!==parent||nxLibraryButton.previousElementSibling!==anchor)anchor.after(nxLibraryButton);
+    if(nxKeyboardMouseButton.parentElement!==parent||nxKeyboardMouseButton.previousElementSibling!==nxLibraryButton)nxLibraryButton.after(nxKeyboardMouseButton);
+    nxLibraryButton.style.display=expanded?'inline-flex':'none';
+    nxKeyboardMouseButton.style.display=expanded?'inline-flex':'none';
+    nxUpdateNativeTouchButton();
+  }
+  function nxUpdateNativeTouchButton(){
+    if(!nxKeyboardMouseButton)return;
+    const on=!!window.NimboTouch?.isEnabled?.();
+    nxKeyboardMouseButton.setAttribute('aria-pressed',String(on));
+    nxKeyboardMouseButton.style.background=on?'rgba(60,185,125,.28)':'transparent';
+    nxKeyboardMouseButton.style.color=on?'#a4ffd0':'white';
+    nxKeyboardMouseButton.title=on?'Desativar teclado e mouse':'Ativar teclado e mouse';
+  }
+
   // Encontra a faixa compacta de controles do xCloud no canto superior esquerdo.
   // Não altera botões nativos: só acrescenta o acesso NX quando a estrutura é reconhecível.
   function findInGameToolbar() {
     const candidates = document.querySelectorAll('button,[role="button"]');
     for (const node of candidates) {
-      if (node.id === 'nimboxcloud-library-button' || node.closest('#__xcu_panel__')) continue;
+      if (node.id === 'nimboxcloud-library-button' || node.id === 'nimboxcloud-native-keyboard-mouse' || node.closest('#__xcu_panel__')) continue;
       const r = node.getBoundingClientRect();
       if (r.width < 22 || r.width > 90 || r.height < 22 || r.height > 90 ||
           r.left < 0 || r.left > 170 || r.top < 0 || r.top > 105) continue;
@@ -1579,7 +1608,7 @@
             pr.height < 28 || pr.height > 125) continue;
         const buttons = Array.from(parent.querySelectorAll('button,[role="button"]'))
           .filter(function (b) {
-            if (b.id === 'nimboxcloud-library-button') return false;
+            if (b.id === 'nimboxcloud-library-button' || b.id === 'nimboxcloud-native-keyboard-mouse') return false;
             const br = b.getBoundingClientRect();
             return br.width >= 22 && br.height >= 22 && br.left >= pr.left - 2 &&
               br.right <= pr.right + 2 && br.top >= pr.top - 2 && br.bottom <= pr.bottom + 2;
@@ -1605,7 +1634,7 @@
     // Exigir pelo menos dois controles NATIVOS visíveis no mesmo grupo.
     const parent = anchor.parentElement;
     const buttons = Array.from(parent.querySelectorAll('button,[role="button"]')).filter(function (b) {
-      if (b === nxLibraryButton || b.id === 'nimboxcloud-library-button' || b.closest('#__xcu_panel__')) return false;
+      if (b === nxLibraryButton || b === nxKeyboardMouseButton || b.id === 'nimboxcloud-library-button' || b.id === 'nimboxcloud-native-keyboard-mouse' || b.closest('#__xcu_panel__')) return false;
       const r = b.getBoundingClientRect();
       if (r.width < 20 || r.height < 20 || r.left < 0 || r.right > innerWidth ||
           r.top < 0 || r.bottom > innerHeight) return false;
@@ -1719,15 +1748,12 @@
     if (playing) {
       const nativeAnchor=findInGameToolbar();
       nxNativeMenuPriority(!!nativeAnchor&&toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor),nativeAnchor);
-      if (nxCompactMobile()) { if (micTestStream) stopMicrophoneTest(); nxPositionMobileDrawer(); return; }
+      if (nxCompactMobile()) { if (micTestStream) stopMicrophoneTest(); if(nativeAnchor)nxMountNativeActions(nativeAnchor,toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor));else if(nxKeyboardMouseButton)nxKeyboardMouseButton.style.display='none'; nxPositionMobileDrawer(); return; }
       if (micTestStream) stopMicrophoneTest(); // Nunca manter a captura de diagnóstico durante a sessão.
       const gameAnchor = findInGameToolbar();
       if (gameAnchor && gameAnchor.parentElement) {
-        if (!nxLibraryButton) nxLibraryButton = buildLibraryButton();
-        if (nxLibraryButton.parentElement !== gameAnchor.parentElement ||
-            nxLibraryButton.previousElementSibling !== gameAnchor) gameAnchor.after(nxLibraryButton);
         const expanded = toolbarExpanded(gameAnchor) && nxNativeToolbarOpen(gameAnchor);
-        nxLibraryButton.style.display = expanded ? 'inline-flex' : 'none';
+        nxMountNativeActions(gameAnchor,expanded);
         nxLibraryButton.title = 'Abrir NimboXcloud durante a partida';
         // O botão NX deve recolher junto com a barra nativa. Painel aberto permanece acessível.
         // Barra nativa recolhida não implica fechar o painel aberto pelo atalho.
