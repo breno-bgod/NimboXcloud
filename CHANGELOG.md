@@ -1,3 +1,13 @@
+## [4.12.69] — 2026-11-12
+- Added opt-in physical keyboard/mouse capture for xHome, gated by a ready WebRTC input channel; capture is off by default and leaves Escape, F5/F9/F11/F12 and browser/system modifier shortcuts untouched.
+- Reused the existing NX keydown/keyup and diagnostics pointerdown/pointermove paths; added pointerup, pointercancel and wheel handling without a second keyboard manager or another Gamepad API hook.
+- Unified the input sequence across gamepad, keyboard and mouse; source-aware held-key/button aggregation prevents physical and NimboTouch inputs from releasing each other prematurely.
+- Added neutralization on blur, hidden page, Pointer Lock loss, pagehide and Stop; relative mouse movement is sent only while native Pointer Lock is active.
+- Added a NimboTouch remote transport adapter so its existing editable HUD and virtual keys route through the same xHome dispatcher; native xCloud capture is suspended only while the remote sink is attached.
+- Added deterministic tests for shared sequence, simultaneous input sources, backpressure, capture gating, neutralization and the NimboTouch adapter.
+- Protocol cross-check: the current unknownskl/xbox-xcloud-player package declares MIT; its mousekeyboard.ts confirms Relative=0 is relative, and packet.ts confirms 3-byte VKey records. No upstream source was copied.
+- Still experimental: no Xbox hardware session has confirmed that the console accepts the combined keyboard/mouse/touch stream; video/audio and actual control response remain unverified.
+
 ## [4.12.68] — 2026-11-12
 - Added pure xHome keyboard and mouse encoders using the shared 14-byte input header: Keyboard report 64 with a 3-byte VKey frame, and Mouse report 32 with an 18-byte frame.
 - Added physical KeyboardEvent.code to Windows virtual-key mapping with validated legacy keyCode fallback; unknown keys are rejected instead of emitting ambiguous input.
