@@ -1,3 +1,11 @@
+## [4.12.71] — 2026-11-12
+- Added a read-only TAK runtime probe for the `window.testTouchLayout` own-property descriptor. It never invokes the hook, executes accessors, inspects layout contents, or mutates the stream.
+- Exposed the probe in the NX device-compatibility diagnostic and protocol report; absence is explicitly scoped to the userscript-visible window and is not treated as proof that the page runtime lacks TAK.
+- Added five deterministic tests covering missing, callable, accessor, non-function and hostile descriptor cases.
+- Documented the official TAK v4.0 schema capabilities (analog sticks, gamepad actions, touchpad, gyroscope, accelerometer, opacity, scale, sensitivity and deadzone) and the distinction between the Better xCloud runtime test hook and Microsoft's developer-only sideload flow.
+- Aligned the internal diagnostic version constant with the published userscript version while releasing 4.12.71.
+- No layout is applied and no Remote Play or Cloud Gaming input path is changed.
+
 ## [4.12.70] — 2026-11-12
 - Added the NX Minimal Touch visual skin to the existing NimboTouch HUD: compact translucent-black key buttons with white labels, a lighter analog-stick base and knob, and a discreet touch/mouse surface with an editor-only aiming marker.
 - The skin is presentation-only: it does not convert keyboard/mouse bindings into Xbox gamepad buttons, add a native TAK D-pad, or claim analog gamepad output. Existing input behavior and saved HUD geometry remain unchanged.
