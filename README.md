@@ -68,7 +68,7 @@ Minha prioridade é **preservar os controles nativos**, inclusive o toque e os c
 
 ## Nova experiência NX — interface minimalista (em desenvolvimento)
 
-O **NX** está sendo reorganizado para mostrar menos elementos durante a jogatina, sem remover as ferramentas avançadas. A tela inicial do painel agora agrupa os acessos em **Transmissão, Controles, Personalização e Avançado**, com seções recolhíveis. As páginas de áudio, voz, servidores, gráficos e diagnóstico continuam acessíveis dentro dessas áreas.
+O **NX** está sendo reorganizado para mostrar menos elementos durante a jogatina, sem remover as ferramentas avançadas. A navegação separa **Vídeo, Streaming, Áudio, Voz, Controles, Teclado e mouse, Servidores, Personalizar, Compatibilidade e Sistema**. Cada área mantém suas próprias configurações, sem misturar a entrada do controle físico com teclado e mouse.
 
 ### NX Stream Monitor
 
