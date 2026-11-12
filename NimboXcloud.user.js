@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.47
+// @version      4.12.48
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.47
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.48
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -1724,6 +1724,7 @@
     nxNativeMenuParent=parent;
     if(parent)parent.classList.add('nx-native-menu-priority');
     document.documentElement.classList.toggle('nx-native-menu-expanded',!!parent);
+    nxSyncTouchMenuBlock(!!parent);
   }
   (function(){
     const css=document.createElement('style');css.id='nx-native-menu-priority-style';
@@ -1734,6 +1735,9 @@
     ].join('');
     (document.head||document.documentElement).appendChild(css);
   })();
+  function nxSyncTouchMenuBlock(nativeOpen){
+    try{window.NimboTouch?.setMenuBlocked?.(!!nativeOpen||openUI);}catch(e){S.lastErr='NX touch menu: '+String(e?.message||e);}
+  }
   function syncNXPlacement() {
     if (!wrap || !wrap.isConnected) return;
     if (openUI) { nxNativeMenuPriority(false,null); nxDockPanel(); return; }
@@ -4590,6 +4594,7 @@
     if (!cardEl) buildUI();
     if (!cardEl) return;
     cardEl.style.display = openUI ? 'flex' : 'none';
+    nxSyncTouchMenuBlock(document.documentElement.classList.contains('nx-native-menu-expanded'));
     if (nxShellEnabled && wrap) { wrap.classList.toggle('nx-shell-open', openUI); if (openUI) nxShellNeedsRelease = true; }
     if(openUI && !wasOpen){
       nxFocusBeforePanel = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
