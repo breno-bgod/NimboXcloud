@@ -17,6 +17,8 @@ jobs:
           node-version: '22'
       - name: Syntax check
         run: node --check NimboXcloud.user.js
+      - name: Touch HUD module syntax check
+        run: node --check modules/NimboXcloud-Touch-HUD.user.js
       - name: Baseline tests
         run: node --test tests/*.test.cjs
       - name: Static risk report
