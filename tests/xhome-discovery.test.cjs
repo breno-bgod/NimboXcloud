@@ -8,7 +8,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'Nimbo
 const start = source.indexOf('function nxRemoteEmptyMediaDiagnostics()');
 const end = source.indexOf('  const TAB_BUILDERS =', start);
 assert.ok(start >= 0 && end > start, 'xHome discovery section found');
-const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},setChannels:function(value){nxRemoteChannels=value;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady,sendKeyboardFrame:nxRemoteSendKeyboardFrame,sendMouseFrame:nxRemoteSendMouseFrame,createTouchAdapter:nxRemoteCreateTouchInputAdapter,attachTouchAdapter:nxRemoteAttachTouchAdapter,detachTouchAdapter:nxRemoteDetachTouchAdapter,touchAdapter:function(){return nxRemoteTouchAdapter;},enableInput:nxRemoteInputCaptureEnable,disableInput:nxRemoteInputCaptureDisable,inputFocus:nxRemoteVideoHasInputFocus,heldKeys:function(){return Array.from(nxRemoteHeldKeys.keys());},mouseButtons:function(){return nxRemoteMouseButtons;},captureEnabled:function(){return !!nxRemoteInputCapture;},browser:{window:window,document:document}};';
+const code = source.slice(start, end) + '\n globalThis.api={state:nxRemotePlay,discover:nxRemoteDiscover,cancel:nxRemoteCancel,stop:nxRemoteStop,retryRelease:nxRemoteRetryRelease,startSession:nxRemoteStartSession,channels:function(){return nxRemoteChannels;},setChannels:function(value){nxRemoteChannels=value;},initChannels:nxRemoteInitDataChannels,encodeGamepadFrame:nxRemoteEncodeGamepadFrame,normalizeVirtualGamepadState:nxRemoteNormalizeVirtualGamepadState,setVirtualGamepadState:function(state){return nxRemoteSetVirtualGamepadState(state,nxRemotePlay.requestId,nxRemotePlay.peer,nxRemoteChannels);},releaseVirtualGamepad:function(){return nxRemoteReleaseVirtualGamepad(nxRemotePlay.requestId,nxRemotePlay.peer,nxRemoteChannels);},virtualGamepad:function(){return nxRemoteVirtualGamepad;},encodeKeyboardFrame:nxRemoteEncodeKeyboardFrame,encodeMouseFrame:nxRemoteEncodeMouseFrame,virtualKey:nxRemoteVirtualKey,setGamepadSlot:nxRemoteSetGamepadSlot,registeredSlots:function(){return Array.from(nxRemoteRegisteredGamepadSlots);},closeChannels:nxRemoteCloseDataChannels,tickGamepads:nxRemoteGamepadTick,suspendGamepads:nxRemoteGamepadSuspend,ready:nxRemoteGamepadReady,sendKeyboardFrame:nxRemoteSendKeyboardFrame,sendMouseFrame:nxRemoteSendMouseFrame,createTouchAdapter:nxRemoteCreateTouchInputAdapter,attachTouchAdapter:nxRemoteAttachTouchAdapter,detachTouchAdapter:nxRemoteDetachTouchAdapter,touchAdapter:function(){return nxRemoteTouchAdapter;},enableInput:nxRemoteInputCaptureEnable,disableInput:nxRemoteInputCaptureDisable,inputFocus:nxRemoteVideoHasInputFocus,heldKeys:function(){return Array.from(nxRemoteHeldKeys.keys());},mouseButtons:function(){return nxRemoteMouseButtons;},captureEnabled:function(){return !!nxRemoteInputCapture;},browser:{window:window,document:document}};';
 function harness(fetchImpl, storageOverride, rtcClass, timerOverrides, mediaStreamClass) {
   let timerId=0;
   const fakeTimers=new Map();
@@ -1211,6 +1211,82 @@ test('gamepad scheduler: keeps a slot registered until a disconnect neutral fram
   assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===1&&message.wasAdded===false).length,1);
 });
 
+
+
+test('virtual gamepad normalization: applies radial deadzone, circular clamp and standard button values',()=>{
+  const api=harness(async()=>{throw new Error('unexpected network');});
+  const buttons=Array(17).fill(false);buttons[0]=true;buttons[6]=0.5;
+  const pad=api.normalizeVirtualGamepadState({axes:[0.5,0.5,0.04,0],buttons,deadzone:0.1});
+  assert.ok(pad);
+  assert.equal(pad.mapping,'standard');
+  assert.ok(Math.abs(Math.hypot(pad.axes[0],pad.axes[1])-((Math.SQRT1_2-0.1)/0.9))<1e-9);
+  assert.deepEqual(pad.axes.slice(2),[0,0]);
+  assert.deepEqual(pad.buttons[0],{pressed:true,value:1});
+  assert.deepEqual(pad.buttons[6],{pressed:true,value:0.5});
+  assert.ok(Math.hypot(pad.axes[0],pad.axes[1])<=1);
+  assert.equal(api.normalizeVirtualGamepadState({}),null);
+});
+
+test('xHome touch gamepad adapter: registers once and sends normalized analog, trigger and button frames',()=>{
+  const {api,channels}=readyInputHarness();
+  const adapter=api.createTouchAdapter(api.state.requestId,api.state.peer,channels);
+  const buttons=Array(17).fill(false);buttons[0]=true;buttons[6]=0.5;
+  const state={axes:[0.5,0.5,0,0],buttons};
+  const normalized=api.normalizeVirtualGamepadState(state);
+  assert.equal(adapter.sendGamepad(state),true);
+  api.tickGamepads([],true);
+  api.tickGamepads([],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[0]);
+  assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===0&&message.wasAdded===true).length,1);
+  const frames=xhomeFrames(channels.input);
+  assert.equal(frames.length,2);
+  const view=new DataView(frames[0]);
+  assert.equal(view.getUint8(15),0);
+  assert.equal(view.getUint16(16,true),16);
+  assert.equal(view.getInt16(18,true),Math.trunc(normalized.axes[0]*32767));
+  assert.equal(view.getInt16(20,true),Math.trunc(-normalized.axes[1]*32767));
+  assert.equal(view.getUint16(26,true),Math.trunc(0.5*65535));
+  assert.equal(adapter.isReady(),true);
+});
+
+test('xHome touch gamepad adapter: reserves a free slot beside physical pads without replacing them',()=>{
+  const {api,channels}=readyInputHarness();
+  const adapter=api.createTouchAdapter(api.state.requestId,api.state.peer,channels);
+  assert.equal(adapter.sendGamepad({axes:[0.25,0,0,0],buttons:[]}),true);
+  const first=standardPad(0);
+  api.tickGamepads([first],true);
+  assert.equal(api.virtualGamepad().slot,1);
+  const second=standardPad(1);
+  api.tickGamepads([first,second],true);
+  assert.equal(api.virtualGamepad().slot,2);
+  assert.deepEqual(Array.from(api.registeredSlots()),[0,1,2]);
+  const lastSlots=xhomeFrames(channels.input).slice(-3).map(frame=>new DataView(frame).getUint8(15));
+  assert.deepEqual(lastSlots,[0,1,2]);
+});
+
+test('xHome touch gamepad adapter: release neutralizes before unregister and stale sessions cannot send',()=>{
+  const {api,channels}=readyInputHarness();
+  const adapter=api.createTouchAdapter(api.state.requestId,api.state.peer,channels);
+  assert.equal(adapter.sendGamepad({axes:[0.5,0,0,0],buttons:[true]}),true);
+  api.tickGamepads([],true);
+  const before=xhomeFrames(channels.input).length;
+  assert.equal(adapter.releaseGamepad(),true);
+  assert.equal(xhomeFrames(channels.input).length,before+1);
+  assert.equal(new DataView(xhomeFrames(channels.input).at(-1)).getUint16(16,true),0);
+  api.tickGamepads([],true);
+  assert.deepEqual(Array.from(api.registeredSlots()),[]);
+  assert.equal(gamepadEvents(channels.control).filter(message=>message.gamepadIndex===0&&message.wasAdded===false).length,1);
+
+  const stale=api.createTouchAdapter(api.state.requestId,api.state.peer,channels);
+  assert.equal(stale.sendGamepad({axes:[0,0,0,0],buttons:[true]}),true);
+  api.tickGamepads([],true);
+  api.state.requestId++;
+  assert.equal(stale.sendGamepad({axes:[1,0,0,0],buttons:[true]}),false);
+  assert.equal(stale.releaseGamepad(),true);
+  api.tickGamepads([],true);
+  assert.equal(api.virtualGamepad(),null);
+  assert.deepEqual(Array.from(api.registeredSlots()),[]);
+});
 
 test('keyboard encoder: writes the VKey report, one-frame count, state and virtual key code',()=>{
   const api=harness(async()=>{throw new Error('unexpected network');});

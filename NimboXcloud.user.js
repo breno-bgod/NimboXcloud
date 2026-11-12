@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.77
+// @version      4.12.78
 // @description  NimboXcloud: streaming, painel NX, diagnóstico e NimboTouch integrado (HUD editável, teclado/mouse virtual, macros e compensação opcional de recoil).
 // @author       KReight
 // @license      MIT
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.77
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.78
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -63,7 +63,7 @@
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.77';
+  const VER = '4.12.78';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -3275,12 +3275,69 @@
   let nxRemoteGamepadPaused=false;
   let nxRemoteGamepadWindowFocused=true;
   const nxRemoteNeutralGamepad={mapping:'standard',buttons:[],axes:[]};
+  let nxRemoteVirtualGamepad=null;
+  function nxRemoteNormalizeVirtualGamepadState(state) {
+    if(!state || typeof state!=='object') return null;
+    const axisSource=state.axes;
+    const buttonSource=state.buttons;
+    const hasAxes=axisSource && typeof axisSource.length==='number';
+    const hasButtons=buttonSource && typeof buttonSource.length==='number';
+    if(!hasAxes && !hasButtons) return null;
+    const deadzoneValue=state.deadzone===undefined?0.08:Number(state.deadzone);
+    const deadzone=Number.isFinite(deadzoneValue)?Math.max(0,Math.min(0.25,deadzoneValue)):0.08;
+    const axes=Array.from({length:4},function(_,index){
+      const value=Number(hasAxes?axisSource[index]:0);
+      return Number.isFinite(value)?Math.max(-1,Math.min(1,value)):0;
+    });
+    const normalizePair=function(x,y){
+      const magnitude=Math.hypot(x,y);
+      if(!Number.isFinite(magnitude) || magnitude<=deadzone) return [0,0];
+      const outputMagnitude=(Math.min(1,magnitude)-deadzone)/(1-deadzone);
+      const factor=outputMagnitude/magnitude;
+      return [x*factor,y*factor];
+    };
+    const left=normalizePair(axes[0],axes[1]);
+    const right=normalizePair(axes[2],axes[3]);
+    axes[0]=left[0];axes[1]=left[1];axes[2]=right[0];axes[3]=right[1];
+    const buttons=Array.from({length:17},function(_,index){
+      const button=hasButtons?buttonSource[index]:null;
+      let value=0;
+      if(typeof button==='boolean') value=button?1:0;
+      else if(typeof button==='number') value=Math.max(0,Math.min(1,button));
+      else if(button && typeof button==='object') {
+        const raw=Number(button.value);
+        value=Number.isFinite(raw)?Math.max(0,Math.min(1,raw)):(button.pressed?1:0);
+        if(value===0 && button.pressed===true) value=1;
+      }
+      return {pressed:value>=0.5,value:value};
+    });
+    return {mapping:'standard',connected:true,index:-1,id:'NimboTouch Virtual Gamepad',buttons:buttons,axes:axes};
+  }
   function nxRemoteGamepadReady() {
     const peer=nxRemotePlay.peer;
     const channel=nxRemoteChannels && nxRemoteChannels.input;
     const peerState=peer && (peer.connectionState || peer.iceConnectionState);
     return !!(nxRemotePlay.dataChannelsReady && nxRemotePlay.sessionStatus==='connected' &&
       peer && peerState==='connected' && channel && channel.readyState==='open');
+  }
+  function nxRemoteSetVirtualGamepadState(state,requestId,peer,channels) {
+    if(!Number.isInteger(requestId) || requestId!==nxRemotePlay.requestId || peer!==nxRemotePlay.peer ||
+      channels!==nxRemoteChannels || !nxRemoteGamepadReady()) return false;
+    const pad=nxRemoteNormalizeVirtualGamepadState(state);
+    if(!pad) return false;
+    const previous=nxRemoteVirtualGamepad;
+    const sameOwner=previous && previous.requestId===requestId && previous.peer===peer && previous.channels===channels;
+    nxRemoteVirtualGamepad={requestId:requestId,peer:peer,channels:channels,pad:pad,slot:sameOwner?previous.slot:null};
+    return true;
+  }
+  function nxRemoteReleaseVirtualGamepad(requestId,peer,channels) {
+    const current=nxRemoteVirtualGamepad;
+    if(!current) return true;
+    if(current.requestId!==requestId || current.peer!==peer || current.channels!==channels) return true;
+    nxRemoteVirtualGamepad=null;
+    if(Number.isInteger(current.slot) && nxRemoteRegisteredGamepadSlots.has(current.slot))
+      return nxRemoteSendNeutralGamepad(current.slot,channels);
+    return true;
   }
   function nxRemoteVideoHasInputFocus() {
     const video=nxRemotePlay.videoElement;
@@ -3293,6 +3350,7 @@
     const current=function(){return !disposed&&requestId===nxRemotePlay.requestId&&nxRemotePlay.peer===peer&&nxRemoteChannels===channels;};
     const ready=function(){return current()&&nxRemotePlay.dataChannelsReady&&nxRemotePlay.sessionStatus==='connected'&&
       (peer.connectionState||peer.iceConnectionState)==='connected'&&channels.input&&channels.input.readyState==='open';};
+    const releaseGamepad=function(){return nxRemoteReleaseVirtualGamepad(requestId,peer,channels);};
     const release=function(){
       let complete=true;
       Array.from(heldKeys.entries()).forEach(function(entry){
@@ -3303,6 +3361,7 @@
         if(nxRemoteSendMouseFrame({X:0,Y:0,WheelX:0,WheelY:0,Buttons:0,Relative:0},true,channels))mouseButtons=0;
         else complete=false;
       }
+      if(!releaseGamepad()) complete=false;
       return complete;
     };
     return Object.freeze({
@@ -3327,6 +3386,8 @@
         mouseButtons=buttons;
         return true;
       },
+      sendGamepad:function(state){return ready()&&nxRemoteSetVirtualGamepadState(state,requestId,peer,channels);},
+      releaseGamepad:releaseGamepad,
       release:release,
       dispose:function(){if(disposed)return true;const complete=release();disposed=true;return complete;}
     });
@@ -3630,6 +3691,7 @@
         nxRemoteChannelSend(control,JSON.stringify({message:'gamepadChanged',gamepadIndex:slot,wasAdded:false}));
     });
     nxRemoteRegisteredGamepadSlots.clear();
+    nxRemoteVirtualGamepad=null;
     nxRemoteGamepadPaused=false;
   }
   function nxRemoteGamepadTick(pads,allowInput) {
@@ -3646,6 +3708,22 @@
       const slot=Number.isInteger(pad.index)?pad.index:i;
       if(slot<0 || slot>3 || active.has(slot)) continue;
       active.set(slot,pad);
+    }
+    let virtual=nxRemoteVirtualGamepad;
+    if(virtual && (virtual.requestId!==nxRemotePlay.requestId || virtual.peer!==nxRemotePlay.peer || virtual.channels!==nxRemoteChannels)) {
+      nxRemoteVirtualGamepad=null;virtual=null;
+    }
+    if(virtual) {
+      let slot=Number.isInteger(virtual.slot) && !active.has(virtual.slot)?virtual.slot:null;
+      if(slot===null) {
+        for(let candidate=0;candidate<4;candidate++) {
+          if(active.has(candidate)) continue;
+          if(nxRemoteRegisteredGamepadSlots.has(candidate) && candidate!==virtual.slot) continue;
+          slot=candidate;break;
+        }
+      }
+      virtual.slot=slot;
+      if(slot!==null) active.set(slot,virtual.pad);
     }
     Array.from(nxRemoteRegisteredGamepadSlots).forEach(function(slot) {
       if(active.has(slot)) return;
@@ -5790,12 +5868,18 @@
     return pads;
   }
   function nxGamepadUiTick() {
-    if (document.visibilityState === 'hidden' || typeof navigator.getGamepads !== 'function') {
+    if (document.visibilityState === 'hidden') {
       nxRemoteGamepadSuspend();
       return;
     }
-    let pads;
-    try { pads=nxReadGamepadSnapshot(); } catch (_) { nxRemoteGamepadSuspend();return; }
+    let pads=[];
+    if(typeof navigator.getGamepads==='function') {
+      try { pads=nxReadGamepadSnapshot(); }
+      catch (_) { if(!nxRemoteVirtualGamepad){nxRemoteGamepadSuspend();return;} }
+    } else if(!nxRemoteVirtualGamepad) {
+      nxRemoteGamepadSuspend();
+      return;
+    }
     const remoteVideoFocused=nxRemoteVideoHasInputFocus();
     const allowInput=!nxCapturePad && nxRemoteGamepadWindowFocused && (!openUI || remoteVideoFocused);
     if (!pads.length) { nxRemoteGamepadTick(pads,allowInput);nxPadUiState.combo=false;return; }

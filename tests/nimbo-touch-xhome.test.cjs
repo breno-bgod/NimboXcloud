@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'NimboXcloud-Touch-HUD.user.js'), 'utf8');
+const hostSource = fs.readFileSync(path.join(__dirname, '..', 'NimboXcloud.user.js'), 'utf8');
 
 test('NimboTouch exposes a narrow xHome adapter without replacing its xCloud session attachment', () => {
   assert.match(source, /attachSession:nimboCapture/);
@@ -69,4 +70,22 @@ test('xHome HUD startup selects the remote transport without changing xCloud inp
   assert.ok(source.includes('const remote=this.remoteMode===true;\n    const transport=remote?this.remoteAdapter:nimboTransport;'));
   assert.ok(source.includes('if(!remote)await transport.activateKeyboardMouse();'));
   assert.ok(source.includes("if(remote){\n      if(!transport||transport!==remoteInputAdapter||!transport.isReady?.())"));
+});
+
+test('NimboTouch exposes a narrow xHome virtual-gamepad forwarding contract', () => {
+  assert.match(source, /sendRemoteGamepadState:state=>/);
+  assert.match(source, /adapter\.sendGamepad\(state\)===true/);
+  assert.match(source, /releaseRemoteGamepad:\(\)=>/);
+  assert.match(source, /adapter\.releaseGamepad\(\)===true/);
+});
+
+test('xHome virtual gamepad can use the shared input loop without the browser Gamepad API', () => {
+  const start = hostSource.indexOf('function nxGamepadUiTick()');
+  const end = hostSource.indexOf('let nxGamepadLoopTimer', start);
+  assert.ok(start >= 0 && end > start, 'shared gamepad loop exists');
+  const block = hostSource.slice(start, end);
+  assert.match(block, /if \(document\.visibilityState === 'hidden'\)/);
+  assert.match(block, /typeof navigator\.getGamepads==='function'/);
+  assert.match(block, /else if\(!nxRemoteVirtualGamepad\)/);
+  assert.match(block, /nxRemoteGamepadTick\(pads,allowInput\)/);
 });

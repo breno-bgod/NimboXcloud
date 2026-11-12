@@ -1,3 +1,10 @@
+## [4.12.78] — 2026-11-12
+- Added a normalized virtual-gamepad transport contract to the xHome touch adapter. It accepts four standard axes and up to 17 standard buttons, applies a radial deadzone and circular magnitude clamp, and preserves analog trigger values.
+- Virtual touch-gamepad state reuses the existing xHome encoder, shared packet sequence, gamepadChanged registration, neutral-release lifecycle, backpressure handling, and single gamepad polling loop. It reserves an available remote slot beside physical controllers without replacing Gamepad API or adding another scheduler.
+- Exposed `NimboTouch.sendRemoteGamepadState()` and `releaseRemoteGamepad()` for a future analog touch surface. No new on-screen stick or HUD layout was added in this version; the current WASD HUD remains unchanged.
+- The shared input loop now continues to service a connected xHome virtual gamepad when `navigator.getGamepads` is unavailable, while preserving physical-gamepad polling when supported.
+- Added mock regressions for radial normalization, axes/triggers/buttons, slot coexistence, release ordering, stale-session rejection, and the no-Gamepad-API path. Real Xbox acceptance and Android/browser interaction remain unverified.
+
 ## [4.12.77] — 2026-11-12
 - Integrated the existing NimboTouch HUD with the xHome input data channel through an explicit, opt-in adapter. Relative mouse movement, mouse buttons, wheel and virtual keyboard keys use the existing xHome encoders and shared input sequence.
 - Added separate Remote Play HUD activation/deactivation, including a distinct enabled state so a paused HUD can still be disabled from the NX panel. The HUD pauses on focus/visibility/menu loss and resumes only while the same adapter and WebRTC session are ready.

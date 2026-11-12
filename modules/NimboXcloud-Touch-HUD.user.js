@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.2.1
+// @version      1.2.2
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD e HUD editável. Experimental; requer suporte K/M do jogo e do SDK.
 // @author       KReight / NimboPlay contributors
 // @license      MIT
@@ -41,7 +41,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.2.1';
+const VERSION='1.2.2';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -1920,6 +1920,16 @@ window.NimboTouch=Object.freeze({
  isRemoteActive:()=>!!(ui?.remoteMode&&ui?.active),
  isRemoteEnabled:()=>!!(ui?.remoteMode&&ui?.wanted),
  hasRemoteInputAdapter:()=>!!remoteInputAdapter,
+ sendRemoteGamepadState:state=>{
+  const adapter=remoteInputAdapter;
+  if(!ui?.remoteMode||!ui?.active||!adapter||typeof adapter.sendGamepad!=='function'||!adapter.isReady?.())return false;
+  return adapter.sendGamepad(state)===true;
+ },
+ releaseRemoteGamepad:()=>{
+  const adapter=remoteInputAdapter;
+  if(!adapter||typeof adapter.releaseGamepad!=='function')return false;
+  return adapter.releaseGamepad()===true;
+ },
  setMenuBlocked:blocked=>ui?.setMenuBlocked(blocked)
 });
 
