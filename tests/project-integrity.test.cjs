@@ -17,7 +17,7 @@ function valueBetween(source, startMarker, endMarker, label) {
 }
 
 test('userscript metadata, runtime diagnostics and @require cache key share one version', () => {
-  const metadataLine = main.split('\\n').find(line => line.startsWith('// @version'));
+  const metadataLine = main.split('\n').find(line => line.startsWith('// @version'));
   assert.ok(metadataLine, '@version exists');
   const metadata = metadataLine.trim().split(' ').filter(Boolean).pop();
   const runtime = valueBetween(main, "const VER = '", "';", 'runtime VER');
@@ -27,7 +27,7 @@ test('userscript metadata, runtime diagnostics and @require cache key share one 
 });
 
 test('Touch HUD metadata and runtime constant share one module version', () => {
-  const metadataLine = touch.split('\\n').find(line => line.startsWith('// @version'));
+  const metadataLine = touch.split('\n').find(line => line.startsWith('// @version'));
   assert.ok(metadataLine, 'Touch HUD @version exists');
   const metadata = metadataLine.trim().split(' ').filter(Boolean).pop();
   const runtime = valueBetween(touch, "const VERSION='", "';", 'Touch HUD VERSION');
