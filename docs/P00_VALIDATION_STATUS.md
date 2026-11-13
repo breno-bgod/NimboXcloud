@@ -83,3 +83,25 @@ Testar o limite de 30 consultas do ICE poll e a transição para `connected` enq
 - O helper retail de IPv4 agora ignora explicitamente os hosts xHome de login e região; o comportamento retail continua testado.
 - Sem sessão Xbox real, navegador real, áudio, vídeo ou controle homologados.
 - Próxima validação: deduplicação canônica de ICE quando a mesma entrada aparece como string e objeto.
+
+
+## Evidência adicional — 4.13.1 / PR #19 (mesclado)
+
+- **HEAD base da execução:** `a271f6b290b27bdfad67e290103d09f41b4acc79` (4.13.0). O commit recente já havia unificado os cinco modos de entrada e o painel; essa implementação foi preservada.
+- **PR #19:** [guard de propriedade e ordenação de ICE local](https://github.com/breno-bgod/NimboXcloud/pull/19), squash-merged em `12fac62335f643ee5bc179afc3d38f45d7f7659f`.
+- **Falha reproduzida antes da correção:** a regressão isolada falhou em `755aee8bee425b43aab982fd886e07a0f66f9c57`. O primeiro POST foi o candidato A, mas o candidato C emitido durante o envio entrou antes do candidato B que já estava na fila: sequência observada A, C, B em vez de A, B, C. A falha foi confirmada nos workflows baseline [43338553594](https://github.com/breno-bgod/NimboXcloud/actions/runs/43338553594) e xHome [43338553629](https://github.com/breno-bgod/NimboXcloud/actions/runs/43338553629).
+- **Correção:** a fila inicial e o trickle ICE usam a mesma cadeia serializada. Cada callback e cada POST exigem requestId atual, AbortSignal não cancelado, identidade do RTCPeerConnection e ausência de estado terminal failed/closed. Falhas tardias não substituem o status terminal; a reconciliação também captura estados que mudaram durante a fila inicial.
+- **Regressão nova:** cobre ordem A/B/C com POST pendente, rejeição tardia após failed, callback posterior ao estado terminal e callback de peer substituído.
+- **Validação no head final do PR:** baseline [43338677098](https://github.com/breno-bgod/NimboXcloud/actions/runs/43338677098) PASS e xHome [43338677076](https://github.com/breno-bgod/NimboXcloud/actions/runs/43338677076) PASS.
+- **Validação pós-merge na main:** baseline [43338759828](https://github.com/breno-bgod/NimboXcloud/actions/runs/43338759828) PASS e xHome [43338759865](https://github.com/breno-bgod/NimboXcloud/actions/runs/43338759865) PASS.
+- Resultado em todos os workflows aprovados: **268 testes, 265 PASS, 0 FAIL, 3 TODO**. Sintaxe do userscript principal e do Touch HUD, integridade das versões, suítes CommonJS/ESM e relatório estático passaram. O relatório continua apontando wrappers Gamepad, fetch e XHR já existentes; não são regressões introduzidas por esta correção.
+- **Arquivos de runtime/teste/documentação de release:** `NimboXcloud.user.js` 4.13.1, `tests/xhome-discovery.test.cjs`, `CHANGELOG.md`. Touch HUD permanece 1.3.0; a chave de cache `@require nx_version` acompanha 4.13.1.
+- **Sem alteração** de endpoint, autenticação, token, formato do payload ICE, SDP, data channels ou transporte de controle. A implementação de cinco modos de entrada de 4.13.0 foi preservada.
+- **Limites:** CI usa Node 22 e mocks. Não houve Chrome/Edge, Tampermonkey, Android/DeX, Xbox físico, NAT real, vídeo, áudio ou comandos reais. Remote Play permanece experimental e não homologado.
+- **Avisos não bloqueantes do CI:** depreciação de `punycode` no ambiente Node e aviso do GitHub Actions sobre ações que ainda declaram Node 20; nenhum causou falha.
+- **Próxima validação P1:** impedir que canais xHome ainda não concluídos executem bootstrap tardio depois de o peer entrar em failed/closed. O `isCurrent()` de `nxRemoteInitDataChannels` hoje verifica requestId, AbortSignal, peer e objeto de canais, mas não o estado terminal do peer.
+  - Aceite: HandshakeAck/onopen tardios após failed/closed não definem `dataChannelsReady`, não anexam adaptador e não sobrescrevem o status terminal.
+  - Ao terminalizar: cancelar `channelTimer`, fechar canais e manter readiness falsa sem recursão de Stop/failure.
+  - Manter `disconnected` transitório recuperável se o peer voltar a connected.
+  - Preservar Stop→Start, ordenação/ownership ICE local, canonicalização ICE remota e limite de 30 polls.
+  - Baseline e xHome CI aprovados; sem declarar teste de console real.
