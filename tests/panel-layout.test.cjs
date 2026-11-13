@@ -26,7 +26,8 @@ function harness(){
  const ctx={document:{createElement:tag=>new Node(tag)},C:{dim:'#888',line:'#333',panel:'#111',accent:'#0f0',text:'#fff'},
   mk:(tag,style,text)=>{const n=new Node(tag,text||'');n.style.cssText=style;return n;},
   liveFns:[],getPref:(key,fallback)=>fallback,stopEv(){},
-  nxVirtualGyro:{enabled:false},NX_VIRTUAL_GYRO_GAIN_KEY:'gyro-gain',nxGyroPreview:{permission:'não solicitada'},
+  nxPhone:{profile:'off',touchEnabled:false},nxPhoneReset(){},nxPhoneLandscape:()=>true,
+  NX_PHONE_GAIN:'phone-gain',NX_PHONE_INVERT_X:'phone-x',NX_PHONE_INVERT_Y:'phone-y',
   PRESETS:[{name:'Máximo',res:'hq',sub:'1080p HQ'},{name:'Padrão',res:'auto',sub:'1080p'}],
   RES_MODES:{hq:{},auto:{}},resCfg:()=>({}),
   nxVisualStatus:()=> 'Filtros padrão',nxGpuStatus:()=> 'Desligada',nxResetVisualSettings(){},
@@ -34,6 +35,7 @@ function harness(){
   note:message=>new Node('p',message),nxBindControls:(root,category)=>root.appendChild(new Node('div','Atalho '+category)),
   nxPointerControls:root=>root.appendChild(new Node('div','CAPTURA DO MOUSE FÍSICO')),
   nxInputModePage:root=>root.appendChild(new Node('div','SELETOR ÚNICO')),
+  nxTouchpadSettings:root=>root.appendChild(new Node('div','SENSIBILIDADE DO TOUCHPAD')),
   nxPanelSettingsPage:root=>root.appendChild(new Node('div','APARÊNCIA DO PAINEL')),
   nxMonitorToggleButton:()=>new Node('button','Ativar estatísticas'),
   nxMonitorSettingsPage:root=>root.appendChild(new Node('div','APARÊNCIA DO MONITOR')),
@@ -46,7 +48,7 @@ function harness(){
   nxConsoleLabFullScreen(){},activeStreamAudio:()=>null,sliderDragging:false,S:{},tabId:'video'};
  vm.createContext(ctx);
  vm.runInContext(section('  function group(title, hint) {','  function liveDesc(')+section('  function liveDesc(row, getter) {','  function chips('),ctx);
- vm.runInContext(section('  function nxVirtualGyroControls(root){','  async function nxToggleVirtualGyro(){'),ctx);
+ vm.runInContext(section('  function nxPhoneControls(root){','  setInterval(function(){\n    const visible=nxPhone.touchEnabled'),ctx);
  const group=(title,rows=[])=>{const g=ctx.group(title);for(const name of rows)g.add(ctx.setRow(name,'',new Node('button',name+' action')));return g.root;};
  const controls=root=>[
   group('Dispositivo',['Experiência','Dispositivo detectado']),
@@ -92,19 +94,26 @@ test('system includes compatibility and keeps technical input diagnostics out of
  assert.match(system.textContent,/Fontes observadas/);
  const pad=h.build('gamepad'),keyboard=h.build('gyrotouch');
  assert.doesNotMatch(pad.textContent,/Fontes observadas|Última alteração de conexão|Falhas de leitura/);
- assert.doesNotMatch(keyboard.textContent,/Módulo|Dispositivo detectado|Toque e mouse detectados/);
- assert.match(keyboard.textContent,/Ativar giroscópio da mira/);
+ assert.doesNotMatch(keyboard.textContent,/Módulo|Dispositivo detectado|Ativação|Toque e mouse detectados/);
  assert.match(keyboard.textContent,/CAPTURA DO MOUSE FÍSICO/);
  assert.doesNotMatch(keyboard.textContent,/Configurar teclado e mouse/);
 });
 
-test('one input page embeds both device builders without duplicated activation',()=>{
- const h=harness(),root=h.build('inputs');
- assert.equal(root.textContent.split('SELETOR ÚNICO').length-1,1);
- assert.match(root.textContent,/Ajustes do controle físico/);assert.match(root.textContent,/Ajustes de teclado e mouse/);
- assert.match(root.textContent,/Atalho gamepad/);assert.match(root.textContent,/Atalho keyboard/);
- assert.doesNotMatch(root.textContent,/Escolher entrada|Ativar HUD/);
- assert.equal(root.children[1].tagName,'details');assert.equal(root.children[1].open,undefined);
+test('input workspace mounts settings for the browsed device without duplicated activation',()=>{
+ const h=harness();
+ for(const family of ['keyboard','gamepad','mobile']){
+  h.ctx.nxInputModePage=root=>{root.appendChild(new Node('div','SELETOR ÚNICO'));return family;};
+  const root=h.build('inputs');
+  assert.equal(root.textContent.split('SELETOR ÚNICO').length-1,1);
+  assert.equal(root.textContent.includes('Ajustes do controle físico'),family==='gamepad');
+  assert.equal(root.textContent.includes('Ajustes de teclado e mouse'),family==='keyboard');
+  assert.equal(root.textContent.includes('Atalho gamepad'),family==='gamepad');
+  assert.equal(root.textContent.includes('Atalho keyboard'),family==='keyboard');
+  assert.match(root.textContent,/Ativar FPS|Ativar Corrida/);
+  assert.match(root.textContent,/SENSIBILIDADE DO TOUCHPAD/);
+  assert.doesNotMatch(root.textContent,/Escolher entrada|Ativar HUD/);
+  if(family!=='mobile')assert.ok(root.children.some(node=>node.tagName==='details'));
+ }
 });
 
 test('interface contains both appearance systems while statistics retains metrics and a link',()=>{

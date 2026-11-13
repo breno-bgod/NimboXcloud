@@ -1518,6 +1518,27 @@ class BxTouchpadOverlay extends BxTouchpadProfiles {
 @media(max-height:540px){#nimbo-touch-root .hud-properties{top:70px;width:225px;max-height:calc(100% - 84px)}#nimbo-touch-root .forma-property-body{padding:10px}#nimbo-touch-root .hud-properties .forma-property-body>strong{font-size:14px!important;margin:10px 0}#nimbo-touch-root .hud-properties label{margin-top:8px}#nimbo-touch-root .forma-editor-note{font-size:10px!important;max-width:43%}}
 @media(max-width:760px){#nimbo-touch-root .forma-caption{display:none}#nimbo-touch-root .forma-editor-bar{justify-content:center;gap:4px}#nimbo-touch-root .forma-actions{gap:3px}#nimbo-touch-root .forma-editor-bar button{padding:7px 8px;font-size:11px!important}}
 @media(orientation:portrait) and (max-width:600px){#nimbo-touch-root .forma-editor-bar{flex-wrap:wrap}#nimbo-touch-root .hud-properties{top:112px;max-height:calc(100% - 180px)}#nimbo-touch-root .forma-editor-note{max-width:90%}}
+
+/* Shared graphite and green workspace, scoped to the HUD editor. */
+#nimbo-touch-root.hud-editing{--hud-accent:#74cd88;--hud-surface:#202622}
+#nimbo-touch-root.hud-editing .hud-properties{background:#202622f5;border-color:#83a38b66;border-radius:8px}
+#nimbo-touch-root.hud-editing .hud-properties select{background:#292f2b;border-color:#83a38b66;border-radius:5px}
+#nimbo-touch-root.hud-editing .hud-properties :is(input[type=range],input[type=checkbox]){accent-color:var(--hud-accent)}
+#nimbo-touch-root.hud-editing .hud-properties .forma-property-body>strong,
+#nimbo-touch-root.hud-editing .hud-properties label span{color:#a8e4b5}
+#nimbo-touch-root.hud-editing .forma-editor-bar{background:#202622ed;border-color:#83a38b66;border-radius:8px}
+#nimbo-touch-root.hud-editing .forma-editor-bar button{background:#292f2b;border-color:#83a38b66}
+#nimbo-touch-root.hud-editing .forma-editor-bar .forma-save{background:var(--hud-accent);color:#102416;border-color:var(--hud-accent)}
+#nimbo-touch-root.hud-editing .forma-editor-bar>.forma-actions:last-child{position:fixed;bottom:0;left:0;right:0;justify-content:flex-end;padding:10px max(12px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom));background:#202622ed;border-top:1px solid #83a38b66}
+#nimbo-touch-root.hud-editing .hud-properties{max-height:calc(100% - 156px)}
+#nimbo-touch-root.hud-editing .hud-properties[data-collapsed=true]{bottom:max(78px,calc(env(safe-area-inset-bottom) + 70px))}
+#nimbo-touch-root.hud-editing .forma-editor-note{bottom:max(78px,calc(env(safe-area-inset-bottom) + 70px));background:#202622ed}
+#nimbo-touch-root.hud-editing :is(button,input,select):focus-visible{outline:2px solid var(--hud-accent);outline-offset:3px}
+@media(orientation:portrait) and (max-width:600px){
+ #nimbo-touch-root.hud-editing .hud-properties,
+ #nimbo-touch-root.hud-editing .hud-properties[data-dock=left]{top:auto;left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));bottom:max(78px,calc(env(safe-area-inset-bottom) + 70px));width:auto;max-width:none;max-height:42dvh}
+ #nimbo-touch-root.hud-editing .forma-editor-note{display:none}
+}
 `;this.root.append(style);
     this.root.addEventListener('pointerdown',e=>{
       if(!this.editingHud||this.editorPointerHistory)return;let node=e.target;
@@ -2236,21 +2257,32 @@ function boot(){
   pollSession();setInterval(pollSession,1500);
  }catch(e){NimboDiag.add('inicialização','Falha ao iniciar Nimbo Touch',e.message);const notice=document.createElement('div');notice.textContent='Nimbo Touch não iniciou: '+e.message;notice.style.cssText='position:fixed;top:8px;left:8px;z-index:2147483647;background:#331a1a;color:white;padding:12px';document.documentElement.append(notice);}
 }
-// Same relative-mouse path as the touchpad; never bypass pause/menu/mode guards.
-function nimboVirtualMouseDelta(dx,dy){
- if(!Number.isFinite(dx)||!Number.isFinite(dy)||Math.abs(dx)>128||Math.abs(dy)>128)return false;
- if(!ui?.active||!ui.wanted||ui.remoteMode||ui.virtualGamepad?.enabled||ui.editingHud||ui.menuBlocked||touchPanel.isOpen||document.hidden||!document.hasFocus())return false;
- try{ui.move(dx,dy);return true;}catch(error){ui.handleInputFailure?.(error);return false;}
-}
 // Public integration point for a host; existing third-party globals are left untouched.
+function nimboTouchpadSettings(){
+ if(!ui)return null;
+ return {sensitivity:ui.sensitivity,gainX:ui.gainX,gainY:ui.gainY};
+}
+function nimboSetTouchpadSettings(settings){
+ if(!ui)throw Error('O touchpad ainda está iniciando.');
+ const next=nimboTouchpadSettings();
+ for(const [key,min,max]of [['sensitivity',.05,50],['gainX',.1,5],['gainY',.1,5]]){
+  if(!Object.prototype.hasOwnProperty.call(settings,key))continue;
+  const value=Number(settings[key]);
+  if(!Number.isFinite(value)||value<min||value>max)throw Error('Valor inválido para '+key);
+  next[key]=value;
+ }
+ localStorage.setItem('BxTouchpad.motion.v7',JSON.stringify({version:1,touchGain:next.sensitivity,touchX:next.gainX,touchY:next.gainY}));
+ Object.assign(ui,next);
+ return nimboTouchpadSettings();
+}
 window.NimboTouch=Object.freeze({
  version:VERSION,attachSession:nimboCapture,open:nimboOpenSettings,
  stop:()=>ui?.remoteMode?ui.stopRemote():ui?.stop(),
  diagnostic,isEnabled:()=>!!ui?.wanted,
  setPhysicalInputMode:nimboSetPhysicalInputMode,
  setInputMode:nimboSetInputMode,inputModeStatus:nimboInputModeStatus,
+ touchpadSettings:nimboTouchpadSettings,setTouchpadSettings:nimboSetTouchpadSettings,
  physicalMouseInput:reading=>nimboTransport?.physicalMouse(reading)??false,
- virtualMouseDelta:nimboVirtualMouseDelta,
  physicalKeyboardInput:event=>nimboTransport?.physicalKeyboard(event)??false,
  releasePhysicalInput:()=>{if(nimboTransport?.exclusiveMode==='keyboard-mouse')nimboTransport.release();},
  editHud:()=>{if(!ui)return false;touchPanel.close();ui.editHud();ui.refreshEditorOptions();if(ui.virtualGamepad?.enabled)ui.selectHud('vpad-left-stick');return true;},
@@ -2305,4 +2337,3 @@ for(const method of ['start','stop','pause','editHud','finishEditing']){
 }
 
 })();
-

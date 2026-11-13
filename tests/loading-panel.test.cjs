@@ -50,7 +50,7 @@ test('NX disclosure only toggles technical details and keeps the estimate and lo
 
 test('loading uses the NX palette, font and existing brand icon rather than its own theme',()=>{
  const h=boot();h.tick();const panel=h.nodes.get('nx-loading-overlay');
- assert.equal(panel.style.background,'rgba(12,16,22,0.9)');assert.equal(panel.style.fontFamily,h.ctx.UI_FONT);assert.equal(panel.toggle.children[0].src,h.ctx.BRAND_ICON);
+ assert.equal(panel.style.background,'rgba(25,29,27,0.9)');assert.equal(panel.style.fontFamily,h.ctx.UI_FONT);assert.equal(panel.toggle.children[0].src,h.ctx.BRAND_ICON);
  h.ctx.nxPanelAppearance.tone='black';h.ctx.nxPanelAppearance.opacity=65;h.ctx.nxPanelAppearance.text='green';h.tick();
  assert.equal(panel.style.background,'rgba(0,0,0,0.65)');assert.equal(panel.style.color,'#0f0');assert.equal(panel.detail.style.color,'#0f0');
 });

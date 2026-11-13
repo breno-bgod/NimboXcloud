@@ -48,3 +48,12 @@ Foram adicionados seis testes: retorno ao host, fallback independente, salvar/ca
 Direção proposta: Central de Controles com identidade visual própria. Dispositivos/perfis à esquerda, HUD ou representação do dispositivo no centro e ação do elemento selecionado à direita; no mobile, áreas acessíveis em etapas. Uma ação simples funciona sem configurar macros. Evoluir depois para modificadores, combinações e sequências, com liberação de comandos em troca de perfil, perda de foco ou sessão encerrada. Isso é proposta incremental, não recurso implementado neste lote.
 
 Referências: [reWASD Workspace](https://help.rewasd.com/interface/workspace.html), [Key Combo](https://help.rewasd.com/mapping-features/key-combo.html) e [Virtual Controller](https://help.rewasd.com/basic-functions/virtual-controller.html). A inspiração é a organização por dispositivos, perfis e ações; o Nimbo mantém implementação e identidade próprias. No navegador, as saídas são os canais autorizados do jogo e a ponte Gamepad do Nimbo; não se cria um dispositivo virtual do sistema operacional como no aplicativo nativo.
+## Central de Entradas verde em revisão
+
+O NX organiza a escolha de entrada em Teclado e mouse, Controle e Mobile. A navegação muda os ajustes visíveis. Selecionar um modo continua passando pelo gerenciador existente, com liberação de comandos e recuperação em falhas.
+
+O desktop apresenta uma área ampliada com representação ilustrativa do dispositivo. Mobile reúne teclado/mouse por toque, controle virtual e toque nativo, além dos dois editores de HUD. Velocidade e sensibilidade horizontal/vertical reutilizam a preferência de movimento do touchpad. A gravação acontece antes de atualizar os valores em memória.
+
+O tema grafite/verde acompanha o NX e o editor. No celular em orientação vertical, as propriedades ocupam uma gaveta inferior recolhível. Salvar e cancelar permanecem visíveis na barra inferior.
+
+Validação local com 388 testes, 385 aprovados, zero falhas e três TODO preexistentes, sintaxe e relatório estático. Edge headless validou navegação desktop/mobile, sensibilidade persistida e salvar/retornar ao NX em uma página local simulada. Partida autenticada, hardware físico e conforto de uso no aparelho continuam pendentes.

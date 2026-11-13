@@ -1,8 +1,18 @@
-## Não publicado — 4.15.3: giroscópio para mouse virtual
-- Ativação explícita em Entradas → Ajustes de teclado e mouse → Mira por giroscópio · mouse virtual, sem recarregar e sem exigir controle físico. Desligado a cada carregamento, com permissão solicitada somente pela ação do usuário.
-- Sensor contribui com deltas no mesmo canal/move do touchpad; intensidades Suave/Normal/Forte. Mantém teclas, botões e cinco modos existentes. Não adiciona botão ao HUD nesta revisão.
-- Pausa com menus, editor, sessão inativa, background, perda de foco e outros modos; referência reiniciada após pausa/rotação/gap e saltos descartados. Módulo 1.4.1 expõe somente deltas limitados com guardas próprias.
-- 393 testes locais: 390 aprovados, zero falhas e três TODO preexistentes. Oito regressões novas; sintaxe e relatório estático executados. Sem sensor real, homologação visual, ganho de latência medido ou gameplay validado. Guia: docs/GIROSCOPIO_MOUSE_VIRTUAL.md.
+## Em revisão — 4.15.4: giroscópio em paisagem e touchpad dos controles
+- Perfis FPS/Corrida disponíveis em todas as famílias da Central de Entradas, sem mudar a entrada selecionada; permissão após ação explícita, sem recarga. FPS soma velocidade angular no analógico direito; Corrida soma rotação de volante no eixo horizontal esquerdo.
+- Paisagens 90°/270° com referência orientada à tela; retrato, menu, perda de foco, background e amostras antigas não contribuem. Desligar mantém entrada original.
+- Touchpad de mira nos controles: área do jogo no físico e área dedicada no virtual; saída ao analógico direito. Reutiliza sensibilidade existente. Não implementa protocolo de touchpad PS4/PS5. Touchpad de mouse original preservado.
+- Central de Entradas/tema/editor/configurações do PR #29 preservados; módulo oficial 1.4.1 mantido. PSBox/Android permanece no PR #24.
+- 401 testes locais: 398 aprovados, zero falhas, três TODO preexistentes. Sintaxe e relatório estático executados; Chromium falhou na inicialização por Crashpad/SIGTRAP. Sem sensor real, latência medida ou gameplay. Guia: docs/GIROSCOPIO_E_TOUCHPAD.md. Entradas mistas precisam de reteste autorizado no jogo.
+
+## [4.15.3] — 2026-11-13 — Central de Entradas verde
+- Publicação oficial autorizada pelo mantenedor pelo PR #29; userscript 4.15.3 e módulo 1.4.1 fixado por SHA. Desenvolvimento PSBox/Android permanece no PR #24, sem incorporação nesta versão.
+- Entradas oferece navegação entre Teclado e mouse, Controle e Mobile, com representação do dispositivo e ajustes contextuais. Navegar entre grupos mantém a entrada ativa até uma seleção explícita.
+- Painel ampliado para Entradas no desktop, navegação compacta com ícones no celular e tema grafite/verde compartilhado pelo NX e editor.
+- Editor mantém propriedades junto ao controle no desktop e usa gaveta inferior recolhível em celulares na vertical. Salvar e cancelar ficam na barra inferior.
+- Velocidade e sensibilidade horizontal/vertical do mouse por toque ficam acessíveis no NX, usando as preferências existentes do módulo.
+- Verificação local com 388 testes, 385 aprovados, zero falhas e três TODO preexistentes. Sintaxe e relatório estático executados. Edge headless em 1366×800 e 390×844 validou navegação, persistência da sensibilidade e retorno do editor.
+- Teste em partida real pendente. Representações dos dispositivos são ilustrativas. Menu radial, editor de mira, remapeamento de controle físico e saídas virtuais do sistema operacional permanecem fora desta implementação.
 
 ## [4.15.2] — 2026-11-13
 - Incorporação do PR #25 autorizada pelo mantenedor. Alça NX independente de 44 × 44 px à esquerda, arraste vertical persistente e acesso durante biblioteca/partida; painel aberto mantém o dock. Preparação continua bloqueando configurações.
@@ -412,9 +422,3 @@ Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR
 
 ## Próximas versões
 As alterações futuras devem incluir: versão, data, recursos adicionados, correções, incompatibilidades conhecidas e evidências de testes.
-
-
-
-
-
-

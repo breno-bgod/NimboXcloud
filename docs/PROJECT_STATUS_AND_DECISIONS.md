@@ -1,7 +1,7 @@
 # NimboXcloud — Estado do projeto, decisões e pendências
 
 > **Fonte de referência para mantenedores, colaboradores, forks e assistentes de IA.**
-> Última revisão: 2026-11-13. Versão de referência: `4.15.2`, branch `main`.
+> Última revisão: 2026-11-13. Versão de referência: `4.15.3`, branch `main`.
 > **Este documento registra decisões de produto, não certifica funcionamento em uma sessão real.** Consulte os testes, CI e evidências antes de declarar qualquer recurso estável.
 
 ## Política de documentação: somente escopo vigente
@@ -16,9 +16,15 @@ A documentação oficial é um **registro do estado atual e do trabalho futuro a
 
 O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que precisa ser corrigido e o que será desenvolvido**, sem confundir experimentos abandonados com compromissos futuros.
 
-## Em revisão — giroscópio na mira do mouse virtual
+## Em revisão — giroscópio e touchpad complementares (PR #27)
 
-Pedido do mantenedor: ativação durante a partida pelo HUD ou configuração. Implementada a alternativa de configuração em Entradas → Ajustes de teclado e mouse, sem mudar layout do HUD. Não usa o caminho antigo de controle físico: deltas do sensor seguem o move/canal do touchpad virtual com guardas de pausa, foco e sessão. Opt-in a cada página, sem recarga. Guia em [Giroscópio no mouse virtual](GIROSCOPIO_MOUSE_VIRTUAL.md). Preparado userscript 4.15.3 e módulo 1.4.1 em branch de correção; main segue a versão publicada até incorporação. 390 PASS/0 FAIL/3 TODO locais; sensor e gameplay reais pendentes. PSBox continua separado no PR #24.
+Especificação do mantenedor implementada em branch de teste sobre a main do PR #29: perfis FPS/Corrida em paisagem, composição nos analógicos e touchpad de mira no controle físico/virtual. Saída complementar pela ponte Gamepad, sem alterar o modo escolhido ou a autenticação; suporte real de combinações de mouse/toque e analógico precisa ser validado por jogo. Não é protocolo de touchpad PlayStation. Módulo oficial 1.4.1 e Central de Entradas preservados; userscript preparado como 4.15.4, ainda não oficial. Guia em [Giroscópio e touchpad](GIROSCOPIO_E_TOUCHPAD.md). Testes locais: 398 PASS/0 FAIL/3 TODO; hardware, orientação real e gameplay pendentes. PR #24 continua separado para PSBox/Android.
+
+## Publicação 4.15.3 — PR #29 e divisão de frentes
+
+O mantenedor definiu o PR #29 como a atualização oficial mais recente: Central de Entradas por dispositivo, tema grafite/verde, ajustes de sensibilidade do touchpad e organização do editor. Userscript 4.15.3, módulo 1.4.1 fixado por SHA, configurações existentes preservadas. O PR #24 continua exclusivamente no desenvolvimento experimental PSBox/Android; não foi incorporado ao produto. O giroscópio virtual proposto no PR #27 também não faz parte desta publicação e requer reconciliação com a nova Central de Entradas antes de eventual integração.
+
+Verificação local desta publicação: 388 testes, 385 aprovados, zero falhas e três TODO preexistentes; sintaxe dos dois scripts e relatório estático executados. A validação Edge headless de layout/navegação foi relatada na implementação original do PR #29; não foi reexecutada nesta preparação de metadados. Teste manual no aparelho, hardware e partida autenticada continuam pendentes.
 
 ## Publicação 4.15.2 — correções autorizadas
 

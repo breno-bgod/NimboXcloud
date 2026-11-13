@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.15.3
+// @version      4.15.4
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch, cinco modos de entrada e HUD de controle virtual.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/5c16e051c52f8043397915d35cd869eaf29d416f/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.15.3
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/158df53180043af93e85af9e9d139c85ccaf36a9/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.15.4
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.15.3';
+  const VER = '4.15.4';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1038,12 +1038,59 @@ SOFTWARE.
       return false;
     } finally { nxInputSelection.busy = false; renderBody(); }
   }
+  let nxInputWorkspaceFamily = '';
+  function nxInputFamily(mode) {
+    if (mode === 'keyboard-mouse') return 'keyboard';
+    if (mode === 'gamepad') return 'gamepad';
+    return 'mobile';
+  }
+  function nxInputDevicePreview(family) {
+    const figure = mk('div', '');
+    figure.className = 'nx-device-preview';
+    figure.setAttribute('role', 'img');
+    const labels = {keyboard:'Teclado e mouse',gamepad:'Controle',mobile:'Controles na tela'};
+    figure.setAttribute('aria-label', labels[family]);
+    const device = mk('div', '');
+    device.className = 'nx-device-diagram nx-device-' + family;
+    device.setAttribute('aria-hidden','true');
+    const keys = family === 'keyboard' ? ['W','A','S','D','↵','Mouse'] :
+      family === 'gamepad' ? ['LT','RT','L','R','Y','X','B','A'] : ['↕','↔','A','B'];
+    keys.forEach(function(label, index) {
+      const key = mk('span','',label);
+      key.className = 'nx-device-key nx-device-key-' + index;
+      device.appendChild(key);
+    });
+    figure.appendChild(device);
+    figure.appendChild(mk('strong','',labels[family]));
+    return figure;
+  }
   function nxInputModePage(root) {
-    const g = group('Como você quer jogar?', 'Escolha uma entrada por vez. A troca solta os comandos anteriores e pausa os outros controles do Nimbo.');
+    const selected = nxSelectedInputMode();
+    const family = nxInputWorkspaceFamily || nxInputFamily(selected);
+    const navigation = mk('nav','');
+    navigation.className = 'nx-input-devices';
+    navigation.setAttribute('aria-label','Dispositivos de entrada');
+    [['keyboard','Teclado e mouse'],['gamepad','Controle'],['mobile','Mobile']].forEach(function(item) {
+      const button = actBtn(item[1], function() {
+        nxInputWorkspaceFamily = item[0];
+        renderBody(true);
+        el.body.querySelector('[data-nx-device="' + item[0] + '"]')?.focus();
+      }, 'ghost');
+      button.setAttribute('data-nx-device',item[0]);
+      button.setAttribute('aria-pressed',String(family === item[0]));
+      navigation.appendChild(button);
+    });
+    root.appendChild(navigation);
+    const workspace = mk('div','');
+    workspace.className = 'nx-input-workspace';
+    workspace.appendChild(nxInputDevicePreview(family));
+    const g = group('Modo de entrada', '');
     const status = mk('div', 'padding:10px 0;font-size:12px;line-height:1.5;color:' + C.dim);
     status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-    g.add(status); liveFns.push(function(){status.textContent = nxInputSelectionSummary();});
-    NX_INPUT_MODES.forEach(function(mode) {
+    g.add(status); liveFns.push(function(){
+      status.textContent = nxInputModeLabel(nxSelectedInputMode()) + ' — ' + nxInputSelectionSummary();
+    });
+    NX_INPUT_MODES.filter(function(mode){return nxInputFamily(mode.id) === family;}).forEach(function(mode) {
       const button = actBtn('Selecionar', function(){nxChooseInputMode(mode.id);}, 'ghost');
       button.setAttribute('aria-label','Selecionar '+mode.label);
       const refresh = function() {
@@ -1051,24 +1098,60 @@ SOFTWARE.
         button.setAttribute('aria-pressed', String(selected));
         button.textContent=selected?'Selecionado':'Selecionar';
         button.style.borderColor = selected ? C.accent : C.line;
-        button.style.background = selected ? 'rgba(74,222,128,.12)' : 'transparent';
+        button.style.background = selected ? 'rgba(116,205,136,.12)' : 'transparent';
         button.disabled = nxInputSelection.busy;
       };
       refresh(); liveFns.push(refresh);
       g.add(setRow(mode.label, mode.hint, button, true));
     });
-    g.add(setRow('Automático do Xbox', 'Restaura a combinação de entradas do serviço.',
+    workspace.appendChild(g.root);
+    root.appendChild(workspace);
+    if (family === 'mobile') {
+      const hud = group('Layouts de HUD', 'Escolha o layout para editar sobre o jogo.');
+      [['virtual-gamepad','Controle virtual'],['virtual-keyboard-mouse','Teclado e mouse virtuais']].forEach(function(item){
+        hud.add(setRow(item[1], item[0] === 'virtual-gamepad' ? 'Analógicos, gatilhos e botões.' : 'Touchpad, joystick WASD e teclas.', actBtn('Editar HUD', async function(){
+          if (!await nxChooseInputMode(item[0])) return;
+          setOpen(false, true); window.NimboTouch?.editHud?.();
+        }, 'ghost')));
+      });
+      root.appendChild(hud.root);
+    }
+    const recovery = group('Entrada automática');
+    recovery.add(setRow('Automático do Xbox', 'Usa a combinação de entradas do serviço.',
       actBtn('Restaurar automático', function(){nxChooseInputMode('native');}, 'ghost')));
-    root.appendChild(g.root);
-    const hud = group('Controles na tela e editor de HUD', 'HUD é o layout dos botões sobre o jogo. Escolha abaixo qual layout editar; seus layouts salvos são preservados.');
-    [['virtual-gamepad','Editar controle virtual'],['virtual-keyboard-mouse','Editar teclado e mouse virtuais']].forEach(function(item){
-      hud.add(setRow(item[1], item[0] === 'virtual-gamepad' ? 'Analógicos, gatilhos e botões de controle na tela. Seleciona Controle virtual e abre o editor.' : 'Touchpad e teclas na tela. Seleciona Teclado e mouse virtuais e abre o editor. O touchpad não precisa capturar o ponteiro.', actBtn('Editar HUD', async function(){
-        if (!await nxChooseInputMode(item[0])) return;
-        setOpen(false, true); window.NimboTouch?.editHud?.();
-      }, 'ghost')));
+    root.appendChild(recovery.root);
+    return family;
+  }
+
+  function nxTouchpadSettings(root) {
+    const touch = window.NimboTouch;
+    const current = touch?.touchpadSettings?.();
+    if (!current || typeof touch.setTouchpadSettings !== 'function') {
+      root.appendChild(note('Atualize o módulo NimboTouch para ajustar o touchpad.'));
+      return;
+    }
+    const settings = group('Touchpad · sensibilidade compartilhada', 'Ajusta o mouse por toque e a área de mira dos controles, sem modificar os perfis do giroscópio.');
+    [['sensitivity','Velocidade',.05,50,.05],['gainX','Sensibilidade horizontal',.1,5,.1],['gainY','Sensibilidade vertical',.1,5,.1]].forEach(function(item) {
+      const [key,label,min,max,step] = item;
+      const slider = document.createElement('input');
+      slider.type='range';slider.min=min;slider.max=max;slider.step=step;slider.value=current[key];
+      slider.setAttribute('aria-label',label);
+      slider.style.cssText='width:100%;accent-color:'+C.accent;
+      const value = mk('output','color:'+C.accent,Number(current[key]).toFixed(2));
+      slider.addEventListener('input',function(){value.textContent=Number(slider.value).toFixed(2);});
+      slider.addEventListener('change',function(){
+        try { touch.setTouchpadSettings({[key]:Number(slider.value)}); }
+        catch(error) {
+          slider.value=touch.touchpadSettings()[key];
+          value.textContent=Number(slider.value).toFixed(2);
+          toast('Não foi possível salvar o touchpad: '+error.message);
+        }
+      });
+      const control=mk('div','width:100%;display:flex;align-items:center;gap:12px');
+      control.append(slider,value);
+      settings.add(setRow(label,'',control,true));
     });
-    root.appendChild(hud.root);
-    root.appendChild(note('O toque nativo precisa estar disponível na sessão. Se o cliente Xbox não aceitar uma troca durante a partida, volte ao Automático e reinicie o jogo.'));
+    root.appendChild(settings.root);
   }
 
   // ---------- 8. Faixa de qualidade: reescrever o corpo de /sessions/cloud/play ----------
@@ -2302,8 +2385,8 @@ SOFTWARE.
   // sem reconstruir o DOM (mantém rolagem, foco e slider durante a atualização).
   const UI_FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
   const C = {
-    bg: 'rgba(12,16,22,.97)', panel: 'rgba(255,255,255,.045)', line: 'rgba(255,255,255,.09)',
-    text: '#e8edf3', dim: '#8b96a5', accent: '#4ade80', good: '#3fb950', warn: '#d29922', bad: '#f85149'
+    bg: 'rgba(25,29,27,.97)', panel: 'rgba(255,255,255,.045)', line: 'rgba(255,255,255,.09)',
+    text: '#e8edf3', dim: '#8b96a5', accent: '#74cd88', good: '#3fb950', warn: '#d29922', bad: '#f85149'
   };
   const NS = 'http://www.w3.org/2000/svg';
   const ICONS = {
@@ -5837,9 +5920,11 @@ SOFTWARE.
     root.appendChild(reset.root);
   };
   TAB_BUILDERS.inputs=function(root){
-    nxInputModePage(root);
-    nxSettingsSection(root,'Ajustes do controle físico',TAB_BUILDERS.gamepad);
-    nxSettingsSection(root,'Ajustes de teclado e mouse',TAB_BUILDERS.gyrotouch);
+    const family = nxInputModePage(root);
+    nxPhoneControls(root);
+    nxTouchpadSettings(root);
+    if (family === 'gamepad') nxSettingsSection(root,'Ajustes do controle físico',TAB_BUILDERS.gamepad);
+    if (family === 'keyboard') nxSettingsSection(root,'Ajustes de teclado e mouse',TAB_BUILDERS.gyrotouch);
   };
   TAB_BUILDERS.gamepad=function(root){
     const nodes=nxLegacyControlGroups('gamepad');
@@ -5847,7 +5932,7 @@ SOFTWARE.
       ['Controles conectados'],
       'Estado dos controles físicos reconhecidos pelo navegador.');
     nxMoveGroup(root,nodes,'Perfis de analógico');
-    nxSettingsSection(root,'Giroscópio · ajustes avançados',function(content){nxMoveGroup(content,nodes,'Giroscópio');});
+    // Phone gyroscope profiles are shared above, independent of the browsed device.
     const vibration=nxTakeGroupRows(nxFindGroup(nodes,'Acessórios'),'Vibração do Gamepad',['Vibração'],
       'Teste local de vibração. Não altera automaticamente a vibração enviada pelo xCloud.');
     if(vibration)root.appendChild(vibration);
@@ -5855,7 +5940,6 @@ SOFTWARE.
   };
   TAB_BUILDERS.controls=TAB_BUILDERS.gamepad;
   TAB_BUILDERS.gyrotouch=function(root){
-    nxVirtualGyroControls(root);
     nxPointerControls(root);
     nxBindControls(root,'keyboard');
   };
@@ -5866,6 +5950,8 @@ SOFTWARE.
   }
 
   function setTab(id) {
+    if (id === 'gamepad' || id === 'controls') nxInputWorkspaceFamily = 'gamepad';
+    if (id === 'gyrotouch') nxInputWorkspaceFamily = 'keyboard';
     id=nxCanonicalTab(id);
     if (!TAB_BUILDERS[id]) id = 'overview';
     tabId = id;
@@ -5873,6 +5959,7 @@ SOFTWARE.
   }
 
   function renderTabs() {
+    if (wrap) wrap.dataset.nxPage = tabId;
     if (!el.navTitle) return;
     const current = TABS.find(function (t) { return t.id === tabId; }) || TABS[0];
     el.navTitle.textContent = current.label;
@@ -5955,6 +6042,54 @@ SOFTWARE.
     box.append(input,results);root.appendChild(box);
   }
 
+  function nxWorkspaceStyle() {
+    if (document.getElementById('nx-workspace-style')) return;
+    const style = document.createElement('style');
+    style.id = 'nx-workspace-style';
+    style.textContent = `
+#__xcu_panel__[data-nx-page=inputs]{width:min(1040px,100vw)!important}
+#__xcu_panel__ .nx-workspace-panel{--nx-accent:#74cd88;--nx-surface:#222725;--nx-edge:#ffffff20}
+#__xcu_panel__ .nx-category-rail{background:rgba(26,30,28,.9)!important}
+#__xcu_panel__ .nx-category-rail button[aria-current=page]{background:#74cd8818!important;color:#a8e4b5!important}
+#__xcu_panel__ .nx-workspace-panel :is(input,select){accent-color:var(--nx-accent);color-scheme:dark}
+#__xcu_panel__ .nx-workspace-panel :is(button,input,select,summary):focus-visible{outline:2px solid var(--nx-accent);outline-offset:3px}
+#__xcu_panel__ .nx-input-devices{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px;border-bottom:1px solid var(--nx-edge);padding-bottom:12px}
+#__xcu_panel__ .nx-input-devices button{flex:1;min-width:100px;min-height:44px}
+#__xcu_panel__ .nx-input-devices button[aria-pressed=true]{border-color:var(--nx-accent)!important;background:#74cd8818!important;color:#b8eac2!important}
+#__xcu_panel__ .nx-input-workspace{display:grid;grid-template-columns:minmax(230px,1fr) minmax(250px,1fr);gap:24px;align-items:center;margin-bottom:20px}
+#__xcu_panel__ .nx-device-preview{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;min-height:290px;color:#b8cabc}
+#__xcu_panel__ .nx-device-preview strong{font-size:14px;font-weight:500}
+#__xcu_panel__ .nx-device-diagram{position:relative;box-sizing:border-box;border:2px solid #83a38b;width:240px;height:152px;background:#74cd8808;color:#c8e4ce}
+#__xcu_panel__ .nx-device-gamepad{border-radius:48px 48px 65px 65px;transform:perspective(500px) rotateX(8deg)}
+#__xcu_panel__ .nx-device-key{position:absolute;display:grid;place-items:center;box-sizing:border-box;border:1px solid #83a38b;font-size:12px;width:30px;height:30px;border-radius:50%;background:#202a23}
+#__xcu_panel__ .nx-device-gamepad .nx-device-key-0{left:25px;top:-17px;width:48px;border-radius:8px}
+#__xcu_panel__ .nx-device-gamepad .nx-device-key-1{right:25px;top:-17px;width:48px;border-radius:8px}
+#__xcu_panel__ .nx-device-gamepad .nx-device-key-2{left:25px;top:48px;width:48px;height:48px}
+#__xcu_panel__ .nx-device-gamepad .nx-device-key-3{left:103px;top:92px;width:40px;height:40px}
+#__xcu_panel__ .nx-device-gamepad .nx-device-key-4{right:40px;top:30px}
+#__xcu_panel__ .nx-device-gamepad .nx-device-key-5{right:71px;top:60px}
+#__xcu_panel__ .nx-device-gamepad .nx-device-key-6{right:9px;top:60px}
+#__xcu_panel__ .nx-device-gamepad .nx-device-key-7{right:40px;top:90px}
+#__xcu_panel__ .nx-device-keyboard{height:112px;border-radius:8px;width:220px}
+#__xcu_panel__ .nx-device-keyboard .nx-device-key{border-radius:4px}
+#__xcu_panel__ .nx-device-keyboard .nx-device-key-0{left:44px;top:16px}
+#__xcu_panel__ .nx-device-keyboard .nx-device-key-1{left:10px;top:50px}
+#__xcu_panel__ .nx-device-keyboard .nx-device-key-2{left:44px;top:50px}
+#__xcu_panel__ .nx-device-keyboard .nx-device-key-3{left:78px;top:50px}
+#__xcu_panel__ .nx-device-keyboard .nx-device-key-4{right:12px;top:50px;width:55px}
+#__xcu_panel__ .nx-device-keyboard .nx-device-key-5{right:-24px;top:85px;width:48px;height:68px;border-radius:24px}
+#__xcu_panel__ .nx-device-mobile{border-radius:24px;height:132px;border-width:3px}
+#__xcu_panel__ .nx-device-mobile:before{content:'';position:absolute;left:8px;top:40px;width:4px;height:42px;background:#83a38b;border-radius:4px}
+#__xcu_panel__ .nx-device-mobile .nx-device-key-0{left:25px;top:54px;width:48px;height:48px}
+#__xcu_panel__ .nx-device-mobile .nx-device-key-1{right:75px;top:70px;width:40px;height:40px}
+#__xcu_panel__ .nx-device-mobile .nx-device-key-2{right:20px;top:65px}
+#__xcu_panel__ .nx-device-mobile .nx-device-key-3{right:42px;top:30px}
+@media(max-width:760px){#__xcu_panel__ .nx-input-workspace{grid-template-columns:1fr;gap:4px}#__xcu_panel__ .nx-device-preview{min-height:200px;gap:18px}#__xcu_panel__ .nx-input-devices{gap:4px}#__xcu_panel__ .nx-input-devices button{min-width:85px;font-size:11px!important}}
+@media(max-width:480px){#__xcu_panel__ .nx-category-rail{flex-basis:55px!important}#__xcu_panel__ .nx-category-rail button{justify-content:center!important}#__xcu_panel__ .nx-category-rail button>span:nth-child(2){display:none!important}}
+`;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
   function buildUI() {
     if (wrap && wrap.isConnected) return wrap;
     if (wrap && !wrap.isConnected) {
@@ -6007,6 +6142,8 @@ SOFTWARE.
     ].join(';'));
     cardEl.style.maxWidth='min(360px,calc(100vw - 16px))';
     nxPanelApply();
+    cardEl.classList.add('nx-workspace-panel');
+    nxWorkspaceStyle();
     cardEl.setAttribute('role', 'dialog');
     cardEl.setAttribute('aria-label', 'Painel NimboXcloud');
     cardEl.addEventListener('pointerdown', stopEv);
@@ -6060,6 +6197,7 @@ SOFTWARE.
     navBar.style.display='flex';
     cardEl.insertBefore(navBar,el.body);
     const rail=mk('nav','flex:0 0 126px;display:flex;flex-direction:column;gap:3px;padding:8px 4px;background:#101419;border-right:1px solid '+C.line+';overflow-y:auto;min-height:0');
+    rail.className='nx-category-rail';
     rail.setAttribute('aria-label','Categorias das configurações');
     el.nxRailButtons=[];
     TABS.map(function(tab){return [tab.id,tab.label];}).forEach(function(item){
@@ -6294,7 +6432,7 @@ SOFTWARE.
   let nxPanelAppearance=nxPanelLoad();
   function nxPanelPalette(){
     const p=nxPanelAppearance;
-    const rgb=({dark:'12,16,22',black:'0,0,0',slate:'32,42,55'})[p.tone]||'12,16,22';
+    const rgb=({dark:'25,29,27',black:'0,0,0',slate:'32,42,55'})[p.tone]||'25,29,27';
     return {background:'rgba('+rgb+','+(p.opacity/100)+')',text:nxPanelColors[p.text]||C.text,icon:nxPanelColors[p.icons]||C.dim,line:C.line,panel:C.panel};
   }
   function nxPanelApply(){
@@ -6849,6 +6987,133 @@ SOFTWARE.
     return Math.sign(x) * Math.pow(normalized, profile.curve);
   }
   // Uma única ponte para perfis de analógico, isolamento e controle virtual.
+  // BEGIN PHONE INPUT: complementary controls, no change to the chosen mode.
+  const nxPhone = {profile:'off',error:'',pending:0,center:null,previous:null,angle:null,lastAt:0,axes:[0,0,0,0],
+    touchEnabled:false,touch:null,touchAxes:[0,0],touchAt:0,pad:null,announced:false};
+  const NX_PHONE_GAIN='nx.phone.gyroGain.v1',NX_PHONE_INVERT_X='nx.phone.invertX.v1',NX_PHONE_INVERT_Y='nx.phone.invertY.v1';
+  function nxPhoneReset(){nxPhone.center=null;nxPhone.previous=null;nxPhone.angle=null;nxPhone.lastAt=0;nxPhone.axes=[0,0,0,0];nxPhone.touch=null;nxPhone.touchAxes=[0,0];nxPhone.touchAt=0;}
+  function nxPhoneLandscape(){const a=nxScreenAngle();return innerWidth>innerHeight&&(a===90||a===270);}
+  function nxPhoneAllowed(){return !openUI&&!document.hidden&&document.hasFocus()&&isInGame()&&!nxLoadingBusy()&&
+    !document.documentElement.classList.contains('nx-native-menu-expanded')&&!window.NimboTouch?.diagnostic?.()?.editing&&!window.NimboTouch?.isRemoteActive?.();}
+  function nxPhoneWanted(){return nxPhone.profile!=='off'||(nxPhone.touchEnabled&&['gamepad','virtual-gamepad'].includes(nxSelectedInputMode()));}
+  function nxPhoneBridgeAvailable(){return nxInputBridge.installed&&navigator.getGamepads===nxInputBridge.wrapper;}
+  function nxPhoneMul(a,b){return [a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1],a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0],a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3],a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]];}
+  function nxPhoneQuaternion(alpha,beta,gamma,angle){
+    const r=Math.PI/360,axis=(i,d)=>{const q=[0,0,0,Math.cos(d*r)];q[i]=Math.sin(d*r);return q;};
+    // W3C DeviceOrientation: Z(alpha), X'(beta), Y''(gamma); then screen basis.
+    return nxPhoneMul(nxPhoneMul(nxPhoneMul(axis(2,alpha),axis(0,beta)),axis(1,gamma)),axis(2,-angle));
+  }
+  function nxPhoneRotation(from,to){
+    let q=nxPhoneMul([-from[0],-from[1],-from[2],from[3]],to);
+    if(q[3]<0)q=q.map(v=>-v);
+    const length=Math.hypot(q[0],q[1],q[2]);
+    if(length<1e-9)return [0,0,0];
+    const scale=2*Math.atan2(length,q[3])*180/Math.PI/length;
+    return q.slice(0,3).map(v=>v*scale);
+  }
+  function nxPhoneOnOrientation(e){
+    if(nxPhone.profile==='off')return;
+    if(!nxPhoneAllowed()||!nxPhoneLandscape()||![e.alpha,e.beta,e.gamma].every(Number.isFinite)){nxPhoneReset();return;}
+    const now=Date.now(),angle=nxScreenAngle(),q=nxPhoneQuaternion(e.alpha,e.beta,e.gamma,angle);
+    if(!nxPhone.center||nxPhone.angle!==angle||now<=nxPhone.lastAt||now-nxPhone.lastAt>250){nxPhone.center=q;nxPhone.previous=q;nxPhone.angle=angle;nxPhone.lastAt=now;nxPhone.axes=[0,0,0,0];return;}
+    const delta=nxPhoneRotation(nxPhone.profile==='racing'?nxPhone.center:nxPhone.previous,q);
+    const dt=Math.max(.005,Math.min(.1,(now-nxPhone.lastAt)/1000));
+    nxPhone.previous=q;nxPhone.lastAt=now;
+    const raw=Number(getPref(NX_PHONE_GAIN,'1')),gain=Number.isFinite(raw)?Math.max(.25,Math.min(2,raw)):1;
+    const sx=getPref(NX_PHONE_INVERT_X,'0')==='1'?-1:1,sy=getPref(NX_PHONE_INVERT_Y,'0')==='1'?-1:1;
+    const limit=v=>Math.max(-1,Math.min(1,v));
+    nxPhone.axes=nxPhone.profile==='racing'?[limit(-delta[2]/45*gain*sx),0,0,0]:
+      [0,0,limit(delta[1]/(180*dt)*gain*sx),limit(-delta[0]/(180*dt)*gain*sy)];
+  }
+  function nxPhoneAnnounce(){
+    const physical=nxNativeGetGamepads?.();
+    if(physical&&Array.from(physical).some(p=>p?.connected)){nxPhone.announced=false;return;}
+    if(nxSelectedInputMode()==='virtual-gamepad'){nxPhone.announced=false;return;}
+    const wanted=nxPhoneWanted();if(wanted===nxPhone.announced)return;
+    const pad=nxNeutralVirtualPad();pad.id='NimboXcloud Phone Add-on';pad.connected=wanted;
+    const event=new Event(wanted?'gamepadconnected':'gamepaddisconnected');Object.defineProperty(event,'gamepad',{value:pad});
+    nxPhone.announced=wanted;window.dispatchEvent(event);
+  }
+  async function nxPhoneSetProfile(profile){
+    if(!['off','fps','racing'].includes(profile))return false;
+    const request=++nxPhone.pending;nxPhone.profile='off';nxPhone.error='';nxPhoneReset();
+    setPref(NX_GYRO_GAME_KEY,'0'); // Explicit selection supersedes the legacy physical-only opt-in.
+    if(profile==='off'){nxStopGyroPreview();nxPhoneAnnounce();return true;}
+    const started=await nxStartGyroPreview();if(request!==nxPhone.pending)return false;
+    if(!started||document.hidden){nxPhone.error='Sensor não ativado: '+nxGyroPreview.permission;return false;}
+    nxPhone.profile=profile;nxInstallInputBridge(true);
+    if(!nxPhoneBridgeAvailable()){nxPhone.profile='off';nxPhoneReset();nxPhone.error='Ponte Gamepad indisponível; outro script pode estar controlando as entradas.';return false;}
+    nxPhoneAnnounce();return true;
+  }
+  function nxPhoneApply(pads){
+    if(!nxPhoneWanted())return pads;
+    const allowed=nxPhoneAllowed(),now=Date.now();
+    if(!allowed)nxPhoneReset();
+    const gyro=allowed&&nxPhoneLandscape()&&now-nxPhone.lastAt<=250?nxPhone.axes:[0,0,0,0];
+    const touch=allowed&&nxPhone.touchEnabled&&now-nxPhone.touchAt<=90?nxPhone.touchAxes:[0,0];
+    const result=Array.from(pads||[]),physical=result.findIndex(p=>p?.connected&&p.mapping==='standard');
+    let slot=physical;
+    if(slot<0){slot=result.findIndex(p=>!p||!p.connected);if(slot<0)slot=result.length;if(slot>3)return pads;}
+    const base=physical<0?nxNeutralVirtualPad():result[slot];
+    const axes=Array.from(base.axes);while(axes.length<4)axes.push(0);
+    const additions=[gyro[0],gyro[1],gyro[2]+touch[0],gyro[3]+touch[1]];
+    for(let i=0;i<4;i++)axes[i]=Math.max(-1,Math.min(1,axes[i]+additions[i]));
+    result[slot]={id:physical<0?'NimboXcloud Phone Add-on':base.id,index:slot,connected:true,mapping:'standard',timestamp:base.timestamp,
+      axes:axes,buttons:base.buttons};
+    if(base.vibrationActuator)result[slot].vibrationActuator=base.vibrationActuator;
+    if(base.hapticActuators)result[slot].hapticActuators=base.hapticActuators;
+    return result;
+  }
+  function nxPhoneTouchTarget(e){
+    if(!nxPhone.touchEnabled||!nxPhoneAllowed()||e.pointerType!=='touch'||e.isPrimary===false)return false;
+    const mode=nxSelectedInputMode(),target=e.target;
+    if(mode==='virtual-gamepad')return !!target?.closest?.('#nx-phone-touchpad');
+    if(mode!=='gamepad')return false;
+    return !target?.closest?.('#__xcu_panel__,#nimbo-touch-root,#nimbo-touch-panel,#nx-loading-overlay,[role="dialog"],button,a,input,textarea,select,[contenteditable="true"]');
+  }
+  window.addEventListener('pointerdown',function(e){
+    if(!nxPhoneTouchTarget(e)||nxPhone.touch)return;
+    nxPhone.touch={id:e.pointerId,x:e.clientX,y:e.clientY,target:e.target};nxPhone.touchAxes=[0,0];
+    try{e.target.setPointerCapture?.(e.pointerId);}catch(_){}
+    e.preventDefault();e.stopImmediatePropagation();
+  },{capture:true,passive:false});
+  window.addEventListener('pointermove',function(e){
+    const p=nxPhone.touch;if(!p||p.id!==e.pointerId)return;
+    if(!nxPhoneAllowed()){nxPhoneReset();return;}
+    const settings=window.NimboTouch?.touchpadSettings?.()||{};
+    const gain=(key,max)=>Number.isFinite(settings[key])?Math.max(.05,Math.min(max,settings[key])):1;
+    const speed=gain('sensitivity',50);
+    nxPhone.touchAxes=[Math.max(-1,Math.min(1,(e.clientX-p.x)/35*speed*gain('gainX',5))),Math.max(-1,Math.min(1,(e.clientY-p.y)/35*speed*gain('gainY',5)))];
+    p.x=e.clientX;p.y=e.clientY;nxPhone.touchAt=Date.now();e.preventDefault();e.stopImmediatePropagation();
+  },{capture:true,passive:false});
+  function nxPhoneTouchEnd(e){if(nxPhone.touch?.id!==e.pointerId)return;nxPhone.touch=null;nxPhone.touchAxes=[0,0];nxPhone.touchAt=0;e.preventDefault();e.stopImmediatePropagation();}
+  window.addEventListener('pointerup',nxPhoneTouchEnd,true);window.addEventListener('pointercancel',nxPhoneTouchEnd,true);
+  window.addEventListener('lostpointercapture',nxPhoneTouchEnd,true);
+  for(const type of ['touchstart','touchmove'])window.addEventListener(type,function(e){
+    if(nxPhone.touch&&e.target===nxPhone.touch.target&&nxPhoneAllowed()){e.preventDefault();e.stopImmediatePropagation();}
+  },{capture:true,passive:false});
+  window.addEventListener('blur',nxPhoneReset);document.addEventListener('visibilitychange',nxPhoneReset);
+  window.addEventListener('deviceorientation',nxPhoneOnOrientation,{passive:true});
+  function nxPhoneControls(root){
+    const g=group('Giroscópio e touchpad complementares','Não troca o modo de entrada. FPS e Corrida usam o smartphone somente em paisagem; misturar mouse e analógico depende do suporte do jogo.');
+    ['off','fps','racing'].forEach(function(p){g.add(actBtn(({off:'Desligar giroscópio',fps:'Ativar FPS · mira direita',racing:'Ativar Corrida · volante'})[p],async function(){const ok=await nxPhoneSetProfile(p);if(!ok&&nxPhone.error)toast(nxPhone.error);renderBody();},'ghost'));});
+    g.add(infoRow('Giroscópio',function(){return nxPhone.profile==='off'?'Desligado':(!nxPhoneLandscape()?'Pausado · deite o celular':nxPhone.profile==='fps'?'FPS · analógico direito':'Corrida · direção no analógico esquerdo');}));
+    g.add(setRow('Sensibilidade do giroscópio','Aplica somente à contribuição do sensor.',chips([{k:'.5',label:'Suave'},{k:'1',label:'Normal'},{k:'1.5',label:'Forte'}],getPref(NX_PHONE_GAIN,'1'),function(v){setPref(NX_PHONE_GAIN,v);nxPhoneReset();})));
+    g.add(actBtn('Recentrar sensor / volante',nxPhoneReset,'ghost'));
+    g.add(setRow('Inverter horizontal','Apenas sensor.',toggle(getPref(NX_PHONE_INVERT_X,'0')==='1',function(){setPref(NX_PHONE_INVERT_X,getPref(NX_PHONE_INVERT_X,'0')==='1'?'0':'1');nxPhoneReset();},'Inverter horizontal do giroscópio')));
+    g.add(setRow('Inverter vertical FPS','Apenas sensor.',toggle(getPref(NX_PHONE_INVERT_Y,'0')==='1',function(){setPref(NX_PHONE_INVERT_Y,getPref(NX_PHONE_INVERT_Y,'0')==='1'?'0':'1');nxPhoneReset();},'Inverter vertical do giroscópio')));
+    g.add(actBtn(nxPhone.touchEnabled?'Desativar touchpad do controle':'Ativar touchpad do controle',function(){nxPhone.touchEnabled=!nxPhone.touchEnabled;nxPhoneReset();nxInstallInputBridge(true);if(nxPhone.touchEnabled&&!nxPhoneBridgeAvailable()){nxPhone.touchEnabled=false;toast('Ponte Gamepad indisponível.');}nxPhoneAnnounce();renderBody();},'ghost'));
+    g.add(note('Controle físico: toque e arraste na área do jogo inteira. Controle virtual: área “Touchpad de mira” no topo. Esta área soma ao analógico direito; não é protocolo de touchpad PlayStation. Teclado/mouse virtual mantém o touchpad de mouse existente.'));
+    root.appendChild(g.root);
+  }
+  setInterval(function(){
+    const visible=nxPhone.touchEnabled&&nxSelectedInputMode()==='virtual-gamepad'&&nxPhoneAllowed();
+    if(visible&&!nxPhone.pad){const p=document.createElement('div');p.id='nx-phone-touchpad';p.textContent='Touchpad de mira';p.setAttribute('aria-label','Touchpad de mira do controle virtual');
+      p.style.cssText='position:fixed;top:max(12px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(240px,42vw);height:90px;background:#17291dcc;border:1px solid #74cd88;border-radius:14px;color:#c5f0cf;display:flex;align-items:center;justify-content:center;touch-action:none;z-index:2147483646;user-select:none';nxPhone.pad=p;}
+    if(nxPhone.pad){nxPhone.pad.hidden=!visible;nxPhone.pad.style.display=visible?'flex':'none';const host=mountTarget();if(visible&&host&&nxPhone.pad.parentNode!==host)host.appendChild(nxPhone.pad);}
+  },200);
+  // END PHONE INPUT
+
   const nxInputRoute = { mode: 'native', virtual: null };
   function nxNeutralVirtualPad() {
     return { id: 'NimboXcloud Virtual Controller', index: 0, connected: true, mapping: 'standard',
@@ -6897,6 +7162,7 @@ SOFTWARE.
   function nxSetInputRoute(mode) {
     if (!['native','keyboard-mouse','gamepad','virtual-keyboard-mouse','virtual-gamepad','native-touch'].includes(mode)) throw Error('Modo de entrada inválido.');
     const previous=nxInputRoute.mode;
+    if(typeof nxPhoneReset==='function')nxPhoneReset();
     nxReleaseVirtualPad(); nxInputRoute.mode=mode;
     nxInstallInputBridge();
     if (mode !== 'native' && (!nxInputBridge.installed || navigator.getGamepads !== nxInputBridge.wrapper)) {
@@ -7043,9 +7309,10 @@ SOFTWARE.
           pads = nxNativeGetGamepads();
           nxInputBridge.nativeReads++;
           if (!pads) return pads;
-          if(nxInputRoute.mode==='native'&&!nxInputEnabled()&&!nxGyroGameEnabled())return pads;
+          if(nxInputRoute.mode==='native'&&!nxInputEnabled()&&!nxGyroGameEnabled()&&!(typeof nxPhoneWanted==='function'&&nxPhoneWanted()))return pads;
           const result = Array.from(pads, nxTransformPhysicalPad);
-          return nxRouteGamepads(result);
+          const routed=nxRouteGamepads(result);
+          return typeof nxPhoneApply==='function'?nxPhoneApply(routed):routed;
         } catch (err) {
           nxInputRoute.mode='native';nxReleaseVirtualPad();
           nxRestoreNativeGamepads('Falha no processamento: ' + String(err && err.message || err));
@@ -7109,49 +7376,7 @@ SOFTWARE.
     return { count: kinds.length, kinds: Array.from(new Set(kinds)), injectionEnabled: false,
       note: 'Registro interno de atividade virtual; nenhuma entrada é enviada ao xCloud.' };
   }
-  // Giroscópio para mouse virtual: opt-in durante esta página, sem recarga.
-  const nxVirtualGyro = {enabled:false,pending:false,last:null};
-  window.addEventListener('blur',function(){nxVirtualGyro.last=null;});
-  document.addEventListener('visibilitychange',function(){nxVirtualGyro.last=null;});
-  const NX_VIRTUAL_GYRO_GAIN_KEY = 'nx.gyro.virtualMouseGain.v1';
-  function nxVirtualGyroControls(root){
-    const g=group('Mira por giroscópio · mouse virtual','Selecione Teclado e mouse virtuais. O movimento do aparelho complementa o touchpad; o jogo precisa aceitar mouse. Pausa com menus ou fora de foco.');
-    g.add(setRow('Giroscópio na mira virtual','Ativação por toque, sem recarregar. A primeira amostra define a referência; não exige controle físico.',actBtn(nxVirtualGyro.enabled?'Desativar giroscópio da mira':'Ativar giroscópio da mira',async function(){
-      await nxToggleVirtualGyro();renderBody();
-    },'ghost')));
-    g.add(setRow('Intensidade do giroscópio virtual','Independente dos ajustes do giroscópio do controle físico.',chips([{k:'2',label:'Suave'},{k:'4',label:'Normal'},{k:'8',label:'Forte'}],getPref(NX_VIRTUAL_GYRO_GAIN_KEY,'4'),function(value){setPref(NX_VIRTUAL_GYRO_GAIN_KEY,value);nxVirtualGyro.last=null;})));
-    g.add(infoRow('Estado do sensor',function(){return nxVirtualGyro.enabled?'Ligado · envia somente com mouse virtual ativo':nxGyroPreview.permission;}));
-    root.appendChild(g.root);
-  }
-  async function nxToggleVirtualGyro(){
-    if(nxVirtualGyro.pending)return false;
-    nxVirtualGyro.last=null;
-    if(nxVirtualGyro.enabled){nxVirtualGyro.enabled=false;if(!nxGyroGameEnabled())nxStopGyroPreview();return true;}
-    if(nxSelectedInputMode()!=='virtual-keyboard-mouse'){toast('Selecione Teclado e mouse virtuais em Entradas.');return false;}
-    if(typeof window.NimboTouch?.virtualMouseDelta!=='function'){toast('Atualize o módulo de entradas junto com o Nimbo.');return false;}
-    nxVirtualGyro.pending=true;
-    try{nxVirtualGyro.enabled=await nxStartGyroPreview();if(!nxVirtualGyro.enabled)toast('Sensor não ativado: '+nxGyroPreview.permission);return nxVirtualGyro.enabled;}
-    finally{nxVirtualGyro.pending=false;}
-  }
-  function nxVirtualGyroSample(beta,gamma,angle){
-    const now=Date.now(),last=nxVirtualGyro.last;
-    if(!nxVirtualGyro.enabled||!nxGyroPreview.enabled||nxSelectedInputMode()!=='virtual-keyboard-mouse'||openUI||document.hidden||!document.hasFocus()||!Number.isFinite(beta)||!Number.isFinite(gamma)){
-      nxVirtualGyro.last=null;return;
-    }
-    nxVirtualGyro.last={beta:beta,gamma:gamma,angle:angle,at:now};
-    if(!last||last.angle!==angle||now-last.at>250)return;
-    const delta=function(value){return ((value+540)%360)-180;};
-    const db=delta(beta-last.beta),dg=delta(gamma-last.gamma);
-    if(Math.abs(db)>20||Math.abs(dg)>20)return;
-    const rad=angle*Math.PI/180;
-    const raw=Number(getPref(NX_VIRTUAL_GYRO_GAIN_KEY,'4'));
-    const gain=Number.isFinite(raw)?Math.max(1,Math.min(8,raw)):4;
-    const x=(dg*Math.cos(rad)+db*Math.sin(rad))*gain;
-    const y=(db*Math.cos(rad)-dg*Math.sin(rad))*gain;
-    if(!x&&!y)return;
-    if(window.NimboTouch?.virtualMouseDelta?.(Math.max(-128,Math.min(128,x)),Math.max(-128,Math.min(128,y)))!==true)nxVirtualGyro.last=null;
-  }
-  // Leitura compartilhada; saída para controle físico e mouse têm opt-ins separados.
+  // Giroscópio em modo de observação: exige ativação explícita e nunca move o jogo.
   const NX_GYRO_INVERT_X_KEY = 'nx.gyro.previewInvertX.v1';
   const NX_GYRO_INVERT_Y_KEY = 'nx.gyro.previewInvertY.v1';
   function nxGyroInvertX() { return getPref(NX_GYRO_INVERT_X_KEY, '0') === '1'; }
@@ -7210,7 +7435,6 @@ SOFTWARE.
       nxGyroPreview.filteredY = nxGyroPreview.filteredY === null ? y : nxGyroPreview.filteredY + factor * (y - nxGyroPreview.filteredY);
     }
     nxRegisterVirtualInput('nx-gyro-preview', 'gyro', true);
-    nxVirtualGyroSample(e.beta,e.gamma,angle);
   }
   async function nxStartGyroPreview() {
     if (nxGyroPreview.enabled) return true;
@@ -7240,7 +7464,6 @@ SOFTWARE.
     }
   }
   function nxStopGyroPreview() {
-    nxVirtualGyro.enabled=false;nxVirtualGyro.last=null;
     ++nxGyroRequestGeneration;
     nxGyroPreview.enabled = false;
     window.removeEventListener('deviceorientation', nxGyroOnOrientation);
@@ -7600,6 +7823,8 @@ SOFTWARE.
       inputCapabilities: inputCapabilities(),
       physicalInput: { requested: nxPhysicalInputMode(), summary: nxPhysicalInputSummary() },
       selectedInput: { requested: nxSelectedInputMode(), status: window.NimboTouch?.inputModeStatus?.() || null },
+      phoneInput: { profile:nxPhone.profile,landscape:nxPhoneLandscape(),sensorFresh:Date.now()-nxPhone.lastAt<=250,
+        touchpad:nxPhone.touchEnabled,scope:'composição local; recebimento pelo serviço não verificado' },
       visualProcessing: { ...nxGpuDiagnostics, requestedGpu:getPref(LS_NX_GPU,'0')==='1', status:nxVisualStatus() },
       inputSources: nxInputSourcesReport(),
       relativeMouse: { samples: nxRelativeMouse.samples, lastAt: nxRelativeMouse.lastAt,
@@ -8696,6 +8921,7 @@ void main(){
     boot();
   }
 })();
+
 
 
 
