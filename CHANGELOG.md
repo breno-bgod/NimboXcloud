@@ -1,4 +1,5 @@
-## Não lançado — ajustes de entradas, carregamento e monitor
+## [4.15.0] — 2026-11-13
+- Publicação oficial autorizada pelo mantenedor: userscript 4.15.0 e módulo de entradas/HUD 1.4.0. Preferências e layouts preservados.
 - Após teste do mantenedor: carregamento compacto na lateral direita; NX expande/recolhe detalhes sem esconder previsão e tempo decorrido. Ativar/ocultar estatísticas passa ao início de Estatísticas; a personalização do monitor fica expansível nessa página.
 - Previsão exige título/região correspondentes, ignora total alto com alocação explicitamente zerada e é removida quando a negociação comprova avanço além da fila. Request é clonado antes de o fetch nativo consumir o corpo. O valor continua sendo previsão do serviço, não cálculo garantido.
 - Barra nativa preserva posicionamento; seu puxador é reconhecido e fica fora do bloqueio de entradas. NX se integra quando a barra é reconhecida; fallback independente fica no canto inferior, sem cobrir o puxador.

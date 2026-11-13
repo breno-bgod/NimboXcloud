@@ -1,4 +1,4 @@
-# Preparação da partida, ícones e monitor — proposta no PR #22
+# Preparação da partida, ícones e monitor — versão 4.15.0 (PR #22)
 
 ## Comportamento
 
