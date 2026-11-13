@@ -3,7 +3,7 @@
 > Documento operacional. Toda execução autônoma deve reler a versão atual de `main` e atualizar este plano conforme evidências. Nunca presumir que a versão indicada aqui ainda é a mais recente.
 
 ## Estado de referência
-- **HEAD de `main) consultado em 2026-11-13:** `c28675d29a4e16f9a7546e091e596c9068975187`.
+- **HEAD de `main` consultado em 2026-11-13:** `c28675d29a4e16f9a7546e091e596c9068975187`.
 - **Versão real do userscript:** 4.15.2; blob de `NimboXcloud.user.js`: `c2a5e8f70f0f261561babeac729766e4d545f17b`. O changelog declara módulo Touch HUD 1.4.0.
 - Arquivo principal: `NimboXcloud.user.js`; interface e composição do painel permanecem no userscript, com HUD em `modules/NimboXcloud-Touch-HUD.user.js).
 - Plataforma: navegador em `play.xbox.com`.
