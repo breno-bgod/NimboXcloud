@@ -441,3 +441,24 @@ execução instrumentada do host antes de integrar núcleo/mídia/entrada.
 ### Build da binding confirmado
 
 [CI #43513384405](https://github.com/breno-bgod/NimboXcloud/actions/runs/43513384405), commit 9c2bbe5af3c0d17da618c1cb0143ef65dee90d3e: testes Java com release17 aprovados, testes C++ host aprovados, link ARM64/JNI aprovado, compilação de todas as classes Android e montagem do AAR aprovadas. Artefato nimbo-psbox-platform-arm64-not-apk, ID 14078484160, 555666 bytes, digest sha256:c5b48455ba94fea0b7e50a8928e25de056a68e36f75acfe4d1f273ed081067f6, inclui AAR e fontes/avisos. Não foi necessário relaxar release17 no CI. Ainda é biblioteca de plataforma, não APK/motor completo. Não houve eventos reais de Activity, rotação, execução JNI no Android ou sessão cloud. Próximo: execução instrumentada do host e ligação gradual do núcleo sem novo painel.
+
+
+## Transporte HTTPS original para o módulo Android — 13/11/2026
+
+Main oficial 98eff1294ad053a284d8661d59d8923373d07e57 (PR29/4.15.3) preservada;
+PSBox sem novo SHA desde c775ecaddde52024d177cce7392aae13cc6917aa. Sem comentário
+novo no PR #24. Proposta curta publicada no PR antes da dependência. Incorporados
+8 arquivos selecionados de HTTP/utilitários/CA/config originais, Git blob SHA e
+SHA256 conferidos; sem auth/session/purchase. Mbed TLS 107ea89daaefb9867ea9121002fbbdf926780e98
+(3.6.2) e framework94599c0e3b5036e086446a51a3f79640f70f22f6 reproduzem gitlinks.
+Licenças/sourcecorrespondente e public CA provenance preservadas.
+
+Novo CMake3.22.1 do SDK e script build-transport.sh: teste host offline de URL,
+chunked/JSON e initTls com fallback público embutido; link Android ARM64/API26
+com JNI, runtime estático e --no-undefined; AAR leva aviso MbedTLS e artefato leva
+fontes das dependências. Nenhum request ou acesso autenticado automatizado.
+Bash -n e regressões storage/lifecycle locais aprovados; CMake/dep/SDK indisponíveis
+localmente, build do transporte pendente no CI ao publicar. CA pública não é
+certificado de usuário/dispositivo. Aprovação não provará handshake, login,
+identidade ou streaming. Próximo: confirmar esse build e ligar serviços do núcleo
+com lifecycle real, mantendo um painel e preservando os dois motores.

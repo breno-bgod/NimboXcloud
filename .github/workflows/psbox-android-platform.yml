@@ -13,16 +13,24 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Mbed-TLS/mbedtls
+          ref: 107ea89daaefb9867ea9121002fbbdf926780e98
+          submodules: recursive
+          persist-credentials: false
+          path: .psbox-build-deps/mbedtls
       - name: Test native storage behavior on host
         run: bash experiments/console/psbox-android-platform/test-host.sh
       - name: Test Java lifecycle ownership without Android runtime
         run: bash experiments/console/psbox-android-platform/test-java-host.sh
       - name: Install fixed official NDK
-        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" "platforms;android-35"'
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" "platforms;android-35" "cmake;3.22.1"'
       - name: Link Android ARM64 platform library
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
-          bash experiments/console/psbox-android-platform/build-arm64.sh "$RUNNER_TEMP/nx-arm64"
+          export MBEDTLS_SOURCE_DIR="$GITHUB_WORKSPACE/.psbox-build-deps/mbedtls"
+          bash experiments/console/psbox-android-platform/build-transport.sh "$RUNNER_TEMP/nx-arm64"
       - name: Compile host facade and assemble experimental Android library
         run: bash experiments/console/psbox-android-platform/build-aar.sh "$RUNNER_TEMP/nx-arm64"
       - name: Preserve sources and notices with experimental binary

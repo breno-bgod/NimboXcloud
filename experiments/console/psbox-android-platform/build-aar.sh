@@ -23,6 +23,7 @@ entries={
  'NDK-NOTICE.txt':out/'NDK-NOTICE.txt',
  'SCOPE.txt':out/'SCOPE.txt',
 }
+if (out/'MBEDTLS-LICENSE.txt').exists():entries['MBEDTLS-LICENSE.txt']=out/'MBEDTLS-LICENSE.txt'
 target=out/'nimbo-psbox-platform-experimental.aar'
 with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED) as archive:
  for name,path in sorted(entries.items()):archive.writestr(name,path.read_bytes())

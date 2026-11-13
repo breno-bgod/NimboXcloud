@@ -147,3 +147,47 @@ o contrato terá de aguardar neutralização, stop de StreamPlayer e fim de work
 Não usar este callback para sinalizar parada completa de um motor ainda ativo.
 Próximo passo: execução instrumentada do host/lifecycle e integração gradual do
 núcleo com assets/CA e dependências Android reais. Nenhum APK foi criado aqui.
+
+
+## Incremento de transporte HTTPS (build a confirmar)
+
+Proposta registrada no corpo do PR antes de incorporar a dependência. Hipótese:
+o cliente HTTPS original liga em ARM64 com confiança pública e parsers íntegros.
+Falha: erro de build/link, initTls sem carregar o bundle público, ou fixture de
+URL/chunked/JSON rejeitada indevidamente. Não há requests HTTPS no teste.
+
+Selecionados de PSBox c775ecaddde52024d177cce7392aae13cc6917aa: net/http.{h,cpp},
+util/log.cpp, util/json.{h,cpp}, assets/cacert.pem, cmake/embed_file.cmake e config
+Mbed TLS upstream. Todos conferidos byte a byte por Git blob SHA e SHA256 em
+sources.json, sem alterar endpoints, autenticação ou política TLS. O bundle é
+público (raízes de CA Mozilla via curl), não certificado/chave de conta/dispositivo;
+comentários/proveniência originais preservados. Nenhum dado de usuário é usado.
+
+Mbed TLS 3.6.2, commit 107ea89daaefb9867ea9121002fbbdf926780e98, é exatamente o
+gitlink PSBox. Framework recursivo fixado em 94599c0e3b5036e086446a51a3f79640f70f22f6.
+Licença dual Apache-2.0 ou GPL-2.0-or-later, texto original no AAR e arquivo de fontes
+correspondentes/framework no artefato. Esta seleção reproduz o upstream; não é
+uma auditoria de segurança ou aprovação para distribuição de produção.
+
+build-transport.sh usa CMake oficial do SDK 3.22.1, primeiro compila/executa um
+binário host offline (URL, JSON, chunked e initTls com CA embutida), depois liga
+as mesmas fontes com JNI em ARM64/API26, NDK27.2.12479018 e runtime C++ estático.
+Confere ELF, símbolos JNI e ausência de libc++_shared antes de montar AAR. Não
+mistura binário host com Android. Dependência é checkout público, commit/submódulo
+fixados e sem credenciais persistidas. TLS/proxy não são desativados.
+
+```sh
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+export MBEDTLS_SOURCE_DIR=/caminho/checkout-mbedtls-fixado
+bash experiments/console/psbox-android-platform/build-transport.sh /tmp/nx-transport
+bash experiments/console/psbox-android-platform/build-aar.sh /tmp/nx-transport
+```
+
+CMake/Mbed TLS/SDK ausentes no executor local; bash -n e regressões C++ de storage/
+lifecycle aprovados. O CI deve confirmar transporte offline, ARM64 e novo AAR.
+O resultado anterior da binding não prova este incremento. Mesmo aprovado, não
+haverá handshake, login, entitlement ou sessão cloud validados. O transporte não
+é exposto em Java/WebView e ainda não é chamado pela binding de plataforma.
+Auth, session, purchase, FFmpeg, SDL e libdatachannel não foram incorporados.
+Main oficial 4.15.3 do PR29 permanece intacta. Próximo: usar o resultado de build
+para ligar gradualmente serviços do núcleo e validar lifecycle Android real.
