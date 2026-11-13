@@ -14,7 +14,6 @@ Este espaço reúne pesquisa e experimentos para revisão antes de qualquer inco
 | Linux nativo versus navegador | Pesquisa | Mapear APIs e dependências antes de propor adaptação |
 | Novos repositórios na janela de 30 dias | Pesquisa | xCloudNative inspecionado; XCloud4 e xCloudPS4 identificados, inspeção pendente |
 | Perfis cloud de clientes nativos | Pesquisa; auditoria estática reproduzida | [Auditoria offline](../../experiments/console/client-profile-audit/README.md); quatro fontes, dez âncoras, controles negativos aprovados; sem sessão real |
-
 | Paginação e resolução de catálogo | Simulação controlada aprovada (modelo local) | [Experimento](../../experiments/console/catalog-pagination/README.md): cinco testes; consulta Android de produto pode recuperar item ausente; sem catálogo real validado |
 
 Estados permitidos: pesquisa, simulação aprovada, falha, bloqueada, validada em sessão real. Simulação aprovada não comprova áudio, vídeo, comandos ou gameplay.
