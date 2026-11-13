@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NX — Laboratório passivo de sessão (experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/experiments
-// @version      0.1.1
+// @version      0.1.2
 // @description  Observação opt-in de sessão, sem alterar identidade ou autenticação.
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
@@ -14,7 +14,7 @@
     let running=false,epoch=0,original=null,wrapper=null,timer=null,sequence=0;
     let events=[],lastVideo=null,lastFrames=null;
     let lifecycle={state:'not-started',startAttempts:0,startedAt:null,stoppedAt:null,stopReason:null};
-    let observedFetchCalls=0,mediaSampledAt=null;
+    let observedFetchCalls=0,mediaSampledAt=null,unmatchedCategories={};
     let media={liveVideo:false,decodedFramesAdvancing:false,audioTrackPresent:false};
     let manual={heardAudio:false,controlsResponded:false};
     let notify=()=>{};
@@ -56,6 +56,20 @@
         return {stage,offering,descriptor};
       }catch(_){return null;}
     }
+    // Only fixed labels leave this classifier; no URL, path, ID or query is retained.
+    function categorize(input,init){
+      try{
+        const request=env.Request&&input instanceof env.Request;
+        const u=new URL(request?input.url:String(input),env.location.href);
+        const method=String(init?.method||(request?input.method:'GET')).toUpperCase();
+        const verb=['GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS'].includes(method)?method:'OTHER';
+        const family=/(^|\.)gssv-play-prod(?:z|xhome)?\.xboxlive\.com$/i.test(u.hostname)?'gssv':
+          u.origin===new URL(env.location.href).origin?'page-origin':/(^|\.)xboxlive\.com$/i.test(u.hostname)?'xboxlive-other':'other';
+        const stage=/\/sessions\/(cloud|home)\/play\/?$/.test(u.pathname)?'play-suffix':
+          /\/login\/user\/?$/.test(u.pathname)?'login-suffix':'other-route';
+        return family+':'+verb+':'+stage;
+      }catch(_){return 'unclassifiable';}
+    }
     function sample(){
       if(!running)return;
       mediaSampledAt=new Date().toISOString();
@@ -74,7 +88,7 @@
       if(running)return;
       lifecycle.startAttempts++;
       if(typeof env.fetch!=='function'){lifecycle.state='start-failed';lifecycle.stopReason='fetch-unavailable';emit();throw Error('Fetch indisponível.');}
-      running=true;lifecycle.state='observing';lifecycle.startedAt=new Date().toISOString();lifecycle.stoppedAt=null;lifecycle.stopReason=null;observedFetchCalls=0;mediaSampledAt=null;const session=++epoch;events=[];sequence=0;lastVideo=null;lastFrames=null;
+      running=true;lifecycle.state='observing';lifecycle.startedAt=new Date().toISOString();lifecycle.stoppedAt=null;lifecycle.stopReason=null;observedFetchCalls=0;mediaSampledAt=null;unmatchedCategories={};const session=++epoch;events=[];sequence=0;lastVideo=null;lastFrames=null;
       media={liveVideo:false,decodedFramesAdvancing:false,audioTrackPresent:false};manual={heardAudio:false,controlsResponded:false};
       original=env.fetch;const delegate=original;
       wrapper=function(...args){
@@ -82,6 +96,7 @@
         if(running&&epoch===session){
           observedFetchCalls++;
           const info=classify(args[0],args[1]);
+          if(!info){const category=categorize(args[0],args[1]);unmatchedCategories[category]=(unmatchedCategories[category]||0)+1;}
           if(info){
             item={request:++sequence,...info,status:'pending'};events.push(item);if(events.length>24)events.shift();
             if(info.stage.startsWith('play-')){lastVideo=null;lastFrames=null;manual={heardAudio:false,controlsResponded:false};media={liveVideo:false,decodedFramesAdvancing:false,audioTrackPresent:false};}
@@ -105,7 +120,7 @@
       if(timer!==null)env.clearInterval(timer);timer=null;emit();
     }
     function report(){return JSON.parse(JSON.stringify({schema:'nx-session-observer-v1',capturedAt:new Date().toISOString(),running,events,media,
-      diagnostics:{lifecycle,observedFetchCalls,recognizedRequests:sequence,fetchHook:running?(env.fetch===wrapper?'installed':'replaced-or-wrapped'):'inactive',mediaSampledAt,mediaIsHistorical:!running&&mediaSampledAt!==null},
+      diagnostics:{lifecycle,observedFetchCalls,unmatchedCategories,recognizedRequests:sequence,fetchHook:running?(env.fetch===wrapper?'installed':'replaced-or-wrapped'):'inactive',mediaSampledAt,mediaIsHistorical:!running&&mediaSampledAt!==null},
       manualConfirmation:manual,serverConsoleRecognition:'not-verified',mediaBindingToObservedRequest:'not-verified',
       limitations:['Somente fetch observado após ativação; não cobre referências salvas, XHR, workers ou tráfego nativo.',
         'Descritor é declaração do cliente; status HTTP não comprova identidade Xbox.',

@@ -95,3 +95,12 @@ test('falha de instalação e substituição do hook ficam explícitas sem expor
  assert.equal(h.lab.report().diagnostics.lifecycle.state,'start-failed');assert.equal(h.lab.report().diagnostics.lifecycle.stopReason,'hook-installation-failed');
  const other=setup();other.lab.start();other.env.fetch=other.original;assert.equal(other.lab.report().diagnostics.fetchHook,'replaced-or-wrapped');
 });
+
+test('chamadas ignoradas usam categorias fixas sem URL, ID, parâmetros, método arbitrário ou corpo',async()=>{
+ const h=setup();h.lab.start();
+ for(const url of ['https://play.xbox.com/private/SYNTHETIC_ID?token=SYNTHETIC_TOKEN','https://other.invalid/SYNTHETIC_PATH','https://uks.core.gssv-play-prod.xboxlive.com/v6/sessions/cloud/play'])await h.env.fetch(url,{method:'POST'});
+ await h.env.fetch('https://a.xboxlive.com/private',{method:'SYNTHETIC_METHOD'});
+ await flush();const r=h.lab.report();assert.equal(r.diagnostics.unmatchedCategories['gssv:POST:play-suffix'],1);assert.equal(r.diagnostics.unmatchedCategories['page-origin:POST:other-route'],1);assert.equal(r.diagnostics.unmatchedCategories['xboxlive-other:OTHER:other-route'],1);
+ assert.doesNotMatch(JSON.stringify(r),/SYNTHETIC_|other.invalid|private/);assert.equal(r.events.length,0);assert.equal(r.serverConsoleRecognition,'not-verified');
+ h.lab.stop();h.lab.start();assert.deepEqual(h.lab.report().diagnostics.unmatchedCategories,{});
+});
