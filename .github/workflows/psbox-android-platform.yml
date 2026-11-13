@@ -16,11 +16,13 @@ jobs:
       - name: Test native storage behavior on host
         run: bash experiments/console/psbox-android-platform/test-host.sh
       - name: Install fixed official NDK
-        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018"'
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" "platforms;android-35"'
       - name: Link Android ARM64 platform library
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
           bash experiments/console/psbox-android-platform/build-arm64.sh "$RUNNER_TEMP/nx-arm64"
+      - name: Compile host facade and assemble experimental Android library
+        run: bash experiments/console/psbox-android-platform/build-aar.sh "$RUNNER_TEMP/nx-arm64"
       - name: Preserve sources and notices with experimental binary
         run: cp -R experiments/console/psbox-android-platform "$RUNNER_TEMP/nx-arm64/source"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

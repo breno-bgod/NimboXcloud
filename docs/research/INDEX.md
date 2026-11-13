@@ -12,6 +12,7 @@ Este espaço reúne pesquisa e experimentos para revisão antes de qualquer inco
 
 | Frente | Estado | Evidência / próximo passo |
 | --- | --- | --- |
+| PSBox Android: fachada Java/JNI | C++ lifecycle testado no host; build AAR/ARM64 pendente | [Contrato e limites](../../experiments/console/psbox-android-platform/README.md); sem Activity, APK ou sessão |
 | PSBox Android: armazenamento privado | Build/teste Linux e link Android ARM64 aprovados no CI | [Experimento](../../experiments/console/psbox-android-platform/README.md) e [artefato do CI](https://github.com/breno-bgod/NimboXcloud/actions/runs/43492918003); biblioteca parcial, sem APK |
 | Integração Android: propriedade de sessão | Simulação aprovada; 9 testes locais | [Contrato e limites](../../experiments/console/engine-session-contract/README.md); sem JNI/APK/gameplay |
 | Identidade de cliente Xbox — pesquisa secundária | Análise e testes locais; reconhecimento pelo servidor não demonstrado | [Mapa de identidade](CONSOLE_IDENTITY_MAP.md) e [quatro testes no Nimbo real](../../experiments/console/identity-boundary/README.md) |

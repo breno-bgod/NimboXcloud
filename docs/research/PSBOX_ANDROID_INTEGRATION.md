@@ -87,3 +87,16 @@ Fontes fixadas: [mapa multiplataforma](https://github.com/RafaelNGP/psbox-cloud-
 [StreamPlayer](https://github.com/RafaelNGP/psbox-cloud-gaming/blob/c775ecaddde52024d177cce7392aae13cc6917aa/src/app/stream_player.h),
 [Android](https://github.com/RafaelNGP/psbox-cloud-gaming/tree/c775ecaddde52024d177cce7392aae13cc6917aa/android),
 [licença](https://github.com/RafaelNGP/psbox-cloud-gaming/blob/c775ecaddde52024d177cce7392aae13cc6917aa/LICENSE).
+
+
+## Incremento proposto: biblioteca de plataforma Java/JNI
+
+Após o link ARM64 da camada de plataforma aprovado no CI #43492918003,
+a próxima revisão acrescenta fachada Java/JNI com initialize(Context),
+isReady e shutdown, sem Activity/painel independente. Configuração usa
+filesDir/psbox sem setenv; mutex nativo controla repetição e concorrência.
+AAR experimental inclui Java compilado com SDK35/release17 e JNI ARM64/API26,
+sem motor completo ou fluxo autenticado. Seu build será confirmado em CI;
+não equivale a instalação nem ao marco completo de lifecycle do aplicativo.
+O host Activity e o adaptador de sessão precisam encerrar mídia/entrada/workers
+antes de confirmar parada; shutdown de plataforma isolado não satisfaz isso.

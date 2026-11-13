@@ -377,3 +377,25 @@ sem segundo painel e sem iniciar login antes de CA/assets/lifecycle reais.
 ### Resultado ARM64 confirmado
 
 CI [PSBox Android platform experiment #43492918003](https://github.com/breno-bgod/NimboXcloud/actions/runs/43492918003), commit 9782833d32652aa1cbe8c4819a80017f2f401b62: todos os passos aprovados, incluindo teste host, instalação NDK, link ARM64, verificação ELF e upload. Artefato nimbo-psbox-platform-arm64-not-apk, ID 14070886207, 73217 bytes, digest sha256:efb0bd2093e7aab5bd68aa1ff222c79e9d7f2deea7f8b73681e6f0e0d7494b8b. Inclui fonte correspondente/avisos. Link ARM64 desta camada está comprovado pelo build; marco (a) do motor completo ainda não concluído. Sem instalação ou execução Android, Activity/JNI, mídia ou login. A espera anterior do CI deixou de ser bloqueio; próximo passo é lifecycle/configuração do host e ligação do núcleo.
+
+
+## Lifecycle de plataforma PSBox e fachada Java/JNI — 13/11/2026
+
+Upstream reconsultado c775ecaddde52024d177cce7392aae13cc6917aa, sem novo SHA;
+main Nimbo c28675d29a4e16f9a7546e091e596c9068975187, preservada. Nenhum comentário
+novo no PR #24. [Experimento](../../experiments/console/psbox-android-platform/README.md).
+Sobre a camada ARM64 anterior, acrescentados init/status/shutdown serializados,
+configuração filesDir/psbox sem mutação global de ambiente, fachada Java/JNI
+sem interface WebView e montagem de AAR experimental. Regra R8 e avisos do NDK
+incluídos; runtime C++ estático, sem depender de libc++_shared omitida.
+
+Teste host compila storage e lifecycle C++ reais (-Werror no lifecycle) e passa
+com filesystem real: inicialização, idempotência, EBUSY para troca ativa, parada,
+recuperação de erro, preservação do ambiente e concorrência com proprietário
+único. Comando: bash experiments/console/psbox-android-platform/test-host.sh.
+Scripts ARM64/AAR passaram bash -n; Java/JNI/empacotamento dependem do CI desta
+revisão, ainda pendente ao publicar. Hash local atualizado em sources.json;
+fontes/avisos upstream preservados. Nenhum login, token, mídia, Activity, APK,
+instalação ou gameplay. Shutdown de plataforma não é stop completo do motor.
+Próximo: confirmar AAR/ABI no CI e ligar Activity/lifecycle do host e núcleo
+incrementalmente, antes de UI compartilhada ou sessão autenticada.

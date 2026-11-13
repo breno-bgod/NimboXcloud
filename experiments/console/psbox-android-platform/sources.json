@@ -6,7 +6,7 @@
     {
       "path": "src/platform/android/platform_android.cpp",
       "upstream_sha256": "eae94de473e2a098ba12d3180ebcc51d1bdd501f9233203f7879f7c4cfa51e87",
-      "local_sha256": "99e288a3eb6277398550b85e00bd0249407cca6e0efbe5af539fcaa6981d3f3c",
+      "local_sha256": "56dd99c5db7af3d71ad178e33b3c16adb631924ca9f2f73550c878bcae0af0fa",
       "modified": true
     },
     {

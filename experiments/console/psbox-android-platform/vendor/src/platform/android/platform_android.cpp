@@ -5,6 +5,7 @@
 // assets from package, POSIX threads and networking.
 #include <cstdint>
 #include "platform/platform.h"
+#include "android_storage_config.h"
 #include "util/log.h"
 
 #include <algorithm>
@@ -31,6 +32,7 @@ namespace xc::platform {
 namespace {
 std::string g_dataDir;
 std::string g_dataDirNote;
+std::string g_configuredDir;
 
 bool g_writable = false;
 int g_storageErrno = 0;
@@ -57,12 +59,18 @@ bool makeDirs(const std::string& path) {
 }
 }  // namespace
 
+bool configureAndroidDataDir(const std::string& path) {
+    if (g_writable || path.empty() || path.front() != '/') return false;
+    g_configuredDir = path;
+    return true;
+}
+
 bool init() {
     g_dataDir.clear(); g_dataDirNote.clear();
     g_writable = false; g_storageErrno = 0;
-    // Trusted APK host must set filesDir/psbox before starting native workers.
+    // Trusted APK host configures filesDir/psbox before starting native workers.
     // No fallback into another application's package or external storage.
-    const char* env = std::getenv("XCLOUD_DATA_DIR");
+    const char* env = g_configuredDir.empty() ? std::getenv("XCLOUD_DATA_DIR") : g_configuredDir.c_str();
     if (!env || env[0] != '/') return storageFailure(EINVAL);
     g_dataDir = env;
     if (!makeDirs(g_dataDir)) return false;
@@ -79,7 +87,7 @@ bool init() {
     return true;
 }
 
-void shutdown() { g_writable = false; }
+void shutdown() { g_writable = false; g_configuredDir.clear(); }
 
 std::string dataDir() { return g_dataDir; }
 std::string dataDirNote() { return g_dataDirNote; }
