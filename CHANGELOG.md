@@ -1,3 +1,10 @@
+## [4.12.95] — 2026-11-12
+- Normalizados candidatos ICE xHome recebidos como objeto ou JSON string antes da aplicação e deduplicação.
+- A chave canônica considera candidate, sdpMid, sdpMLineIndex e usernameFragment; propriedades opcionais ausentes e nulas compartilham a representação padrão.
+- Entradas malformadas ou com campos inválidos são ignoradas sem interromper candidatos válidos.
+- Falhas ao aplicar ICE permanecem diagnosticadas mesmo se o peer entrar em estado terminal; polling não é reagendado após terminalização.
+- Sem alteração de endpoints, autenticação, formato de payload enviado, SDP, transporte de controles ou reescrita IPv4 retail.
+
 ## [4.12.94] — 2026-11-12
 - Isolado o sinalizador IPv4 do xCloud retail: `rewriteIce` não modifica mais SDP/ICE de hosts xHome.
 - A sessão xHome preserva os candidatos originais até existir política IPv4 específica para seu formato de sinalização; evita filtragem parcial entre SDP e respostas diretas de candidatos.
