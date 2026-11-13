@@ -170,3 +170,16 @@ test('monitor never steals native Xbox or gameplay clicks outside the NX editing
  vm.runInNewContext(section('  function nxTelemetryTick(){','  setInterval(nxTelemetryTick,')+'\nglobalThis.tick=nxTelemetryTick;',ctx);
  ctx.tick();assert.equal(monitor.style.pointerEvents,'none');ctx.openUI=true;ctx.tick();assert.equal(monitor.style.pointerEvents,'auto');
 });
+
+
+test('compact panel layout moves category navigation above content and keeps it horizontally scrollable',()=>{
+ const start=src.indexOf("if(!document.getElementById('nx-panel-appearance-style'))");
+ const end=src.indexOf('function nxPanelSettingsPage',start);
+ assert.ok(start>=0&&end>start,'panel presentation stylesheet exists');
+ const styles=src.slice(start,end);
+ assert.match(styles,/@media \\(max-width:640px\\)/);
+ assert.match(styles,/flex-direction:column!important/);
+ assert.match(styles,/overflow-x:auto!important/);
+ assert.match(styles,/min-width:68px!important/);
+ assert.match(styles,/order:1!important/);
+});
