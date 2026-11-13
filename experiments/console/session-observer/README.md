@@ -51,3 +51,11 @@ Chromium/Playwright foi tentado com todas as rotas substituídas por fixtures lo
 Use um primeiro relatório real como referência web. Depois procure uma diferença verificável de descritor/capacidade/classificação em um cliente Xbox legítimo, sem capturar segredos ou inferir identidade a partir de sucesso. Só então planeje alteração isolada.
 
 Android/iOS/desktop dependem de gerenciador compatível e APIs do navegador. Não se declara compatibilidade homologada nas três plataformas, reconhecimento Xbox, reprodução de jogo ou suporte a GTA VI.
+
+## Diagnóstico 0.1.1 — relatórios do mantenedor
+
+Três relatórios fornecidos no chat em 13/11 mostraram running=false e events=[]; dois também mostraram quadros avançando e confirmações manuais de áudio/entrada. Esses relatos não estabelecem o motivo de parada nem reconhecimento Xbox. O código preserva a última amostra após stop, portanto vídeo positivo e captura parada podem coexistir. Não foi comprovada falha de autenticação ou do serviço.
+
+Hipótese limitada: distinguir ciclo de vida e tráfego visível permite escolher a próxima correção sem atribuir ausência de eventos ao Xbox. diagnostics agora informa tentativas/início/parada, motivo enumerado, chamadas fetch observadas (sem URL/corpo), rotas reconhecidas, situação do hook e data da amostra de mídia. replaced-or-wrapped não prova perda: outro wrapper pode delegar corretamente. mediaIsHistorical indica amostra anterior à parada. O relatório exibido continua sendo snapshot: gerar novamente após mudanças.
+
+Verificação: sintaxe aprovada e 13 testes Node/VM aprovados, incluindo contadores em chamada não reconhecida, stop/restart, falha de instalação e substituição de hook. Sem novo teste real ou visual. Não corrige ainda cobertura XHR/workers/referências salvas. Próximo teste: iniciar observação, abrir jogo autorizado, gerar relatório enquanto ativo; usar diagnostics para distinguir zero chamadas, rotas não reconhecidas, hook substituído e parada explícita. Não acrescenta perfil Xbox ou alterações de autenticação.

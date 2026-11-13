@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NX — Laboratório passivo de sessão (experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/experiments
-// @version      0.1.0
+// @version      0.1.1
 // @description  Observação opt-in de sessão, sem alterar identidade ou autenticação.
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
@@ -13,6 +13,8 @@
   function createLab(env){
     let running=false,epoch=0,original=null,wrapper=null,timer=null,sequence=0;
     let events=[],lastVideo=null,lastFrames=null;
+    let lifecycle={state:'not-started',startAttempts:0,startedAt:null,stoppedAt:null,stopReason:null};
+    let observedFetchCalls=0,mediaSampledAt=null;
     let media={liveVideo:false,decodedFramesAdvancing:false,audioTrackPresent:false};
     let manual={heardAudio:false,controlsResponded:false};
     let notify=()=>{};
@@ -56,6 +58,7 @@
     }
     function sample(){
       if(!running)return;
+      mediaSampledAt=new Date().toISOString();
       try{
         const video=Array.from(env.document.querySelectorAll('video')).find(v=>v.srcObject?.getVideoTracks?.().some(t=>t.readyState==='live'));
         if(!video){lastVideo=null;lastFrames=null;media={liveVideo:false,decodedFramesAdvancing:false,audioTrackPresent:false};emit();return;}
@@ -69,13 +72,15 @@
     }
     function start(){
       if(running)return;
-      if(typeof env.fetch!=='function')throw Error('Fetch indisponível.');
-      running=true;const session=++epoch;events=[];sequence=0;lastVideo=null;lastFrames=null;
+      lifecycle.startAttempts++;
+      if(typeof env.fetch!=='function'){lifecycle.state='start-failed';lifecycle.stopReason='fetch-unavailable';emit();throw Error('Fetch indisponível.');}
+      running=true;lifecycle.state='observing';lifecycle.startedAt=new Date().toISOString();lifecycle.stoppedAt=null;lifecycle.stopReason=null;observedFetchCalls=0;mediaSampledAt=null;const session=++epoch;events=[];sequence=0;lastVideo=null;lastFrames=null;
       media={liveVideo:false,decodedFramesAdvancing:false,audioTrackPresent:false};manual={heardAudio:false,controlsResponded:false};
       original=env.fetch;const delegate=original;
       wrapper=function(...args){
         let item=null;
         if(running&&epoch===session){
+          observedFetchCalls++;
           const info=classify(args[0],args[1]);
           if(info){
             item={request:++sequence,...info,status:'pending'};events.push(item);if(events.length>24)events.shift();
@@ -91,19 +96,21 @@
         return result;
       };
       try{env.fetch=wrapper;if(env.fetch!==wrapper)throw Error('Fetch não substituível.');timer=env.setInterval(sample,1000);sample();emit();}
-      catch(error){running=false;epoch++;if(env.fetch===wrapper)env.fetch=original;if(timer!==null)env.clearInterval(timer);timer=null;emit();throw error;}
+      catch(error){running=false;lifecycle.state='start-failed';lifecycle.stoppedAt=new Date().toISOString();lifecycle.stopReason='hook-installation-failed';epoch++;if(env.fetch===wrapper)env.fetch=original;if(timer!==null)env.clearInterval(timer);timer=null;emit();throw error;}
     }
     function stop(){
       if(!running)return;
-      running=false;epoch++;
+      running=false;lifecycle.state='stopped';lifecycle.stoppedAt=new Date().toISOString();lifecycle.stopReason='explicit-stop';epoch++;
       if(env.fetch===wrapper)env.fetch=original;
       if(timer!==null)env.clearInterval(timer);timer=null;emit();
     }
     function report(){return JSON.parse(JSON.stringify({schema:'nx-session-observer-v1',capturedAt:new Date().toISOString(),running,events,media,
+      diagnostics:{lifecycle,observedFetchCalls,recognizedRequests:sequence,fetchHook:running?(env.fetch===wrapper?'installed':'replaced-or-wrapped'):'inactive',mediaSampledAt,mediaIsHistorical:!running&&mediaSampledAt!==null},
       manualConfirmation:manual,serverConsoleRecognition:'not-verified',mediaBindingToObservedRequest:'not-verified',
       limitations:['Somente fetch observado após ativação; não cobre referências salvas, XHR, workers ou tráfego nativo.',
         'Descritor é declaração do cliente; status HTTP não comprova identidade Xbox.',
-        'Trilha de áudio não comprova som audível; comandos e áudio exigem confirmação manual.']}));}
+        'Trilha de áudio não comprova som audível; comandos e áudio exigem confirmação manual.',
+        'Após parar, mídia e confirmações são amostras históricas; relatório exibido é um snapshot e deve ser gerado novamente.']}));}
     return {start,stop,sample,report,subscribe:fn=>{notify=typeof fn==='function'?fn:()=>{};},
       confirm:(key,value)=>{if(running&&Object.hasOwn(manual,key)){manual[key]=value===true;emit();}}};
   }
@@ -124,7 +131,7 @@
     const render=()=>{
       const r=lab.report();start.disabled=r.running;stop.disabled=!r.running;
       for(const [key,check]of checks){check.disabled=!r.running;check.checked=r.manualConfirmation[key];}
-      status.textContent=(r.running?'Observando':'Observação parada')+'\nIdentidade Xbox: NÃO CONFIRMADA\n'+
+      status.textContent=(r.running?'Observando':'Observação parada')+' · '+r.diagnostics.lifecycle.state+'\nChamadas fetch observadas: '+r.diagnostics.observedFetchCalls+'\nMotivo de parada: '+(r.diagnostics.lifecycle.stopReason||'nenhum')+'\nIdentidade Xbox: NÃO CONFIRMADA\n'+
         'Vídeo com trilha viva: '+(r.media.liveVideo?'sim':'não observado')+'\nQuadros avançando: '+(r.media.decodedFramesAdvancing?'sim':'não observado')+'\nTrilha de áudio: '+(r.media.audioTrackPresent?'presente':'não observada')+'\n'+
         r.events.slice(-6).map(e=>'#'+e.request+' '+e.stage+' · '+e.status+' · '+(e.descriptor.clientAppType||'descritor não observado')).join('\n');
     };

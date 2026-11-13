@@ -82,3 +82,16 @@ test('somente o header permitido é lido; Authorization não é copiado ou avali
  await h.env.fetch(play,{method:'POST',headers});await flush();assert.equal(h.lab.report().events[0].descriptor.parse,'valid');
  await h.env.fetch(play,{method:'POST',headers:[['x-ms-device-info','{}'],['Authorization','SYNTHETIC_PRIVATE']]});await flush();assert.equal(h.lab.report().events[1].descriptor.parse,'valid');assert.doesNotMatch(JSON.stringify(h.lab.report()),/SYNTHETIC_PRIVATE/);
 });
+
+test('diagnóstico distingue não iniciado, captura sem rotas reconhecidas e mídia histórica após parada',async()=>{
+ const h=setup();assert.equal(h.lab.report().diagnostics.lifecycle.state,'not-started');
+ h.lab.start();await h.env.fetch('https://example.invalid/synthetic');
+ let r=h.lab.report();assert.equal(r.running,true);assert.equal(r.diagnostics.fetchHook,'installed');assert.equal(r.diagnostics.observedFetchCalls,1);assert.equal(r.events.length,0);
+ h.lab.stop();r=h.lab.report();assert.equal(r.diagnostics.lifecycle.stopReason,'explicit-stop');assert.equal(r.diagnostics.mediaIsHistorical,true);assert.ok(r.diagnostics.mediaSampledAt);
+ h.lab.start();r=h.lab.report();assert.equal(r.diagnostics.lifecycle.startAttempts,2);assert.equal(r.diagnostics.lifecycle.stopReason,null);assert.equal(r.diagnostics.observedFetchCalls,0);assert.equal(r.diagnostics.mediaIsHistorical,false);
+});
+test('falha de instalação e substituição do hook ficam explícitas sem expor mensagens de erro',()=>{
+ const h=setup();Object.defineProperty(h.env,'fetch',{value:h.original,writable:false});assert.throws(()=>h.lab.start());
+ assert.equal(h.lab.report().diagnostics.lifecycle.state,'start-failed');assert.equal(h.lab.report().diagnostics.lifecycle.stopReason,'hook-installation-failed');
+ const other=setup();other.lab.start();other.env.fetch=other.original;assert.equal(other.lab.report().diagnostics.fetchHook,'replaced-or-wrapped');
+});
