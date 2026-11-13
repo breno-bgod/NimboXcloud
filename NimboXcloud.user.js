@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.13.0
+// @version      4.13.1
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch, cinco modos de entrada e HUD de controle virtual.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.13.0
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.13.1
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.13.0';
+  const VER = '4.13.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -4508,15 +4508,37 @@ SOFTWARE.
         const localIceCandidates=[];
         let iceSend=null;
         let iceSendChain=Promise.resolve();
+        const localIceTerminalState=function(){
+          if(peer.connectionState==='failed'||peer.iceConnectionState==='failed')return 'failed';
+          if(peer.connectionState==='closed'||peer.iceConnectionState==='closed'||peer.signalingState==='closed')return 'closed';
+          return '';
+        };
+        const canSendLocalIce=function(){
+          return requestId===nxRemotePlay.requestId && !controller.signal.aborted &&
+            nxRemotePlay.peer===peer && !localIceTerminalState();
+        };
+        const reportLocalIceSendFailure=function(){
+          if(!canSendLocalIce())return;
+          nxRemotePlay.status='Falha no envio de candidato ICE';
+          if(tabId==='remote')renderBody();
+        };
+        const queueLocalIceCandidate=function(candidate){
+          if(!canSendLocalIce())return iceSendChain;
+          iceSendChain=iceSendChain.then(function(){
+            if(!canSendLocalIce())return false;
+            return iceSend(candidate);
+          }).catch(function(){
+            reportLocalIceSendFailure();
+            return false;
+          });
+          return iceSendChain;
+        };
         peer.onicecandidate=function(event){
-          if(!event || !event.candidate || requestId!==nxRemotePlay.requestId || controller.signal.aborted)return;
+          if(!event || !event.candidate || !canSendLocalIce())return;
           const c=event.candidate;
           const candidate={candidate:c.candidate,sdpMid:c.sdpMid,sdpMLineIndex:c.sdpMLineIndex};
-          if(iceSend){
-            iceSendChain=iceSendChain.then(function(){return iceSend(candidate);}).catch(function(){
-              if(requestId===nxRemotePlay.requestId){nxRemotePlay.status='Falha no envio de candidato ICE';if(tabId==='remote')renderBody();}
-            });
-          }else localIceCandidates.push(candidate);
+          if(iceSend)queueLocalIceCandidate(candidate);
+          else localIceCandidates.push(candidate);
         };
         peer.addTransceiver('audio',{direction:'recvonly'});
         peer.addTransceiver('video',{direction:'recvonly'});
@@ -4561,13 +4583,15 @@ SOFTWARE.
         nxRemotePlay.status='SDP negociado. Preparando candidatos ICE…';
         // ICE candidates may arrive before or after the SDP answer.
         iceSend=async function(candidate){
-          check();
+          if(!canSendLocalIce())return false;
           const res=await fetch(sessionUrl+'/ice',{
             method:'POST',redirect:'error',signal:controller.signal,
             headers:{'Content-Type':'application/json',Authorization:'Bearer '+login.gsToken},
             body:JSON.stringify({candidate:JSON.stringify(candidate)})
-          });check();
+          });
+          if(!canSendLocalIce())return false;
           if(!res.ok)throw new Error('Envio ICE recusado (HTTP '+res.status+').');
+          return true;
         };
         // Canonicalize the supported RTCIceCandidateInit fields before applying or deduplicating.
         const remoteSeen=new Set();
@@ -4613,13 +4637,14 @@ SOFTWARE.
         const iceData=await iceRes.json();check();
         const remoteList=Array.isArray(iceData)?iceData:Array.isArray(iceData&&iceData.candidates)?iceData.candidates:[];
         for(const entry of remoteList){check();await addRemoteIceCandidate(entry);check();}
-        for(const candidate of localIceCandidates){await iceSend(candidate);}
+        for(const candidate of localIceCandidates)queueLocalIceCandidate(candidate);
         localIceCandidates.length=0;
+        await iceSendChain;
         let icePollCount=0;
         const canPollIce=function(){
           return requestId===nxRemotePlay.requestId && !controller.signal.aborted &&
-            nxRemotePlay.peer===peer && (peer.connectionState==='new'||peer.connectionState==='connecting') &&
-            icePollCount<30;
+            nxRemotePlay.peer===peer && !localIceTerminalState() &&
+            (peer.connectionState==='new'||peer.connectionState==='connecting') && icePollCount<30;
         };
         const pollIce=async function(){
           if(!canPollIce())return;
@@ -4663,25 +4688,29 @@ SOFTWARE.
         nxRemotePlay.sessionStatus='ice-pending';
         nxRemotePlay.status='Candidatos ICE processados; aguardando conexão WebRTC.';
         peer.onconnectionstatechange=function(){
-          if(requestId!==nxRemotePlay.requestId)return;
+          if(requestId!==nxRemotePlay.requestId || nxRemotePlay.peer!==peer)return;
+          const terminalState=localIceTerminalState();
           const connectionState=peer.connectionState||peer.iceConnectionState;
-          if(connectionState==='connected'){
+          if(!terminalState && connectionState==='connected'){
             nxRemotePlay.sessionStatus='connected';
             nxRemoteAttachTouchAdapter(requestId,peer,nxRemoteChannels);
             nxRemotePlay.status='WebRTC conectado; gamepad, teclado/mouse físico e HUD de toque usam o canal input experimental. Mídia ainda aguarda validação.';
             if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
-          }else if(connectionState==='disconnected'||connectionState==='failed'||connectionState==='closed'){
+          }else if(connectionState==='disconnected'||terminalState){
             nxRemoteInputCaptureDisable(false,'Conexão WebRTC perdida; captura pausada e entradas liberadas.');
             if(nxRemoteTouchAdapter)nxRemoteTouchAdapter.release();
             nxRemoteGamepadSuspend();
-            if(connectionState==='failed'||connectionState==='closed')nxRemoteDetachTouchAdapter();
+            if(terminalState)nxRemoteDetachTouchAdapter();
             nxRemotePlay.sessionStatus='disconnected';
-            nxRemotePlay.status='Conexão WebRTC '+connectionState+'.';
+            nxRemotePlay.status='Conexão WebRTC '+(terminalState||connectionState)+'.';
+            if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
           }
           if(tabId==='remote')renderBody();
         };
         // O estado pode ter mudado antes da instalação do listener; reconciliar sem aguardar outro evento.
-        if(peer.connectionState==='connected'||peer.iceConnectionState==='connected')peer.onconnectionstatechange();
+        const initialConnectionState=peer.connectionState||peer.iceConnectionState;
+        if(localIceTerminalState() || initialConnectionState==='connected' || initialConnectionState==='disconnected')
+          peer.onconnectionstatechange();
       }else{
         nxRemotePlay.status='Xbox provisionado; WebRTC indisponível neste navegador.';
       }
