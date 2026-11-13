@@ -31,6 +31,7 @@ function harness(){
   nxVisualStatus:()=> 'Filtros padrão',nxGpuStatus:()=> 'Desligada',nxResetVisualSettings(){},
   actBtn:(label,callback)=>{const n=new Node('button',label);n.action=callback;return n;},
   note:message=>new Node('p',message),nxBindControls:(root,category)=>root.appendChild(new Node('div','Atalho '+category)),
+  nxPointerControls:root=>root.appendChild(new Node('div','CAPTURA DO MOUSE FÍSICO')),
   nxInputModePage:root=>root.appendChild(new Node('div','SELETOR ÚNICO')),
   nxPanelSettingsPage:root=>root.appendChild(new Node('div','APARÊNCIA DO PAINEL')),
   nxMonitorSettingsPage:root=>root.appendChild(new Node('div','APARÊNCIA DO MONITOR')),
@@ -89,7 +90,8 @@ test('system includes compatibility and keeps technical input diagnostics out of
  const pad=h.build('gamepad'),keyboard=h.build('gyrotouch');
  assert.doesNotMatch(pad.textContent,/Fontes observadas|Última alteração de conexão|Falhas de leitura/);
  assert.doesNotMatch(keyboard.textContent,/Módulo|Dispositivo detectado|Ativação|Toque e mouse detectados/);
- assert.match(keyboard.textContent,/Configurar teclado e mouse/);
+ assert.match(keyboard.textContent,/CAPTURA DO MOUSE FÍSICO/);
+ assert.doesNotMatch(keyboard.textContent,/Configurar teclado e mouse/);
 });
 
 test('one input page embeds both device builders without duplicated activation',()=>{

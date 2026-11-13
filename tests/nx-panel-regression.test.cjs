@@ -73,12 +73,13 @@ test('gamepad owns gyro, vibration and controller shortcuts',()=>{
  assert.match(body,/Controles conectados/);
 });
 
-test('keyboard and mouse tuning reuses HUD settings without another activation selector',()=>{
+test('physical keyboard and mouse tuning separates capture from the virtual HUD',()=>{
  const start=src.indexOf('TAB_BUILDERS.gyrotouch=function(root){');
  const end=src.indexOf('\n  };',start);
  assert.ok(start>=0&&end>start);
  const body=src.slice(start,end);
- assert.match(body,/Touchpad e botões/);
+ assert.match(body,/nxPointerControls/);
+ assert.doesNotMatch(body,/Configurar teclado e mouse|nxLegacyControlGroups/);
  assert.doesNotMatch(body,/const activation|toggle\(|Toque e mouse detectados/);
  assert.match(body,/nxBindControls\(root,'keyboard'\)/);
  assert.doesNotMatch(body,/Giroscópio|Vibração do Gamepad/);

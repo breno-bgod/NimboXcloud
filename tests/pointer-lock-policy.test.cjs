@@ -48,5 +48,6 @@ test('policy registers no keyboard handler and does not intercept F9', () => {
 
 test('native pointer lock implementation remains untouched', () => {
   assert.doesNotMatch(src, /Element\.prototype\.requestPointerLock\s*=/);
-  assert.doesNotMatch(src, /\.requestPointerLock\s*\(/);
+  assert.equal((src.match(/\.requestPointerLock\s*\(/g) || []).length, 1, 'only the explicit mouse action may request capture');
 });
+

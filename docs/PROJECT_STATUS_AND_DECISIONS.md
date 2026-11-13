@@ -16,6 +16,14 @@ A documentação oficial é um **registro do estado atual e do trabalho futuro a
 
 O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que precisa ser corrigido e o que será desenvolvido**, sem confundir experimentos abandonados com compromissos futuros.
 
+## Ajuste de entradas e Sistema — 2026-11-13 (não lançado)
+
+Por decisão do mantenedor, Sistema não apresenta identidade experimental, Client Hints ou uma segunda ação de tela cheia/horizontal. DeX não é uma categoria própria: o perfil de dispositivo usa as capacidades normais do navegador, preservando a migração interna de preferências antigas.
+
+A opção Fortnite Console não executava alteração alguma na versão atual. Foi substituída por orientação para escolher controle físico ou virtual em Entradas. Não há nova alteração de protocolo nem garantia de interface de console. O touchpad virtual envia movimentos diretamente ao SDK; Pointer Lock é oferecido separadamente para mouse físico, mediante gesto explícito e sessão conectada.
+
+Referências e roteiro de verificação: [ajustes de entradas](./AJUSTES_ENTRADAS.md). Os cinco modos, HUD/editor e preferências existentes permanecem. Não é validação de gameplay.
+
 ## Revisão incremental — 2026-11-12 / v4.12.88
 
 O mantenedor definiu acessibilidade mobile/desktop, streaming, servidores, áudio/voz e estatísticas como eixos de evolução, preservando o que já funciona e os diferenciais próprios, especialmente o mouse por toque. A [avaliação e plano incremental](./PLANO_ATUALIZACAO.md) registra o estado observado e os critérios dos próximos lotes; paridade integral com Better xCloud não é requisito.
@@ -131,7 +139,7 @@ Antes de reativar um módulo:
 - **Leia primeiro:** `README.md` → **este arquivo** → `docs/ROADMAP.md` → `CONTRIBUTING.md` → auditorias em `docs/`.
 - Remote Play (xHome) teve retomada técnica explicitamente autorizada pelo mantenedor em 2026-11-12; continuar o trabalho incremental, mas manter a aba/controles ocultos até mídia e comandos serem comprovados em Xbox real.
 - **Não reative** curvas do analógico, equalizador ou identidade Xbox apenas porque existem no código.
-- **Não remova** Fortnite experimental, giroscópio ou seletor de servidor sem nova decisão fundamentada.
+- **Não remova** giroscópio ou seletor de servidor sem nova decisão fundamentada. A substituição da opção inoperante de Fortnite foi decidida pelo mantenedor e documentada acima.
 - **Não presuma** que a opção de 50 Mbps força 50 Mbps, que a escolha de perfil muda a identidade aceita pelo servidor, ou que WebRTC provisionado significa Remote Play jogável.
 - Preserve as opções nativas de toque e gamepad; evite múltiplos wrappers concorrentes para `navigator.getGamepads`.
 - Em toda alteração: atualizar esta matriz se houver mudança de escopo/status, `CHANGELOG.md` se houver mudança de comportamento e testes/CI correspondentes.

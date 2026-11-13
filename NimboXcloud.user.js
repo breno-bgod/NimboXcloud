@@ -116,11 +116,6 @@ SOFTWARE.
   const LS_PHYSICAL_INPUT = 'nx.input.physicalMode.v1';
   const LS_CONSOLE_LAB = 'xcu.consoleLab.profile.v1';
   const LS_CONSOLE_NOTES = 'xcu.consoleLab.notes.v1';
-  const LS_FORTNITE_CONSOLE = 'nx.fortnite.consoleExperience.v1';
-  const nxFortniteConsoleEnabled = (function () { try { return localStorage.getItem(LS_FORTNITE_CONSOLE) === '1'; } catch (_) { return false; } })();
-  const nxFortniteConsoleState = { enabled: nxFortniteConsoleEnabled, matched: false, inspected: 0, patched: 0, previousTouch: null, note: 'Experimental: sinalização de toque na configuração da sessão; não emula hardware Xbox.' };
-  function nxIsFortniteRoute() { return /(?:^|\/)(?:fortnite)(?:\/|$)/i.test(location.pathname); }
-
   const LS_NX_SHORTCUT = 'xcu.nxShortcut';
   const LS_RTT_HISTORY = 'xcu.rttHistory.v1';
   const LS_VIBRATION = 'xcu.vibrationLevel';
@@ -416,7 +411,6 @@ SOFTWARE.
        compatibility: { enabled: nxCompatibilityMode, identityMode: nxConsoleLabState.identityMode, nativeUserAgentPreserved: navigator.userAgent === nxConsoleNativeUA, sessionOsRewriteDisabled: nxCompatibilityMode, clientHintsOverrideDisabled: nxCompatibilityMode },
        clientHintsExperiment: { enabled: nxClientHintsMode, applied: nxClientHintsApplied, note: 'Somente navigator.userAgentData JS; nao altera cabecalhos HTTP' },
       protocolEvidence: nxProtocolEvidence(), consoleProfileValidation: nxConsoleProfileValidation(),
-      fortniteConsoleExperience: Object.assign({}, nxFortniteConsoleState),
       offeringTrace: nxOfferingTrace.slice(), offeringTraceNotice: 'Somente host, metodo, status e duracao; sem credenciais.',
        sessionTrace: nxSessionTrace.slice(),
       sessionHealth: nxSessionHealth(), compatibilityVerdict: nxCompatibilityVerdict(),
@@ -1066,9 +1060,9 @@ SOFTWARE.
     g.add(setRow('Automático do Xbox', 'Restaura a combinação de entradas do serviço.',
       actBtn('Restaurar automático', function(){nxChooseInputMode('native');}, 'ghost')));
     root.appendChild(g.root);
-    const hud = group('HUD e botões na tela', 'Reaproveita seus layouts e o editor existente. Não precisa de Remote Play.');
+    const hud = group('Controles na tela e editor de HUD', 'HUD é o layout dos botões sobre o jogo. Escolha abaixo qual layout editar; seus layouts salvos são preservados.');
     [['virtual-gamepad','Editar controle virtual'],['virtual-keyboard-mouse','Editar teclado e mouse virtuais']].forEach(function(item){
-      hud.add(setRow(item[1], 'Seleciona esse modo e abre o editor de posições e botões.', actBtn('Editar HUD', async function(){
+      hud.add(setRow(item[1], item[0] === 'virtual-gamepad' ? 'Analógicos, gatilhos e botões de controle na tela. Seleciona Controle virtual e abre o editor.' : 'Touchpad e teclas na tela. Seleciona Teclado e mouse virtuais e abre o editor. O touchpad não precisa capturar o ponteiro.', actBtn('Editar HUD', async function(){
         if (!await nxChooseInputMode(item[0])) return;
         setOpen(false, true); window.NimboTouch?.editHud?.();
       }, 'ghost')));
@@ -5243,7 +5237,7 @@ SOFTWARE.
       g1.add(r1);
       liveDesc(r1, function () { return 'Experiência detectada: ' + nxDeviceProfileLabel(detectedDeviceProfile()) + '. Entrada física configurada separadamente; identidade do navegador preservada.'; });
       g1.add(infoRow('Dispositivo detectado', function () { return nxDeviceProfileLabel(detectedDeviceProfile()); },
-        'Classifica a experiência pelo mouse/ponteiro disponível; não identifica especificamente o Samsung DeX.'));
+        'Usa os recursos de ponteiro do navegador para sugerir Desktop ou Celular. A escolha manual permanece disponível.'));
       root.appendChild(g1.root);
 
       const g2 = group('Entradas detectadas');
@@ -5684,26 +5678,9 @@ SOFTWARE.
       lab.add(infoRow('Aviso de incompatibilidade', function () { return nxConsoleLabWarning() ? 'Detectado' : 'Não detectado'; }));
       lab.add(infoRow('WebRTC / H.264 MSE', function () { const c = nxConsoleLabCapabilities(); return (c.webRTC ? 'Sim' : 'Não') + ' / ' + (c.mediaSourceH264 === null ? 'Indefinido' : c.mediaSourceH264 ? 'Sim' : 'Não'); }));
       lab.add(infoRow('Tela cheia', function () { return document.fullscreenElement || document.webkitFullscreenElement ? 'Ativa' : 'Desativada'; }));
-      lab.add(setRow('Tela cheia e horizontal', 'O navegador exige um toque ou clique para entrar em tela cheia; a orientação horizontal é solicitada quando suportada.',
-        actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'primary')));
-      lab.add(setRow('Identidade experimental (avançado)', 'Não é o perfil do aparelho: altera a identidade JS/experiência solicitada ao serviço. Automático preserva o navegador nativo. Pode causar incompatibilidades.',
-        chips([{k:'off',label:'Automático'},{k:'android',label:'Mobile'},{k:'windows',label:'Desktop'}],
-          nxConsoleLabState.profile, function (k) { nxConsoleLabSetProfile(k); }), true));
-      lab.add(setRow('Fortnite: experiência de console (experimental)',
-        'Desativa a sinalização de toque na configuração da sessão do Fortnite. Não muda User-Agent, não emula Xbox e pode não alterar a experiência no cliente novo. Requer reiniciar a sessão.',
-        chips([{k:'off',label:'Desligado'},{k:'on',label:'Ativar'}],
-          nxFortniteConsoleEnabled ? 'on' : 'off', function (k) {
-            try { localStorage.setItem(LS_FORTNITE_CONSOLE, k === 'on' ? '1' : '0'); } catch (_) {}
-            location.reload();
-          }), true));
-      lab.add(infoRow('Fortnite: aplicação', function () { return nxFortniteConsoleState.patched ? 'Configuração de toque modificada' : (nxFortniteConsoleEnabled ? 'Aguardando configuração da sessão' : 'Desligado'); }));
-      lab.add(setRow('Client Hints (avançado)',
-        'Ocultar navigator.userAgentData apenas no JavaScript. Não altera headers e pode prejudicar compatibilidade.',
-        chips([{k:'off',label:'Normal'},{k:'on',label:'Ocultar JS'}],
-          nxClientHintsMode ? 'on' : 'off', function (k) {
-            try { localStorage.setItem('nx.consoleLab.hideClientHints.v1', k === 'on' ? '1' : '0'); } catch (_) {}
-            location.reload();
-          }), true));
+      lab.add(setRow('Fortnite: jogar com controle',
+        'Escolha Controle físico ou Controle virtual em Entradas. O toque nativo é outra experiência; trocar a entrada não garante a interface de console do jogo.',
+        actBtn('Escolher entrada', function () { setTab('inputs'); }, 'ghost')));
       lab.add(setRow('Registrar observação', 'Anote o jogo, se apareceu no catálogo, se iniciou e eventuais mensagens de erro.',
         actBtn('Anotar', function () {
           let old = ''; try { old = localStorage.getItem(LS_CONSOLE_NOTES) || ''; } catch (_) {}
@@ -5857,10 +5834,7 @@ SOFTWARE.
   };
   TAB_BUILDERS.controls=TAB_BUILDERS.gamepad;
   TAB_BUILDERS.gyrotouch=function(root){
-    const nodes=nxLegacyControlGroups('keyboard');
-    const touch=nxTakeGroupRows(nxFindGroup(nodes,'Teclado e mouse'),'Touchpad e botões',
-      ['Configurar teclado e mouse'],'Ajustes do HUD de teclado e mouse virtual. A entrada ativa é escolhida acima.');
-    if(touch)root.appendChild(touch);
+    nxPointerControls(root);
     nxBindControls(root,'keyboard');
   };
 
@@ -5934,7 +5908,7 @@ SOFTWARE.
     if(!words.length)return [];
     const keywords={inputs:'touch toque controle joystick hud virtual teclado mouse analógico zona morta deadzone gyro giroscópio vibração sensibilidade wasd macros multiteclas botões atalhos',
       stream:'servidor server região bitrate rede',statistics:'fps rtt latência perda mbps desempenho',
-      audio:'equalizador volume saída som mic microfone voz',video:'fullscreen tela cheia enquadramento desktop celular dex brilho contraste saturação filtros captura perfil resolução qualidade gpu nitidez cas unsharp',
+      audio:'equalizador volume saída som mic microfone voz',video:'fullscreen tela cheia enquadramento desktop celular brilho contraste saturação filtros captura perfil resolução qualidade gpu nitidez cas unsharp',
       advanced:'diagnóstico cache manutenção compatibilidade identidade user agent plataforma console',personalize:'transparência cores aparência interface monitor estatísticas fps layout posição escala'};
     return TABS.filter(function(tab){const text=normalize(tab.label+' '+tab.desc+' '+(keywords[tab.id]||''));return words.every(function(word){return text.includes(word);});});
   }
@@ -6355,13 +6329,66 @@ SOFTWARE.
   const nxKeysHeld=new Set();
   let nxKeyboardComboActive=false;
   function nxBindingLabel(b,names){if(!b)return 'Não configurado';return b.map(function(v){return names?names[v]||('Botão '+v):v.replace(/^Key/,'');}).join(' + ');}
+  const NX_POINTER_KEY = 'nx.pointerCapture.key.v1';
+  function nxPointerShortcut() {
+    const key = getPref(NX_POINTER_KEY, 'F8');
+    return ['F8', 'F2', 'off'].includes(key) ? key : 'F8';
+  }
+  function nxPointerConflict(key) {
+    return (nxKeyBinding() || []).includes(key);
+  }
+  function nxTogglePointer() {
+    const fail = function(message) { toast(message); return false; };
+    const video = activeStreamVideo();
+    const status = window.NimboTouch?.inputModeStatus?.();
+    if (!video || nxSelectedInputMode() !== 'keyboard-mouse' || !status?.connected || status.mode !== 'keyboard-mouse')
+      return fail('Inicie uma sessão e selecione Teclado e mouse físicos em Entradas.');
+    if (document.pointerLockElement) {
+      if (document.pointerLockElement !== video) return fail('Libere a captura atual com Esc antes de continuar.');
+      try { document.exitPointerLock(); return true; } catch (_) { return fail('Não foi possível liberar o mouse. Use Esc.'); }
+    }
+    if (typeof video.requestPointerLock !== 'function') return fail('Este navegador não oferece captura do mouse.');
+    // Called synchronously from a trusted click/key gesture. Never recapture on blur or Escape.
+    setOpen(false, true);
+    try {
+      const result = video.requestPointerLock();
+      if (result && typeof result.catch === 'function') result.catch(function() { fail('O navegador recusou a captura. Clique em Capturar mouse para tentar novamente.'); });
+      return true;
+    } catch (_) { return fail('Não foi possível capturar o mouse neste navegador.'); }
+  }
+  let nxPointerHeldKey = '';
+  window.addEventListener('keydown', function(e) {
+    if (e.isTrusted && e.repeat && e.code === nxPointerHeldKey) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+    const key = nxPointerShortcut();
+    if (!e.isTrusted || e.repeat || e.code !== key || key === 'off' || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey || openUI || nxCaptureKeys || nxPointerConflict(key)) return;
+    if (e.target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || '')) return;
+    if (nxSelectedInputMode() !== 'keyboard-mouse') return;
+    if (nxTogglePointer()) { nxPointerHeldKey = e.code; e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+  window.addEventListener('keyup', function(e) {
+    if (!e.isTrusted || e.code !== nxPointerHeldKey) return;
+    nxPointerHeldKey = ''; e.preventDefault(); e.stopImmediatePropagation();
+  }, true);
+  window.addEventListener('blur', function() { nxPointerHeldKey = ''; });
+  function nxPointerControls(root) {
+    const g = group('Mouse físico e captura do ponteiro', 'Para mirar com mouse USB ou Bluetooth, selecione Teclado e mouse físicos e capture o ponteiro durante a partida. O jogo precisa aceitar essa entrada.');
+    const button = actBtn('Capturar mouse', nxTogglePointer, 'primary');
+    const update = function() { button.textContent = document.pointerLockElement ? 'Liberar mouse' : 'Capturar mouse'; };
+    update(); liveFns.push(update);
+    g.add(setRow('Captura do mouse', 'Use o botão ou o atalho abaixo. Esc libera o ponteiro; abrir o painel também o libera. O F9 do Xbox permanece disponível.', button));
+    g.add(setRow('Atalho para capturar ou liberar', 'F8 é o padrão. Se a tecla estiver no atalho personalizado do painel, escolha outra aqui.',
+      chips([{k:'F8',label:'F8'},{k:'F2',label:'F2'},{k:'off',label:'Sem atalho'}], nxPointerShortcut(), function(key) { setPref(NX_POINTER_KEY, key); renderBody(); }), true));
+    if (nxPointerConflict(nxPointerShortcut())) g.add(note('Esse atalho está reservado para abrir o painel. Escolha outra tecla para capturar o mouse.'));
+    g.add(note('Teclado e mouse virtuais usam o touchpad da tela, sem Pointer Lock. Edite esse layout em Controles na tela e editor de HUD.'));
+    root.appendChild(g.root);
+  }
   function nxBindControls(root, category){
     if(category==='gamepad'){
-      const pad=group('Atalho do Gamepad','Configure de 1 a 4 botões simultâneos para abrir ou fechar o painel durante o jogo.');
+      const pad=group('Abrir painel pelo controle','Atalho exclusivo do painel Nimbo. Não remapeia os comandos do jogo. Use de 1 a 4 botões simultâneos.');
       const padText=mk('div','font-size:12px;margin-bottom:8px;color:'+C.text,nxBindingLabel(nxPadBinding(),nxPadNames));
       pad.add(padText);
-      pad.add(setRow('Atalho do controle','Pressione Gravar, depois a combinação desejada e solte todos os botões. A configuração é salva automaticamente.',
-        actBtn('Gravar controle',function(){
+      pad.add(setRow('Atalho do controle','Clique em Definir combinação, pressione a combinação desejada e solte todos os botões. A configuração é salva automaticamente.',
+        actBtn('Definir combinação',function(){
           nxCapturePad={best:[],started:Date.now(),label:padText};
           padText.textContent='Pressione de 1 a 4 botões e solte para salvar…';
         },'primary')));
@@ -6370,12 +6397,12 @@ SOFTWARE.
       root.appendChild(pad.root);
     }
     if(category==='keyboard'){
-      const keyboard=group('Atalho de teclado','Configure uma combinação de 1 a 4 teclas para abrir ou fechar o painel.');
-      const keyText=mk('div','font-size:12px;margin-bottom:8px;color:'+C.text,nxBindingLabel(nxKeyBinding()));
+      const keyboard=group('Abrir painel pelo teclado','Este atalho abre o painel Nimbo. Não configura teclas do jogo nem captura o mouse. Ctrl + Shift + N permanece disponível para recuperação.');
+      const keyText=mk('div','font-size:12px;margin-bottom:8px;color:'+C.text,nxBindingLabel(nxKeyBinding()) === 'Não configurado' ? 'Padrão: Ctrl + Shift + ' + getPref(LS_NX_SHORTCUT, 'KeyH').replace(/^Key/, '') : nxBindingLabel(nxKeyBinding()));
       keyboard.add(keyText);
-      keyboard.add(setRow('Atalho do teclado','Clique em Gravar, mantenha as teclas pressionadas e solte para salvar. Máximo de quatro teclas.',
-        actBtn('Gravar teclado',function(){nxCaptureKeys={best:[],label:keyText};keyText.textContent='Pressione a combinação e solte para salvar…';},'primary')));
-      keyboard.add(setRow('Limpar atalho do teclado','Remove somente a combinação de teclado.',
+      keyboard.add(setRow('Atalho do teclado','Clique em Definir combinação, mantenha as teclas pressionadas e solte para salvar. Máximo de quatro teclas.',
+        actBtn('Definir combinação',function(){nxCaptureKeys={best:[],label:keyText};keyText.textContent='Pressione a combinação e solte para salvar…';},'primary')));
+      keyboard.add(setRow('Restaurar atalho do painel','Remove a combinação personalizada e mantém o atalho padrão.',
         actBtn('Limpar',function(){nxCaptureKeys=null;localStorage.removeItem(NX_KEY_BIND_KEY);renderBody();},'ghost')));
       root.appendChild(keyboard.root);
     }
@@ -8391,5 +8418,6 @@ void main(){
     boot();
   }
 })();
+
 
 
