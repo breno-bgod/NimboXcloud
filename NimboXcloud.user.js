@@ -1910,6 +1910,9 @@ SOFTWARE.
   }
 
   function isInGame() {
+    // The retail SDK may attach srcObject without a blob src/test id and cache RTC before our hook.
+    const video=activeStreamVideo();
+    if(video?.srcObject?.getVideoTracks?.().some(function(track){return track.readyState==='live';}))return true;
     if (document.fullscreenElement || document.webkitFullscreenElement) return true;
     if (S.pcs > 0 && S.qosAt && Date.now() - S.qosAt < 15000) return true;
     // O video do stream nao e o mesmo que os trailers da biblioteca.
@@ -2021,10 +2024,34 @@ SOFTWARE.
     return b;
   }
 
+  function nxNativeButtons(parent){
+    return Array.from(parent?.querySelectorAll('button,[role="button"]')||[]).filter(function(button){
+      return button.id!=='nimboxcloud-library-button'&&button.id!=='nimboxcloud-native-keyboard-mouse'&&button.id!=='nimbo-touch-nx-access'&&!button.closest('#__xcu_panel__,#nimbo-touch-root,#nimbo-touch-panel,#nx-loading-overlay')&&nxButtonActuallyVisible(button,fullscreenHost());
+    });
+  }
+  function nxNativeToolbarGroup(anchor){
+    const hud=anchor?.closest?.('#StreamHud');
+    for(let node=anchor?.parentElement,depth=0;node&&node!==document.body&&depth<4;node=node.parentElement,depth++){
+      const count=nxNativeButtons(node).length;if(count>=2&&count<=9)return node;
+      if(node===hud)break;
+    }
+    return anchor?.parentElement||null;
+  }
+  function nxNativeXboxAnchor(anchor){
+    const group=nxNativeToolbarGroup(anchor);
+    const xbox=nxNativeButtons(group).find(function(button){
+      const label=[button.getAttribute('aria-label'),button.title,button.getAttribute('data-testid')].filter(Boolean).join(' ');
+      return /xbox|guide|guia/i.test(label)&&!/grip|recolher|expandir|collapse|toolbar/i.test(label);
+    });
+    return xbox||anchor;
+  }
   let nxKeyboardMouseButton=null;
   function nxMountNativeActions(anchor,expanded){
     if(!anchor?.parentElement)return;
-    const parent=anchor.parentElement;
+    anchor=nxNativeXboxAnchor(anchor);
+    const parent=nxNativeToolbarGroup(anchor);
+    let slot=anchor;while(slot.parentElement&&slot.parentElement!==parent)slot=slot.parentElement;
+    if(!parent)return;
     if(!nxLibraryButton)nxLibraryButton=buildLibraryButton();
     if(!nxKeyboardMouseButton){
       const b=document.createElement('button');b.id='nimboxcloud-native-keyboard-mouse';b.type='button';
@@ -2035,7 +2062,7 @@ SOFTWARE.
       b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();setTab('inputs');setOpen(true,true);});
       nxKeyboardMouseButton=b;
     }
-    if(nxLibraryButton.parentElement!==parent||nxLibraryButton.previousElementSibling!==anchor)anchor.after(nxLibraryButton);
+    if(nxLibraryButton.parentElement!==parent||nxLibraryButton.previousElementSibling!==slot)slot.after(nxLibraryButton);
     if(nxKeyboardMouseButton.parentElement!==parent||nxKeyboardMouseButton.previousElementSibling!==nxLibraryButton)nxLibraryButton.after(nxKeyboardMouseButton);
     nxLibraryButton.style.display=expanded?'inline-flex':'none';
     nxKeyboardMouseButton.style.display=expanded?'inline-flex':'none';
@@ -2088,7 +2115,7 @@ SOFTWARE.
     if (!anchor || !anchor.parentElement) return false;
     // O menu compacto pode manter um botão visível enquanto oculta o resto da barra.
     // Exigir pelo menos dois controles NATIVOS visíveis no mesmo grupo.
-    const parent = anchor.parentElement;
+    const parent = nxNativeToolbarGroup(anchor);
     const buttons = Array.from(parent.querySelectorAll('button,[role="button"]')).filter(function (b) {
       if (b === nxLibraryButton || b === nxKeyboardMouseButton || b.id === 'nimboxcloud-library-button' || b.id === 'nimboxcloud-native-keyboard-mouse' || b.closest('#__xcu_panel__')) return false;
       const r = b.getBoundingClientRect();
@@ -2197,7 +2224,23 @@ SOFTWARE.
   function nxSyncTouchMenuBlock(nativeOpen){
     try{window.NimboTouch?.setMenuBlocked?.(!!nativeOpen||openUI);}catch(e){S.lastErr='NX touch menu: '+String(e?.message||e);}
   }
+  function nxNativeUiSnapshot(){
+    const fullscreen=document.fullscreenElement||document.webkitFullscreenElement;
+    const hud=document.getElementById('StreamHud');
+    return {gameDetected:isInGame(),fullscreenTag:fullscreen?.tagName||null,nativeHudPresent:!!hud,
+      nativeHudInsideFullscreen:!fullscreen?null:!!hud&&(fullscreen===hud||fullscreen.contains(hud)),
+      nativeHandleVisible:!!nxNativeStreamHandle(),integratedNxVisible:nxButtonActuallyVisible(nxLibraryButton,fullscreenHost()),
+      recoveryVisible:!!pillEl&&pillEl.style.display!=='none',recoverySide:wrap?.style.right==='auto'?'left':'other'};
+  }
+  function nxAlignClosedGameAccess(){
+    if(openUI||!wrap||!pillEl||pillEl.style.display==='none'||!isInGame())return;
+    wrap.style.position='fixed';wrap.style.transform='none';wrap.style.left='max(64px,env(safe-area-inset-left,64px))';wrap.style.right='auto';
+    wrap.style.top='max(12px,env(safe-area-inset-top,12px))';wrap.style.bottom='auto';wrap.style.width='44px';wrap.style.maxWidth='44px';wrap.style.alignItems='flex-start';
+    pillEl.style.width='44px';pillEl.style.minWidth='44px';pillEl.style.maxWidth='44px';pillEl.style.height='44px';pillEl.style.padding='0';pillEl.style.justifyContent='center';
+    if(dotEl)dotEl.style.display='none';if(pillTxt)pillTxt.style.display='none';
+  }
   function syncNXPlacement() {
+    try{
     nxViewportMode();
     if (!wrap || !wrap.isConnected) return;
     if (openUI) { nxNativeMenuPriority(false,null); nxDockPanel(); return; }
@@ -2413,6 +2456,7 @@ SOFTWARE.
       wrap.style.alignItems = 'flex-end';
       if (pillEl) pillEl.style.display = 'inline-flex';
     }
+    }finally{nxAlignClosedGameAccess();}
   }
 
   // ---------- 13b. Painel profissional: abas por categoria ----------
@@ -2729,7 +2773,7 @@ SOFTWARE.
     const full = {
       schema: 'nimboxcloud-unified-v1', version: VER, capturedAt: new Date().toISOString(),
       consoleLab: nxConsoleLabReport(), gameAndInput: general,
-      sessionHealth: nxSessionHealth(),
+      sessionHealth: nxSessionHealth(),nativeUi:nxNativeUiSnapshot(),
       system: { server: srvCfg().name || 'auto', quality: resCfg().label,
         bitrate: bitrateCfg().mbps || 'auto', qos: S.qos, latencyByServer: S.latencyByServer,
         recoveries: S.nxRecoveries, warnings: S.diagnosticsWarnings,
@@ -6216,8 +6260,9 @@ SOFTWARE.
       nxLoadingEl=document.createElement('section');nxLoadingEl.id='nx-loading-overlay';
       nxLoadingEl.setAttribute('aria-label','Preparação da partida');
       nxLoadingEl.style.cssText='position:fixed;z-index:2147482999;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));width:min(300px,calc(100vw - 24px));box-sizing:border-box;border:1px solid #ffffff24;border-radius:14px;padding:12px 16px;background:rgba(12,18,27,.93);color:#edf4fc;font:13px/1.55 system-ui,sans-serif;box-shadow:0 8px 30px #0005;pointer-events:none;white-space:pre-line';
-      nxLoadingEl.toggle=document.createElement('button');nxLoadingEl.toggle.type='button';nxLoadingEl.toggle.textContent='NX';
-      nxLoadingEl.toggle.style.cssText='float:right;margin:0 0 4px 10px;border:1px solid #ffffff44;border-radius:8px;background:#223040;color:#edf4fc;padding:6px 8px;cursor:pointer;pointer-events:auto';
+      nxLoadingEl.toggle=document.createElement('button');nxLoadingEl.toggle.type='button';
+      const logo=document.createElement('img');logo.src=BRAND_ICON;logo.alt='';logo.style.cssText='width:20px;height:20px;object-fit:contain';nxLoadingEl.toggle.appendChild(logo);
+      nxLoadingEl.toggle.style.cssText='float:right;margin:0 0 4px 10px;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid;border-radius:8px;cursor:pointer;pointer-events:auto';
       nxLoadingEl.toggle.addEventListener('click',function(event){event.stopPropagation();nxLoadingMinimized=!nxLoadingMinimized;nxLoadingTick();});
       nxLoadingEl.heading=document.createElement('strong');nxLoadingEl.heading.setAttribute('role','status');
       nxLoadingEl.time=document.createElement('div');nxLoadingEl.detail=document.createElement('div');nxLoadingEl.detail.style.cssText='margin-top:8px;color:#bfccdc;font-size:12px';
@@ -6225,6 +6270,11 @@ SOFTWARE.
     }
     if(nxLoadingEl.parentNode!==host)host.appendChild(nxLoadingEl);
     nxLoadingEl.hidden=false;
+    const palette=nxPanelPalette();
+    nxLoadingEl.style.background=palette.background;nxLoadingEl.style.color=palette.text;nxLoadingEl.style.borderColor=palette.line;nxLoadingEl.style.fontFamily=UI_FONT;nxLoadingEl.style.borderRadius='12px';
+    nxLoadingEl.style.backdropFilter='blur(14px)';nxLoadingEl.style.webkitBackdropFilter='blur(14px)';
+    nxLoadingEl.detail.style.color=palette.text;nxLoadingEl.detail.style.opacity='.78';
+    nxLoadingEl.toggle.style.background=palette.panel;nxLoadingEl.toggle.style.color=palette.icon;nxLoadingEl.toggle.style.borderColor=palette.line;
     if(nxLoadingEl.heading.textContent!==nxLaunch.stage)nxLoadingEl.heading.textContent=nxLaunch.stage;
     const elapsed=Math.max(0,Math.floor((Date.now()-nxLaunch.startedAt)/1000));
     nxLoadingEl.time.textContent=nxLaunchEstimate()+'\nTempo decorrido: '+Math.floor(elapsed/60)+'min '+String(elapsed%60).padStart(2,'0')+'s';
@@ -6399,11 +6449,15 @@ SOFTWARE.
     }catch(_){return Object.assign({},nxPanelDefaults);}
   }
   let nxPanelAppearance=nxPanelLoad();
+  function nxPanelPalette(){
+    const p=nxPanelAppearance;
+    const rgb=({dark:'12,16,22',black:'0,0,0',slate:'32,42,55'})[p.tone]||'12,16,22';
+    return {background:'rgba('+rgb+','+(p.opacity/100)+')',text:nxPanelColors[p.text]||C.text,icon:nxPanelColors[p.icons]||C.dim,line:C.line,panel:C.panel};
+  }
   function nxPanelApply(){
     if(!cardEl)return;
     const p=nxPanelAppearance;
-    const rgb=({dark:'12,16,22',black:'0,0,0',slate:'32,42,55'})[p.tone]||'12,16,22';
-    cardEl.style.background='rgba('+rgb+','+(p.opacity/100)+')';
+    cardEl.style.background=nxPanelPalette().background;
     cardEl.style.setProperty('--nx-panel-text',nxPanelColors[p.text]||C.text);
     cardEl.style.setProperty('--nx-panel-icon',nxPanelColors[p.icons]||C.dim);
     cardEl.dataset.nxPanelText=p.text==='default'?'default':'custom';
@@ -6831,7 +6885,7 @@ SOFTWARE.
     dotEl.style.background = col;
     if (nxLibraryDot) nxLibraryDot.style.background = col;
     pillTxt.textContent = loss == null ? '' : loss.toFixed(1) + '%';
-    pillTxt.style.display = loss == null ? 'none' : 'inline';
+    pillTxt.style.display = 'none';
     if (el.hdrDot) {
       el.hdrDot.style.background = col;
       el.hdrTxt.textContent = loss == null ? 'Sem partida' : loss.toFixed(1) + '% perda';

@@ -1,3 +1,11 @@
+## Não publicado — HUD nativo e aparência do carregamento
+- Sessão com vídeo MediaStream/srcObject é reconhecida mesmo sem blob URL, test id ou estatísticas RTC interceptadas. Evita tratar o jogo como biblioteca e deixar o NX no canto direito.
+- NX se encaixa no grupo nativo, ao lado do Xbox quando identificado, sem inserir controles dentro de invólucros individuais recortados. Reconciliação de orientação não duplica botões nem altera eventos nativos.
+- Acesso independente de recuperação fica compacto à esquerda. O lançador não reativa o percentual de perda depois da reconciliação visual; estatísticas continuam no monitor.
+- Carregamento compartilha paleta, transparência, fonte, borda, desfoque e logotipo existentes do NX, incluindo personalização de cores.
+- Diagnóstico distingue barra nativa fora da subárvore real de fullscreen. Não há movimento do DOM nativo, override de Fullscreen API ou garantia de renderização em fullscreen exclusivo de vídeo.
+- Verificação local: 371 testes, 368 PASS, zero FAIL e três TODO preexistentes; reteste real de Edge/mobile, retrato/paisagem e tela cheia pendente.
+
 ## [4.15.0] — 2026-11-13
 - Publicação oficial autorizada pelo mantenedor: userscript 4.15.0 e módulo de entradas/HUD 1.4.0. Preferências e layouts preservados.
 - Após teste do mantenedor: carregamento compacto na lateral direita; NX expande/recolhe detalhes sem esconder previsão e tempo decorrido. Ativar/ocultar estatísticas passa ao início de Estatísticas; a personalização do monitor fica expansível nessa página.
