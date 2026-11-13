@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+cmake_minimum_required(VERSION 3.22.1)
+project(nimbo_psbox_transport LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+get_filename_component(ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+if(NOT EXISTS "${MBEDTLS_SOURCE_DIR}/CMakeLists.txt")
+  message(FATAL_ERROR "Provide the pinned Mbed TLS source directory")
+endif()
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(MBEDTLS_USER_CONFIG_FILE "${ROOT}/vendor/cmake/deps/mbedtls_user_config.h" CACHE FILEPATH "" FORCE)
+add_subdirectory("${MBEDTLS_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/mbedtls" EXCLUDE_FROM_ALL)
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+set(CA "${CMAKE_BINARY_DIR}/generated/builtin_ca.cpp")
+add_custom_command(OUTPUT "${CA}"
+  COMMAND "${CMAKE_COMMAND}" "-DIN=${ROOT}/vendor/assets/cacert.pem" "-DOUT=${CA}"
+    -DNAME=xc_builtin_ca_bundle -P "${ROOT}/vendor/cmake/embed_file.cmake"
+  DEPENDS "${ROOT}/vendor/assets/cacert.pem" "${ROOT}/vendor/cmake/embed_file.cmake")
+set(SOURCES "${CA}" "${ROOT}/vendor/src/net/http.cpp" "${ROOT}/vendor/src/util/json.cpp"
+  "${ROOT}/vendor/src/util/log.cpp" "${ROOT}/vendor/src/platform/android/platform_android.cpp"
+  "${ROOT}/vendor/src/platform/posix_common.cpp" "${ROOT}/platform_lifecycle.cpp")
+if(ANDROID)
+  if(NOT ANDROID_ABI STREQUAL "arm64-v8a")
+    message(FATAL_ERROR "This build validates Android ARM64 only")
+  endif()
+  add_library(nimbo_psbox_platform SHARED ${SOURCES} "${ROOT}/platform_jni.cpp")
+  target_link_libraries(nimbo_psbox_platform PRIVATE log)
+else()
+  add_executable(nimbo_psbox_platform ${SOURCES} "${CMAKE_CURRENT_LIST_DIR}/offline_test.cpp")
+  target_link_libraries(nimbo_psbox_platform PRIVATE pthread)
+endif()
+target_include_directories(nimbo_psbox_platform PRIVATE "${ROOT}/vendor/src" "${ROOT}" "${MBEDTLS_SOURCE_DIR}/include")
+target_link_libraries(nimbo_psbox_platform PRIVATE mbedtls mbedx509 mbedcrypto)
+target_compile_definitions(nimbo_psbox_platform PRIVATE
+  MBEDTLS_USER_CONFIG_FILE="${ROOT}/vendor/cmake/deps/mbedtls_user_config.h")
+target_compile_options(nimbo_psbox_platform PRIVATE -Wall -Wextra)
+target_link_options(nimbo_psbox_platform PRIVATE -Wl,--no-undefined)

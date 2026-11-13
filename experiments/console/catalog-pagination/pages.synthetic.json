@@ -1,0 +1,4 @@
+[
+  {"results":[{"titleId":"synthetic-title-a"}],"continuationToken":"synthetic-next-1"},
+  {"results":[{"titleId":"synthetic-title-b"},{"titleId":"synthetic-title-a"}],"continuationToken":""}
+]

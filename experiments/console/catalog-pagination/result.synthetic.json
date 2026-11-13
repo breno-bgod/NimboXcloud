@@ -1,0 +1,26 @@
+{
+  "kind": "offline-pagination-model",
+  "fixtureOrigin": "synthetic",
+  "gameplayValidated": false,
+  "single": {
+    "ids": [
+      "synthetic-title-a"
+    ],
+    "complete": false,
+    "reason": "single-page",
+    "pagesRead": 1
+  },
+  "followed": {
+    "ids": [
+      "synthetic-title-a",
+      "synthetic-title-b"
+    ],
+    "complete": true,
+    "reason": "end",
+    "pagesRead": 2
+  },
+  "extraIdsInSuppliedPages": [
+    "synthetic-title-b"
+  ],
+  "conclusion": "Resultados de catálogo não comprovam autorização ou execução de jogos."
+}

@@ -1,0 +1,42 @@
+{
+  "kind": "real-source-offline-request-construction",
+  "backendSimulated": true,
+  "configuredOffering": "xgpuweb",
+  "cases": [
+    {
+      "requestedOs": "windows",
+      "sessionSdk": "web",
+      "declaredOs": "windows",
+      "declaredAppType": "browser",
+      "declaredSdk": "web",
+      "declaredModel": "unknown",
+      "osFieldsEqual": true
+    },
+    {
+      "requestedOs": "windows",
+      "sessionSdk": "web",
+      "declaredOs": "windows",
+      "declaredAppType": "browser",
+      "declaredSdk": "web",
+      "declaredModel": "unknown",
+      "osFieldsEqual": true
+    },
+    {
+      "requestedOs": "android",
+      "sessionSdk": "web",
+      "declaredOs": "windows",
+      "declaredAppType": "browser",
+      "declaredSdk": "web",
+      "declaredModel": "unknown",
+      "osFieldsEqual": false
+    }
+  ],
+  "widgetPolicyDeclared": {
+    "externalAccess": true,
+    "internetPrivilege": true
+  },
+  "networkExecuted": false,
+  "serverClientClassification": "not-observed",
+  "browserCorsValidated": false,
+  "gameplayValidated": false
+}

@@ -2,10 +2,14 @@
 
 > Documento operacional. Toda execução autônoma deve reler a versão atual de `main` e atualizar este plano conforme evidências. Nunca presumir que a versão indicada aqui ainda é a mais recente.
 
+## Prioridade vigente — unificação autorizada
+
+Uma versão oficial na main, com interface do PR #29 preservada. Giroscópio/touchpad do PR #27 e fontes experimentais PSBox do PR #24 foram reunidos; fontes nativas não executam no userscript. Validar giroscópio/touchpad no aparelho; continuar port de núcleo/mídia/entrada com contratos de sessão e lifecycle, preservando todas as funções existentes. Sem alegar APK/streaming PSBox integrado enquanto não existir. Automação a cada duas horas; próximos avanços em branches/PRs sobre a main unificada, sem force push, merge próprio automático ou release automática.
+
 ## Estado de referência
-- Versão auditada do userscript: 4.12.89 (perfil de qualidade e métricas xCloud corrigidos em 4.12.88; cancelamento do controller xHome ativo corrigido em 4.12.89; código/testes na main em `5b51cc3cb8d1ab1f93d5d7571cb20b578763e881`; blob do userscript `6843b306d6847f9ba054bdc82489e53f538e112d`; consulta direta em 2026-11-12).
+- Base oficial desta publicação: userscript 4.15.4, interface do PR #29, giroscópio/touchpad reconciliados e fontes experimentais PSBox do PR #24. Sempre reler o SHA atual da main antes de alterar.
 - Arquivo principal: `NimboXcloud.user.js`.
-- Plataforma prioritária: navegador em `play.xbox.com`, sem reescrever como aplicativo nativo.
+- Cliente web em `play.xbox.com` preservado; adaptação nativa PSBox/Android segue no mesmo repositório, em módulo separado destinado a futuro host APK.
 - Objetivo: estabilidade real do cliente web, manutenção das funções existentes e investigação verificável das diferenças entre cliente web e cliente Xbox.
 
 ## Procedimento obrigatório a cada execução
@@ -1173,3 +1177,40 @@ Critérios de aceite:
 3. O estado `disconnected` transitório continua recuperável se o mesmo peer retornar a connected; não aplicar teardown terminal a uma desconexão recuperável.
 4. Stop→Start, ICE local ordenado/isolado, ICE remoto canônico, limite de 30 polls e regressões de entrada permanecem aprovados.
 5. Baseline e xHome workflows verdes. Sem declarar validação de browser ou console físico.
+
+
+## Execução de pesquisa — 2026-11-13: oferta retail e compatibilidade web
+
+### Estado do repositório
+- **Main inicial/final:** 3c122b0b728b5f2ef25ffd244a50ce7f9e7f60bd (sem alterações na main).
+- **Versão:** 4.15.1; `NimboXcloud.user.js` blob `f7ebc4f85335609ee45391f3f27964aacf4b7535`; 8.787 linhas.
+- **Branch de pesquisa existente:** `proposal/console-service-resume`; base main 3c122b0b728b5f2ef25ffd244a50ce7f9e7f60bd; antes desta atualização, 11 commits à frente e 0 atrás. PR #24 é o rascunho central já existente. PR #21 permanece aberto sem comentários/revisões; nenhum PR novo foi aberto.
+- **Arquivos alterados nesta execução:** `DEVELOPMENT_ROADMAP.md`, `docs/research/CONSOLE_RESEARCH.md` e `docs/research/INDEX.md`. Sem alteração de código, instalador, autenticação, versão oficial, módulos ativos ou main.
+- `AUTOMATION_BACKLOG.md` existe e foi lido; não foi alterado.
+
+### Questão e conclusão
+- A disponibilidade de um mesmo título no Xbox Cloud Gaming do console e no navegador permanece **inconclusiva**: não existe comparação pareada sob mesma conta, plano, região e período.
+- A Xbox confirmou que Stream Your Own Game alcançou consoles além dos dispositivos compatíveis com navegador; Remote Play pelo navegador é outro fluxo, executado no console próprio.
+- GTA VI foi anunciado em 10/11 para Cloud Gaming em Xbox One e Series X|S a partir de 19/11 às 03:00 Brasília. A notícia não menciona browser nem o exclui; em 13/11 ainda era oferta futura. Compra separada, plano/tempo cloud, região e dispositivo precisam ser verificados.
+- GDK documenta private offerings web somente para contas autorizadas e regiões configuradas. IP Connect e Remote Connect são fluxos de Development Kit, não atalhos para o catálogo retail.
+- Nenhum método público legítimo foi encontrado para converter uma autorização de console em autorização web ou anexar o browser a uma sessão cloud já aberta no console. O requisito observável é a oferta retail ser elegível para dispositivo web e para a conta/região/plano; a regra interna específica do título permanece não documentada.
+
+### Evidências e confiança
+- **Alta:** documentação Xbox/GDK sobre Azure Game Streaming versus Remote Play; CTA web, private offerings, autorização da conta e região; anúncio oficial de GTA VI e data futura.
+- **Alta para modalidade/código declarado, não para reconhecimento do servidor:** PSBox, Green-NX, Greenlight, XStreaming e xCloudNative separam `xgpuweb` (cloud) de `xhome` (Remote Play próprio) nos caminhos inspecionados. Clientes nativos não provam identidade Xbox.
+- **Média:** Orbita XEX 1.1.0; o site informa que os jogos rodam nos servidores Microsoft, conta define catálogo e uma conta joga em um aparelho por vez. O código XEX atual não foi inspecionado via GitHub API.
+- **Alta para escopo do produto:** Better xCloud 6.7.13 atua como userscript no site antigo; EvenBetter 1.13.11 altera compatibilidade/UA, sem prova de autorização de console.
+- **Matriz web:** WebRTC/WebSocket/Gamepad estão amplamente disponíveis; WebCodecs tem suporte atual em Chromium, Firefox desktop e Safari 16.4+; WebHID/WebUSB e Pointer Lock têm lacunas móveis. APIs não explicam, por si só, ausência de título no catálogo.
+- Fontes e SHAs fixados em `docs/research/CONSOLE_RESEARCH.md`.
+
+### Experimento e refutação
+- Hipótese: o serviço pode recusar no browser um título oferecido ao console por elegibilidade de dispositivo/oferta.
+- Experimento mínimo: mesmo título e conta, mesmo plano/cloud playtime, região e janela de até 15 minutos; iniciar Cloud Gaming no Xbox e depois no browser oficial; registrar catálogo, erro, sessão, trilhas, quadros, áudio e comando, sem tokens/HAR completo.
+- Refutação: o browser inicia o mesmo título e entrega vídeo, áudio e comandos nas mesmas condições. Diferença confirmada: console inicia e browser recusa sob condições controladas; isso ainda não identifica a regra interna sem erro/documentação adicional.
+- GTA VI só entra no experimento após a oferta começar e a conta estar efetivamente elegível.
+
+### Testes, riscos e próxima tarefa
+- Nenhum código foi alterado; não houve execução de sintaxe/build/lint/testes nesta atualização documental.
+- Resultados anteriores preservados, não reexecutados: observer 11/11 Node/VM; identity-boundary 4/4; demais experiências usam objetos/fixtures sintéticos. Playwright/Chromium falhou antes da navegação por Crashpad `setsockopt Operation not permitted`/SIGTRAP. Não houve teste real em Chrome, Edge, Android, iOS, Xbox, stream ou gameplay.
+- **Risco:** inferir reconhecimento Xbox a partir de UA, header, app nativo, nome de console, catálogo ou WebRTC conectado. Não fazer isso.
+- **Próxima tarefa única:** obter a comparação pareada de um título já disponível ao mantenedor na nuvem do Xbox e no browser oficial, com conta/plano/região iguais; só usar GTA VI após 19/11 e entitlement efetivo.

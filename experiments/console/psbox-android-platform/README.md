@@ -1,0 +1,193 @@
+# PSBox Android: armazenamento privado do host Nimbo
+
+Estado local: **build e teste nativo Linux aprovados**, sem runtime Android.
+O CI ARM64 é uma verificação separada; só seu resultado pode comprovar o link
+Android desta biblioteca. Não é APK nem integração do motor completo.
+
+## Hipótese, falha e origem
+
+O backend Android upstream retornava init/dataDirWritable como true mesmo com
+mkdir falhando, e usava /data/data/com.rafaelngp.psbox/files sem configuração.
+No APK Nimbo, esse caminho pertence a outro aplicativo. A adaptação exige que
+o host confiável configure filesDir/psbox antes dos workers;
+a configuração não recebe caminhos de uma página web. A fachada JNI foi acrescentada na revisão de lifecycle abaixo.
+
+Critério de falha: informar armazenamento pronto sem pasta absoluta explícita,
+ou após erro de mkdir/criação/escrita do probe. Teste contra fonte upstream
+falhou em "missing host directory must fail"; após correção, o executável C++
+passou. Não alteramos autenticação, endpoints ou formato de arquivo de conta.
+Fixtures são texto sintético e pastas temporárias; nenhum dado de usuário.
+
+Fontes selecionadas de RafaelNGP/psbox-cloud-gaming no SHA
+c775ecaddde52024d177cce7392aae13cc6917aa (13/11/2026 17:14:27 UTC):
+
+- vendor/src/platform/android/platform_android.cpp: modificado localmente,
+  sem fallback de pacote; mkdir validado, probe temporário exclusivo com escrita
+  e remoção, errno/estado real, reset no init/shutdown.
+- vendor/src/platform/platform.h, vendor/src/platform/posix_common.cpp,
+  vendor/src/util/log.h: fontes upstream preservadas.
+- vendor/LICENSE: GPL v3 integral; headers GPL-3.0-or-later e copyright RafaelNGP
+  preservados. Manifesto com SHA256 upstream e local em sources.json.
+
+Nenhuma fonte fora deste experimento importa a biblioteca. Não sincronizar toda
+main upstream nem misturar armazenamento dos dois motores. Separação de módulos
+não elimina obrigações GPL; distribuir fonte correspondente e avisos junto a
+qualquer distribuição futura do binário adaptado.
+
+## Reprodução
+
+```sh
+bash experiments/console/psbox-android-platform/test-host.sh
+ANDROID_NDK_HOME=/caminho/ndk/27.2.12479018 \
+  bash experiments/console/psbox-android-platform/build-arm64.sh /tmp/nx-arm64
+```
+
+Teste host: GCC C++20, arquivos reais no filesystem, sem rede. Verifica pasta
+ausente/relativa, pasta aninhada, probe removido, read/write atômico com fixture,
+arquivo em lugar de diretório, erro de criação, diretório existente sem escrita,
+reinicialização e shutdown. Não mede desempenho nem valida persistência de token.
+
+Build Android: NDK oficial 27.2.12479018, Clang target aarch64-linux-android26,
+link compartilhado sem símbolos indefinidos, cabeçalho ELF AArch64. Não passa
+binário host por Android. O workflow do PR instala o NDK pelo sdkmanager do
+SDK oficial do runner, com TLS padrão; não exige desktop do mantenedor.
+
+Limites: SDK/NDK indisponíveis no executor local; não houve build Android local,
+instalação, Activity, mídia, FFmpeg/SDL/libdatachannel ligados ou partida.
+CA/assets ainda não são provisionados pelo host: não iniciar login com esta
+biblioteca isolada. O backend atual ainda tem funções stub e capacidades não
+validadas. Próximo incremento é configuração/lifecycle do host Android e ligação
+gradual das dependências reais, mantendo um painel e uma sessão ativa.
+
+
+## Revisão de lifecycle e fachada Java/JNI
+
+A fachada local `org.nimboxcloud.psbox.PsboxPlatform` é API proposta do Nimbo,
+não do PSBox upstream e não do serviço cloud. Sem Activity ou novo painel.
+`initialize(Context)` obtém filesDir/psbox do contexto Android, carrega a biblioteca
+e retorna 0 somente para prontidão da plataforma. Código diferente é errno ou
+NATIVE_UNAVAILABLE. `isReady()` consulta a camada, `shutdown()` confirma sua parada.
+Não expor a classe como interface JavaScript nem aceitar caminhos de uma página.
+
+A configuração explícita passa por configureAndroidDataDir, antes do init; não
+usa setenv nem modifica variáveis de outro motor no processo. O fallback de
+XCLOUD_DATA_DIR é mantido apenas para ferramentas/testes nativos. Mutex nativo
+serializa init/status/shutdown; repetição na mesma pasta é idempotente, outra
+pasta ativa recebe EBUSY. Falha de armazenamento fica fechada e permite nova
+tentativa. Código JNI não deixa exceção C++ escapar para a VM. Regra de consumidor
+preserva nome da classe/métodos para R8 não quebrar os símbolos JNI.
+
+Teste host adicional compila o C++ real com -Werror e verifica estado inicial,
+caminho inválido, init, preservação de ambiente, repetição, recusa de troca ativa,
+shutdown idempotente, falha/recovery e concorrência com um proprietário.
+Comando é o mesmo test-host.sh. Sem mocks de autenticação ou sessão.
+
+O build ARM64 inclui JNI e verifica os três símbolos exportados. A biblioteca
+C++ padrão é ligada estaticamente; NOTICE do NDK é preservado, evitando depender
+de libc++_shared.so omitida no pacote. build-aar.sh usa android.jar da plataforma
+35, javac --release 17 e monta AAR com classes.jar, ARM64, manifesto minSdk26,
+regra R8, licença/avisos e escopo. Esse AAR não é instalável e não é APK.
+
+CI desta revisão precisa confirmar compilação Java/JNI e montagem do AAR; não
+foi executado em VM Android ou aparelho. A aprovação anterior ARM64 referia-se
+somente ao backend sem JNI. Ainda não existe host Activity implementado, core
+PSBox ligado, assets/CA, biblioteca de jogos ou partida. O encerramento desta
+camada NÃO substitui StreamPlayer::stop nem neutralização de entradas e liberação
+dos workers quando forem ligados. O adaptador de motor só pode confirmar stop
+após terminar esses recursos adicionais. Próximo passo: host lifecycle real e
+ligação gradual do núcleo, preservando o painel único.
+
+
+## Ligação ao ciclo de vida da Activity do host
+
+`PsboxActivityBinding` usa Application.ActivityLifecycleCallbacks e composição:
+não exige uma nova Activity/base class, não registra tela no manifesto e não
+cria painel. O futuro host Nimbo deve construí-lo no seu onCreate (antes de
+onStart), e chamar setSelected(true/false) somente pelo seletor nativo confiável
+do motor. Seleção começa desligada; salvar/restaurar a escolha pertence ao host.
+A biblioteca não adiciona integração ao userscript nem uma ponte WebView.
+
+Quando a Activity vinculada inicia e PSBox está selecionado, adquire a camada de
+plataforma. Quando para, desmarca ou é destruída, tenta liberar. O callback recebe
+ready e error separadamente: erro zero com ready=false não significa sessão
+ativa. Nenhuma chamada consulta catálogo ou inicia streaming.
+
+PlatformOwner mantém uma proprietária por processo, recusa outro host com BUSY,
+é idempotente e ignora stop de token antigo. Stop/cleanup falho mantém propriedade
+e permite retry via detach ou seleção; nunca força encerramento alheio. Eventos
+onResume/onStop permitem uma tentativa de aquisição antes bloqueada, sem polling
+ou loop. Se ainda retornar BUSY, o host pode mostrar erro e tentar selecionar
+novamente depois. A ordem real de callbacks/rotação ainda precisa de teste Android.
+
+A binding guarda a Activity por WeakReference e remove o listener da tela ao
+destruir; detach bem-sucedido remove os callbacks. Se shutdown falhar, mantém a
+posse e registro para recuperação e não retém a UI destruída. Não misturar chamadas
+diretas à fachada PsboxPlatform com a binding no mesmo processo: a binding deve
+ser a única responsável por essa camada no host integrado.
+
+Teste Java de propriedade (backend simulado, sem Android/login):
+
+```sh
+bash experiments/console/psbox-android-platform/test-java-host.sh
+```
+
+O executor local tem Java 21/compiler module mas sem ct.sym: --release17 e
+--release21 falharam por ambiente. Teste local passou com JAVA_TEST_RELEASE=runtime;
+a lógica de teste não foi relaxada. O CI mantém --release17 e compila todas as
+classes da binding contra android.jar35 no AAR. Isso deve ser aprovado novamente
+para esta revisão; o build anterior não incluía callbacks de Activity.
+
+Cobre início idempotente, proprietário único, parada alheia/atrasada, cleanup e
+shutdown com falha, retry, exceções sanitizadas e concorrência. O teste usa o
+coordenador Java real e backend simulado; não valida eventos do framework, JNI
+executado em Android, rotação, Activity real, UI, sessão ou gameplay.
+
+A ligação atual encerra apenas a camada de plataforma: antes de ligar o núcleo,
+o contrato terá de aguardar neutralização, stop de StreamPlayer e fim de workers.
+Não usar este callback para sinalizar parada completa de um motor ainda ativo.
+Próximo passo: execução instrumentada do host/lifecycle e integração gradual do
+núcleo com assets/CA e dependências Android reais. Nenhum APK foi criado aqui.
+
+
+## Incremento de transporte HTTPS (build a confirmar)
+
+Proposta registrada no corpo do PR antes de incorporar a dependência. Hipótese:
+o cliente HTTPS original liga em ARM64 com confiança pública e parsers íntegros.
+Falha: erro de build/link, initTls sem carregar o bundle público, ou fixture de
+URL/chunked/JSON rejeitada indevidamente. Não há requests HTTPS no teste.
+
+Selecionados de PSBox c775ecaddde52024d177cce7392aae13cc6917aa: net/http.{h,cpp},
+util/log.cpp, util/json.{h,cpp}, assets/cacert.pem, cmake/embed_file.cmake e config
+Mbed TLS upstream. Todos conferidos byte a byte por Git blob SHA e SHA256 em
+sources.json, sem alterar endpoints, autenticação ou política TLS. O bundle é
+público (raízes de CA Mozilla via curl), não certificado/chave de conta/dispositivo;
+comentários/proveniência originais preservados. Nenhum dado de usuário é usado.
+
+Mbed TLS 3.6.2, commit 107ea89daaefb9867ea9121002fbbdf926780e98, é exatamente o
+gitlink PSBox. Framework recursivo fixado em 94599c0e3b5036e086446a51a3f79640f70f22f6.
+Licença dual Apache-2.0 ou GPL-2.0-or-later, texto original no AAR e arquivo de fontes
+correspondentes/framework no artefato. Esta seleção reproduz o upstream; não é
+uma auditoria de segurança ou aprovação para distribuição de produção.
+
+build-transport.sh usa CMake oficial do SDK 3.22.1, primeiro compila/executa um
+binário host offline (URL, JSON, chunked e initTls com CA embutida), depois liga
+as mesmas fontes com JNI em ARM64/API26, NDK27.2.12479018 e runtime C++ estático.
+Confere ELF, símbolos JNI e ausência de libc++_shared antes de montar AAR. Não
+mistura binário host com Android. Dependência é checkout público, commit/submódulo
+fixados e sem credenciais persistidas. TLS/proxy não são desativados.
+
+```sh
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+export MBEDTLS_SOURCE_DIR=/caminho/checkout-mbedtls-fixado
+bash experiments/console/psbox-android-platform/build-transport.sh /tmp/nx-transport
+bash experiments/console/psbox-android-platform/build-aar.sh /tmp/nx-transport
+```
+
+CMake/Mbed TLS/SDK ausentes no executor local; bash -n e regressões C++ de storage/
+lifecycle aprovados. O CI deve confirmar transporte offline, ARM64 e novo AAR.
+O resultado anterior da binding não prova este incremento. Mesmo aprovado, não
+haverá handshake, login, entitlement ou sessão cloud validados. O transporte não
+é exposto em Java/WebView e ainda não é chamado pela binding de plataforma.
+Auth, session, purchase, FFmpeg, SDL e libdatachannel não foram incorporados.
+Main oficial 4.15.3 do PR29 permanece intacta. Próximo: usar o resultado de build
+para ligar gradualmente serviços do núcleo e validar lifecycle Android real.

@@ -1,0 +1,17 @@
+{
+  "normalization": "UTF-8, LF, exatamente uma quebra final",
+  "sources": [
+    {
+      "file": "xal-index.ts",
+      "path": "src/xal/index.ts",
+      "commit": "06ef1c7ee01d09cf9bb2a97fc4895da85e8488a8",
+      "sha256": "8fa14da74ebc8a22c474289d17f408a6c91de5fa3e30458e173ef7c4de188931"
+    },
+    {
+      "file": "msal.ts",
+      "path": "src/xal/msal.ts",
+      "commit": "06ef1c7ee01d09cf9bb2a97fc4895da85e8488a8",
+      "sha256": "59e854212f0edc4e0d245f0177aa3dd9ed81d555ecd980d669490c6ad8e9573a"
+    }
+  ]
+}
