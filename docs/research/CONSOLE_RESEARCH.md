@@ -462,3 +462,8 @@ localmente, build do transporte pendente no CI ao publicar. CA pública não é
 certificado de usuário/dispositivo. Aprovação não provará handshake, login,
 identidade ou streaming. Próximo: confirmar esse build e ligar serviços do núcleo
 com lifecycle real, mantendo um painel e preservando os dois motores.
+
+
+### Transporte: resultado de build confirmado
+
+[CI #43515921080](https://github.com/breno-bgod/NimboXcloud/actions/runs/43515921080), commit a0b395cecc132d0317856cfd5043c4def8045ff2: todos os passos aprovados. Log confirma PASS de parsers HTTP/JSON e inicialização da confiança pública embutida às 22:03:41 UTC; aviso de arquivo CA inexistente é esperado da fixture negativa e precede o fallback. Não houve aviso de certificados ignorados no log consultado. ARM64/JNI, Java/binding e AAR também compilados. Artefato nimbo-psbox-platform-arm64-not-apk, ID 14080213417, 10450389 bytes, digest sha256:7e7102ddc13a191aad45f09dcbf91955b64e9e5e403446f44252a360666ba7e5, com AAR, fonte correspondente PSBox/MbedTLS/framework e licenças/avisos. Não é APK ou motor completo. Nenhuma conexão/handshake, autenticação, entitlement, mídia ou gameplay foi executada. A espera de compilação deixou de ser bloqueio; próximo passo é integrar serviços do núcleo e validar lifecycle Android real antes de login manual. Produto oficial PR29 preservado.
