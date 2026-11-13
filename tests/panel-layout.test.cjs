@@ -26,6 +26,8 @@ function harness(){
  const ctx={document:{createElement:tag=>new Node(tag)},C:{dim:'#888',line:'#333',panel:'#111',accent:'#0f0',text:'#fff'},
   mk:(tag,style,text)=>{const n=new Node(tag,text||'');n.style.cssText=style;return n;},
   liveFns:[],getPref:(key,fallback)=>fallback,stopEv(){},
+  nxPhone:{profile:'off',touchEnabled:false},nxPhoneReset(){},nxPhoneLandscape:()=>true,
+  NX_PHONE_GAIN:'phone-gain',NX_PHONE_INVERT_X:'phone-x',NX_PHONE_INVERT_Y:'phone-y',
   PRESETS:[{name:'Máximo',res:'hq',sub:'1080p HQ'},{name:'Padrão',res:'auto',sub:'1080p'}],
   RES_MODES:{hq:{},auto:{}},resCfg:()=>({}),
   nxVisualStatus:()=> 'Filtros padrão',nxGpuStatus:()=> 'Desligada',nxResetVisualSettings(){},
@@ -46,6 +48,7 @@ function harness(){
   nxConsoleLabFullScreen(){},activeStreamAudio:()=>null,sliderDragging:false,S:{},tabId:'video'};
  vm.createContext(ctx);
  vm.runInContext(section('  function group(title, hint) {','  function liveDesc(')+section('  function liveDesc(row, getter) {','  function chips('),ctx);
+ vm.runInContext(section('  function nxPhoneControls(root){','  setInterval(function(){\n    const visible=nxPhone.touchEnabled'),ctx);
  const group=(title,rows=[])=>{const g=ctx.group(title);for(const name of rows)g.add(ctx.setRow(name,'',new Node('button',name+' action')));return g.root;};
  const controls=root=>[
   group('Dispositivo',['Experiência','Dispositivo detectado']),
@@ -106,8 +109,10 @@ test('input workspace mounts settings for the browsed device without duplicated 
   assert.equal(root.textContent.includes('Ajustes de teclado e mouse'),family==='keyboard');
   assert.equal(root.textContent.includes('Atalho gamepad'),family==='gamepad');
   assert.equal(root.textContent.includes('Atalho keyboard'),family==='keyboard');
+  assert.match(root.textContent,/Ativar FPS|Ativar Corrida/);
+  assert.match(root.textContent,/SENSIBILIDADE DO TOUCHPAD/);
   assert.doesNotMatch(root.textContent,/Escolher entrada|Ativar HUD/);
-  if(family!=='mobile')assert.equal(root.children[1].tagName,'details');
+  if(family!=='mobile')assert.ok(root.children.some(node=>node.tagName==='details'));
  }
 });
 
@@ -177,3 +182,4 @@ test('monitor never steals native Xbox or gameplay clicks outside the NX editing
  vm.runInNewContext(section('  function nxTelemetryTick(){','  setInterval(nxTelemetryTick,')+'\nglobalThis.tick=nxTelemetryTick;',ctx);
  ctx.tick();assert.equal(monitor.style.pointerEvents,'none');ctx.openUI=true;ctx.tick();assert.equal(monitor.style.pointerEvents,'auto');
 });
+

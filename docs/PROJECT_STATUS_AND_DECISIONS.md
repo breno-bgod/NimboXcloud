@@ -1,7 +1,7 @@
 # NimboXcloud — Estado do projeto, decisões e pendências
 
 > **Fonte de referência para mantenedores, colaboradores, forks e assistentes de IA.**
-> Última revisão: 2026-11-13. Versão de referência: `4.15.3`, branch `main`.
+> Última revisão: 2026-11-13. Versão de referência: `4.15.4`, branch `main`.
 > **Este documento registra decisões de produto, não certifica funcionamento em uma sessão real.** Consulte os testes, CI e evidências antes de declarar qualquer recurso estável.
 
 ## Política de documentação: somente escopo vigente
@@ -15,6 +15,10 @@ A documentação oficial é um **registro do estado atual e do trabalho futuro a
 - **Não apagar fatos relevantes enquanto houver risco residual:** antes de excluir a documentação de um recurso, verificar que código, interface, preferências antigas e testes associados foram tratados.
 
 O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que precisa ser corrigido e o que será desenvolvido**, sem confundir experimentos abandonados com compromissos futuros.
+
+## Publicação 4.15.4 — base oficial unificada
+
+Especificação do mantenedor incorporada sobre a interface oficial do PR #29: perfis FPS/Corrida em paisagem, composição nos analógicos e touchpad de mira no controle físico/virtual. Saída complementar pela ponte Gamepad, sem alterar o modo escolhido ou a autenticação; suporte real de combinações de mouse/toque e analógico precisa ser validado por jogo. Não é protocolo de touchpad PlayStation. Módulo oficial 1.4.1 e Central de Entradas preservados; userscript publicado como 4.15.4. Guia em [Giroscópio e touchpad](GIROSCOPIO_E_TOUCHPAD.md). Testes locais: 399 PASS/0 FAIL/3 TODO; hardware, orientação real e gameplay pendentes. Fontes, experimentos e builds PSBox/Android do PR #24 estão presentes no mesmo repositório, sem importação pelo userscript. Não há APK ou motor PSBox integrado funcional. Ver [Estado de integração](INTEGRACAO_OFICIAL.md).
 
 ## Publicação 4.15.3 — PR #29 e divisão de frentes
 

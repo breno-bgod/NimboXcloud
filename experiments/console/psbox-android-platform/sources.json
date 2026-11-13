@@ -1,0 +1,102 @@
+{
+  "repository": "https://github.com/RafaelNGP/psbox-cloud-gaming",
+  "commit": "c775ecaddde52024d177cce7392aae13cc6917aa",
+  "license": "GPL-3.0-or-later (source headers); GPL v3 text in vendor/LICENSE",
+  "files": [
+    {
+      "path": "src/platform/android/platform_android.cpp",
+      "upstream_sha256": "eae94de473e2a098ba12d3180ebcc51d1bdd501f9233203f7879f7c4cfa51e87",
+      "local_sha256": "56dd99c5db7af3d71ad178e33b3c16adb631924ca9f2f73550c878bcae0af0fa",
+      "modified": true
+    },
+    {
+      "path": "src/platform/platform.h",
+      "upstream_sha256": "43cdf61a90dec7af2e13d0d3f88a7a9dbc8e9c671df099ece93e4f7d9dc0e147",
+      "local_sha256": "43cdf61a90dec7af2e13d0d3f88a7a9dbc8e9c671df099ece93e4f7d9dc0e147",
+      "modified": false
+    },
+    {
+      "path": "src/platform/posix_common.cpp",
+      "upstream_sha256": "e338aa677b6cfdb18642fac555b444256be395741947f06903aed31ba03c9e29",
+      "local_sha256": "e338aa677b6cfdb18642fac555b444256be395741947f06903aed31ba03c9e29",
+      "modified": false
+    },
+    {
+      "path": "src/util/log.h",
+      "upstream_sha256": "39d31af2494417003535b3a1bb93810119ff51c5f6c56034841343002dca5734",
+      "local_sha256": "39d31af2494417003535b3a1bb93810119ff51c5f6c56034841343002dca5734",
+      "modified": false
+    },
+    {
+      "path": "LICENSE",
+      "upstream_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "local_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "modified": false
+    },
+    {
+      "path": "src/net/http.cpp",
+      "upstream_blob_sha": "0903663f709ef1f5636a59b1d0726c696ce59b12",
+      "upstream_sha256": "e8daee91658cd2564574913b99d755a9a7292538144df2a0cc8850fc35c5a888",
+      "local_sha256": "e8daee91658cd2564574913b99d755a9a7292538144df2a0cc8850fc35c5a888",
+      "modified": false
+    },
+    {
+      "path": "src/net/http.h",
+      "upstream_blob_sha": "7e7c1a39ff4cf0c53e223a44cb0223f8ee6f8ed5",
+      "upstream_sha256": "c811212b014d4fa3ed046cf16ad6d6ab7f07c8760e25f23e8005e9926581eb1d",
+      "local_sha256": "c811212b014d4fa3ed046cf16ad6d6ab7f07c8760e25f23e8005e9926581eb1d",
+      "modified": false
+    },
+    {
+      "path": "src/util/log.cpp",
+      "upstream_blob_sha": "8e31c866b92ddcc5532101ca528d42410b1d3009",
+      "upstream_sha256": "20e6888a779474d9408cc497036dd57d7dc7bfdb09234f7923ce82a652935944",
+      "local_sha256": "20e6888a779474d9408cc497036dd57d7dc7bfdb09234f7923ce82a652935944",
+      "modified": false
+    },
+    {
+      "path": "src/util/json.cpp",
+      "upstream_blob_sha": "41d553096c3a298ccf6a7a8612858126640c94d0",
+      "upstream_sha256": "6a88b69387230fa7d1ec32a20d2c8e2b65ad3d5b97e637b7ff41a90c83fb106b",
+      "local_sha256": "6a88b69387230fa7d1ec32a20d2c8e2b65ad3d5b97e637b7ff41a90c83fb106b",
+      "modified": false
+    },
+    {
+      "path": "src/util/json.h",
+      "upstream_blob_sha": "a4adda3663c73515d7a3b7fcb33c2afecae556f3",
+      "upstream_sha256": "f505acc07bd5be06f9a106d3ca54c5eee9186f11cf440b96e776909077771b2c",
+      "local_sha256": "f505acc07bd5be06f9a106d3ca54c5eee9186f11cf440b96e776909077771b2c",
+      "modified": false
+    },
+    {
+      "path": "assets/cacert.pem",
+      "upstream_blob_sha": "4b694a502b526edd85a9c888b3ec72e6287437b4",
+      "upstream_sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505",
+      "local_sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505",
+      "modified": false
+    },
+    {
+      "path": "cmake/embed_file.cmake",
+      "upstream_blob_sha": "efc8a899077fd0435a7de3376ee421354128cf29",
+      "upstream_sha256": "a6389c91b53f8169263afd78fb76b23ddd6d30918931487f8e90e780c58ba970",
+      "local_sha256": "a6389c91b53f8169263afd78fb76b23ddd6d30918931487f8e90e780c58ba970",
+      "modified": false
+    },
+    {
+      "path": "cmake/deps/mbedtls_user_config.h",
+      "upstream_blob_sha": "021c9aaee7d2fccee4d92aec1b4f08f7d67132a0",
+      "upstream_sha256": "b8608d42c9ad3efb666cc5da29120e08bbac429d41f02bcef813155468ec0613",
+      "local_sha256": "b8608d42c9ad3efb666cc5da29120e08bbac429d41f02bcef813155468ec0613",
+      "modified": false
+    }
+  ],
+  "dependencies": [
+    {
+      "repository": "https://github.com/Mbed-TLS/mbedtls",
+      "commit": "107ea89daaefb9867ea9121002fbbdf926780e98",
+      "origin": "PSBox deps/mbedtls gitlink",
+      "license": "Apache-2.0 OR GPL-2.0-or-later",
+      "framework_commit": "94599c0e3b5036e086446a51a3f79640f70f22f6"
+    }
+  ]
+}

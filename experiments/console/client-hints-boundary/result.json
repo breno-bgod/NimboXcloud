@@ -1,0 +1,19 @@
+{
+  "schema": "client-hints-boundary-v1",
+  "sourceCommit": "ea4d19f2800cee9cfa387a0c9c37b3711cf208c7",
+  "inheritedProperty": {
+    "uaChanged": true,
+    "hintsHidden": true
+  },
+  "existingOwnProperty": {
+    "hintsPreserved": true
+  },
+  "networkCalls": 0,
+  "httpClientHints": "not-observed",
+  "serverConsoleRecognition": "not-verified",
+  "state": "controlled-simulation",
+  "limitations": [
+    "Synthetic navigator property layouts; no browser or server tested.",
+    "JavaScript visibility does not establish HTTP headers, tokens, session classification or authorization."
+  ]
+}

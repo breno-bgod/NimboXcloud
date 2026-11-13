@@ -52,13 +52,13 @@ test('video presentation and image settings share a page without JSON controls',
  assert.doesNotMatch(images,/Importar JSON|Exportar configuracao/);
 });
 
-test('gamepad owns gyro, vibration and controller shortcuts',()=>{
+test('phone gyro is shared while gamepad keeps vibration and controller shortcuts',()=>{
  const start=src.indexOf('TAB_BUILDERS.gamepad=function(root){');
  const end=src.indexOf('TAB_BUILDERS.controls=TAB_BUILDERS.gamepad;',start);
  assert.ok(start>=0&&end>start);
  const body=src.slice(start,end);
  assert.doesNotMatch(body,/Coordenação de entradas — diagnóstico|Última alteração de conexão|Falhas de leitura/);
- assert.match(body,/Giroscópio/);
+ assert.match(src.slice(src.indexOf('TAB_BUILDERS.inputs=function(root){'),start),/nxPhoneControls\(root\)/);
  assert.match(body,/Vibração do Gamepad/);
  assert.match(body,/nxBindControls\(root,'gamepad'\)/);
  assert.match(body,/Controles conectados/);
@@ -124,4 +124,5 @@ test('controller and keyboard shortcuts keep separate storage keys and pages',()
  assert.match(src,/category==='gamepad'/);
  assert.match(src,/category==='keyboard'/);
 });
+
 

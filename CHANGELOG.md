@@ -1,3 +1,11 @@
+## [4.15.4] — 2026-11-13 — base oficial unificada
+- Perfis FPS/Corrida disponíveis em todas as famílias da Central de Entradas, sem mudar a entrada selecionada; permissão após ação explícita, sem recarga. FPS soma velocidade angular no analógico direito; Corrida soma rotação de volante no eixo horizontal esquerdo.
+- Paisagens 90°/270° com referência orientada à tela; retrato, menu, perda de foco, background e amostras antigas não contribuem. Desligar mantém entrada original.
+- Touchpad de mira nos controles: área do jogo no físico e área dedicada no virtual; saída ao analógico direito. Reutiliza sensibilidade existente. Não implementa protocolo de touchpad PS4/PS5. Touchpad de mouse original preservado.
+- Central de Entradas/tema/editor/configurações do PR #29 preservados; módulo oficial 1.4.1 mantido. Fontes, experimentos e builds PSBox/Android do PR #24 incorporados em experiments/console, com licenças e origem preservadas; não são carregados pelo userscript. Ainda sem APK ou motor integrado de streaming.
+- Publicação unificada autorizada pelo mantenedor. Instalador oficial permanece na main; não é necessário instalar versões por PR. Builds/testes de navegador e Android são verificados no PR de unificação.
+- 402 testes locais: 399 aprovados, zero falhas, três TODO preexistentes. Sintaxe e relatório estático executados; Chromium falhou na inicialização por Crashpad/SIGTRAP. Sem sensor real, latência medida ou gameplay. Guia: docs/GIROSCOPIO_E_TOUCHPAD.md. Entradas mistas precisam de reteste autorizado no jogo.
+
 ## [4.15.3] — 2026-11-13 — Central de Entradas verde
 - Publicação oficial autorizada pelo mantenedor pelo PR #29; userscript 4.15.3 e módulo 1.4.1 fixado por SHA. Desenvolvimento PSBox/Android permanece no PR #24, sem incorporação nesta versão.
 - Entradas oferece navegação entre Teclado e mouse, Controle e Mobile, com representação do dispositivo e ajustes contextuais. Navegar entre grupos mantém a entrada ativa até uma seleção explícita.

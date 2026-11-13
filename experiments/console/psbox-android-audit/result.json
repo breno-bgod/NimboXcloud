@@ -1,0 +1,31 @@
+{
+  "schema": "psbox-android-static-audit-v1",
+  "archiveSha256": "0f608df12eeee2d9c3a77d07a1ff5127f2dfb9f3a5c3c3942b698248e522f953",
+  "sourceSha256": {
+    "android/app/src/main/AndroidManifest.xml": "a5df18746da1861cae41b5f2afff57e5cb32de3b692b313b0e2c14f2c6d5cd40",
+    "android/app/src/main/cpp/CMakeLists.txt": "a5c1873badfeb2c80d6d65182476b5112624ed0697cb9ef644a3c109e5f173ad",
+    "src/platform/android/platform_android.cpp": "eae94de473e2a098ba12d3180ebcc51d1bdd501f9233203f7879f7c4cfa51e87"
+  },
+  "androidScaffoldPresent": true,
+  "mainActivitySourceFound": false,
+  "nativeEntryInPlatformFileFound": false,
+  "directSessionCoreIntegrationFound": false,
+  "submoduleFileCounts": {
+    "mbedtls": 0,
+    "libdatachannel": 0,
+    "ffmpeg": 0
+  },
+  "blockers": [
+    "manifest-main-activity-source-not-found",
+    "referenced-launcher-resources-not-found",
+    "android-cmake-does-not-directly-integrate-session-core",
+    "submodule-content-missing-from-archive"
+  ],
+  "buildExecuted": false,
+  "sessionExecuted": false,
+  "serverConsoleRecognition": "not-verified",
+  "limitations": [
+    "Static targeted checks; generated sources/indirect CMake links require manual review.",
+    "No build, APK installation, token issuance, server classification or gameplay validated."
+  ]
+}

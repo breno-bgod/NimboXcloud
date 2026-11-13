@@ -1,0 +1,16 @@
+{
+  "date": "2026-11-13",
+  "state": "local-tests-passed-real-session-pending",
+  "tests": 11,
+  "passed": 11,
+  "failed": 0,
+  "testEnvironment": "Node 24.22.1 / VM e respostas sintéticas",
+  "syntax": "passed",
+  "browserAttempt": {
+    "status": "blocked-before-navigation",
+    "error": "Crashpad setsockopt Operation not permitted; SIGTRAP/TargetClosedError"
+  },
+  "realXboxSessionTested": false,
+  "serverConsoleRecognitionValidated": false,
+  "officialRuntimeChanged": false
+}

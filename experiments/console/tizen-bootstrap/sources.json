@@ -1,0 +1,23 @@
+{
+  "normalization": "UTF-8; LF; uma quebra final",
+  "sources": [
+    {
+      "file": "streaming.js",
+      "path": "js/api/streaming.js",
+      "commit": "24f0861a3fe2114a7d80f378a7724606399af392",
+      "sha256": "8d0b3b735b9e070b3a65d9536046074903b635256373f0edee5011fb6c14b5e0"
+    },
+    {
+      "file": "config.js",
+      "path": "js/config.js",
+      "commit": "24f0861a3fe2114a7d80f378a7724606399af392",
+      "sha256": "fba17950b1e037819906996167b4eb669f0e48e95d4f5520f6bf71e836f1dea3"
+    },
+    {
+      "file": "config.xml",
+      "path": "config.xml",
+      "commit": "24f0861a3fe2114a7d80f378a7724606399af392",
+      "sha256": "420cb535895dd64aefe0b0e4d6c5300f50d59fa38b289992669cda2020ea1bed"
+    }
+  ]
+}
