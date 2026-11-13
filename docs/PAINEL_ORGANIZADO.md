@@ -1,5 +1,7 @@
 # Organização do painel — 4.13.2
 
+> A entrega 4.14.0 levou qualidade para Vídeo e imagem e colocou captura/tela cheia no topo do painel. Consulte [Vídeo e imagem](./VIDEO_E_IMAGEM.md) para a organização e verificação desses recursos.
+
 Alteração solicitada pelo mantenedor: reduzir categorias, reunir ajustes relacionados e manter Estatísticas como página própria. O redesenho visual do Início fica para uma etapa posterior; neste lote, seus links apenas acompanham a nova organização.
 
 | Página | Conteúdo e ordem |

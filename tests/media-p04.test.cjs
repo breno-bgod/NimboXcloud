@@ -31,15 +31,15 @@ test('MEDIA-003: visual presets are selectable and legacy preferences remain rea
   }
   assert.match(src, /getPref\(LS_VIDEO_PROFILE,'original'\)/);
   assert.match(src, /setPref\(LS_VIDEO_PROFILE,'custom'\)/);
-  assert.match(src, /getPref\(LS_VIDEO_COLOR, '0'\)/);
-  assert.match(src, /getPref\(LS_SHARPNESS, '0'\)/);
+  assert.match(src, /\[LS_VIDEO_COLOR\]:'0'/);
+  assert.match(src, /\[LS_SHARPNESS\]:'0'/);
   assert.match(src, /setPref\(LS_VIDEO_BRIGHTNESS,String\(base\.brightness\)\)/);
   assert.match(src, /setPref\(LS_VIDEO_CONTRAST,String\(base\.contrast\)\)/);
   assert.match(src, /setPref\(LS_VIDEO_SATURATION,String\(base\.saturation\)\)/);
 });
 
 test('MEDIA-004: fullscreen requires user action and video fit is reversible', () => {
-  assert.match(src, /actBtn\('Entrar \/ Sair', nxConsoleLabFullScreen/);
+  assert.match(src, /actBtn\('Tela cheia',nxConsoleLabFullScreen/);
   assert.match(src, /function applyVideoFit\(video\)/);
   assert.match(src, /function restoreVideoFit\(video\)/);
   assert.match(src, /video\.style\.removeProperty\('object-fit'\)/);
@@ -52,3 +52,4 @@ test('MEDIA-006: hidden-tab eco mode restores filters when visibility changes', 
   assert.match(src, /document\.addEventListener\('visibilitychange', function \(\) \{/);
   assert.match(src, /restoreVideoAdjustments\(video\)/);
 });
+

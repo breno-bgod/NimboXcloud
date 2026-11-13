@@ -52,6 +52,14 @@ A pedido do mantenedor, o painel passou a nove categorias. Vídeo/Imagem e Áudi
 
 Corrigidos o grupo de origem de enquadramento/tela cheia (causa da página Vídeo quase vazia), ordem brilho/contraste no shader, separador vertical do monitor e detecção de ações de restauração. 276 testes locais, 273 PASS, zero FAIL, três TODO. Chromium falhou em setsockopt antes de abrir. Percepção de brilho e layout no DeX/celular continuam pendentes de teste real. [Organização e aceite](./PAINEL_ORGANIZADO.md).
 
+## Revisão incremental — 2026-11-13 / v4.14.0
+
+O mantenedor relatou filtros sem diferença com WebGL2 ligado e pediu acesso rápido a captura/tela cheia, restauração unificada e qualidade junto de Vídeo e imagem. Implementados esses destinos e feedback de renderização/erro. Corrigidos caminhos de falha GPU, serialização/prioridade CSS, reaplicação manual com chaves atuais, seleção do vídeo, captura processada e enquadramento. O canvas preserva dimensão decodificada; não muda resolução do servidor.
+
+300 testes Node: 297 PASS, zero FAIL, três TODO. Shader real executado em EGL/OpenGL ES3 sem janela para oito controles; RGB [80,100,120] virou [92,115,138] com brilho 115%. Isso não homologa upload de vídeo, composição DOM ou gameplay no navegador. Chromium continua bloqueado em setsockopt; causa específica no dispositivo do mantenedor não foi confirmada. [Implementação, referências e aceite](./VIDEO_E_IMAGEM.md).
+
+PSBox solicita 1440 por canal de controle e dimensões/capacidades compatíveis. Esse caminho ainda não está adaptado/verificado no SDK retail do Nimbo. Não criar opção fictícia nem tratar canvas maior como stream 1440p. O próximo experimento está em AUTOMATION_BACKLOG.md, respeitando PRs e correções prioritárias de conexão/mídia.
+
 ## Propósito e princípios
 
 O NimboXcloud é um userscript independente para a nova experiência de Xbox Cloud Gaming em `https://play.xbox.com/`. Busca oferecer monitoramento, personalização, controles e recursos de acessibilidade sem substituir o serviço Xbox. Prioridade: **iniciar e manter partidas estáveis**, preservar controle/toque nativos e permitir recuperação quando uma opção falhar.

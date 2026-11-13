@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.13.2
+// @version      4.14.0
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch, cinco modos de entrada e HUD de controle virtual.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.13.2
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.14.0
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.13.2';
+  const VER = '4.14.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2318,8 +2318,8 @@ SOFTWARE.
   };
   const TABS = [
     { id: 'overview', label: 'Início', desc: 'Resumo da sessão e acesso rápido' },
-    { id: 'video', label: 'Vídeo e imagem', desc: 'Dispositivo, tela cheia, brilho, contraste e perfis locais' },
-    { id: 'stream', label: 'Streaming', desc: 'Servidores, qualidade solicitada e rede' },
+    { id: 'video', label: 'Vídeo e imagem', desc: 'Qualidade, dispositivo, enquadramento e ajustes visuais' },
+    { id: 'stream', label: 'Streaming', desc: 'Servidores, conexão e rede' },
     { id: 'statistics', label: 'Estatísticas', desc: 'Métricas e desempenho da sessão' },
     { id: 'inputs', label: 'Entradas', desc: 'Modo de jogo, HUD, controle físico e teclado e mouse' },
     { id: 'audio', label: 'Áudio e voz', desc: 'Microfone, volume, saída e equalização' },
@@ -2329,8 +2329,7 @@ SOFTWARE.
   ];
   const PRESETS = [
     { name: 'Máximo', res: 'hq', br: 'auto', sub: 'Melhor imagem' },
-    { name: 'Equilibrado', res: 'auto', br: 'auto', sub: '1080p · bitrate automático' },
-    { name: 'Compatível', res: 'auto', br: 'auto', sub: '1080p · perfil desktop' }
+    { name: 'Padrão', res: 'auto', br: 'auto', sub: '1080p · perfil desktop' }
   ];
 
   let tabId = 'overview';
@@ -4914,7 +4913,7 @@ SOFTWARE.
       });
 
       const pg = group('Perfis rápidos', 'Qualidade máxima automática; sem limite manual de bitrate.');
-      const row = mk('div', 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 0');
+      const row = mk('div', 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px 0');
       PRESETS.forEach(function (p) {
         const on = getPref(LS_RES, 'auto') === p.res && getPref(LS_BITRATE, 'auto') === p.br;
         const b = mk('button', 'all:unset;box-sizing:border-box;cursor:pointer;text-align:center;padding:9px 4px;border-radius:10px;' +
@@ -5149,12 +5148,13 @@ SOFTWARE.
       g1.add(setRow('Chat x jogo','Controle independente exige fluxos separados do xCloud.',mk('span','font-size:11px','Não disponível em fluxo misto')));
       root.appendChild(g1.root);
 
-      const g2 = group('Imagem', 'Calibracao local por filtro CSS unico. Ajustes moderados para preservar sombras e realces.');
+      const g2 = group('Imagem', 'Ajustes locais aplicados ao vídeo ou à saída WebGL2. 100% é o valor neutro.');
       g2.add(setRow('Perfil visual', 'Original restaura o video; os demais perfis substituem o filtro, sem acumular efeitos.',
         chips([{k:'original',label:'Original'},{k:'balanced',label:'Equilibrado'},{k:'vivid',label:'Vivido'},{k:'custom',label:'Manual'}],
           getPref(LS_VIDEO_PROFILE,'original'),function(k){
             setPref(LS_VIDEO_PROFILE,k);applyVideoAdjustments(activeStreamVideo());renderBody();
           }),true));
+      g2.add(infoRow('Processamento em uso',nxVisualStatus));
       const cal=nxVideoCalibration();
       function calibrationSlider(label,key,value,min,max,help){
         const control=mk('div','display:flex;align-items:center;gap:10px;min-width:150px');
@@ -5180,16 +5180,14 @@ SOFTWARE.
       calibrationSlider('Brilho',LS_VIDEO_BRIGHTNESS,cal.brightness,85,115,'Controla a luminosidade geral. Nao recupera detalhes ja perdidos no stream.');
       calibrationSlider('Contraste',LS_VIDEO_CONTRAST,cal.contrast,85,115,'Ajusta a separacao de claros e escuros. Evite extremos para nao estourar brancos ou fechar pretos.');
       calibrationSlider('Saturacao',LS_VIDEO_SATURATION,cal.saturation,75,125,'Ajusta a intensidade das cores sem alterar a resolucao.');
-      g2.add(setRow('Restaurar imagem','Remove apenas o filtro NX e volta a configuracao original.',
-        actBtn('Restaurar original',function(){
-          setPref(LS_VIDEO_PROFILE,'original');applyVideoAdjustments(activeStreamVideo());renderBody();
-        },'ghost')));
-      const gpuGroup=group('Clarity Boost experimental','WebGL2: curvas simples de sombras e realces. Pode aumentar consumo e latencia; se falhar, retorna ao video nativo.');
+      const gpuGroup=group('Processamento GPU','WebGL2 aplica ajustes e nitidez localmente. Se falhar, o vídeo continua com os filtros padrão.');
+      gpuGroup.add(infoRow('Estado da GPU',nxGpuStatus));
       gpuGroup.add(setRow('Processamento GPU','Desativado por padrao. Ative somente durante uma partida.',
         chips([{k:'0',label:'Desligado'},{k:'1',label:'WebGL2'}],getPref(LS_NX_GPU,'0'),function(k){
+          nxGpuDiagnostics.state=k==='1'?'waiting':'off';nxGpuDiagnostics.message='';
           setPref(LS_NX_GPU,k);nxGpuSync();renderBody();
         }),true));
-      gpuGroup.add(setRow('Nitidez','Ative WebGL2. Escolha o filtro de nitidez local.',
+      gpuGroup.add(setRow('Nitidez','Escolha a nitidez usada quando a GPU estiver renderizando; Original não aplica nitidez.',
         chips([{k:'off',label:'Original'},{k:'usm',label:'Unsharp'},{k:'cas',label:'CAS'}],getPref('nx.gpu.clarity.mode.v1','off'),function(k){setPref('nx.gpu.clarity.mode.v1',k);renderBody();}),true));
       const clarityRow=mk('div','display:flex;align-items:center;gap:8px');
       const claritySlider=mk('input','flex:1;accent-color:'+C.accent);claritySlider.type='range';claritySlider.min='0';claritySlider.max='100';claritySlider.step='5';
@@ -5209,8 +5207,6 @@ SOFTWARE.
       }
       gpuToneSlider('Sombras',LS_NX_SHADOWS);
       gpuToneSlider('Realces',LS_NX_HIGHLIGHTS);
-      gpuGroup.add(setRow('Restaurar GPU','Desativa shader e remove a camada de apresentacao.',
-        actBtn('Desativar GPU',function(){setPref(LS_NX_GPU,'0');nxGpuSync();renderBody();},'ghost')));
       root.appendChild(gpuGroup.root);
       const gVisual=group('Biblioteca de perfis', 'Salve e reutilize seus ajustes de imagem neste navegador.');
       gVisual.add(setRow('Salvar configuracao','Armazena ate 24 perfis neste navegador.',
@@ -5228,21 +5224,11 @@ SOFTWARE.
       }
       root.appendChild(gVisual.root);
       g2.add(setRow('Enquadramento', 'Original preserva o site; Conter evita cortes; Preencher ocupa a tela, podendo cortar bordas.',
-        chips([{ k: 'original', label: 'Original' }, { k: 'contain', label: 'Conter' }, { k: 'cover', label: 'Preencher' }], getPref(LS_VIDEO_FIT, 'original'), function (k) {
+        chips([{ k: 'original', label: 'Original' }, { k: 'contain', label: 'Sem cortes' }, { k: 'cover', label: 'Preencher' }], getPref(LS_VIDEO_FIT, 'original'), function (k) {
           setPref(LS_VIDEO_FIT, k); applyVideoFit(activeStreamVideo()); renderBody();
-        }), true));
-      g2.add(setRow('Tela cheia', 'Solicita a Fullscreen API apenas por ação do usuário.',
-        actBtn('Entrar / Sair', nxConsoleLabFullScreen, 'ghost')));
-      g2.add(setRow('Economia de recursos', 'Desativa filtros visuais locais enquanto a aba estiver oculta; não altera o stream ou FPS do servidor.',
-        chips([{ k: '1', label: 'Ativa' }, { k: '0', label: 'Desativada' }], getPref(LS_VIDEO_ECO, '1'), function (k) {
-          setPref(LS_VIDEO_ECO, k); applyVideoAdjustments(activeStreamVideo()); renderBody();
         }), true));
       root.appendChild(g2.root);
 
-      const g3 = group('Captura');
-      g3.add(setRow('Capturar quadro', 'Salva o quadro atual do jogo como imagem PNG.',
-        actBtn('Capturar', function () { captureStreamFrame(); }, 'primary')));
-      root.appendChild(g3.root);
     },
 
     controls: function (root, category) {
@@ -5785,15 +5771,15 @@ SOFTWARE.
     return details;
   }
   function nxQualityPresets(root){
-    const pg=group('Perfis de qualidade','Máximo solicita 1080p HQ; Equilibrado e Compatível solicitam 1080p padrão. A taxa de transmissão é automática.');
+    const pg=group('Qualidade do streaming','Máximo solicita 1080p HQ; Padrão solicita 1080p. A resolução entregue depende do Xbox e aparece abaixo.');
     const row=mk('div','display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 0');
     PRESETS.forEach(function(p){
-      const on=resCfg()===RES_MODES[p.res]&&bitrateCfg()===BITRATE_MODES[p.br];
+      const on=resCfg()===RES_MODES[p.res];
       const button=mk('button','all:unset;box-sizing:border-box;cursor:pointer;text-align:center;padding:9px 4px;border-radius:10px;border:1px solid '+(on?C.accent:C.line)+';background:'+(on?'rgba(74,222,128,.12)':'transparent')+';-webkit-tap-highlight-color:transparent');
       button.appendChild(mk('div','font-size:12.5px;font-weight:700;color:'+(on?C.accent:C.text),p.name));
       button.appendChild(mk('div','font-size:10px;color:'+C.dim+';margin-top:2px',p.sub));
       button.setAttribute('role','button');button.addEventListener('pointerdown',stopEv);
-      button.addEventListener('click',function(e){e.stopPropagation();e.preventDefault();setPref(LS_RES,p.res);setPref(LS_BITRATE,p.br);S.lastPreset=p.name;pushLog('quality','Perfil '+p.name+' selecionado; aplicar na próxima partida');renderBody();toast('Perfil '+p.name+' · vale na próxima partida');});
+      button.addEventListener('click',function(e){e.stopPropagation();e.preventDefault();setPref(LS_RES,p.res);S.lastPreset=p.name;pushLog('quality','Perfil '+p.name+' selecionado; aplicar na próxima partida');renderBody();toast('Perfil '+p.name+' · vale na próxima partida');});
       row.appendChild(button);
     });
     pg.card.appendChild(row);root.appendChild(pg.root);
@@ -5814,11 +5800,8 @@ SOFTWARE.
   TAB_BUILDERS.stream=function(root){
     const temp=document.createElement('div');nxOriginalStreamBuilder(temp);
     const nodes=Array.from(temp.children);
-    const quality=nodes.find(function(node){return nxGroupTitle(node)==='Qualidade de vídeo';});
-    nxRemoveGroupRows(quality,['Bitrate recebido']);
-    nodes.forEach(function(node){if(nxGroupTitle(node)!=='Monitor de transmissão')root.appendChild(node);});
+    nodes.forEach(function(node){const title=nxGroupTitle(node);if(title!=='Monitor de transmissão'&&title!=='Qualidade de vídeo')root.appendChild(node);});
     const system=nxLegacySystemGroups();if(system[2])root.appendChild(system[2]);
-    nxQualityPresets(root);
   };
   TAB_BUILDERS.audio=function(root){
     TAB_BUILDERS.voice(root);
@@ -5831,11 +5814,14 @@ SOFTWARE.
     if(mic)root.appendChild(mic);
   };
   TAB_BUILDERS.video=function(root){
+    nxQualityPresets(root);
+    const quality=group('Qualidade recebida','A solicitação vale na próxima partida. Esta medição mostra o vídeo recebido, não o tamanho da janela.');
+    quality.add(infoRow('Resolução do vídeo',function(){const video=activeStreamVideo();return video?.videoWidth&&video?.videoHeight?video.videoWidth+' × '+video.videoHeight:(S.qos?.w&&S.qos?.h?S.qos.w+' × '+S.qos.h:'Aguardando uma partida');}));
+    root.appendChild(quality.root);
     const controls=nxLegacyControlGroups('video');nxMoveGroup(root,controls,'Dispositivo');
     const media=nxLegacyMediaGroups('video');
-    const presentation=nxTakeGroupRows(nxFindGroup(media,'Imagem'),'Apresentação do vídeo',
-      ['Enquadramento','Tela cheia','Economia de recursos'],
-      'Enquadramento, tela cheia e economia de filtros locais durante a aba oculta.');
+    const presentation=nxTakeGroupRows(nxFindGroup(media,'Imagem'),'Ajuste à tela',
+      ['Enquadramento'],'Original segue o Xbox; Sem cortes mostra toda a imagem; Preencher pode cortar as bordas.');
     if(presentation)root.appendChild(presentation);
     TAB_BUILDERS.images(root,media);
     root.appendChild(note('Auto, Desktop e Celular ajustam a experiência da interface; não alteram a identidade aceita pelo servidor.'));
@@ -5847,8 +5833,10 @@ SOFTWARE.
       ['Salvar configuracao','Perfis salvos'],
       'Salve seus ajustes de brilho, contraste e saturação neste navegador.');
     if(profiles)root.appendChild(profiles);
-    nxSettingsSection(root,'Processamento de imagem avançado',function(content){nxMoveGroup(content,media,'Clarity Boost experimental');});
-    nxMoveGroup(root,media,'Captura');
+    nxSettingsSection(root,'Processamento de imagem avançado',function(content){nxMoveGroup(content,media,'Processamento GPU');});
+    const reset=group('Restaurar configurações visuais');
+    reset.add(setRow('Restaurar configurações visuais','Desliga a GPU e zera filtros, nitidez, sombras, realces e enquadramento. Mantém os perfis salvos e a qualidade solicitada.',actBtn('Restaurar configurações',nxResetVisualSettings,'ghost')));
+    root.appendChild(reset.root);
   };
   TAB_BUILDERS.inputs=function(root){
     nxInputModePage(root);
@@ -5945,10 +5933,17 @@ SOFTWARE.
     const words=normalize(query).trim().split(/\s+/).filter(Boolean);
     if(!words.length)return [];
     const keywords={inputs:'touch toque controle joystick hud virtual teclado mouse analógico zona morta deadzone gyro giroscópio vibração sensibilidade wasd macros multiteclas botões atalhos',
-      stream:'servidor server região bitrate resolução qualidade rede',statistics:'fps rtt latência perda mbps desempenho',
-      audio:'equalizador volume saída som mic microfone voz',video:'fullscreen tela cheia enquadramento desktop celular dex brilho contraste saturação filtros captura perfil',
+      stream:'servidor server região bitrate rede',statistics:'fps rtt latência perda mbps desempenho',
+      audio:'equalizador volume saída som mic microfone voz',video:'fullscreen tela cheia enquadramento desktop celular dex brilho contraste saturação filtros captura perfil resolução qualidade gpu nitidez cas unsharp',
       advanced:'diagnóstico cache manutenção compatibilidade identidade user agent plataforma console',personalize:'transparência cores aparência interface monitor estatísticas fps layout posição escala'};
     return TABS.filter(function(tab){const text=normalize(tab.label+' '+tab.desc+' '+(keywords[tab.id]||''));return words.every(function(word){return text.includes(word);});});
+  }
+  function nxBuildVisualActions(root) {
+    const actions=mk('div','display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid '+C.line+';flex:0 0 auto');
+    actions.setAttribute('aria-label','Ações rápidas do vídeo');
+    actions.appendChild(actBtn('Tela cheia',nxConsoleLabFullScreen,'ghost'));
+    actions.appendChild(actBtn('Capturar jogo',captureStreamFrame,'ghost'));
+    root.appendChild(actions);
   }
   function nxBuildSettingsSearch(root) {
     const box=mk('div','padding:10px 12px;border-bottom:1px solid '+C.line+';flex:0 0 auto');
@@ -6079,7 +6074,7 @@ SOFTWARE.
     closeRail.title='Fechar';closeRail.setAttribute('aria-label','Fechar painel');closeRail.appendChild(ico(ICONS.close,22));
     closeRail.addEventListener('click',function(e){e.stopPropagation();setOpen(false,true);});rail.appendChild(closeRail);
     const content=mk('div','display:flex;flex-direction:column;flex:1;min-width:0;min-height:0');
-    content.appendChild(navBar);nxBuildSettingsSearch(content);content.appendChild(el.body);
+    content.appendChild(navBar);nxBuildVisualActions(content);nxBuildSettingsSearch(content);content.appendChild(el.body);
     cardEl.appendChild(rail);cardEl.appendChild(content);cardEl.style.flexDirection='row';
 
     wrap.appendChild(cardEl);
@@ -7332,6 +7327,7 @@ SOFTWARE.
       inputCapabilities: inputCapabilities(),
       physicalInput: { requested: nxPhysicalInputMode(), summary: nxPhysicalInputSummary() },
       selectedInput: { requested: nxSelectedInputMode(), status: window.NimboTouch?.inputModeStatus?.() || null },
+      visualProcessing: { ...nxGpuDiagnostics, requestedGpu:getPref(LS_NX_GPU,'0')==='1', status:nxVisualStatus() },
       inputSources: nxInputSourcesReport(),
       relativeMouse: { samples: nxRelativeMouse.samples, lastAt: nxRelativeMouse.lastAt,
         distance: Math.round(nxRelativeMouse.distance), maxStep: Math.round(nxRelativeMouse.maxStep),
@@ -7704,14 +7700,15 @@ SOFTWARE.
     const fit = getPref(LS_VIDEO_FIT, 'original');
     if (fit !== 'contain' && fit !== 'cover') { restoreVideoFit(video); return; }
     let state = nxVideoFits.get(video);
-    if (state && video.style.objectFit !== state.applied) { nxVideoFits.delete(video); return; }
+    if (state && video.style.objectFit !== state.applied) { nxVideoFits.delete(video); state=null; }
     if (!state) {
       state = { original: video.style.getPropertyValue('object-fit'),
         priority: video.style.getPropertyPriority('object-fit'), applied: fit };
       nxVideoFits.set(video, state);
     }
     state.applied = fit;
-    video.style.setProperty('object-fit', fit, state.priority);
+    video.style.setProperty('object-fit', fit, 'important');
+    state.applied=video.style.objectFit;
   }
   // Uma unica cadeia de filtros substituida a cada ajuste; nunca empilhar camadas.
   // Brilho/contraste/saturacao sao controles CSS, nao equalizacao independente de
@@ -7811,18 +7808,56 @@ SOFTWARE.
   }
   // GPU opt-in: canvas WebGL2 de apresentacao, sem modificar o stream original.
   // Falhas de CORS, DRM ou contexto grafico restauram o video nativo.
+  const nxGpuDiagnostics={state:'off',message:'',width:0,height:0,frames:0};
+  function nxGpuStatus(){
+    if(nxGpuDiagnostics.state==='error')return nxGpuDiagnostics.message+' · filtros padrão preservados';
+    if(getPref(LS_NX_GPU,'0')!=='1')return 'Desligada';
+    if(document.visibilityState==='hidden')return 'Pausada enquanto a aba está em segundo plano';
+    if(nxGpu?.frames>0)return 'Renderizando em '+nxGpu.canvas.width+' × '+nxGpu.canvas.height;
+    return nxGpu?'Aguardando o primeiro quadro visível':'Aguardando vídeo compatível';
+  }
+  function nxVisualStatus(){
+    const video=activeStreamVideo();
+    if(!video)return 'Abra uma partida para visualizar os ajustes';
+    if(document.visibilityState==='hidden')return 'Processamento pausado em segundo plano';
+    if(nxGpu?.video===video&&nxGpu.frames>0)return 'WebGL2 ativo · '+nxGpuStatus();
+    const cal=nxVideoCalibration();
+    return (cal.brightness===100&&cal.contrast===100&&cal.saturation===100?'Imagem original':'Filtros padrão no vídeo')+
+      (getPref(LS_NX_GPU,'0')==='1'?' · '+nxGpuStatus():'');
+  }
+  function nxResetVisualSettings(){
+    const values={
+      [LS_VIDEO_PROFILE]:'original',[LS_VIDEO_BRIGHTNESS]:'100',[LS_VIDEO_CONTRAST]:'100',[LS_VIDEO_SATURATION]:'100',
+      [LS_VIDEO_FIT]:'original',[LS_NX_GPU]:'0',[LS_NX_SHADOWS]:'0',[LS_NX_HIGHLIGHTS]:'0',
+      [LS_VIDEO_COLOR]:'0',[LS_SHARPNESS]:'0',[LS_VISUAL_ACTIVE]:'',
+      'nx.gpu.clarity.mode.v1':'off','nx.gpu.clarity.strength.v1':'35'
+    };
+    for(const [key,value]of Object.entries(values))setPref(key,value);
+    nxGpuStop();nxGpuDiagnostics.state='off';nxGpuDiagnostics.message='';
+    const video=activeStreamVideo();restoreVideoAdjustments(video);restoreVideoFit(video);
+    toast('Configurações visuais restauradas; perfis salvos mantidos');renderBody();
+  }
+  function nxGpuFail(reason,video){
+    const message='WebGL2 indisponível: '+String(reason||'falha de renderização').slice(0,160);
+    setPref(LS_NX_GPU,'0');nxGpuStop();
+    nxGpuDiagnostics.state='error';nxGpuDiagnostics.message=message;S.lastErr=message;
+    if(video?.isConnected)applyVideoAdjustments(video);
+    toast(message);
+    if(typeof openUI!=='undefined'&&openUI&&typeof tabId!=='undefined'&&tabId==='video')renderBody();
+  }
   let nxGpu=null;
   function nxGpuStop(){
     const state=nxGpu;nxGpu=null;
     if(!state)return;
     state.running=false;
     if(state.raf)cancelAnimationFrame(state.raf);
-    if(state.video && state.video.style.opacity===state.appliedOpacity){
+    if(state.capture){state.capture.reject(Error('O processamento mudou durante a captura. Tente novamente.'));state.capture=null;}
+    if(state.frames>0 && state.video && state.video.style.opacity===state.appliedOpacity){
       if(state.originalOpacity)state.video.style.setProperty('opacity',state.originalOpacity,state.opacityPriority);
       else state.video.style.removeProperty('opacity');
     }
     if(state.canvas)state.canvas.remove();
-    if(state.video && state.video.isConnected && getPref(LS_NX_GPU,'0')==='0')applyVideoAdjustments(state.video);
+    if(state.video && state.video.isConnected)applyVideoAdjustments(state.video);
     if(state.gl){
       try{state.gl.deleteTexture(state.texture);state.gl.deleteBuffer(state.buffer);
         state.gl.deleteProgram(state.program);}catch(_){}
@@ -7836,22 +7871,25 @@ SOFTWARE.
     return shader;
   }
   function nxGpuStart(video){
+    if(document.visibilityState==='hidden'||getPref(LS_NX_GPU,'0')!=='1')return;
+    // Failure stays latched until the user explicitly retries, even if storage is read-only.
+    if(nxGpuDiagnostics.state==='error')return;
     if(!video || !video.videoWidth || !video.videoHeight)return;
     if(nxGpu && nxGpu.video===video)return;
-    nxGpuStop();
+    nxGpuStop();nxGpuDiagnostics.state='starting';nxGpuDiagnostics.message='';nxGpuDiagnostics.frames=0;
     const canvas=document.createElement('canvas');
     canvas.setAttribute('aria-hidden','true');
     canvas.style.cssText='position:fixed;pointer-events:none;display:block;z-index:100;object-fit:fill;';
     const host=fullscreenHost()||document.body;
-    if(!host)return;
-    const gl=canvas.getContext('webgl2',{alpha:false,antialias:false,preserveDrawingBuffer:false});
-    if(!gl){S.lastErr='GPU: WebGL2 indisponivel';return;}
-    let program,texture,buffer;
+    if(!host){nxGpuDiagnostics.state='waiting';return;}
+    let gl,program,texture,buffer,vert,frag;
     try{
-      const vert=nxGpuCompile(gl,gl.VERTEX_SHADER,`#version 300 es
+      gl=canvas.getContext('webgl2',{alpha:false,antialias:false,preserveDrawingBuffer:false});
+      if(!gl)throw Error('este navegador não disponibilizou WebGL2');
+      vert=nxGpuCompile(gl,gl.VERTEX_SHADER,`#version 300 es
 in vec2 a_pos;out vec2 v_uv;
 void main(){v_uv=vec2((a_pos.x+1.0)*0.5,1.0-(a_pos.y+1.0)*0.5);gl_Position=vec4(a_pos,0.0,1.0);}`);
-      const frag=nxGpuCompile(gl,gl.FRAGMENT_SHADER,`#version 300 es
+      frag=nxGpuCompile(gl,gl.FRAGMENT_SHADER,`#version 300 es
 precision mediump float;
 uniform sampler2D u_tex;uniform float u_shadows;uniform float u_highlights;
 uniform vec3 u_adjust;uniform int u_clarityMode;uniform float u_clarityStrength;in vec2 v_uv;out vec4 outColor;
@@ -7884,19 +7922,20 @@ void main(){
  outColor=vec4(c,1.0);
 }`);
       program=gl.createProgram();gl.attachShader(program,vert);gl.attachShader(program,frag);gl.linkProgram(program);
-      gl.deleteShader(vert);gl.deleteShader(frag);
+      gl.deleteShader(vert);gl.deleteShader(frag);vert=null;frag=null;
       if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program)||'Link shader falhou');
       buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
       gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
       gl.useProgram(program);
       const attr=gl.getAttribLocation(program,'a_pos');gl.enableVertexAttribArray(attr);gl.vertexAttribPointer(attr,2,gl.FLOAT,false,0,0);
+      gl.activeTexture(gl.TEXTURE0);
       texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
       gl.uniform1i(gl.getUniformLocation(program,'u_tex'),0);
-      const state={video,canvas,gl,program,buffer,texture,host,running:true,raf:0,
+      const state={video,canvas,gl,program,buffer,texture,host,running:true,raf:0,frames:0,capture:null,
         originalOpacity:video.style.getPropertyValue('opacity'),
         opacityPriority:video.style.getPropertyPriority('opacity'),appliedOpacity:'0'};
       nxGpu=state;host.appendChild(canvas);
@@ -7910,14 +7949,18 @@ void main(){
         if(parent!==state.host){state.host=parent;parent.appendChild(canvas);}
         const rect=video.getBoundingClientRect();
         if(rect.width<10||rect.height<10){state.raf=requestAnimationFrame(render);return;}
-        const hostRect=parent===document.body?{left:0,top:0}:parent.getBoundingClientRect();
-        canvas.style.left=(rect.left-hostRect.left)+'px';
-        canvas.style.top=(rect.top-hostRect.top)+'px';
+        // Fixed positioning uses viewport coordinates, just like getBoundingClientRect.
+        canvas.style.left=rect.left+'px';
+        canvas.style.top=rect.top+'px';
         canvas.style.width=rect.width+'px';canvas.style.height=rect.height+'px';
-        const w=Math.min(1920,Math.max(1,Math.round(rect.width)));
-        const h=Math.min(1080,Math.max(1,Math.round(rect.height)));
-        if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
+        const nativeStyle=getComputedStyle(video);
+        canvas.style.objectFit=nativeStyle.objectFit||'contain';
+        canvas.style.objectPosition=nativeStyle.objectPosition||'50% 50%';
+        const w=video.videoWidth,h=video.videoHeight;
+        const resized=canvas.width!==w||canvas.height!==h;
+        if(resized){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
         try{
+          gl.useProgram(program);gl.activeTexture(gl.TEXTURE0);
           gl.bindTexture(gl.TEXTURE_2D,texture);
           gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,video);
           const cal=nxVideoCalibration();
@@ -7930,20 +7973,21 @@ void main(){
           gl.uniform1f(gl.getUniformLocation(program,'u_shadows'),clamp(LS_NX_SHADOWS));
           gl.uniform1f(gl.getUniformLocation(program,'u_highlights'),clamp(LS_NX_HIGHLIGHTS));
           gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+          if((state.frames===0||resized)&&gl.getError()!==gl.NO_ERROR)throw Error('o navegador rejeitou o desenho do quadro');
+          state.frames++;nxGpuDiagnostics.state='rendering';nxGpuDiagnostics.width=w;nxGpuDiagnostics.height=h;nxGpuDiagnostics.frames=state.frames;
+          if(state.capture){const capture=state.capture;state.capture=null;canvas.toBlob(function(blob){if(blob)capture.resolve(blob);else capture.reject(Error('Captura GPU bloqueada.'));},'image/png');}
           restoreVideoAdjustments(video); // GPU substitui CSS: nunca processar duas vezes.
-          if(video.style.opacity!==state.appliedOpacity)video.style.setProperty('opacity','0',state.opacityPriority);
+          if(video.style.opacity!==state.appliedOpacity)video.style.setProperty('opacity','0','important');
         }catch(e){
-          S.lastErr='GPU desativada: '+String(e&&e.message||e);
-          setPref(LS_NX_GPU,'0');nxGpuStop();return;
+          nxGpuFail(e&&e.message||e,video);return;
         }
         state.raf=requestAnimationFrame(render);
       };
-      canvas.addEventListener('webglcontextlost',function(e){e.preventDefault();setPref(LS_NX_GPU,'0');nxGpuStop();});
+      canvas.addEventListener('webglcontextlost',function(e){e.preventDefault();nxGpuFail('contexto gráfico perdido',video);});
       state.raf=requestAnimationFrame(render);
     }catch(e){
-      S.lastErr='GPU: '+String(e&&e.message||e);
-      try{if(texture)gl.deleteTexture(texture);if(buffer)gl.deleteBuffer(buffer);if(program)gl.deleteProgram(program);}catch(_){}
-      canvas.remove();
+      try{if(vert)gl.deleteShader(vert);if(frag)gl.deleteShader(frag);if(texture)gl.deleteTexture(texture);if(buffer)gl.deleteBuffer(buffer);if(program)gl.deleteProgram(program);}catch(_){}
+      canvas.remove();nxGpuFail(e&&e.message||e,video);
     }
   }
   function nxGpuSync(){
@@ -7954,10 +7998,10 @@ void main(){
   }
   function applyVideoAdjustments(video) {
     if(!video)return;
-    if(getPref(LS_VIDEO_ECO,'1')==='1' && document.visibilityState==='hidden'){
+    if(document.visibilityState==='hidden'){
       restoreVideoAdjustments(video);return;
     }
-    if(getPref(LS_NX_GPU,'0')==='1' && nxGpu && nxGpu.video===video){restoreVideoAdjustments(video);return;}
+    if(getPref(LS_NX_GPU,'0')==='1' && nxGpu && nxGpu.video===video && nxGpu.frames>0){restoreVideoAdjustments(video);return;}
     const cal=nxVideoCalibration();
     if(cal.brightness===100 && cal.contrast===100 && cal.saturation===100){
       restoreVideoAdjustments(video);return;
@@ -7966,7 +8010,7 @@ void main(){
     if(state && video.style.filter!==state.applied){
       // Se o site mudou o filtro, nao anexar filtros a um resultado anterior do NX.
       nxVideoFilters.delete(video);
-      return;
+      state=null;
     }
     if(!state){
       state={original:video.style.getPropertyValue('filter'),
@@ -7977,7 +8021,8 @@ void main(){
       ') contrast('+(cal.contrast/100).toFixed(3)+
       ') saturate('+(cal.saturation/100).toFixed(3)+')';
     state.applied=(state.original&&state.original!=='none'?state.original+' ':'')+adjustment;
-    video.style.setProperty('filter',state.applied,state.priority);
+    video.style.setProperty('filter',state.applied,'important');
+    state.applied=video.style.getPropertyValue('filter');
   }
   function cycleSharpness() {
     // Compatibilidade com atalho legado: ajuste suave de contraste, nao nitidez.
@@ -8013,22 +8058,36 @@ void main(){
     applyVideoAdjustments(video);
     pushLog('video','Saturacao CSS atualizada; filtro unico');
   }
-  function captureStreamFrame() {
-    const video = activeStreamVideo();
-    if (!video || !video.videoWidth || !video.videoHeight) { S.lastErr = 'Captura: vídeo indisponível'; schedule(); return; }
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Canvas 2D indisponível');
-      ctx.drawImage(video, 0, 0);
-      canvas.toBlob(function (blob) {
-        if (!blob) { S.lastErr = 'Captura bloqueada ou indisponível'; schedule(); return; }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'nimboxcloud-' + Date.now() + '.png';
-        a.click(); setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
-      }, 'image/png');
-    } catch (err) { S.lastErr = 'Captura: ' + String(err && err.message || err); schedule(); }
+  let nxCaptureBusy=false;
+  async function captureStreamFrame() {
+    if(nxCaptureBusy){toast('A captura anterior ainda está sendo salva');return false;}
+    const video=activeStreamVideo();
+    if(!video||!video.videoWidth||!video.videoHeight){toast('Abra uma partida antes de capturar o jogo');return false;}
+    nxCaptureBusy=true;
+    try{
+      let blob;
+      const owner=nxGpu;
+      if(owner&&owner.video===video&&owner.running){
+        blob=await new Promise(function(resolve,reject){
+          const pending={resolve:function(value){clearTimeout(timer);resolve(value);},reject:function(error){clearTimeout(timer);reject(error);}};
+          const timer=setTimeout(function(){if(owner.capture===pending)owner.capture=null;reject(Error('Nenhum quadro GPU ficou disponível para a captura.'));},3000);
+          owner.capture=pending;
+        });
+      }else{
+        const canvas=document.createElement('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+        const ctx=canvas.getContext('2d');if(!ctx)throw Error('Canvas 2D indisponível');
+        ctx.filter=getComputedStyle(video).filter||'none';ctx.drawImage(video,0,0);
+        blob=await new Promise(function(resolve,reject){canvas.toBlob(function(value){if(value)resolve(value);else reject(Error('Captura bloqueada ou indisponível.'));},'image/png');});
+      }
+      const url=URL.createObjectURL(blob);
+      try{
+        const link=document.createElement('a');link.href=url;link.download='nimboxcloud-'+Date.now()+'.png';
+        document.body.appendChild(link);link.click();link.remove();
+      }finally{setTimeout(function(){URL.revokeObjectURL(url);},10000);}
+      toast('Captura do jogo salva');return true;
+    }catch(error){
+      S.lastErr='Captura: '+String(error&&error.message||error);toast(S.lastErr);return false;
+    }finally{nxCaptureBusy=false;}
   }
   let nxAudioGraph = null;
   const nxAudioGraphs = new WeakMap();
@@ -8147,9 +8206,21 @@ void main(){
       || playable[0] || candidates[0] || null;
   }
   function activeStreamVideo() {
-    const videos = Array.from(document.querySelectorAll('video'));
-    const candidates = videos.filter(function (v) { return v.srcObject || (v.currentSrc && v.currentSrc.startsWith('blob:')); });
-    return candidates.find(function (v) { return v.readyState >= 2 && !v.paused; }) || candidates[0] || null;
+    const videos=Array.from(document.querySelectorAll('video')).filter(function(video){
+      if(video.isConnected===false)return false;
+      if(video.srcObject&&typeof video.srcObject.getVideoTracks==='function')
+        return video.srcObject.getVideoTracks().some(function(track){return track.readyState==='live';});
+      return !!video.srcObject||!!((video.currentSrc||video.src||'').startsWith('blob:'));
+    });
+    const score=function(video){
+      let value=video.srcObject&&typeof video.srcObject.getVideoTracks==='function'?30:0;
+      if(video.closest?.('#game-stream'))value+=20;
+      if(typeof nxGpu!=='undefined'&&nxGpu?.video===video)value+=10;
+      if(video.readyState>=2&&!video.paused)value+=5;
+      if(video.videoWidth>0&&video.videoHeight>0)value+=2;
+      return value;
+    };
+    return videos.sort(function(a,b){return score(b)-score(a);})[0]||null;
   }
   function adjustVolume(delta) {
     const video = activeStreamAudio();
@@ -8254,12 +8325,8 @@ void main(){
         lastAdjustedVideo = video;
         applyVideoAdjustments(video);
         applyVideoFit(video);
-      } else if (video && !nxVideoFilters.has(video) &&
-                 (['balanced', 'vivid'].includes(getPref(LS_VIDEO_PROFILE, 'original')) ||
-                  (getPref(LS_VIDEO_PROFILE, 'custom') === 'custom' &&
-                   (getPref(LS_VIDEO_COLOR, '0') !== '0' || getPref(LS_SHARPNESS, '0') !== '0')))) {
-        // Reapply when the stream element persists but the host has reset its style.
-        applyVideoAdjustments(video);
+      } else if(video){
+        applyVideoAdjustments(video);applyVideoFit(video);
       }
     }, 2500);
     document.addEventListener('visibilitychange', function () {

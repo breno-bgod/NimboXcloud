@@ -25,7 +25,10 @@ class Node {
 function harness(){
  const ctx={document:{createElement:tag=>new Node(tag)},C:{dim:'#888',line:'#333',panel:'#111',accent:'#0f0',text:'#fff'},
   mk:(tag,style,text)=>{const n=new Node(tag,text||'');n.style.cssText=style;return n;},
-  liveFns:[],getPref:(key,fallback)=>fallback,
+  liveFns:[],getPref:(key,fallback)=>fallback,stopEv(){},
+  PRESETS:[{name:'Máximo',res:'hq',sub:'1080p HQ'},{name:'Padrão',res:'auto',sub:'1080p'}],
+  RES_MODES:{hq:{},auto:{}},resCfg:()=>({}),
+  nxVisualStatus:()=> 'Filtros padrão',nxGpuStatus:()=> 'Desligada',nxResetVisualSettings(){},
   actBtn:(label,callback)=>{const n=new Node('button',label);n.action=callback;return n;},
   note:message=>new Node('p',message),nxBindControls:(root,category)=>root.appendChild(new Node('div','Atalho '+category)),
   nxInputModePage:root=>root.appendChild(new Node('div','SELETOR ÚNICO')),
@@ -59,14 +62,16 @@ function harness(){
  return {ctx,Node,group,titles,build:id=>{const n=new Node();ctx.TAB_BUILDERS[id](n);return n;}};
 }
 
-test('video uses the real media builder and keeps fullscreen and framing above image controls',()=>{
+test('video uses the real media builder and places requested quality and framing above image controls',()=>{
  const h=harness(),root=h.build('video');const titles=h.titles(root);
- assert.deepEqual(titles.slice(0,4),['Dispositivo','Apresentação do vídeo','Imagem','Perfis de imagem']);
- const presentation=root.children[1],image=root.children[2];
- assert.match(presentation.textContent,/Enquadramento/);assert.match(presentation.textContent,/Tela cheia/);
+ assert.deepEqual(titles.slice(0,6),['Qualidade do streaming','Qualidade recebida','Dispositivo','Ajuste à tela','Imagem','Perfis de imagem']);
+ const presentation=root.children[3],image=root.children[4];
+ assert.match(presentation.textContent,/Enquadramento/);assert.doesNotMatch(root.textContent,/Economia de recursos/);
  assert.doesNotMatch(image.textContent,/Enquadramento|Tela cheia|Economia de recursos/);
  assert.match(image.textContent,/Brilho/);assert.match(root.textContent,/Salvar perfil/);
  assert.doesNotMatch(root.textContent,/Importar JSON|Exportar JSON/);
+ assert.match(root.textContent,/Restaurar configurações visuais/);
+ assert.doesNotMatch(root.textContent,/Restaurar GPU|Restaurar imagem/);
 });
 
 test('audio/voice composition puts only microphone above the playback settings',()=>{

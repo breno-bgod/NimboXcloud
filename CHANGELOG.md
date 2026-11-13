@@ -1,3 +1,11 @@
+## [4.14.0] — 2026-11-13
+- Qualidade solicitada e perfis passam para Vídeo e imagem, com dimensão do vídeo recebido. Removido o perfil redundante Compatível; selecionar qualidade deixa de zerar um limite independente de bitrate.
+- Tela cheia e Capturar jogo ficam no topo do painel, fora da área rolável. Capturas incluem filtro CSS ou o próximo quadro GPU processado, com erro visível se indisponíveis.
+- Uma restauração visual reúne filtros, GPU, nitidez, curvas e enquadramento, preservando perfis salvos e qualidade solicitada. Economia em segundo plano vira comportamento automático sem opção redundante.
+- Estado da GPU distingue preferência de renderização real. Falhas de contexto/shader/upload/primeiro desenho retornam ao vídeo visível e desativam repetição; perda de contexto e captura pendente têm teardown.
+- Corrigidos reaplicação de ajustes manuais usando chaves antigas, prioridade/serialização de filtros CSS, seleção de vídeo e enquadramento GPU. Canvas preserva dimensões decodificadas sem limite artificial a 1080p; isso não solicita 1440p ao Xbox.
+- Validação: 300 testes Node, 297 PASS, zero FAIL, três TODO; shader executado com sucesso em Mesa/EGL ES3 para oito controles. Navegador/DeX e sessão Xbox continuam pendentes. Pesquisa PSBox/Better xCloud e roteiro em docs/VIDEO_E_IMAGEM.md.
+
 ## [4.13.2] — 2026-11-13
 - Painel reduzido de quinze para nove categorias: Vídeo e imagem; Áudio e voz com microfone primeiro; Sistema incluindo compatibilidade; Interface com aparência do painel e do monitor.
 - Entradas reúne os cinco modos, HUD e ajustes expansíveis de controle físico/teclado e mouse; removidas ativações duplicadas e contadores técnicos da área principal.
