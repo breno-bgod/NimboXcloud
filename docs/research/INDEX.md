@@ -1,6 +1,6 @@
 # Prioridade vigente
 
-[Adaptação Android baseada no PSBox](PSBOX_ANDROID_AUTOMATION.md): nova decisão do mantenedor; substitui o foco principal anterior em identidade Xbox. Histórico e evidências abaixo permanecem para consulta. Fork pendente de criação/acesso; nenhum APK próprio compilado.
+[Adaptação Android baseada no PSBox](PSBOX_ANDROID_AUTOMATION.md): nova decisão do mantenedor; substitui o foco principal anterior em identidade Xbox. Histórico e evidências abaixo permanecem para consulta. Dois motores no mesmo ambiente; nenhum fork separado exigido e nenhum APK próprio compilado. [Proposta de integração](PSBOX_ANDROID_INTEGRATION.md).
 
 # Índice de pesquisa de console e streaming
 
@@ -12,7 +12,8 @@ Este espaço reúne pesquisa e experimentos para revisão antes de qualquer inco
 
 | Frente | Estado | Evidência / próximo passo |
 | --- | --- | --- |
-| Identidade de cliente Xbox — foco prioritário | Análise e testes locais; reconhecimento pelo servidor não demonstrado | [Mapa de identidade](CONSOLE_IDENTITY_MAP.md) e [quatro testes no Nimbo real](../../experiments/console/identity-boundary/README.md) |
+| Integração Android: propriedade de sessão | Simulação aprovada; 9 testes locais | [Contrato e limites](../../experiments/console/engine-session-contract/README.md); sem JNI/APK/gameplay |
+| Identidade de cliente Xbox — pesquisa secundária | Análise e testes locais; reconhecimento pelo servidor não demonstrado | [Mapa de identidade](CONSOLE_IDENTITY_MAP.md) e [quatro testes no Nimbo real](../../experiments/console/identity-boundary/README.md) |
 | XStreaming: objeto XSTS ativo | Simulação controlada aprovada; classificação desconhecida | [Experimento](../../experiments/console/xstreaming-identity/README.md): cinco testes; DeviceToken/TitleToken comentados no caminho legado e ausentes no MSAL |
 | Observação interativa no navegador | 19 testes locais aprovados; fetch relatado pelo mantenedor; XHR novo aguarda teste real | [Laboratório opt-in](../../experiments/console/session-observer/README.md): pedidos/descritor/mídia, sem promover identidade Xbox |
 | Projetos criados nas últimas duas semanas | Pesquisa / código triado | [Relatório 30/10–13/11](RECENT_REPOSITORIES_2026-11-13.md); Green-NX #92 coincide com objetivo, ainda sem solução demonstrada |

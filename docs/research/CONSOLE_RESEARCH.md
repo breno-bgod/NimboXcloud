@@ -322,3 +322,25 @@ A lista permitida não identifica o dispositivo atual; ausência da lista não c
 Hipótese: é possível distinguir uma recusa explícita DeviceTypeNotAllowed de NoEntitlement na criação da sessão sem alterar identidade. Com título realmente disponível e autorizado ao mantenedor, registrar somente código enumerado de erro, etapa, horário e modalidade cloud; não exportar corpo bruto/token. Refutação de bloqueio por dispositivo para aquela tentativa: o mesmo título inicia sob condições controladas; erro diferente não confirma DeviceTypeNotAllowed. Antes de implementar leitura de erro no observador passivo, revisar seu contrato de não leitura de corpos e definir extração limitada/revisável; não ampliar silenciosamente a coleta. Não iniciar acesso autenticado automático.
 
 Estado: pesquisa de código e relato upstream, sem sessão real nossa. Verificação: corpo do PR, diff dos 15 arquivos, três casos de teste upstream inspecionados; testes C++ não executados localmente nesta revisão documental. CI do Nimbo anterior aprovado; não comprova essa hipótese. Android/iOS/desktop web continuam sem prova de classificação Xbox; port Android é frente separada e não depende de validar essa identidade para compilar.
+
+
+## Integração Android no Nimbo — contrato de sessão (13/11/2026)
+
+Decisão vigente: dois motores no mesmo ambiente, sem fork separado obrigatório;
+identidade Xbox secundária. [Proposta](PSBOX_ANDROID_INTEGRATION.md) e
+[contrato executável](../../experiments/console/engine-session-contract/README.md).
+Upstream reconsultado c775ecaddde52024d177cce7392aae13cc6917aa, sem novo SHA;
+árvore Android confirma Activity/recursos/wrapper ausentes, CMake sem núcleo e
+seleção host/Linux incompatível. PRs abertos: nenhum; issue #461 relata teclado/
+mouse sem funcionamento, não prova falha Android; CI upstream consultado aprovado,
+sem evidência de build Android. Nenhum comentário novo no PR #24.
+
+Implementado somente proprietário experimental de sessão: bloqueio concorrente,
+neutralização antes de stop, invalidação de gerações, erros sanitizados e retenção
+de propriedade quando stop falha. Nove testes comportamentais locais aprovados:
+node --test --test-isolation=none experiments/console/engine-session-contract/session-owner.test.mjs.
+Estado: simulação aprovada. Adaptadores sintéticos não validam JNI, login, mídia,
+entitlement ou gameplay. Nenhuma fonte PSBox copiada; referências GPL preservadas
+na proposta. Nenhuma mudança no produto ou dependência nova. Executor sem toolchain
+Android. Próximo incremento: alvo ARM64 e Activity/fachada nativa no próprio
+experimento, com CI após completar dependências; sem segundo painel PSBox.
