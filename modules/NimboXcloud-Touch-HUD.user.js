@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.4.0
+// @version      1.4.1
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD, HUD editável e controle virtual compartilhado entre xCloud e xHome.
 // @author       KReight / colaboradores (créditos nos avisos legais)
 // @license      GPL-3.0-or-later
@@ -63,7 +63,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.4.0';
+const VERSION='1.4.1';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -2236,6 +2236,12 @@ function boot(){
   pollSession();setInterval(pollSession,1500);
  }catch(e){NimboDiag.add('inicialização','Falha ao iniciar Nimbo Touch',e.message);const notice=document.createElement('div');notice.textContent='Nimbo Touch não iniciou: '+e.message;notice.style.cssText='position:fixed;top:8px;left:8px;z-index:2147483647;background:#331a1a;color:white;padding:12px';document.documentElement.append(notice);}
 }
+// Same relative-mouse path as the touchpad; never bypass pause/menu/mode guards.
+function nimboVirtualMouseDelta(dx,dy){
+ if(!Number.isFinite(dx)||!Number.isFinite(dy)||Math.abs(dx)>128||Math.abs(dy)>128)return false;
+ if(!ui?.active||!ui.wanted||ui.remoteMode||ui.virtualGamepad?.enabled||ui.editingHud||ui.menuBlocked||touchPanel.isOpen||document.hidden||!document.hasFocus())return false;
+ try{ui.move(dx,dy);return true;}catch(error){ui.handleInputFailure?.(error);return false;}
+}
 // Public integration point for a host; existing third-party globals are left untouched.
 window.NimboTouch=Object.freeze({
  version:VERSION,attachSession:nimboCapture,open:nimboOpenSettings,
@@ -2244,6 +2250,7 @@ window.NimboTouch=Object.freeze({
  setPhysicalInputMode:nimboSetPhysicalInputMode,
  setInputMode:nimboSetInputMode,inputModeStatus:nimboInputModeStatus,
  physicalMouseInput:reading=>nimboTransport?.physicalMouse(reading)??false,
+ virtualMouseDelta:nimboVirtualMouseDelta,
  physicalKeyboardInput:event=>nimboTransport?.physicalKeyboard(event)??false,
  releasePhysicalInput:()=>{if(nimboTransport?.exclusiveMode==='keyboard-mouse')nimboTransport.release();},
  editHud:()=>{if(!ui)return false;touchPanel.close();ui.editHud();ui.refreshEditorOptions();if(ui.virtualGamepad?.enabled)ui.selectHud('vpad-left-stick');return true;},
@@ -2298,3 +2305,4 @@ for(const method of ['start','stop','pause','editHud','finishEditing']){
 }
 
 })();
+
