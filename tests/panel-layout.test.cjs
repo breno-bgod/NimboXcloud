@@ -177,7 +177,7 @@ test('compact panel layout moves category navigation above content and keeps it 
  const end=src.indexOf('function nxPanelSettingsPage',start);
  assert.ok(start>=0&&end>start,'panel presentation stylesheet exists');
  const styles=src.slice(start,end);
- assert.match(styles,/@media \\(max-width:640px\\)/);
+ assert.match(styles,/@media \(max-width:640px\)/);
  assert.match(styles,/flex-direction:column!important/);
  assert.match(styles,/overflow-x:auto!important/);
  assert.match(styles,/min-width:68px!important/);
