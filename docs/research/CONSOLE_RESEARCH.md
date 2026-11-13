@@ -372,3 +372,8 @@ experimento, artefato com fontes/avisos, sem APK e sem libdatachannel/FFmpeg/SDL
 Resultado ARM64 ainda pendente no momento da publicação. Próximo incremento:
 confirmar CI; então configuração do host Activity/JNI e ligação gradual do núcleo,
 sem segundo painel e sem iniciar login antes de CA/assets/lifecycle reais.
+
+
+### Resultado ARM64 confirmado
+
+CI [PSBox Android platform experiment #43492918003](https://github.com/breno-bgod/NimboXcloud/actions/runs/43492918003), commit 9782833d32652aa1cbe8c4819a80017f2f401b62: todos os passos aprovados, incluindo teste host, instalação NDK, link ARM64, verificação ELF e upload. Artefato nimbo-psbox-platform-arm64-not-apk, ID 14070886207, 73217 bytes, digest sha256:efb0bd2093e7aab5bd68aa1ff222c79e9d7f2deea7f8b73681e6f0e0d7494b8b. Inclui fonte correspondente/avisos. Link ARM64 desta camada está comprovado pelo build; marco (a) do motor completo ainda não concluído. Sem instalação ou execução Android, Activity/JNI, mídia ou login. A espera anterior do CI deixou de ser bloqueio; próximo passo é lifecycle/configuração do host e ligação do núcleo.
