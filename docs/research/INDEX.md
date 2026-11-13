@@ -29,3 +29,5 @@ Estados permitidos: pesquisa, simulação aprovada, falha, bloqueada, validada e
 - **PSBox Android:** [auditoria reproduzível](../../experiments/console/psbox-android-audit/README.md), quatro testes aprovados; bloqueios de entrada/recursos/build no ZIP. Sem APK, sessão ou classificação Xbox validada.
 
 - **Client Hints e perfil JavaScript:** [experimento com método real](../../experiments/console/client-hints-boundary/README.md), cinco testes em VM; ocultação depende de propriedade herdada/própria. Sem headers HTTP ou classificação Xbox observados.
+
+- **PSBox #466 (novo código):** [PR upstream](https://github.com/RafaelNGP/psbox-cloud-gaming/pull/466), main c775ecaddde52024d177cce7392aae13cc6917aa. Trata DeviceTypeNotAllowed e allowedDeviceTypes; autor relata recusa após perfis Xbox/TV. Pesquisa/relato upstream, sem reprodução própria. Ver mapa para limites e próximo teste de erro enumerado.

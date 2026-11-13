@@ -114,3 +114,32 @@ O manifesto de widget permite declarar rede externa; tal declaração não equiv
 ## Client Hints — método real do Better xCloud em VM
 
 Novo experimento [client-hints-boundary](../../experiments/console/client-hints-boundary/README.md): corpo de UserAgent.spoof em fonte fixada por SHA256, cinco testes aprovados. Propriedade herdada é escondida; propriedade própria com valor existente é preservada por defineProperty com descriptor vazio. UA não configurável pode deixar estado parcialmente alterado. Esses são resultados de objetos sintéticos, não diagnóstico confirmado do Edge do mantenedor. HTTP hints, tokens e classificação do servidor permanecem não observados/não verificados. A pesquisa de identidade não é pré-requisito para um port Android autorizado. Sem mudança do produto ou autenticação.
+
+
+## PSBox #466 — recusa por tipo de dispositivo, evidência nova em 13/11/2026
+
+**Fonte primária:** https://github.com/RafaelNGP/psbox-cloud-gaming/pull/466, incorporado em 13/11/2026 às 17:14:28 UTC. Commit funcional 0bb5ab3ea3ffde55b071e6b12731d7e26f86700a; main consultada c775ecaddde52024d177cce7392aae13cc6917aa. Comparação com eb63daf8f953684387a06a7bab8ef0a1e3133463: 15 arquivos, nenhuma alteração em src/auth/. Projeto criado em 07/10/2026 (não é repositório novo na janela 14/10–13/11); atividade de código nova confirmada por diff/SHA, não updated_at.
+
+### O que a fonte afirma
+
+O corpo do PR relata que Killer Instinct 2 Classic foi recusado com DeviceTypeNotAllowed mesmo com entitlement e que tentativas de se apresentar como Samsung TV e console Xbox no PS5 também foram recusadas. Relata verificação no PS5 e aprovação do mantenedor na TV. São relatos técnicos do próprio projeto; não recebemos logs sanitizados daquelas tentativas, valores/payloads completos ou confirmação do esquema interno do servidor. Não reproduzimos esses testes.
+
+### O que o código efetivamente mudou
+
+- src/xcloud/gssv.cpp/listTitles lê details.allowedDeviceTypes; gssv.h acrescenta o campo à estrutura Title.
+- library_sync.cpp, library.cpp/.h e GameTile preservam a informação, inclusive no cache.
+- isDeviceTypeRefusal reconhece a substring DeviceTypeNotAllowed no erro; worker.cpp mostra os dispositivos permitidos, com tradução em seis idiomas.
+- tests/test_main.cpp separa exemplos de DeviceTypeNotAllowed e NoEntitlement. São testes de reconhecimento de texto, não de identidade autenticada.
+- O PR não implementa um novo cliente Xbox, troca de offering ou nova autenticação. Sua mudança é diagnóstico da recusa.
+
+### Consequência para a hipótese de identidade
+
+Há agora evidência primária de uma recusa específica de dispositivo relatada pelo PSBox, separada de falta de entitlement. Isso reduz a sustentação da hipótese de que copiar o perfil declarado do PSBox basta para obter classificação Xbox. A afirmação do autor de que a identidade é fixada pelo cliente autenticado é uma explicação upstream: este diff não mostra onde a classificação ocorre e não prova exigência de certificado/atestado. Não converter allowedDeviceTypes em valor inventado de DeviceType na autenticação.
+
+A lista permitida não identifica o dispositivo atual; ausência da lista não comprova ausência de restrição. HTTP 200 ou mídia em outro título não refutam a recusa daquele jogo. A mensagem genérica console/Samsung TV não substitui o campo recebido. Não generalizar o caso para GTA VI.
+
+### Próximo experimento delimitado
+
+Hipótese: é possível distinguir uma recusa explícita DeviceTypeNotAllowed de NoEntitlement na criação da sessão sem alterar identidade. Com título realmente disponível e autorizado ao mantenedor, registrar somente código enumerado de erro, etapa, horário e modalidade cloud; não exportar corpo bruto/token. Refutação de bloqueio por dispositivo para aquela tentativa: o mesmo título inicia sob condições controladas; erro diferente não confirma DeviceTypeNotAllowed. Antes de implementar leitura de erro no observador passivo, revisar seu contrato de não leitura de corpos e definir extração limitada/revisável; não ampliar silenciosamente a coleta. Não iniciar acesso autenticado automático.
+
+Estado: pesquisa de código e relato upstream, sem sessão real nossa. Verificação: corpo do PR, diff dos 15 arquivos, três casos de teste upstream inspecionados; testes C++ não executados localmente nesta revisão documental. CI do Nimbo anterior aprovado; não comprova essa hipótese. Android/iOS/desktop web continuam sem prova de classificação Xbox; port Android é frente separada e não depende de validar essa identidade para compilar.
