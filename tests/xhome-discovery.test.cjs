@@ -2107,3 +2107,104 @@ test('xHome ICE candidate rejection is diagnosed and does not reschedule after t
   assert.equal(iceReads,2);
   await api.stop();
 });
+
+
+test('xHome local ICE sends stay ordered and reject terminal or replaced peer callbacks',async()=>{
+  const calls=[],peers=[],posted=[];
+  const postResolvers=new Map(),postWaiters=new Map();
+  function waitForPost(index){
+    if(posted.length>=index)return Promise.resolve();
+    return new Promise(resolve=>postWaiters.set(index,resolve));
+  }
+  const candidates=[
+    'candidate:local-a 1 udp 2122260223 192.0.2.31 5031 typ host',
+    'candidate:local-b 1 udp 2122260222 192.0.2.32 5032 typ host',
+    'candidate:local-c 1 udp 2122260221 192.0.2.33 5033 typ host',
+    'candidate:local-late-error 1 udp 2122260220 192.0.2.34 5034 typ host',
+    'candidate:after-failure 1 udp 2122260219 192.0.2.35 5035 typ host',
+    'candidate:replaced-peer 1 udp 2122260218 192.0.2.36 5036 typ host'
+  ];
+  class FakePeer{
+    constructor(){this.connectionState='new';this.iceConnectionState='checking';this.signalingState='stable';this.channels={};this.closed=false;peers.push(this);}
+    createDataChannel(label,options){
+      const channel={label,protocol:options.protocol,ordered:options.ordered,readyState:'open',bufferedAmount:0,
+        send(){},close(){this.readyState='closed';}};
+      this.channels[label]=channel;return channel;
+    }
+    addTransceiver(){}
+    async createOffer(){return {type:'offer',sdp:'v=0'};}
+    async setLocalDescription(value){
+      this.localDescription=value;
+      for(const candidate of candidates.slice(0,2)){
+        this.onicecandidate({candidate:{candidate,sdpMid:'0',sdpMLineIndex:0}});
+      }
+    }
+    async setRemoteDescription(value){this.remoteDescription=value;}
+    async addIceCandidate(){}
+    close(){this.closed=true;this.connectionState='closed';this.iceConnectionState='closed';this.signalingState='closed';}
+  }
+  const api=harness(async(url,opts)=>{
+    const method=opts&&opts.method||'GET';
+    calls.push({url,opts:opts||{}});
+    if(url.endsWith('/v2/login/user'))return ok(login);
+    if(url.endsWith('/v5/sessions/home/play'))return ok({sessionId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'});
+    if(url.endsWith('/state'))return ok({state:'Provisioned'});
+    if(url.endsWith('/sdp')&&method==='POST')return {ok:true,status:204};
+    if(url.endsWith('/sdp')&&method==='GET')return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0'})});
+    if(url.endsWith('/ice')&&method==='GET')return ok({candidates:[]});
+    if(url.endsWith('/ice')&&method==='POST'){
+      const payload=JSON.parse(opts.body);
+      const candidate=JSON.parse(payload.candidate);
+      posted.push(candidate.candidate);
+      const index=posted.length;
+      if(postWaiters.has(index))postWaiters.get(index)();
+      return new Promise((resolve,reject)=>postResolvers.set(index,{resolve,reject}));
+    }
+    if(method==='DELETE')return {ok:true,status:204};
+    throw new Error('unexpected request '+method+' '+url);
+  },null,FakePeer);
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+
+  const starting=api.startSession();
+  await waitForPost(1);
+  const peer=peers[0];
+  assert.ok(peer);
+  assert.deepEqual(posted,[candidates[0]]);
+  peer.onicecandidate({candidate:{candidate:candidates[2],sdpMid:'0',sdpMLineIndex:0}});
+  postResolvers.get(1).resolve({ok:true,status:204});
+
+  await waitForPost(2);
+  assert.deepEqual(posted,[candidates[0],candidates[1]],
+    'candidates queued before SDP completion must remain ahead of candidates emitted during the flush');
+  postResolvers.get(2).resolve({ok:true,status:204});
+  await waitForPost(3);
+  assert.deepEqual(posted,[candidates[0],candidates[1],candidates[2]],
+    'the active peer candidate must follow the initial queue exactly once');
+  postResolvers.get(3).resolve({ok:true,status:204});
+  await starting;
+
+  peer.onicecandidate({candidate:{candidate:candidates[3],sdpMid:'0',sdpMLineIndex:0}});
+  await waitForPost(4);
+  peer.connectionState='failed';
+  peer.onconnectionstatechange();
+  const terminalStatus=api.state.status;
+  postResolvers.get(4).reject(new Error('late local ICE network failure'));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(api.state.sessionStatus,'disconnected');
+  assert.equal(api.state.status,terminalStatus,
+    'a late send rejection must not overwrite the peer terminal status');
+
+  peer.onicecandidate({candidate:{candidate:candidates[4],sdpMid:'0',sdpMLineIndex:0}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(posted.length,4,'a failed peer must not send later local ICE candidates');
+
+  const replacement={connectionState:'new',iceConnectionState:'checking',signalingState:'stable'};
+  api.state.peer=replacement;
+  peer.connectionState='connected';
+  peer.onicecandidate({candidate:{candidate:candidates[5],sdpMid:'0',sdpMLineIndex:0}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(posted.length,4,'a replaced peer callback must not send into the active session owner');
+
+  api.state.peer=peer;
+  await api.stop();
+});
