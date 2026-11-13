@@ -3,7 +3,7 @@
 > Documento operacional. Toda execução autônoma deve reler a versão atual de `main` e atualizar este plano conforme evidências. Nunca presumir que a versão indicada aqui ainda é a mais recente.
 
 ## Estado de referência
-- Versão auditada do userscript: 4.12.89 (perfil de qualidade e métricas xCloud corrigidos em 4.12.88; cancelamento do controller xHome ativo corrigido em 4.12.89; código/testes na main em `5b51cc3cb8d1ab1f93d5d7571cb20b578763e881`; blob do userscript `6843b306d6847f9ba054bdc82489e53f538e112d`; consulta direta em 2026-11-12).
+- Versão auditada do userscript: 4.15.0 (publicação oficial na `main` em 2026-11-13; HEAD `d5605713c6d65502e344c55e0fd547e57e24da74`; blob de `NimboXcloud.user.js` `b8996760ccc966b7a7d2346f595a25c9483fa6e0`; módulo Touch HUD 1.4.0, blob `17dab364660c457c1046c77fc8829187f27a0b90`; consulta direta ao GitHub em 2026-11-13).
 - Arquivo principal: `NimboXcloud.user.js`.
 - Plataforma prioritária: navegador em `play.xbox.com`, sem reescrever como aplicativo nativo.
 - Objetivo: estabilidade real do cliente web, manutenção das funções existentes e investigação verificável das diferenças entre cliente web e cliente Xbox.
@@ -1173,3 +1173,36 @@ Critérios de aceite:
 3. O estado `disconnected` transitório continua recuperável se o mesmo peer retornar a connected; não aplicar teardown terminal a uma desconexão recuperável.
 4. Stop→Start, ICE local ordenado/isolado, ICE remoto canônico, limite de 30 polls e regressões de entrada permanecem aprovados.
 5. Baseline e xHome workflows verdes. Sem declarar validação de browser ou console físico.
+
+
+## Execução 2026-11-13 — reconciliação do ciclo de vida dos canais xHome (4.15.0)
+
+### Estado inicial e reconciliação
+
+- SHA inicial e final da `main` nesta execução: `d5605713c6d65502e344c55e0fd547e57e24da74` (sem alterações na branch principal).
+- Versão da `main`: **4.15.0**; blob do userscript `b8996760ccc966b7a7d2346f595a25c9483fa6e0`; módulo Touch HUD **1.4.0**.
+- SHA da branch de automação antes deste registro: `e21680fe20ac9cb31825d2423d91e5a30750080d`, baseada exatamente na main atual. O compare indicava 2 commits à frente e 0 atrás.
+- O cabeçalho anterior deste documento ainda apontava para 4.12.89, apesar de o changelog, README e código já estarem em 4.15.0. A referência foi reconciliada nesta branch, sem alterar a main.
+
+### Diagnóstico xHome
+
+- A main 4.15.0 ainda não contém o guard terminal proposto no PR #21. Em `nxRemoteInitDataChannels().isCurrent()`, o código verifica requestId, AbortSignal, identidade do peer e identidade do conjunto de canais, mas não verifica `connectionState`, `iceConnectionState` ou `signalingState` terminal.
+- A transição terminal de `peer.onconnectionstatechange` ainda chama `nxRemoteDetachTouchAdapter()`, em vez de fechar o conjunto de data channels. Portanto, eventos `onopen`/HandshakeAck atrasados podem tentar inicializar canais depois de `failed/closed`; a regressão está documentada na issue #20.
+- O PR #21 contém a correção e quatro regressões determinísticas: estados terminais, callbacks/timer tardios, teardown sem Stop recursivo, recuperação de `disconnected` e preservação do proprietário de uma sessão substituta. O PR continua separado da main e aguarda revisão do mantenedor.
+
+### PR e validação verificável
+
+- PR: [#21 — bloquear bootstrap tardio de canais xHome](https://github.com/breno-bgod/NimboXcloud/pull/21), branch `automation/codex-xhome-terminal-channels`.
+- SHA da revisão de código testada: `e21680fe20ac9cb31825d2423d91e5a30750080d`. Arquivos de código/teste/changelog do PR: `NimboXcloud.user.js`, `tests/xhome-discovery.test.cjs`, `CHANGELOG.md`; esta execução acrescenta somente este handoff documental.
+- CI confirmado para esse SHA: [xHome — run 43365722396](https://github.com/breno-bgod/NimboXcloud/actions/runs/43365722396) PASS; [baseline — run 43365722406](https://github.com/breno-bgod/NimboXcloud/actions/runs/43365722406) PASS.
+- Logs dos dois workflows confirmam **367 testes, 364 PASS, 0 FAIL e 3 TODO**. O baseline também executou `node --check` nos dois userscripts, suíte CommonJS/ESM e `node tools/static-risk-report.cjs`. Esses workflows foram consultados nesta execução; não foram reexecutados localmente.
+- O relatório estático aponta duas ocorrências do padrão Gamepad: restauração do descritor original e instalação da ponte única por `Object.defineProperty`; também aponta um wrapper de `fetch` e um de `XMLHttpRequest.send`. Não há atribuição de `XMLHttpRequest.open`, override de Pointer Lock ou de History. O wrapper de `RTCPeerConnection` para QoS e a criação do peer xHome são pontos distintos; nenhuma nova interceptação foi introduzida pelo PR.
+- Não há `package.json` na raiz; não existem comandos npm de build/lint configurados. Não houve execução local de Node, navegador, Tampermonkey, conta Xbox ou console físico nesta execução.
+
+### Riscos, limitações e tarefas
+
+- Risco restante: a correção de lifecycle está coberta por mocks e CI, mas ainda precisa de uma sessão xHome autorizada para confirmar interrupção e recuperação de canais em ambiente real. Vídeo, áudio audível, NAT e comandos aceitos pelo Xbox continuam sem homologação.
+- Tarefas concluídas no PR, ainda não integradas: guard terminal de propriedade dos canais e teardown de data channels; quatro regressões novas; preservação da recuperação de `disconnected`.
+- Não abrir outro PR enquanto #21 estiver aguardando revisão, conforme `AUTOMATION_BACKLOG.md`. PRs #23 e #24 são trabalhos do mantenedor e não foram alterados.
+- **Próxima tarefa concreta, após revisão/integração do #21:** acrescentar uma regressão para `ontrack` tardio de um peer xHome substituído. Critérios de aceite: iniciar sessão A, encerrá-la e iniciar B; entregar evento `ontrack` do peer A e provar que ele não adiciona faixas ao stream B, não altera `video.srcObject`, listeners, playback ou estado da sessão; evento do peer B deve continuar anexando áudio/vídeo uma única vez; Stop deve limpar mídia; baseline e xHome CI verdes. Não declarar teste de console real.
+- SHA final da `main`: `d5605713c6d65502e344c55e0fd547e57e24da74` (inalterado). O commit desta atualização documental será o novo HEAD da branch do PR #21; seu SHA é retornado no relatório desta execução.
