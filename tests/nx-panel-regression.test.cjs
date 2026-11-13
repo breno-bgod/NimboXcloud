@@ -5,15 +5,6 @@ const fs=require('node:fs');
 const path=require('node:path');
 const src=fs.readFileSync(path.join(__dirname,'..','NimboXcloud.user.js'),'utf8');
 
-test('launcher fallback remains visible when the integrated toolbar button is clipped',()=>{
- assert.match(src,/function nxButtonActuallyVisible\(button, host\)/);
- assert.match(src,/const integratedVisible = expanded && nxButtonActuallyVisible\(nxLibraryButton, fullscreenHost\(\)\)/);
- assert.match(src,/if \(!integratedVisible\) \{\s*nxLibraryButton\.style\.display = 'none';\s*if \(nxKeyboardMouseButton\) nxKeyboardMouseButton\.style\.display = 'none';\s*\}/);
- assert.match(src,/pillEl\.style\.display = openUI \|\| integratedVisible \? 'none' : 'inline-flex'/);
- assert.match(src,/wrap\.style\.right = '12px';\s*wrap\.style\.top = '12px';/);
- assert.match(src,/pillEl\.style\.display = integratedVisible \? 'none' : 'inline-flex'/);
-});
-
 test('F9 and requestPointerLock remain native',()=>{
  assert.doesNotMatch(src,/Element\.prototype\.requestPointerLock\s*=/);
  assert.doesNotMatch(src,/e\.code\s*===\s*['"]F9['"]|e\.key\s*===\s*['"]F9['"]/);

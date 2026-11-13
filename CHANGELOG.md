@@ -7,6 +7,13 @@
 - Diagnóstico distingue barra nativa fora da subárvore real de fullscreen. Não há movimento do DOM nativo, override de Fullscreen API ou garantia de renderização em fullscreen exclusivo de vídeo.
 - Verificação local: 371 testes, 368 PASS, zero FAIL e três TODO preexistentes; reteste real de Edge/mobile, retrato/paisagem e tela cheia pendente.
 
+## Não publicado — alça independente do NX
+
+- Acesso único por botão na borda esquerda, sem inserir ações na barra Xbox. O painel mantém o dock existente ao abrir.
+- Arraste vertical com altura proporcional salva no navegador; rotação recalcula a posição e cancelamento não salva o gesto. Teclado pode ativar o botão e arrastar não abre configurações.
+- A alça segue o host de tela cheia existente; durante carregamento, somente informações de preparação ficam disponíveis, com tema NX e posicionamento à esquerda.
+- Preservados controles nativos, modos de entrada, preferências anteriores e bloqueio de configurações durante preparação. Não resolve por si só a ausência da barra Xbox fora da subárvore fullscreen.
+
 ## [4.15.0] — 2026-11-13
 - Publicação oficial autorizada pelo mantenedor: userscript 4.15.0 e módulo de entradas/HUD 1.4.0. Preferências e layouts preservados.
 - Após teste do mantenedor: carregamento compacto na lateral direita; NX expande/recolhe detalhes sem esconder previsão e tempo decorrido. Ativar/ocultar estatísticas passa ao início de Estatísticas; a personalização do monitor fica expansível nessa página.
