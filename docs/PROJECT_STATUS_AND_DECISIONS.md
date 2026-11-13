@@ -46,6 +46,12 @@ Implementados seletor único em Entradas, gerenciador de transições/recuperaç
 
 Validação local: 267 testes, 264 PASS, zero FAIL, três TODO, incluindo 22 casos novos. Testes de VM com SDK/DOM controlados não homologam partida. Chromium falhou em setsockopt antes de abrir. Exclusividade em cliente real, compatibilidade do toque nativo, mobile/DeX e persistência visual exigem o [roteiro de aceite](./ENTRADAS_E_PAINEL.md). Nenhuma mudança de catálogo, entitlement, identidade de console, disponibilidade de GTA VI ou sinalização xHome neste lote. A integração de controles prepara os próximos testes; não comprova acesso a títulos ainda não testados.
 
+## Revisão incremental — 2026-11-13 / v4.13.2
+
+A pedido do mantenedor, o painel passou a nove categorias. Vídeo/Imagem e Áudio/Voz foram agrupados (voz acima); Sistema inclui compatibilidade; Interface centraliza a aparência do painel e do monitor. Estatísticas permanece separada. Entradas incorpora os ajustes de controle físico e teclado/mouse em seções expansíveis, sem alterar o gerenciador de modos. Região da loja foi retirada da navegação, preservando preferências/negociação existentes; JSON foi retirado da tela de imagem, mantendo perfis locais. O redesenho do Início foi adiado explicitamente; somente seus destinos foram atualizados.
+
+Corrigidos o grupo de origem de enquadramento/tela cheia (causa da página Vídeo quase vazia), ordem brilho/contraste no shader, separador vertical do monitor e detecção de ações de restauração. 276 testes locais, 273 PASS, zero FAIL, três TODO. Chromium falhou em setsockopt antes de abrir. Percepção de brilho e layout no DeX/celular continuam pendentes de teste real. [Organização e aceite](./PAINEL_ORGANIZADO.md).
+
 ## Propósito e princípios
 
 O NimboXcloud é um userscript independente para a nova experiência de Xbox Cloud Gaming em `https://play.xbox.com/`. Busca oferecer monitoramento, personalização, controles e recursos de acessibilidade sem substituir o serviço Xbox. Prioridade: **iniciar e manter partidas estáveis**, preservar controle/toque nativos e permitir recuperação quando uma opção falhar.

@@ -26,6 +26,8 @@ O modo Automático restaura os campos do SDK pertencentes ao Nimbo e volta a ent
 
 A preferência nova é `nx.input.mode.v1`. A preferência física anterior é lida como fallback e migrada ao selecionar/aplicar o modo. Não são apagados layouts, perfis ou atalhos. A configuração recebida no início continua nativa quando a preferência unificada já existe; a aplicação acontece na sessão capturada.
 
+> Atualização 4.13.2: a navegação foi consolidada. Controle físico e teclado/mouse agora são seções de Entradas; aparência do monitor fica em Interface. Consulte [organização atual](./PAINEL_ORGANIZADO.md). As seções abaixo descrevem a entrega original 4.13.0.
+
 ## Organização do painel
 
 - Categorias com nome visível, página atual e botão de fechar acessíveis.

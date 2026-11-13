@@ -224,9 +224,9 @@ test('physical mode summary does not claim gameplay confirmation when SDK only a
 });
 
 test('physical UI is separate from the touch HUD and monitor names bitrate explicitly', () => {
-  assert.match(main, /TAB_BUILDERS\.inputs=nxInputModePage/);
-  assert.match(main, /nxChooseInputMode\(nxSelectedInputMode\(\)==='virtual-keyboard-mouse'/);
-  assert.match(main, /Ativar HUD de teclado e mouse por toque/);
+  assert.match(main, /TAB_BUILDERS\.inputs=function\(root\)/);
+  assert.match(main, /nxInputModePage\(root\)/);
+  assert.match(main, /id: 'virtual-keyboard-mouse', label: 'Teclado e mouse virtuais'/);
   const monitor = section(main, '  function nxTelemetryTick(){', '  setInterval(nxTelemetryTick,');
   assert.match(monitor, /bitrate:'Bitrate '/);
   assert.doesNotMatch(monitor, /bitrate:'BR '/);

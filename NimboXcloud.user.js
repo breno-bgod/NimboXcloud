@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.13.1
+// @version      4.13.2
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch, cinco modos de entrada e HUD de controle virtual.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.13.1
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.13.2
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.13.1';
+  const VER = '4.13.2';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1074,11 +1074,6 @@ SOFTWARE.
       }, 'ghost')));
     });
     root.appendChild(hud.root);
-    const tuning = group('Ajustes por dispositivo');
-    [['gamepad','Controle físico · analógicos, giroscópio e vibração'],['gyrotouch','Teclado e mouse · touchpad, botões e atalhos']].forEach(function(item){
-      tuning.add(setRow(item[1], '', actBtn('Abrir ajustes', function(){setTab(item[0]);}, 'ghost')));
-    });
-    root.appendChild(tuning.root);
     root.appendChild(note('O toque nativo precisa estar disponível na sessão. Se o cliente Xbox não aceitar uma troca durante a partida, volte ao Automático e reinicie o jogo.'));
   }
 
@@ -2323,20 +2318,14 @@ SOFTWARE.
   };
   const TABS = [
     { id: 'overview', label: 'Início', desc: 'Resumo da sessão e acesso rápido' },
-    { id: 'video', label: 'Vídeo', desc: 'Perfil do dispositivo, enquadramento e tela cheia' },
-    { id: 'images', label: 'Imagens', desc: 'Filtros e processamento gráfico' },
+    { id: 'video', label: 'Vídeo e imagem', desc: 'Dispositivo, tela cheia, brilho, contraste e perfis locais' },
     { id: 'stream', label: 'Streaming', desc: 'Servidores, qualidade solicitada e rede' },
-    { id: 'statistics', label: 'Estatísticas', desc: 'Métricas da sessão e monitor configurável' },
-    { id: 'inputs', label: 'Entradas', desc: 'Escolha como jogar e edite os controles na tela' },
-    { id: 'gamepad', label: 'Controle físico', desc: 'Analógicos, giroscópio, vibração e atalhos' },
-    { id: 'gyrotouch', label: 'Teclado e mouse', desc: 'NimboTouch, HUD, toque e atalhos de teclado' },
-    { id: 'audio', label: 'Áudio', desc: 'Volume, saída e equalização' },
-    { id: 'voice', label: 'Voz', desc: 'Microfone e entrada de voz' },
+    { id: 'statistics', label: 'Estatísticas', desc: 'Métricas e desempenho da sessão' },
+    { id: 'inputs', label: 'Entradas', desc: 'Modo de jogo, HUD, controle físico e teclado e mouse' },
+    { id: 'audio', label: 'Áudio e voz', desc: 'Microfone, volume, saída e equalização' },
     { id: 'remote', label: 'Remote Play', desc: 'Conexão experimental com Xbox local' },
-    { id: 'region', label: 'Região da loja', desc: 'Território e disponibilidade regional' },
-    { id: 'personalize', label: 'Interface', desc: 'Aparência e transparência do painel NX' },
-    { id: 'compatibility', label: 'Compatibilidade', desc: 'Identidade, plataforma e testes de console' },
-    { id: 'advanced', label: 'Sistema', desc: 'Diagnósticos e manutenção' }
+    { id: 'personalize', label: 'Interface', desc: 'Aparência dos painéis e do monitor de estatísticas' },
+    { id: 'advanced', label: 'Sistema', desc: 'Compatibilidade, diagnóstico e manutenção' }
   ];
   const PRESETS = [
     { name: 'Máximo', res: 'hq', br: 'auto', sub: 'Melhor imagem' },
@@ -5223,7 +5212,7 @@ SOFTWARE.
       gpuGroup.add(setRow('Restaurar GPU','Desativa shader e remove a camada de apresentacao.',
         actBtn('Desativar GPU',function(){setPref(LS_NX_GPU,'0');nxGpuSync();renderBody();},'ghost')));
       root.appendChild(gpuGroup.root);
-      const gVisual=group('Biblioteca de perfis', 'Compartilhe ajustes NX em JSON. Importacao validada e limitada a 16 KB; nenhuma instrucao de codigo e executada.');
+      const gVisual=group('Biblioteca de perfis', 'Salve e reutilize seus ajustes de imagem neste navegador.');
       gVisual.add(setRow('Salvar configuracao','Armazena ate 24 perfis neste navegador.',
         actBtn('Salvar perfil',function(){
           const name=prompt('Nome do perfil visual (ate 64 caracteres):','Meu perfil NX');
@@ -5231,16 +5220,6 @@ SOFTWARE.
           try{nxVisualSave(name);toast('Perfil salvo');renderBody();}
           catch(e){toast(String(e.message||e));}
         },'ghost')));
-      gVisual.add(setRow('Exportar configuracao','Gera um arquivo JSON portatil.',
-        actBtn('Exportar JSON',function(){
-          const cal=nxVideoCalibration();
-          nxVisualExport({format:NX_VISUAL_FORMAT,version:1,name:getPref(LS_VISUAL_ACTIVE,'Meu perfil NX'),
-            author:'Local',settings:{brightness:cal.brightness,contrast:cal.contrast,saturation:cal.saturation}});
-        },'ghost')));
-      const importInput=mk('input','max-width:100%;font-size:11px');
-      importInput.type='file';importInput.accept='.json,application/json';
-      importInput.addEventListener('change',function(){if(importInput.files&&importInput.files[0])nxVisualImport(importInput.files[0]);});
-      gVisual.add(setRow('Importar JSON','Aceita apenas perfis NX v1, sem scripts nem URLs externas.',importInput,true));
       const saved=nxVisualLibrary();
       if(saved.length){
         const options=saved.map(function(p,i){return {k:String(i),label:p.name};});
@@ -5798,6 +5777,13 @@ SOFTWARE.
     const target=nxTakeGroupRows(nxFindGroup(nodes,'Entradas detectadas'),title,labels,hint);
     if(target)root.appendChild(target);
   }
+  function nxSettingsSection(root, title, build) {
+    const details=mk('details','margin-top:12px;border:1px solid '+C.line+';border-radius:10px;padding:0 10px');
+    const summary=mk('summary','cursor:pointer;min-height:44px;display:list-item;align-content:center;font-size:12px;font-weight:650',title);
+    const content=mk('div','padding-bottom:10px');
+    details.append(summary,content);build(content);root.appendChild(details);
+    return details;
+  }
   function nxQualityPresets(root){
     const pg=group('Perfis de qualidade','Máximo solicita 1080p HQ; Equilibrado e Compatível solicitam 1080p padrão. A taxa de transmissão é automática.');
     const row=mk('div','display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 0');
@@ -5813,8 +5799,10 @@ SOFTWARE.
     pg.card.appendChild(row);root.appendChild(pg.root);
   }
   TAB_BUILDERS.advanced=function(root){
-    const nodes=nxLegacySystemGroups();[4,5,6].forEach(function(i){if(nodes[i])root.appendChild(nodes[i]);});
-    const preview=nxFindGroup(nxLegacyControlGroups('keyboard'),'Editor de HUD — prévia arrastável');
+    const nodes=nxLegacySystemGroups();[3,4,5,6].forEach(function(i){if(nodes[i])root.appendChild(nodes[i]);});
+    const controls=nxLegacyControlGroups('keyboard');
+    nxSettingsSection(root,'Diagnóstico técnico de entradas',function(content){nxMoveGroup(content,controls,'Coordenação de entradas — diagnóstico');});
+    const preview=nxFindGroup(controls,'Editor de HUD — prévia arrastável');
     if(preview){
       const details=document.createElement('details');
       const summary=mk('summary','cursor:pointer;padding:12px 0;color:'+C.dim,'Prévia técnica de HUD · não controla o jogo');
@@ -5832,7 +5820,10 @@ SOFTWARE.
     const system=nxLegacySystemGroups();if(system[2])root.appendChild(system[2]);
     nxQualityPresets(root);
   };
-  TAB_BUILDERS.audio=function(root){nxMoveGroup(root,nxLegacyMediaGroups('audio'),'Áudio');};
+  TAB_BUILDERS.audio=function(root){
+    TAB_BUILDERS.voice(root);
+    nxMoveGroup(root,nxLegacyMediaGroups('audio'),'Áudio');
+  };
   TAB_BUILDERS.voice=function(root){
     const nodes=nxLegacyControlGroups('voice');
     const mic=nxTakeGroupRows(nxFindGroup(nodes,'Acessórios'),'Microfone e entrada de voz',['Microfone'],
@@ -5842,32 +5833,35 @@ SOFTWARE.
   TAB_BUILDERS.video=function(root){
     const controls=nxLegacyControlGroups('video');nxMoveGroup(root,controls,'Dispositivo');
     const media=nxLegacyMediaGroups('video');
-    const presentation=nxTakeGroupRows(nxFindGroup(media,'Biblioteca de perfis'),'Apresentação do vídeo',
+    const presentation=nxTakeGroupRows(nxFindGroup(media,'Imagem'),'Apresentação do vídeo',
       ['Enquadramento','Tela cheia','Economia de recursos'],
       'Enquadramento, tela cheia e economia de filtros locais durante a aba oculta.');
     if(presentation)root.appendChild(presentation);
-    root.appendChild(note('Auto, Desktop e Celular são preferências de interface. Um celular com mouse pode usar a experiência Desktop, mantendo toque e identidade nativa.'));
+    TAB_BUILDERS.images(root,media);
+    root.appendChild(note('Auto, Desktop e Celular ajustam a experiência da interface; não alteram a identidade aceita pelo servidor.'));
   };
-  TAB_BUILDERS.images=function(root){
-    const media=nxLegacyMediaGroups('images');
-    ['Imagem','Clarity Boost experimental','Captura'].forEach(function(title){nxMoveGroup(root,media,title);});
+  TAB_BUILDERS.images=function(root,existingMedia){
+    const media=existingMedia||nxLegacyMediaGroups('images');
+    nxMoveGroup(root,media,'Imagem');
     const profiles=nxTakeGroupRows(nxFindGroup(media,'Biblioteca de perfis'),'Perfis de imagem',
-      ['Salvar configuracao','Exportar configuracao','Importar JSON','Perfis salvos'],
-      'Perfis locais de brilho, contraste e saturação. A importação aceita somente o formato NX validado.');
+      ['Salvar configuracao','Perfis salvos'],
+      'Salve seus ajustes de brilho, contraste e saturação neste navegador.');
     if(profiles)root.appendChild(profiles);
-    root.appendChild(note('O processamento gráfico disponível neste build usa WebGL2 e filtros locais. FSR 1 ainda não está implementado.'));
+    nxSettingsSection(root,'Processamento de imagem avançado',function(content){nxMoveGroup(content,media,'Clarity Boost experimental');});
+    nxMoveGroup(root,media,'Captura');
   };
-  TAB_BUILDERS.inputs=nxInputModePage;
+  TAB_BUILDERS.inputs=function(root){
+    nxInputModePage(root);
+    nxSettingsSection(root,'Ajustes do controle físico',TAB_BUILDERS.gamepad);
+    nxSettingsSection(root,'Ajustes de teclado e mouse',TAB_BUILDERS.gyrotouch);
+  };
   TAB_BUILDERS.gamepad=function(root){
-    root.appendChild(note('Escolha a entrada ativa na página Entradas. Aqui ficam os ajustes do controle.'));
-    root.appendChild(actBtn('Escolher entrada', function(){setTab('inputs');}, 'primary'));
     const nodes=nxLegacyControlGroups('gamepad');
     nxAppendControlRows(root,nodes,'Gamepad conectado',
-      ['Controles conectados','Controles com atividade','Última alteração de conexão','Falhas de leitura'],
+      ['Controles conectados'],
       'Estado dos controles físicos reconhecidos pelo navegador.');
-    nxMoveGroup(root,nodes,'Coordenação de entradas — diagnóstico');
-    nxMoveGroup(root,nodes,'Giroscópio');
     nxMoveGroup(root,nodes,'Perfis de analógico');
+    nxSettingsSection(root,'Giroscópio · ajustes avançados',function(content){nxMoveGroup(content,nodes,'Giroscópio');});
     const vibration=nxTakeGroupRows(nxFindGroup(nodes,'Acessórios'),'Vibração do Gamepad',['Vibração'],
       'Teste local de vibração. Não altera automaticamente a vibração enviada pelo xCloud.');
     if(vibration)root.appendChild(vibration);
@@ -5875,24 +5869,20 @@ SOFTWARE.
   };
   TAB_BUILDERS.controls=TAB_BUILDERS.gamepad;
   TAB_BUILDERS.gyrotouch=function(root){
-    root.appendChild(actBtn('Escolher entrada ou editar HUD', function(){setTab('inputs');}, 'primary'));
-    const activation=group('Ativação','Ative ou desative o NimboTouch pelo seletor único de entradas.');
-    activation.add(setRow('Ativar HUD de teclado e mouse por toque','Liga ou desliga apenas os botões virtuais e o touchpad do NimboTouch.',
-      toggle(!!(window.NimboTouch&&window.NimboTouch.isEnabled()),function(){
-        if(!window.NimboTouch||typeof window.NimboTouch.toggle!=='function'){toast('Módulo de teclado e mouse indisponível; atualize o userscript');renderBody();return;}
-        nxChooseInputMode(nxSelectedInputMode()==='virtual-keyboard-mouse'?'native':'virtual-keyboard-mouse');
-      },'Ativar HUD de teclado e mouse por toque')));
-    root.appendChild(activation.root);
     const nodes=nxLegacyControlGroups('keyboard');
-    nxMoveGroup(root,nodes,'Teclado e mouse');
-    root.appendChild(note('O editor do HUD usado no jogo está em Entradas → HUD e botões na tela.'));
-    nxAppendControlRows(root,nodes,'Toque e mouse detectados',
-      ['Tela de toque','Mouse capturado','Sobreposições toque/mouse'],
-      'Capacidades locais de toque e mouse observadas no navegador.');
+    const touch=nxTakeGroupRows(nxFindGroup(nodes,'Teclado e mouse'),'Touchpad e botões',
+      ['Configurar teclado e mouse'],'Ajustes do HUD de teclado e mouse virtual. A entrada ativa é escolhida acima.');
+    if(touch)root.appendChild(touch);
     nxBindControls(root,'keyboard');
   };
 
+  function nxCanonicalTab(id) {
+    return ({images:'video',media:'video',voice:'audio',compatibility:'advanced',region:'stream',
+      gamepad:'inputs',gyrotouch:'inputs',controls:'inputs',dashboard:'statistics'})[id]||id;
+  }
+
   function setTab(id) {
+    id=nxCanonicalTab(id);
     if (!TAB_BUILDERS[id]) id = 'overview';
     tabId = id;
     renderBody(true);
@@ -5918,7 +5908,7 @@ SOFTWARE.
       if (!node._desc || !node.parentElement) return;
       const label=node.firstElementChild && node.firstElementChild.firstElementChild;
       const name=label ? (label.textContent||'').trim() : '';
-      if (/^(restaurar|redefinir|resetar|limpar|excluir|apagar|remover)\\b/i.test(name)) rows.push(node);
+      if (/^(restaurar|redefinir|resetar|limpar|excluir|apagar|remover)\b/i.test(name)) rows.push(node);
     });
     if (!rows.length) return;
     const section=group('Restaurar e limpar','Ações para desfazer ajustes ou limpar dados. Use somente quando necessário.');
@@ -5954,11 +5944,10 @@ SOFTWARE.
     const normalize=function(value){return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();};
     const words=normalize(query).trim().split(/\s+/).filter(Boolean);
     if(!words.length)return [];
-    const keywords={inputs:'touch toque controle joystick hud virtual teclado mouse entradas',gamepad:'analógico zona morta deadzone gyro giroscópio vibração',
-      gyrotouch:'sensibilidade wasd macros multiteclas botões atalhos teclado mouse',stream:'servidor server região bitrate resolução qualidade rede',
-      statistics:'fps rtt latência perda mbps monitor afterburner',audio:'equalizador volume saída som',voice:'mic microfone voz',
-      video:'fullscreen tela cheia enquadramento desktop celular dex',images:'brilho contraste saturação filtros captura',
-      compatibility:'identidade user agent plataforma console',advanced:'diagnóstico cache manutenção',personalize:'transparência cores aparência interface'};
+    const keywords={inputs:'touch toque controle joystick hud virtual teclado mouse analógico zona morta deadzone gyro giroscópio vibração sensibilidade wasd macros multiteclas botões atalhos',
+      stream:'servidor server região bitrate resolução qualidade rede',statistics:'fps rtt latência perda mbps desempenho',
+      audio:'equalizador volume saída som mic microfone voz',video:'fullscreen tela cheia enquadramento desktop celular dex brilho contraste saturação filtros captura perfil',
+      advanced:'diagnóstico cache manutenção compatibilidade identidade user agent plataforma console',personalize:'transparência cores aparência interface monitor estatísticas fps layout posição escala'};
     return TABS.filter(function(tab){const text=normalize(tab.label+' '+tab.desc+' '+(keywords[tab.id]||''));return words.every(function(word){return text.includes(word);});});
   }
   function nxBuildSettingsSearch(root) {
@@ -6148,7 +6137,7 @@ SOFTWARE.
     const vals={server:(flags[srv]||'◈')+' '+(srv||'Servidor não identificado'),fps:'FPS '+fmtN(q.decodedFps||q.fps),rtt:'RTT '+fmtN(q.rtt,' ms'),bitrate:'Bitrate '+(Number.isFinite(q.kbps)?fmtN(q.kbps/1000,' Mbps',1):'—'),loss:'Perda '+fmtN(curLoss(),'% ',1),resolution:'Res '+(q.h?q.h+'p':'—'),jitter:'Jitter '+fmtN(q.jitter,' ms')};
     const keys=p.layout==='compact'?['server','fps','rtt']:p.fields;
     const layout=p.layout==='auto'?(innerWidth<700?'vertical':'horizontal'):p.layout;
-    n.textContent=keys.filter(function(k){return Object.prototype.hasOwnProperty.call(vals,k);}).map(function(k){return vals[k];}).join(layout==='vertical'?'\\n':'  ·  ');
+    n.textContent=keys.filter(function(k){return Object.prototype.hasOwnProperty.call(vals,k);}).map(function(k){return vals[k];}).join(layout==='vertical'?'\n':'  ·  ');
     n.style.cssText='position:fixed;z-index:2147483000;display:block;pointer-events:auto;touch-action:none;user-select:none;cursor:move;box-sizing:border-box;border-radius:7px;padding:5px 8px;max-width:calc(100vw - 24px);white-space:pre-line;font-family:ui-monospace,Consolas,monospace;font-weight:600;line-height:1.5';
     n.style.fontSize=(11*Math.max(60,Math.min(140,Number(p.scale)||100))/100)+'px';
     n.style.background='rgba(0,0,0,'+(Math.max(0,Math.min(100,Number(p.opacity)||0))/100)+')';
@@ -6223,7 +6212,7 @@ SOFTWARE.
     }
   }
   function nxPanelSettingsPage(root){
-    const g=group('Aparência do painel NX','Essas opções modificam somente o painel de configurações. O NX Stream Monitor mantém seus próprios ajustes.');
+    const g=group('Aparência do painel NX','Aparência do painel de configurações. Abaixo, personalize também o monitor de estatísticas.');
     const slider=document.createElement('input');slider.type='range';slider.min='15';slider.max='100';slider.step='5';
     slider.value=String(nxPanelAppearance.opacity);slider.style.cssText='width:100%;max-width:280px;accent-color:'+C.accent;
     const percent=mk('span','font-size:12px;color:'+C.dim,nxPanelAppearance.opacity+'%');
@@ -6246,8 +6235,7 @@ SOFTWARE.
   function nxPanelSave(){try{localStorage.setItem(NX_PANEL_APPEARANCE,JSON.stringify(nxPanelAppearance));}catch(_){}nxPanelApply();}
   TAB_BUILDERS.personalize=function(root){
     nxPanelSettingsPage(root);
-    root.appendChild(mk('div','font-size:11px;color:'+C.dim+';line-height:1.5;margin-top:12px',
-      'A aparência desta página altera somente o painel NX. O monitor de estatísticas é configurado na aba Estatísticas.'));
+    nxMonitorSettingsPage(root);
   };
   TAB_BUILDERS.statistics=function(root){
     const stream=document.createElement('div');
@@ -6255,7 +6243,7 @@ SOFTWARE.
     if(stream.firstElementChild)root.appendChild(stream.firstElementChild);
     const groups=nxLegacySystemGroups();
     [0,1].forEach(function(i){if(groups[i])root.appendChild(groups[i]);});
-    nxMonitorSettingsPage(root);
+    root.appendChild(actBtn('Configurar aparência do monitor',function(){setTab('personalize');},'ghost'));
   };
   TAB_BUILDERS.dashboard=TAB_BUILDERS.statistics;
   TAB_BUILDERS.overview=function(root){
@@ -6271,11 +6259,11 @@ SOFTWARE.
       metrics.textContent='FPS '+fmtN(q.decodedFps||q.fps)+'  ·  RTT '+fmtN(q.rtt,' ms')+'  ·  '+(S.serverActual||'Servidor automático');
     });
     const groups=[
-      {title:'Imagem e apresentação',sub:'Perfil do dispositivo e processamento visual',icon:ICONS.video,links:[['video','Vídeo e perfil do dispositivo'],['images','Imagens e filtros']]},
-      {title:'Conexão',sub:'Servidores, qualidade e indicadores da sessão',icon:ICONS.stream,links:[['stream','Streaming'],['statistics','Estatísticas'],['remote','Remote Play · Xbox em casa'],['region','Região da loja']]},
-      {title:'Entradas e controles',sub:'Escolha como jogar, edite o HUD e ajuste seus dispositivos',icon:ICONS.gamepad,links:[['inputs','Escolher entrada e editar HUD'],['gamepad','Controle físico · ajustes'],['gyrotouch','Teclado e mouse · ajustes']]},
-      {title:'Som',sub:'Reprodução e entrada de voz',icon:ICONS.audio,links:[['audio','Áudio'],['voice','Voz']]},
-      {title:'Sistema e interface',sub:'Aparência, compatibilidade e manutenção',icon:ICONS.advanced,links:[['personalize','Interface do painel'],['compatibility','Compatibilidade'],['advanced','Sistema']]}
+      {title:'Imagem e apresentação',sub:'Perfil do dispositivo e processamento visual',icon:ICONS.video,links:[['video','Vídeo e imagem']]},
+      {title:'Conexão',sub:'Servidores, qualidade e indicadores da sessão',icon:ICONS.stream,links:[['stream','Streaming'],['statistics','Estatísticas'],['remote','Remote Play · Xbox em casa']]},
+      {title:'Entradas e controles',sub:'Escolha como jogar, edite o HUD e ajuste seus dispositivos',icon:ICONS.gamepad,links:[['inputs','Entradas, HUD e ajustes dos dispositivos']]},
+      {title:'Som',sub:'Reprodução e entrada de voz',icon:ICONS.audio,links:[['audio','Áudio e voz']]},
+      {title:'Sistema e interface',sub:'Aparência, compatibilidade e manutenção',icon:ICONS.advanced,links:[['personalize','Interface e monitor de estatísticas'],['advanced','Sistema e compatibilidade']]}
     ];
     groups.forEach(function(g){
       const section=mk('div','margin-bottom:8px;border:1px solid '+C.line+';border-radius:11px;overflow:hidden;background:'+C.panel);
@@ -7889,7 +7877,8 @@ void main(){
  float shadows=(1.0-smoothstep(0.08,0.55,l))*u_shadows*0.22;
  float highlights=smoothstep(0.45,0.95,l)*u_highlights*0.20;
  c=clamp(c+vec3(shadows+highlights),0.0,1.0);
- c=clamp((c-0.5)*u_adjust.y+0.5,0.0,1.0)*u_adjust.x;
+ c=clamp(c*u_adjust.x,0.0,1.0);
+ c=clamp((c-0.5)*u_adjust.y+0.5,0.0,1.0);
  float grey=dot(c,vec3(0.2126,0.7152,0.0722));
  c=clamp(mix(vec3(grey),c,u_adjust.z),0.0,1.0);
  outColor=vec4(c,1.0);
@@ -8335,4 +8324,5 @@ void main(){
     boot();
   }
 })();
+
 

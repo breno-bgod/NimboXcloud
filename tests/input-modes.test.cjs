@@ -215,8 +215,12 @@ test('selection persistence happens only after successful activation and storage
 });
 
 test('settings search finds accent-insensitive destinations and matches multiple words',()=>{
- const ctx={TABS:[{id:'inputs',label:'Entradas',desc:'Como jogar'},{id:'audio',label:'Áudio',desc:'Som'},{id:'statistics',label:'Estatísticas',desc:'Monitor'},{id:'gamepad',label:'Gamepad',desc:'Controles físicos'}]};
- vm.runInNewContext(section(main,'  function nxSettingsSearch(','  function nxBuildSettingsSearch(')+'\nglobalThis.search=nxSettingsSearch;',ctx);
- assert.equal(ctx.search('audio')[0].id,'audio');assert.equal(ctx.search('controle virtual')[0]?.id,'inputs');
- assert.equal(ctx.search('zona morta')[0].id,'gamepad');assert.equal(ctx.search('fps')[0].id,'statistics');assert.equal(ctx.search('desconhecido').length,0);
+ const ctx={};
+ vm.runInNewContext(section(main,'  const TABS = [','  const PRESETS = [')+
+   section(main,'  function nxSettingsSearch(','  function nxBuildSettingsSearch(')+'\nglobalThis.search=nxSettingsSearch;',ctx);
+ assert.equal(ctx.search('audio')[0].id,'audio');assert.equal(ctx.search('controle virtual')[0].id,'inputs');
+ assert.equal(ctx.search('zona morta')[0].id,'inputs');assert.equal(ctx.search('fps')[0].id,'statistics');
+ assert.equal(ctx.search('microfone')[0].id,'audio');assert.equal(ctx.search('brilho')[0].id,'video');
+ assert.equal(ctx.search('identidade')[0].id,'advanced');assert.equal(ctx.search('layout')[0].id,'personalize');
+ assert.equal(ctx.search('desconhecido').length,0);
 });

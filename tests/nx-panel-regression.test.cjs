@@ -42,22 +42,23 @@ test('panel categories have distinct responsibilities and stable tab identities'
  const registry=src.slice(start,end);
  const ids=Array.from(registry.matchAll(/id: '([^']+)'/g),m=>m[1]);
  assert.equal(new Set(ids).size,ids.length,'tab ids must not be duplicated');
- for(const id of ['video','images','stream','statistics','gamepad','gyrotouch','audio','voice','remote','region','personalize','compatibility','advanced'])assert.ok(ids.includes(id),id+' tab is registered');
+ assert.deepEqual(ids,['overview','video','stream','statistics','inputs','audio','remote','personalize','advanced']);
 });
 
-test('video and image processing are separated',()=>{
+test('video presentation and image settings share a page without JSON controls',()=>{
  const videoStart=src.indexOf('TAB_BUILDERS.video=function(root){');
- const imagesStart=src.indexOf('TAB_BUILDERS.images=function(root){',videoStart);
+ const imagesStart=src.indexOf('TAB_BUILDERS.images=function(root,existingMedia){',videoStart);
  const gamepadStart=src.indexOf('TAB_BUILDERS.gamepad=function(root){',imagesStart);
  assert.ok(videoStart>=0&&imagesStart>videoStart&&gamepadStart>imagesStart);
  const video=src.slice(videoStart,imagesStart);
  const images=src.slice(imagesStart,gamepadStart);
  assert.match(video,/nxMoveGroup\(root,controls,'Dispositivo'\)/);
  assert.match(video,/Apresentação do vídeo/);
- assert.doesNotMatch(video,/Clarity Boost experimental|Perfis de imagem/);
+ assert.match(video,/nxFindGroup\(media,'Imagem'\)/);
+ assert.match(video,/TAB_BUILDERS\.images\(root,media\)/);
  assert.match(images,/Clarity Boost experimental/);
  assert.match(images,/Perfis de imagem/);
- assert.match(images,/FSR 1 ainda não está implementado/);
+ assert.doesNotMatch(images,/Importar JSON|Exportar configuracao/);
 });
 
 test('gamepad owns gyro, vibration and controller shortcuts',()=>{
@@ -65,20 +66,20 @@ test('gamepad owns gyro, vibration and controller shortcuts',()=>{
  const end=src.indexOf('TAB_BUILDERS.controls=TAB_BUILDERS.gamepad;',start);
  assert.ok(start>=0&&end>start);
  const body=src.slice(start,end);
- assert.match(body,/Coordenação de entradas — diagnóstico/);
+ assert.doesNotMatch(body,/Coordenação de entradas — diagnóstico|Última alteração de conexão|Falhas de leitura/);
  assert.match(body,/Giroscópio/);
  assert.match(body,/Vibração do Gamepad/);
  assert.match(body,/nxBindControls\(root,'gamepad'\)/);
  assert.match(body,/Controles conectados/);
 });
 
-test('keyboard and mouse owns NimboTouch, HUD and keyboard shortcuts only',()=>{
+test('keyboard and mouse tuning reuses HUD settings without another activation selector',()=>{
  const start=src.indexOf('TAB_BUILDERS.gyrotouch=function(root){');
  const end=src.indexOf('\n  };',start);
  assert.ok(start>=0&&end>start);
  const body=src.slice(start,end);
- assert.match(body,/Ative ou desative o NimboTouch/);
- assert.match(body,/O editor do HUD usado no jogo está em Entradas/);
+ assert.match(body,/Touchpad e botões/);
+ assert.doesNotMatch(body,/const activation|toggle\(|Toque e mouse detectados/);
  assert.match(body,/nxBindControls\(root,'keyboard'\)/);
  assert.doesNotMatch(body,/Giroscópio|Vibração do Gamepad/);
 });
@@ -94,13 +95,17 @@ test('voice page extracts microphone, not the third input-diagnostic group',()=>
  assert.doesNotMatch(src,/if \(temp\.children\[2\]\) root\.appendChild\(temp\.children\[2\]\)/);
 });
 
-test('statistics contains live transmission metrics and the independent monitor settings',()=>{
+test('statistics contains metrics while interface owns monitor appearance',()=>{
  const start=src.indexOf('TAB_BUILDERS.statistics=function(root){');
  const end=src.indexOf('TAB_BUILDERS.dashboard=TAB_BUILDERS.statistics;',start);
  assert.ok(start>=0&&end>start);
  const body=src.slice(start,end);
  assert.match(body,/nxOriginalStreamBuilder\(stream\)/);
- assert.match(body,/nxMonitorSettingsPage\(root\)/);
+ assert.doesNotMatch(body,/nxMonitorSettingsPage\(root\)/);
+ assert.match(body,/setTab\('personalize'\)/);
+ const ui=src.slice(src.indexOf('TAB_BUILDERS.personalize=function(root){'),start);
+ assert.match(ui,/nxPanelSettingsPage\(root\)/);
+ assert.match(ui,/nxMonitorSettingsPage\(root\)/);
  assert.match(src,/function nxMonitorSettingsGroup\(root\)/);
  assert.match(src,/TAB_BUILDERS\.overview=function\(root\)\{nxOverviewOriginal\(root\);\}/);
 });

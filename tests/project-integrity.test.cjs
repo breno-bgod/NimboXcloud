@@ -36,18 +36,14 @@ test('Touch HUD metadata and runtime constant share one module version', () => {
   assert.equal(runtime, metadata);
 });
 
-test('NX separates physical Gamepad from keyboard and mouse categories', () => {
-  assert.ok(main.includes("{ id: 'gamepad', label: 'Controle físico', desc: 'Analógicos, giroscópio, vibração e atalhos' }"));
-  assert.ok(main.includes("{ id: 'gyrotouch', label: 'Teclado e mouse', desc: 'NimboTouch, HUD, toque e atalhos de teclado' }"));
-  assert.ok(main.includes("{ id: 'inputs', label: 'Entradas'"));
+test('NX exposes one input destination and preserves device-specific builders and shortcut keys', () => {
+  const registry=main.slice(main.indexOf('  const TABS = ['),main.indexOf('  const PRESETS = ['));
+  assert.ok(registry.includes("id: 'inputs'"));
+  assert.ok(!registry.includes("id: 'gamepad'"));
+  assert.ok(!registry.includes("id: 'gyrotouch'"));
   assert.ok(main.includes("TAB_BUILDERS.controls=TAB_BUILDERS.gamepad;"));
-  assert.ok(main.includes("nxMoveGroup(root,nodes,'Giroscópio')"));
-  const builder = main.indexOf('TAB_BUILDERS.gyrotouch=function(root){');
-  const activation = main.indexOf("const activation=group('Ativação'", builder);
-  const legacy = main.indexOf("const nodes=nxLegacyControlGroups('keyboard')", builder);
-  assert.ok(builder >= 0 && activation > builder && legacy > activation, 'activation precedes keyboard/mouse settings');
-  assert.ok(main.includes('O editor do HUD usado no jogo está em Entradas'));
-  assert.ok(main.includes("group('Teclado e mouse'"), 'legacy keyboard/mouse group exists');
-  assert.ok(!main.includes('Gyro Touch'), 'old tab label is removed');
+  assert.ok(main.includes("nxSettingsSection(root,'Ajustes do controle físico',TAB_BUILDERS.gamepad)"));
+  assert.ok(main.includes("nxSettingsSection(root,'Ajustes de teclado e mouse',TAB_BUILDERS.gyrotouch)"));
+  assert.ok(main.includes("nxBindControls(root,'gamepad')"));
+  assert.ok(main.includes("nxBindControls(root,'keyboard')"));
 });
-

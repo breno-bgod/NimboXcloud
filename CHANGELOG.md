@@ -1,3 +1,12 @@
+## [4.13.2] — 2026-11-13
+- Painel reduzido de quinze para nove categorias: Vídeo e imagem; Áudio e voz com microfone primeiro; Sistema incluindo compatibilidade; Interface com aparência do painel e do monitor.
+- Entradas reúne os cinco modos, HUD e ajustes expansíveis de controle físico/teclado e mouse; removidas ativações duplicadas e contadores técnicos da área principal.
+- Região da loja retirada da navegação. Servidores permanecem em Streaming; preferências e negociação regional existentes preservadas.
+- Imagem mantém perfis locais sem controles de importação/exportação JSON. Enquadramento e tela cheia voltam à página Vídeo ao corrigir extração do grupo errado.
+- Alinhada a ordem brilho/contraste do shader GPU à cadeia CSS; corrigidos quebra de linha do monitor vertical e reconhecimento das ações de restauração.
+- Início mantém seu desenho atual, com links atualizados. Nenhuma alteração no transporte das cinco entradas ou na sinalização xHome.
+- Validação local: 277 testes, 274 PASS, zero FAIL, três TODO. Validação visual/DeX bloqueada pela inicialização do Chromium; roteiro em docs/PAINEL_ORGANIZADO.md.
+
 ## [4.13.1] — 2026-11-13
 - Isolados os callbacks de ICE local pelo requestId, AbortSignal, identidade do RTCPeerConnection e estados terminais do peer.
 - Candidatos locais coletados antes do SDP agora entram na mesma cadeia serializada dos candidatos trickle, preservando a ordem quando novos eventos chegam durante o envio inicial.
@@ -348,6 +357,7 @@ Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR
 
 ## Próximas versões
 As alterações futuras devem incluir: versão, data, recursos adicionados, correções, incompatibilidades conhecidas e evidências de testes.
+
 
 
 
