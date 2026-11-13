@@ -78,3 +78,20 @@ Estado: simulação controlada aprovada para esses limites do código. Nenhum to
 Android, iOS e desktop: processamento JavaScript de descritores e uso das APIs web existentes é possível; equivalência de identidade Xbox permanece **não demonstrada nas três plataformas**. Trocar linguagem ou embutir um navegador não resolve, por si, uma identidade validada pelo servidor. CORS, acesso ao SDK e eventuais dependências de plataforma devem ser avaliados depois de identificar o mecanismo real.
 
 Sem esse mecanismo, a decisão técnica é manter o produto em uso intacto e conduzir a pesquisa no PR #24. A automação foi alinhada para priorizar identidade de sessão; paginação fica registrada como investigação secundária.
+
+## Implementação XStreaming: claims declarados no XSTS — 2026-11-13
+
+Verificação nova sobre o snapshot 06ef1c7ee01d09cf9bb2a97fc4895da85e8488a8; a documentação de autenticação foi confrontada com a implementação.
+
+- [src/xal/index.ts:88](https://github.com/Geocld/XStreaming/blob/06ef1c7ee01d09cf9bb2a97fc4895da85e8488a8/src/xal/index.ts#L88) constrói autenticação de dispositivo com DeviceType Android.
+- [doXstsAuthorization:363](https://github.com/Geocld/XStreaming/blob/06ef1c7ee01d09cf9bb2a97fc4895da85e8488a8/src/xal/index.ts#L363) deixa DeviceToken e TitleToken comentados. O objeto ativo Properties contém SandboxId e UserTokens. [getStreamingToken:640](https://github.com/Geocld/XStreaming/blob/06ef1c7ee01d09cf9bb2a97fc4895da85e8488a8/src/xal/index.ts#L640) usa esse método para obter XSTS de GSSV e depois tokens xhome/xgpuweb.
+- [src/xal/msal.ts:183](https://github.com/Geocld/XStreaming/blob/06ef1c7ee01d09cf9bb2a97fc4895da85e8488a8/src/xal/msal.ts#L183) também monta XSTS com UserTokens. getGssvToken encadeia esse método antes do login de streaming.
+- [XalManager.java](https://github.com/Geocld/XStreaming/blob/06ef1c7ee01d09cf9bb2a97fc4895da85e8488a8/android/app/src/main/java/com/xstreaming/XalManager.java) gera par EC P-256 localmente e assina mensagens por uma bridge React Native. Não foi encontrada nesse trecho prova de origem Xbox; isso não determina os requisitos do servidor cloud.
+
+[Experimento isolado](../../experiments/console/xstreaming-identity/README.md): executa somente as declarações payload extraídas dos arquivos fixados por SHA e hash, com valores sintéticos e VM limitada. Cinco testes aprovados; inclui controle que ativa campos apenas na string local e confirma sua detecção. Sem chamadas de autenticação, emissão de tokens ou envio de campos modificados ao servidor.
+
+**Limite essencial:** ausência de DeviceToken/TitleToken explícitos na requisição não determina os claims derivados de UserTokens nem a classificação emitida pelo servidor. O resultado confirma o objeto montado pelo cliente, não reconhecimento ou ausência de reconhecimento como Xbox.
+
+Estado: simulação controlada aprovada para construção de requisição; servidor e gameplay não verificados. A pista XStreaming deve ser tratada como autenticação Android com dois caminhos de usuário examinados, não como solução pronta para identidade Xbox.
+
+Próximo passo: localizar evidência não sensível da classificação de cliente Xbox ou testar portabilidade criptográfica isolada para Web Crypto, sem confundir capacidade de assinar com identidade console. Não alterar a autenticação oficial.

@@ -9,6 +9,7 @@ Este espaço reúne pesquisa e experimentos para revisão antes de qualquer inco
 | Frente | Estado | Evidência / próximo passo |
 | --- | --- | --- |
 | Identidade de cliente Xbox — foco prioritário | Análise e testes locais; reconhecimento pelo servidor não demonstrado | [Mapa de identidade](CONSOLE_IDENTITY_MAP.md) e [quatro testes no Nimbo real](../../experiments/console/identity-boundary/README.md) |
+| XStreaming: objeto XSTS ativo | Simulação controlada aprovada; classificação desconhecida | [Experimento](../../experiments/console/xstreaming-identity/README.md): cinco testes; DeviceToken/TitleToken comentados no caminho legado e ausentes no MSAL |
 | PSBox: separação cloud / console próprio | Pesquisa | [Registro](CONSOLE_RESEARCH.md); investigar capacidades transferíveis ao navegador |
 | Fortnite Console no Better xCloud | Pesquisa | Patch de entrada de toque identificado; localizar integração real equivalente no SDK atual |
 | Orbita | Bloqueada para inspeção do código atual | Site e ajuda consultados; repositório vinculado indisponível |

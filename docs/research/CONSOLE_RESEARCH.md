@@ -120,3 +120,13 @@ Achados: o perfil histórico Xbox do Nimbo retorna off; patchPlayRequest reescre
 Experimento [identity-boundary](../../experiments/console/identity-boundary/README.md): quatro testes aprovados usando funções reais do snapshot da main em VM. Sem acesso a credenciais ou rede; sem reconhecimento Xbox ou gameplay validado. A automação foi corrigida para priorizar identidade de sessão, preservando frequência e coordenação.
 
 Próximo trabalho: verificar a cadeia real de dispositivo de referências e obter evidência não sensível do perfil/classificação de um cliente Xbox legítimo. Separar dados declarados de identidade emitida e autorização para jogo; não tentar valores/endpoints adivinhados.
+
+## XStreaming — documentação versus objeto ativo, 2026-11-13
+
+Aprofundamento do foco de identidade; main permanece em 3c122b0b728b5f2ef25ffd244a50ce7f9e7f60bd. Snapshot XStreaming continua 06ef1c7ee01d09cf9bb2a97fc4895da85e8488a8, sem atualização presumida. Busca delimitada por candidatos criados desde 14/10 e por DeviceType/DeviceToken não trouxe nova implementação de cliente Xbox confirmada; candidatos já registrados não foram apresentados como novidade.
+
+Achado novo na implementação: src/xal/index.ts declara Android no construtor de DeviceToken, mas comenta DeviceToken/TitleToken no objeto XSTS final examinado. O caminho MSAL também usa UserTokens. A cadeia GSSV foi rastreada por leitura. Claims emitidos e classificação do servidor continuam desconhecidos.
+
+[Experimento](../../experiments/console/xstreaming-identity/README.md): cinco testes aprovados sobre construção de objetos extraída de fontes reais; valores sintéticos, hashes fixados, VM e nenhuma rede. Um controle local ativa os campos para verificar sensibilidade do teste. Resultado não equivale a autenticação aceita.
+
+Fontes/linhas, licença AGPL-3.0, limites e próximos passos no [mapa de identidade](CONSOLE_IDENTITY_MAP.md#implementação-xstreaming-claims-declarados-no-xsts--2026-11-13). Nada foi alterado no userscript ou nas credenciais. Sem evidência de identidade Xbox em Android/iOS/desktop.

@@ -1,0 +1,25 @@
+{
+  "kind": "isolated-payload-construction",
+  "input": "public-pinned-source-and-synthetic-values",
+  "deviceTypeDeclared": "Android",
+  "legacy": {
+    "propertyNames": [
+      "SandboxId",
+      "UserTokens"
+    ],
+    "deviceTokenPresent": false,
+    "titleTokenPresent": false,
+    "userTokenCount": 1
+  },
+  "msal": {
+    "propertyNames": [
+      "SandboxId",
+      "UserTokens"
+    ],
+    "deviceTokenPresent": false,
+    "titleTokenPresent": false,
+    "userTokenCount": 1
+  },
+  "networkExecuted": false,
+  "serverConsoleRecognitionValidated": false
+}
