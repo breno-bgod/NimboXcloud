@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.15.1
+// @version      4.15.2
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch, cinco modos de entrada e HUD de controle virtual.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/f805067fbdab0b91e2681646e969e70be806e001/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.15.1
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/f805067fbdab0b91e2681646e969e70be806e001/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.15.2
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.15.1';
+  const VER = '4.15.2';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2232,231 +2232,68 @@ SOFTWARE.
       nativeHandleVisible:!!nxNativeStreamHandle(),integratedNxVisible:nxButtonActuallyVisible(nxLibraryButton,fullscreenHost()),
       recoveryVisible:!!pillEl&&pillEl.style.display!=='none',recoverySide:wrap?.style.right==='auto'?'left':'other'};
   }
-  function nxAlignClosedGameAccess(){
-    if(openUI||!wrap||!pillEl||pillEl.style.display==='none'||!isInGame())return;
-    wrap.style.position='fixed';wrap.style.transform='none';wrap.style.left='max(64px,env(safe-area-inset-left,64px))';wrap.style.right='auto';
-    wrap.style.top='max(12px,env(safe-area-inset-top,12px))';wrap.style.bottom='auto';wrap.style.width='44px';wrap.style.maxWidth='44px';wrap.style.alignItems='flex-start';
-    pillEl.style.width='44px';pillEl.style.minWidth='44px';pillEl.style.maxWidth='44px';pillEl.style.height='44px';pillEl.style.padding='0';pillEl.style.justifyContent='center';
+  const NX_EDGE_POSITION_KEY='nx.panel.edgePosition.v1';
+  let nxEdgeDragRatio=null;
+  function nxEdgeRatio(){
+    try{const raw=localStorage.getItem(NX_EDGE_POSITION_KEY);if(raw!==null){const v=JSON.parse(raw);if(typeof v==='number'&&Number.isFinite(v))return Math.max(0,Math.min(1,v));}}catch(_){}
+    return .32;
+  }
+  function nxEdgeTop(ratio){
+    return 12+Math.max(0,innerHeight-68)*Math.max(0,Math.min(1,ratio));
+  }
+  function nxAlignClosedGameAccess(ratio=nxEdgeDragRatio??nxEdgeRatio()){
+    if(openUI||!wrap||!pillEl||nxLoadingBusy())return;
+    wrap.style.position='fixed';wrap.style.transform='none';wrap.style.display='flex';wrap.style.height='auto';
+    wrap.style.left='env(safe-area-inset-left,0px)';wrap.style.right='auto';
+    wrap.style.top='clamp(env(safe-area-inset-top,0px),'+nxEdgeTop(ratio)+'px,max(0px,calc(100dvh - 44px - env(safe-area-inset-bottom,0px))))';
+    wrap.style.bottom='auto';wrap.style.width='44px';wrap.style.maxWidth='44px';wrap.style.alignItems='flex-start';
+    pillEl.style.display='inline-flex';pillEl.style.width='44px';pillEl.style.minWidth='44px';pillEl.style.maxWidth='44px';pillEl.style.height='44px';
+    pillEl.style.padding='0';pillEl.style.margin='0';pillEl.style.justifyContent='center';pillEl.style.borderRadius='0 14px 14px 0';
+    const palette=nxPanelPalette();pillEl.style.background=palette.background;pillEl.style.borderColor=palette.line;
+    pillEl.setAttribute('aria-expanded','false');
     if(dotEl)dotEl.style.display='none';if(pillTxt)pillTxt.style.display='none';
   }
+  function nxBindEdgeHandle(node){
+    let drag=null,suppressClick=false;
+    node.addEventListener('pointerdown',function(e){
+      if(e.button!==0||e.isPrimary===false)return;
+      drag={id:e.pointerId,y:e.clientY,ratio:nxEdgeRatio(),moved:false};suppressClick=false;
+      try{node.setPointerCapture(e.pointerId);}catch(_){}
+      e.stopPropagation();
+    });
+    node.addEventListener('pointermove',function(e){
+      if(!drag||e.pointerId!==drag.id)return;
+      const delta=e.clientY-drag.y;if(!drag.moved&&Math.abs(delta)<6)return;
+      drag.moved=true;
+      drag.current=Math.max(0,Math.min(1,drag.ratio+delta/Math.max(1,innerHeight-68)));
+      nxEdgeDragRatio=drag.current;nxAlignClosedGameAccess(drag.current);e.preventDefault();e.stopPropagation();
+    });
+    function finish(e){
+      if(!drag||e.pointerId!==drag.id)return;
+      const saved=drag;drag=null;nxEdgeDragRatio=null;suppressClick=saved.moved;
+      if(e.type==='pointerup'&&saved.moved){try{localStorage.setItem(NX_EDGE_POSITION_KEY,JSON.stringify(saved.current));}catch(_){}}
+      try{if(node.hasPointerCapture(e.pointerId))node.releasePointerCapture(e.pointerId);}catch(_){}
+      nxAlignClosedGameAccess();e.stopPropagation();
+    }
+    node.addEventListener('pointerup',finish);node.addEventListener('pointercancel',finish);node.addEventListener('lostpointercapture',finish);
+    node.addEventListener('click',function(e){
+      e.stopPropagation();
+      if(suppressClick&&e.detail!==0){suppressClick=false;e.preventDefault();return;}
+      suppressClick=false;setOpen(!openUI,true);
+    });
+  }
   function syncNXPlacement() {
-    try{
     nxViewportMode();
-    if (!wrap || !wrap.isConnected) return;
-    if (openUI) { nxNativeMenuPriority(false,null); nxDockPanel(); return; }
-    const playing = isInGame();
-    const mode = playing ? 'game' : 'library';
-    if (nxMode !== mode) {
-      nxMode = mode;
-      // A navegação do xCloud não deve cancelar uma abertura solicitada pelo jogador.
-      if (!userTouched) { openUI = false; if (cardEl) cardEl.style.display = 'none'; }
-      if (pickEl) pickEl.style.display = 'none';
-    }
-    if (playing) {
-      const nativeAnchor=findInGameToolbar();
-      const nativeExpanded=!!nativeAnchor&&toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor);
-      nxNativeMenuPriority(nativeExpanded,nativeAnchor);
-      if(nxNativeStreamHandle()&&!nativeExpanded){nxHideDetachedControls();wrap.style.display='none';return;}
-      if (nxCompactMobile()) {
-        if (micTestStream) stopMicrophoneTest();
-        const expanded = !!nativeAnchor && toolbarExpanded(nativeAnchor) && nxNativeToolbarOpen(nativeAnchor);
-        if (expanded) nxMountNativeActions(nativeAnchor, true);
-        else nxHideDetachedControls();
-
-        // Em telas móveis (retrato/paisagem), nunca confiar apenas no estado
-        // "expanded" da barra: o botão pode estar fora da viewport, recortado
-        // por um ancestral ou fora do elemento real de tela cheia.
-        const fsHost = fullscreenHost();
-        const integratedVisible = expanded && nxButtonActuallyVisible(nxLibraryButton, fsHost);
-        if (!integratedVisible) {
-          if (nxLibraryButton) nxLibraryButton.style.display = 'none';
-          if (nxKeyboardMouseButton) nxKeyboardMouseButton.style.display = 'none';
-        }
-        if (!openUI && wrap) {
-          wrap.style.display = 'flex';
-          wrap.style.position = 'fixed';
-          wrap.style.transform = 'none';
-          wrap.style.left = 'auto';
-          wrap.style.right = 'max(12px, env(safe-area-inset-right, 12px))';
-          wrap.style.top = 'auto';
-          wrap.style.bottom = 'max(12px, env(safe-area-inset-bottom, 12px))';
-          wrap.style.width = '44px';
-          wrap.style.maxWidth = '44px';
-          wrap.style.alignItems = 'flex-end';
-          if (pillEl) {
-            pillEl.style.display = integratedVisible ? 'none' : 'inline-flex';
-            pillEl.style.width = '44px';
-            pillEl.style.minWidth = '44px';
-            pillEl.style.maxWidth = '44px';
-            pillEl.style.height = '44px';
-            pillEl.style.padding = '0';
-            pillEl.style.gap = '0';
-            pillEl.style.justifyContent = 'center';
-            pillEl.style.borderRadius = '14px';
-          }
-          if (!integratedVisible) {
-            if (dotEl) dotEl.style.display = 'none';
-            if (pillTxt) pillTxt.style.display = 'none';
-          }
-        }
-        return;
-      }
-      if (micTestStream) stopMicrophoneTest(); // Nunca manter a captura de diagnóstico durante a sessão.
-      const gameAnchor = findInGameToolbar();
-      if (gameAnchor && gameAnchor.parentElement) {
-        const expanded = toolbarExpanded(gameAnchor) && nxNativeToolbarOpen(gameAnchor);
-        nxMountNativeActions(gameAnchor,expanded);
-        nxLibraryButton.title = 'Abrir NimboXcloud durante a partida';
-        // Só esconder a pílula quando o botão integrado estiver realmente renderizado.
-        // Em layout desktop/janela o shell pode ser detectado, mas estar recortado ou oculto.
-        const integratedVisible = expanded && nxButtonActuallyVisible(nxLibraryButton, fullscreenHost());
-        if (!integratedVisible) {
-          nxLibraryButton.style.display = 'none';
-          if (nxKeyboardMouseButton) nxKeyboardMouseButton.style.display = 'none';
-        }
-        wrap.style.display = 'flex';
-        if (pillEl) pillEl.style.display = openUI || integratedVisible ? 'none' : 'inline-flex';
-        if (!openUI && !integratedVisible) {
-          wrap.style.position = 'fixed';
-          wrap.style.transform = 'none';
-          wrap.style.left = 'auto';
-          wrap.style.right = '12px';
-          wrap.style.top = 'auto';
-          wrap.style.bottom = '12px';
-          wrap.style.width = '360px';
-          wrap.style.maxWidth = 'calc(100vw - 16px)';
-          wrap.style.alignItems = 'flex-end';
-        }
-        if (openUI) {
-          if (integratedVisible) positionNXCard(nxLibraryButton);
-          else { wrap.style.left='8px'; wrap.style.right='auto'; wrap.style.top='58px'; wrap.style.width=Math.min(380,innerWidth-16)+'px'; }
-        }
-      } else {
-        // Quando a barra nativa não é reconhecida, manter acesso NX independente.
-        if (nxLibraryButton) nxLibraryButton.style.display = 'none';
-        if (pillEl) pillEl.style.display = openUI ? 'none' : 'inline-flex';
-        wrap.style.display = 'flex';
-        if(!openUI){
-          wrap.style.position='fixed';wrap.style.transform='none';wrap.style.left='auto';wrap.style.right='12px';wrap.style.top='auto';wrap.style.bottom='12px';wrap.style.width='44px';wrap.style.maxWidth='44px';wrap.style.alignItems='flex-end';
-          if(pillEl){pillEl.style.width='44px';pillEl.style.minWidth='44px';pillEl.style.maxWidth='44px';pillEl.style.padding='0';}
-          if(pillTxt)pillTxt.style.display='none';if(dotEl)dotEl.style.display='none';
-        }
-        if (openUI) {
-          wrap.style.left = '8px'; wrap.style.right = 'auto'; wrap.style.top = '58px';
-          wrap.style.width = Math.min(380, innerWidth - 16) + 'px';
-          wrap.style.alignItems = 'stretch';
-          if (cardEl) cardEl.style.maxHeight = Math.max(160, innerHeight - 70) + 'px';
-        }
-      }
-      return;
-    }
-    nxNativeMenuPriority(false,null);
-    const placement = findProfileAnchor();
-    const anchor = placement && placement.node;
-    // Em Fullscreen API, somente os descendentes do elemento fullscreen são renderizados.
-    // O header do xCloud pode continuar no body; nesse caso o botão integrado fica invisível.
-    // Use a pílula NX, que já está montada dentro do fullscreenHost, como acesso confiável.
-    const fsHost = fullscreenHost();
-    const anchorInsideFullscreen = !!(fsHost && anchor && (fsHost === anchor || fsHost.contains(anchor)));
-    if (fsHost && anchor && !anchorInsideFullscreen) {
-      if (nxLibraryButton) nxLibraryButton.style.display = 'none';
-      if (nxKeyboardMouseButton) nxKeyboardMouseButton.style.display = 'none';
-      wrap.style.display = 'flex';
-      wrap.style.position = 'fixed';
-      wrap.style.transform = 'none';
-      wrap.style.left = 'auto';
-      wrap.style.right = 'max(12px, env(safe-area-inset-right, 12px))';
-      wrap.style.top = 'max(12px, env(safe-area-inset-top, 12px))';
-      wrap.style.bottom = 'auto';
-      wrap.style.width = '44px';
-      wrap.style.maxWidth = '44px';
-      wrap.style.alignItems = 'flex-end';
-      if (pillEl) {
-        pillEl.style.display = 'inline-flex';
-        pillEl.style.width = '44px';
-        pillEl.style.height = '44px';
-        pillEl.style.padding = '0';
-        pillEl.style.gap = '0';
-        pillEl.style.justifyContent = 'center';
-        pillEl.style.borderRadius = '14px';
-      }
-      if (dotEl) dotEl.style.display = 'none';
-      if (pillTxt) pillTxt.style.display = 'none';
-      return;
-    }
-    if (anchor && anchor.parentElement) {
-      if (!nxLibraryButton) nxLibraryButton = buildLibraryButton();
-      if (placement.position === 'after') {
-        if (nxLibraryButton.parentElement !== anchor.parentElement || nxLibraryButton.previousElementSibling !== anchor) anchor.after(nxLibraryButton);
-      } else {
-        if (nxLibraryButton.parentElement !== anchor.parentElement || nxLibraryButton.nextElementSibling !== anchor) anchor.before(nxLibraryButton);
-      }
-      nxLibraryButton.style.display = 'inline-flex';
-      // Biblioteca: somente NX. Teclado/mouse e um controle exclusivo da partida.
-      if(nxKeyboardMouseButton)nxKeyboardMouseButton.style.display='none';
-      nxLibraryAnchor = anchor;
-      wrap.style.display = 'flex';
-      wrap.style.position = 'fixed';
-      wrap.style.transform = 'none';
-      wrap.style.left = 'auto';
-      wrap.style.right = '12px';
-      const ar = nxLibraryButton.getBoundingClientRect();
-      wrap.style.top = Math.min(innerHeight - 48, Math.max(44, ar.bottom + 8)) + 'px';
-      wrap.style.alignItems = 'flex-end';
-      // Um único acesso: o botão da barra substitui a pílula flutuante.
-      // Se o botão integrado estiver recortado/invisível, preservar o fallback.
-      const buttonRect = nxLibraryButton.getBoundingClientRect();
-      let buttonVisible = buttonRect.width >= 18 && buttonRect.height >= 18 &&
-        buttonRect.top >= 0 && buttonRect.bottom <= innerHeight &&
-        buttonRect.left >= 0 && buttonRect.right <= innerWidth;
-      // A geometria do botão pode existir mesmo quando um ancestral o oculta
-      // (display/visibility/opacity) durante fullscreen, rotação ou transição do shell.
-      for (let n = nxLibraryButton; buttonVisible && n && n !== document.documentElement; n = n.parentElement) {
-        const st = getComputedStyle(n);
-        if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) < 0.15) buttonVisible = false;
-      }
-      if (fsHost && !fsHost.contains(nxLibraryButton)) buttonVisible = false;
-      if (pillEl) {
-        pillEl.style.display = buttonVisible ? 'none' : 'inline-flex';
-        if (!buttonVisible) {
-          pillEl.style.width = '44px';
-          pillEl.style.height = '44px';
-          pillEl.style.padding = '0';
-          pillEl.style.gap = '0';
-          pillEl.style.justifyContent = 'center';
-          pillEl.style.borderRadius = '14px';
-          if (dotEl) dotEl.style.display = 'none';
-          if (pillTxt) pillTxt.style.display = 'none';
-          wrap.style.width = '44px';
-          wrap.style.maxWidth = '44px';
-          wrap.style.right = 'max(12px, env(safe-area-inset-right, 12px))';
-          wrap.style.top = 'max(12px, env(safe-area-inset-top, 12px))';
-        } else {
-          pillEl.style.width = '';
-          pillEl.style.height = '';
-          pillEl.style.padding = '';
-          pillEl.style.gap = '';
-          pillEl.style.justifyContent = '';
-          pillEl.style.borderRadius = '';
-          if (dotEl) dotEl.style.display = '';
-          if (pillTxt) pillTxt.style.display = '';
-          wrap.style.width = '360px';
-          wrap.style.maxWidth = 'calc(100vw - 16px)';
-        }
-      }
-    } else {
-      // Barra do site ainda não carregou: fallback temporário com a pílula.
-      nxHideDetachedControls();
-      wrap.style.display = 'flex';
-      wrap.style.position = 'fixed';
-      wrap.style.transform = 'none';
-      wrap.style.left = 'auto';
-      wrap.style.right = '12px';
-      wrap.style.top = '12px';
-      wrap.style.alignItems = 'flex-end';
-      if (pillEl) pillEl.style.display = 'inline-flex';
-    }
-    }finally{nxAlignClosedGameAccess();}
+    if(!wrap||!wrap.isConnected)return;
+    // O acesso NX nunca depende da presença/expansão da barra nativa.
+    if(nxLibraryButton)nxLibraryButton.remove();
+    if(nxKeyboardMouseButton)nxKeyboardMouseButton.remove();
+    const anchor=isInGame()?findInGameToolbar():null;
+    const expanded=!!anchor&&toolbarExpanded(anchor)&&nxNativeToolbarOpen(anchor);
+    nxNativeMenuPriority(expanded,anchor);
+    if(nxLoadingBusy()){wrap.style.display='none';return;}
+    if(openUI){nxDockPanel();return;}
+    nxAlignClosedGameAccess();
   }
 
   // ---------- 13b. Painel profissional: abas por categoria ----------
@@ -5682,11 +5519,12 @@ SOFTWARE.
 
       const g3 = group('Acessórios');
       const micButtons = mk('div', 'display:flex;gap:6px;flex-wrap:wrap');
-      const micToggle = actBtn(getPref(LS_MIC_ENABLED, '0') === '1' ? 'Microfone: ativado' : 'Microfone: desativado', function () {
+      const micToggle = actBtn(getPref(LS_MIC_ENABLED, '0') === '1' ? 'Ajustes NX de microfone: ligados' : 'Ajustes NX de microfone: desligados', function () {
         const enabled = getPref(LS_MIC_ENABLED, '0') !== '1';
         setPref(LS_MIC_ENABLED, enabled ? '1' : '0');
+        applyVoiceMute();
         if (!enabled) stopMicrophoneTest();
-        S.micStatus = enabled ? 'Preferência ativa. Teste a entrada; a voz no jogo depende do xCloud.' : 'Microfone desativado nas preferências NX.';
+        S.micStatus = enabled ? 'Preferência ativa. Teste a entrada; a voz no jogo depende do xCloud.' : 'Ajustes NX desligados. O microfone continua sob controle do xCloud e do navegador.';
         renderBody(); update();
       }, 'ghost');
       micButtons.appendChild(micToggle);
@@ -6136,7 +5974,7 @@ SOFTWARE.
     if (nxShellEnabled) wrap.classList.add('nx-console-shell');
 
     // Pílula flutuante (usada só durante a partida): ícone + pontinho + perda de pacotes
-    pillEl = mk('div', [
+    pillEl = mk('button', [
       'pointer-events:auto', 'display:inline-flex', 'align-items:center', 'gap:6px',
       'padding:3px 10px 3px 7px', 'height:28px', 'box-sizing:border-box', 'border-radius:14px',
       'background:rgba(0,0,0,.38)', 'border:1px solid rgba(255,255,255,.14)', 'cursor:pointer',
@@ -6145,7 +5983,9 @@ SOFTWARE.
     ].join(';'));
     dotEl = mk('span', 'width:7px;height:7px;border-radius:50%;background:#8b949e;flex:0 0 auto');
     pillTxt = mk('span', 'color:#e6edf3;font-weight:600;font-size:11px', '');
-    pillEl.title = 'NimboXcloud — toque para abrir o painel';
+    pillEl.type='button';pillEl.setAttribute('aria-label','Abrir painel NX; arraste para ajustar a altura');
+    pillEl.style.touchAction='none';pillEl.style.flexShrink='0';
+    pillEl.title = 'Abrir painel NX · arraste para ajustar a altura';
     const brandIcon = mk('img', 'width:20px;height:20px;display:block;flex:0 0 auto;object-fit:contain');
     brandIcon.src = BRAND_ICON;
     brandIcon.alt = 'NimboXcloud';
@@ -6154,7 +5994,7 @@ SOFTWARE.
     pillEl.appendChild(dotEl);
     pillEl.appendChild(pillTxt);
     wrap.appendChild(pillEl);
-    pillEl.addEventListener('click', function (e) { e.stopPropagation(); setOpen(!openUI, true); });
+    nxBindEdgeHandle(pillEl);
 
     // Cartão do painel
     cardEl = mk('div', [
@@ -6270,6 +6110,8 @@ SOFTWARE.
     }
     if(nxLoadingEl.parentNode!==host)host.appendChild(nxLoadingEl);
     nxLoadingEl.hidden=false;
+    nxLoadingEl.style.left='env(safe-area-inset-left,0px)';nxLoadingEl.style.right='auto';
+    nxLoadingEl.style.top='max(12px,env(safe-area-inset-top,0px))';nxLoadingEl.style.maxHeight='calc(100dvh - 24px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px))';nxLoadingEl.style.overflowY='auto';
     const palette=nxPanelPalette();
     nxLoadingEl.style.background=palette.background;nxLoadingEl.style.color=palette.text;nxLoadingEl.style.borderColor=palette.line;nxLoadingEl.style.fontFamily=UI_FONT;nxLoadingEl.style.borderRadius='12px';
     nxLoadingEl.style.backdropFilter='blur(14px)';nxLoadingEl.style.webkitBackdropFilter='blur(14px)';
@@ -6600,6 +6442,7 @@ SOFTWARE.
       }
     }
     if (wrap) wrap.style.display = nxLoadingBusy()?'none':'flex';
+    if(!openUI)syncNXPlacement();
   }
 
   const NX_PAD_BIND_KEY='nx.panel.padBinding.v1';
@@ -6709,17 +6552,21 @@ SOFTWARE.
     nxReleasePhysicalPointer(); toast('O navegador recusou a captura do mouse.');
   }, true);
   document.addEventListener('visibilitychange', function() { if (document.hidden) nxReleasePhysicalPointer(); });
+  function nxPointerEventCode(e) {
+    if (e.code && e.code !== 'Unidentified') return e.code;
+    return e.key === 'F8' || e.key === 'F2' ? e.key : '';
+  }
   let nxPointerHeldKey = '';
   window.addEventListener('keydown', function(e) {
-    if (e.isTrusted && e.repeat && e.code === nxPointerHeldKey) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+    if (nxPointerHeldKey && e.isTrusted && e.repeat && nxPointerEventCode(e) === nxPointerHeldKey) { e.preventDefault(); e.stopImmediatePropagation(); return; }
     const key = nxPointerShortcut();
-    if (!e.isTrusted || e.repeat || e.code !== key || key === 'off' || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey || openUI || nxCaptureKeys || nxPointerConflict(key)) { nxForwardPhysical(e); return; }
+    if (!e.isTrusted || e.repeat || nxPointerEventCode(e) !== key || key === 'off' || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey || openUI || nxCaptureKeys || nxPointerConflict(key)) { nxForwardPhysical(e); return; }
     if (e.target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || '')) return;
     if (nxSelectedInputMode() !== 'keyboard-mouse') return;
-    if (nxTogglePointer()) { nxPointerHeldKey = e.code; e.preventDefault(); e.stopImmediatePropagation(); }
+    if (nxTogglePointer()) { nxPointerHeldKey = nxPointerEventCode(e); e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
   window.addEventListener('keyup', function(e) {
-    if (!e.isTrusted || e.code !== nxPointerHeldKey) { nxForwardPhysical(e); return; }
+    if (!nxPointerHeldKey || !e.isTrusted || nxPointerEventCode(e) !== nxPointerHeldKey) { nxForwardPhysical(e); return; }
     nxPointerHeldKey = ''; e.preventDefault(); e.stopImmediatePropagation();
   }, true);
   window.addEventListener('blur', function() { nxPointerHeldKey = ''; nxReleasePhysicalPointer(); });
@@ -7875,11 +7722,29 @@ SOFTWARE.
   }
   // Respeita o pedido de áudio feito pelo próprio xCloud. Não inicia chat nem cria conexão.
   const nxVoiceTracks = new Set();
+  const nxVoiceTrackState = new WeakMap();
   let nxNativeGetUserMedia = null;
   let nxPttHeld = false;
   function applyVoiceMute() {
+    const enabled = getPref(LS_MIC_ENABLED, '0') === '1';
     const allowed = getPref(LS_MIC_MUTE, '0') !== '1' && (getPref(LS_MIC_PTT, '0') !== '1' || nxPttHeld);
-    nxVoiceTracks.forEach(function (track) { if (track.readyState === 'live') track.enabled = allowed; });
+    nxVoiceTracks.forEach(function (track) {
+      const state = nxVoiceTrackState.get(track);
+      if (!enabled) {
+        // Return only the state owned by NX; do not stop the site's track or
+        // overwrite a later change made by the native client.
+        if (state && track.readyState === 'live' && track.enabled === state.applied) track.enabled = state.original;
+        nxVoiceTracks.delete(track); nxVoiceTrackState.delete(track);
+        return;
+      }
+      if (track.readyState !== 'live') return;
+      const own = state || {original:track.enabled,applied:track.enabled};
+      if (state && track.enabled !== state.applied) {
+        nxVoiceTracks.delete(track); nxVoiceTrackState.delete(track); return;
+      }
+      own.applied = allowed && own.original;
+      track.enabled = own.applied; nxVoiceTrackState.set(track, own);
+    });
   }
   document.addEventListener('keydown', function (e) {
     if (e.code !== 'KeyV' || e.repeat || e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
@@ -7906,7 +7771,7 @@ SOFTWARE.
       const requested = Object.assign({}, constraints, { audio: audio });
       return original(requested).then(function (stream) {
         const track = stream.getAudioTracks()[0];
-        if (track) { nxVoiceTracks.add(track); track.addEventListener('ended', function () { nxVoiceTracks.delete(track); }); applyVoiceMute(); }
+        if (track) { nxVoiceTracks.add(track); track.addEventListener('ended', function () { nxVoiceTracks.delete(track); nxVoiceTrackState.delete(track); }); applyVoiceMute(); }
         const settings = track && typeof track.getSettings === 'function' ? track.getSettings() : {};
         if (selected && settings.deviceId && settings.deviceId !== selected) {
           S.micStatus = 'O navegador escolheu outro microfone; dispositivo solicitado indisponível.';
@@ -8587,13 +8452,18 @@ void main(){
   function activeStreamAudio() {
     const media=Array.from(document.querySelectorAll('video,audio'));
     const candidates=media.filter(function(v){
+      if(v.isConnected===false)return false;
       const stream=v.srcObject;
       if(stream && typeof stream.getAudioTracks==='function')return stream.getAudioTracks().some(function(t){return t.readyState==='live';});
       return !!(v.currentSrc && v.currentSrc.startsWith('blob:'));
     });
     const playable=candidates.filter(function(v){return !v.paused && !v.ended && v.readyState>=2;});
-    return playable.find(function(v){return v.srcObject && v.srcObject.getAudioTracks && v.srcObject.getAudioTracks().length;})
-      || playable[0] || candidates[0] || null;
+    // The host can attach the same stream to a muted video and a separate
+    // audible audio element. Processing the first DOM match misses the sound.
+    const audible=playable.filter(function(v){return !v.muted && (typeof v.volume!=='number'||v.volume>0);});
+    const preferred=audible.length?audible:playable;
+    return preferred.find(function(v){return v.srcObject && v.srcObject.getAudioTracks && v.srcObject.getAudioTracks().length;})
+      || preferred[0] || candidates[0] || null;
   }
   function activeStreamVideo() {
     const videos=Array.from(document.querySelectorAll('video')).filter(function(video){
@@ -8659,7 +8529,7 @@ void main(){
           warning ? 'Diálogo de incompatibilidade exibido' : 'Diálogo ausente');
       }
     }, 1200);
-    document.addEventListener('keydown',function(e){
+    window.addEventListener('keydown',function(e){
       if(!e.isTrusted||e.repeat)return;
       const target=e.target;
       if(!nxCaptureKeys&&target&&(target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))return;
@@ -8674,10 +8544,10 @@ void main(){
         }
         return;
       }
-      const bind=nxKeyBinding();const matched=!!bind&&bind.every(function(code){return nxKeysHeld.has(code);});
+      const bind=nxKeyBinding();const matched=bind?bind.every(function(code){return nxKeysHeld.has(code);}):!!(e.ctrlKey&&e.shiftKey&&!e.altKey&&!e.metaKey&&e.code===getPref(LS_NX_SHORTCUT,'KeyH'));
       if(matched&&!nxKeyboardComboActive){nxKeyboardComboActive=true;e.preventDefault();e.stopImmediatePropagation();setOpen(!openUI,true);}
     },true);
-    document.addEventListener('keyup',function(e){
+    window.addEventListener('keyup',function(e){
       nxKeysHeld.delete(e.code);
       if(nxCaptureKeys){
         e.preventDefault();e.stopImmediatePropagation();
@@ -8781,6 +8651,7 @@ void main(){
     boot();
   }
 })();
+
 
 
 

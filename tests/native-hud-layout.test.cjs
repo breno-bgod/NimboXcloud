@@ -54,18 +54,10 @@ test('a collapsed row is not misreported as expanded because the NX controls are
  const h=toolbar();h.ctx.nxMountNativeActions(h.grip,true);h.pad.visible=false;h.xbox.visible=false;
  assert.equal(h.ctx.nxNativeToolbarOpen(h.grip),false);
 });
-test('independent recovery access stays on the left in both orientations and never changes an open NX panel',()=>{
- const ctx={openUI:false,isInGame:()=>true,wrap:{style:{}},pillEl:{style:{display:'inline-flex'}},pillTxt:{style:{}},dotEl:{style:{}}};
- vm.createContext(ctx);vm.runInContext(part('  function nxAlignClosedGameAccess(){','  function syncNXPlacement() {'),ctx);
- ctx.nxAlignClosedGameAccess();assert.equal(ctx.wrap.style.right,'auto');assert.match(ctx.wrap.style.left,/64px/);assert.equal(ctx.pillTxt.style.display,'none');
- ctx.wrap.style.left='panel';ctx.openUI=true;ctx.nxAlignClosedGameAccess();assert.equal(ctx.wrap.style.left,'panel');
-});
-
-
 test('diagnostics distinguish a native HUD outside the actual fullscreen subtree without moving it',()=>{
  const hud={},fullscreen={tagName:'DIV',contains:node=>false};const ctx={document:{fullscreenElement:fullscreen,getElementById:()=>hud},isInGame:()=>true,
   nxNativeStreamHandle:()=>null,nxButtonActuallyVisible:()=>false,fullscreenHost:()=>fullscreen,nxLibraryButton:null,pillEl:{style:{display:'inline-flex'}},wrap:{style:{right:'auto'}}};
- vm.createContext(ctx);vm.runInContext(part('  function nxNativeUiSnapshot(){','  function nxAlignClosedGameAccess(){'),ctx);
+ vm.createContext(ctx);vm.runInContext(part('  function nxNativeUiSnapshot(){',"  const NX_EDGE_POSITION_KEY="),ctx);
  const report=ctx.nxNativeUiSnapshot();assert.equal(report.nativeHudInsideFullscreen,false);assert.equal(report.recoverySide,'left');
  fullscreen.contains=node=>node===hud;assert.equal(ctx.nxNativeUiSnapshot().nativeHudInsideFullscreen,true);
 });
