@@ -156,3 +156,17 @@ Achado mais direto: [Green-NX #92](https://github.com/rmrf404/green-nx/issues/92
 O autor do Better xCloud também discute a hipótese no post público 961 do Telegram, explicitamente como especulação. Uma pista acadêmica histórica menciona xgpuconsole, mas não constitui contrato atual nem autorização para mudar offering.
 
 Estado: pesquisa com inspeção de código/documentação; sem instalação ou testes de execução. Main e experimentos existentes intactos. Prioridade sugerida: conferir a ponte JS do Tizen e acompanhar a issue Green-NX, mantendo identidade declarada e classificação autenticada separadas.
+
+## Bootstrap Tizen executado isoladamente — 13/11/2026
+
+Snapshot externo 24f0861a3fe2114a7d80f378a7724606399af392 permanece igual. Green-NX #92 segue aberta sem comentários; a busca delimitada de novos repositórios retornou candidatos já registrados. O trabalho desta execução foi testar a lacuna da ponte HTML/JS, sem repetir a triagem.
+
+[Experimento tizen-bootstrap](../../experiments/console/tizen-bootstrap/README.md) avalia as fontes reais config.js e streaming.js em VM com XC.Http.post substituído por resposta sintética. Cinco testes aprovados e sintaxe dos dois scripts verificada. Os snapshots são fixados por SHA/hash e externos ao repositório; nenhuma credencial real é usada.
+
+Achado: offering xgpuweb, clientAppType browser, SDK web. Pedido osName android conserva descritor Windows. Isso confirma campos declarados diferentes, não reconhecimento Xbox nem falha do serviço. O config.xml declara permissões externas do widget; documentação Samsung confirma a política de rede própria. Essas permissões não são concedidas a uma página comum no Edge.
+
+O método original rejeitou fixtures HTTP 403 e HTTP 200 sem sessionPath, preservando a distinção entre resposta e sessão criada. Mesmo a fixture aceita não comprova mídia/identidade. Resultado preservado.
+
+Estado: simulação controlada aprovada para montagem de requisição. Nenhum login, endpoint real, CORS de navegador ou gameplay testado. Próximo passo: usar observador real com jogo autorizado e obter comparação não sensível de cliente Xbox legítimo; não portar o widget ou copiar descritor por suposição.
+
+LICENSE do projeto Tizen foi lido neste SHA e confirmado MIT; a classificação anterior NOASSERTION vinha de metadados da API e foi corrigida no relatório de triagem.

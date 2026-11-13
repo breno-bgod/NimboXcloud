@@ -12,6 +12,7 @@ Este espaço reúne pesquisa e experimentos para revisão antes de qualquer inco
 | XStreaming: objeto XSTS ativo | Simulação controlada aprovada; classificação desconhecida | [Experimento](../../experiments/console/xstreaming-identity/README.md): cinco testes; DeviceToken/TitleToken comentados no caminho legado e ausentes no MSAL |
 | Observação interativa no navegador | Onze testes locais aprovados; sessão real pendente | [Laboratório opt-in](../../experiments/console/session-observer/README.md): pedidos/descritor/mídia, sem promover identidade Xbox |
 | Projetos criados nas últimas duas semanas | Pesquisa / código triado | [Relatório 30/10–13/11](RECENT_REPOSITORIES_2026-11-13.md); Green-NX #92 coincide com objetivo, ainda sem solução demonstrada |
+| Ponte Tizen HTML/JS | Cinco testes locais aprovados; sem rede real | [Bootstrap isolado](../../experiments/console/tizen-bootstrap/README.md): browser/web, perfil Android com descritor Windows; permissões de widget não validam CORS no Edge |
 | PSBox: separação cloud / console próprio | Pesquisa | [Registro](CONSOLE_RESEARCH.md); investigar capacidades transferíveis ao navegador |
 | Fortnite Console no Better xCloud | Pesquisa | Patch de entrada de toque identificado; localizar integração real equivalente no SDK atual |
 | Orbita | Bloqueada para inspeção do código atual | Site e ajuda consultados; repositório vinculado indisponível |

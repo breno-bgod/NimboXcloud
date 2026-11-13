@@ -101,3 +101,11 @@ Próximo passo: localizar evidência não sensível da classificação de client
 Foi adicionado um [laboratório passivo opt-in](../../experiments/console/session-observer/README.md), separado do produto oficial, para acompanhar uma sessão iniciada manualmente no site. Ele não cria login/sessão nem implementa identidade Xbox. O relatório distingue declaração de descritor, status HTTP, observação de vídeo e confirmação manual de áudio/comandos, mantendo classificação do servidor não verificada.
 
 Onze testes locais aprovados; navegador de teste bloqueado na inicialização, sem sessão real disponível. Use o roteiro para obter uma referência web não sensível antes de qualquer alteração de identidade. O resultado esperado inicial é observabilidade, não reconhecimento como console.
+
+## Ponte HTML/JS Tizen: montagem verificada
+
+[Experimento](../../experiments/console/tizen-bootstrap/README.md), fonte 24f0861a3fe2114a7d80f378a7724606399af392, LICENSE MIT confirmado. Cinco testes locais aprovados sobre construtor real com transporte simulado.
+
+A ponte usa interface própria, mas declara browser/web/xgpuweb. O perfil de mídia android não muda o descritor Windows fixo. Isso reforça a separação entre perfil pedido, descritor e classificação emitida. Nenhuma identidade Xbox foi validada.
+
+O manifesto de widget permite declarar rede externa; tal declaração não equivale a autorização CORS para o Edge Android/iOS/desktop. A viabilidade de um cliente independente nessas plataformas permanece condicionada ao fluxo de autenticação/SDK e permissões reais, sem necessidade presumida de reescrita nativa.
