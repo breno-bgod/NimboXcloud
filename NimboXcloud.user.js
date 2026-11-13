@@ -1153,15 +1153,15 @@ SOFTWARE.
 
   // Preparação observada: somente respostas existentes, sem novas requisições.
   const NX_LOADING_DETAILS = 'nx.loading.details.v1';
-  const nxLaunch = {epoch:0,phase:'idle',stage:'',startedAt:0,lastAt:0,route:'',launched:false,wait:null,waitAt:0,server:'',video:null,source:null,track:null,wasReady:false};
+  const nxLaunch = {epoch:0,phase:'idle',stage:'',startedAt:0,lastAt:0,route:'',launched:false,title:'',origin:'',pendingWait:null,queueEnded:false,wait:null,waitAt:0,server:'',video:null,source:null,track:null,wasReady:false};
   function nxLoadingBusy(){return nxLaunch.phase==='loading';}
   function nxLaunchFinish(phase,stage){nxLaunch.phase=phase;nxLaunch.stage=stage;nxLaunch.epoch++;}
   function nxLaunchVideoReady(video){return !!(video&&video.readyState>=2&&video.videoWidth>0&&video.videoHeight>0&&!video.paused);}
   function nxLaunchBegin(){
     const now=Date.now(),video=typeof activeStreamVideo==='function'?activeStreamVideo():null;
-    const recent=nxLaunch.route===location.pathname&&now-nxLaunch.waitAt<30000?nxLaunch.wait:null;
+    const pending=!nxLaunch.launched&&nxLaunch.route===location.pathname?nxLaunch.pendingWait:null;
     Object.assign(nxLaunch,{epoch:nxLaunch.epoch+1,phase:'loading',stage:'Preparando a partida',startedAt:now,lastAt:now,
-      route:location.pathname,launched:false,wait:recent,waitAt:recent===null?0:nxLaunch.waitAt,server:'',video:video,source:video?.srcObject,
+      route:location.pathname,launched:false,title:'',origin:'',pendingWait:pending,queueEnded:false,wait:null,waitAt:0,server:'',video:video,source:video?.srcObject,
       track:video?.srcObject?.getVideoTracks?.()[0],wasReady:nxLaunchVideoReady(video)});
     return nxLaunch.epoch;
   }
@@ -1176,18 +1176,40 @@ SOFTWARE.
   }
   function nxLaunchWait(json){
     if(!json||typeof json!=='object')return null;
-    for(const key of ['estimatedTotalWaitTimeInSeconds','estimatedAllocationTimeInSeconds']){
-      if(typeof json[key]==='number'&&Number.isFinite(json[key])&&json[key]>=0&&json[key]<=86400)return json[key];
-    }
-    return null;
+    const valid=function(value){return typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=86400?value:null;};
+    const allocation=valid(json.estimatedAllocationTimeInSeconds),total=valid(json.estimatedTotalWaitTimeInSeconds);
+    // Better xCloud gates its queue overlay on allocation > 0. A total alone
+    // must not override an explicit report that no allocation wait remains.
+    if(allocation===0)return 0;
+    if(allocation!==null)return total!==null&&total>=allocation?total:allocation;
+    return total;
   }
-  function nxObserveLaunchFetch(url,method,promise){
+  function nxLaunchApplyWait(candidate){
+    if(!candidate||nxLaunch.queueEnded||!nxLaunch.title||candidate.title!==nxLaunch.title||candidate.origin!==nxLaunch.origin||Date.now()-candidate.at>60000)return false;
+    nxLaunch.wait=candidate.wait;nxLaunch.waitAt=candidate.at;
+    nxLaunch.stage=candidate.wait>0?'Aguardando vaga':'Preparando a transmissão';return true;
+  }
+  function nxLaunchReadTitle(input,init,epoch){
+    const apply=function(json){
+      if(nxLaunch.epoch!==epoch||!nxLoadingBusy())return;
+      const title=json?.titleId;
+      if(typeof title!=='string'||!/^[a-z0-9._:-]{1,160}$/i.test(title))return;
+      nxLaunch.title=title;nxLaunchApplyWait(nxLaunch.pendingWait);
+    };
+    try{
+      if(typeof init?.body==='string')apply(JSON.parse(init.body));
+      else if(!(init&&Object.prototype.hasOwnProperty.call(init,'body'))&&typeof Request!=='undefined'&&input instanceof Request)input.clone().json().then(apply).catch(function(){});
+    }catch(_){}
+  }
+  function nxLaunchQueueEnded(){nxLaunch.queueEnded=true;nxLaunch.wait=null;nxLaunch.pendingWait=null;nxLaunch.stage='Preparando a transmissão';}
+  function nxObserveLaunchFetch(url,method,promise,input,init){
     const kind=nxLaunchKind(url,method);
     if(!kind)return promise;
     if(kind==='cancel'){if(nxLoadingBusy())nxLaunchFinish('cancelled','Espera cancelada');return promise;}
     if(kind==='play'){
       if(!(nxLoadingBusy()&&!nxLaunch.launched&&nxLaunch.route===location.pathname))nxLaunchBegin();
-      nxLaunch.launched=true;if(typeof nxLoadingTick==='function')nxLoadingTick();
+      nxLaunch.launched=true;nxLaunch.origin=url.origin;nxLaunchReadTitle(input,init,nxLaunch.epoch);
+      if(typeof nxLoadingTick==='function')nxLoadingTick();
     }
     if(kind==='wait'&&nxLaunch.phase==='idle'&&/\/launch\//i.test(location.pathname))nxLaunchBegin();
     const epoch=nxLaunch.epoch;
@@ -1200,14 +1222,21 @@ SOFTWARE.
         nxLaunch.server=typeof S!=='undefined'?S.serverActual||'':'';
       }
       if(kind==='wait'&&!response.ok&&!nxLaunch.launched){nxLaunchFinish('failed','Não foi possível consultar a espera');return response;}
-      if(kind==='connect'&&response.ok)nxLaunch.stage='Conectando à transmissão';
+      if(kind==='connect'&&response.ok){
+        if(/\/(?:sdp|connect)\/?$/i.test(url.pathname))nxLaunchQueueEnded();
+        else nxLaunch.stage='Conectando à transmissão';
+      }
       if((kind==='wait'||kind==='state')&&response.ok){
         // Clone is read asynchronously. The original response and native timing are preserved.
         try{response.clone().json().then(function(json){
           if(!current())return;
           if(kind==='wait'){
             const wait=nxLaunchWait(json);
-            if(wait!==null){nxLaunch.wait=wait;nxLaunch.waitAt=Date.now();nxLaunch.stage=wait>0?'Aguardando vaga':'Preparando a transmissão';}
+            if(wait!==null&&!nxLaunch.queueEnded){
+              let title='';try{title=decodeURIComponent(url.pathname.split('/').filter(Boolean).pop());}catch(_){}
+              nxLaunch.pendingWait={title:title,origin:url.origin,at:Date.now(),wait:wait};nxLaunchApplyWait(nxLaunch.pendingWait);
+            }
+          }else if(json?.state==='Provisioned'){nxLaunchQueueEnded();
           }else if(['Failed','Error','Cancelled','Canceled','Terminated'].includes(json?.state)){
             nxLaunchFinish('failed','A preparação da sessão foi encerrada');
           }
@@ -1230,9 +1259,10 @@ SOFTWARE.
     if(nxLoadingBusy()&&now>deadline)nxLaunchFinish('stalled','Sem atualização do carregamento; configurações liberadas');
   }
   function nxLaunchEstimate(){
-    if(nxLaunch.wait===null)return 'Estimativa indisponível';
+    if(nxLaunch.queueEnded)return 'Fila encerrada; preparando o vídeo';
+    if(nxLaunch.wait===null)return 'Previsão do serviço indisponível';
     const value=nxLaunch.wait;
-    const text=value===0?'Sem espera estimada de fila':value<60?'Menos de 1 min':'Cerca de '+Math.ceil(value/60)+' min';
+    const text='Previsão do serviço: '+(value===0?'sem espera de fila':value<60?'menos de 1 min':'cerca de '+Math.ceil(value/60)+' min')+' (pode variar)';
     return Date.now()>nxLaunch.waitAt+value*1000&&value>0?'Previsão ultrapassada; aguardando atualização':text;
   }
   // Fim preparação observada.
@@ -1278,12 +1308,14 @@ SOFTWARE.
       const isPlay = !!(u && GSSV_RE.test(u.host) && /\/v5\/sessions\/cloud\/play$/i.test(u.pathname));
       if (isPlay) nxObserveCloudServer(u);
 
+      const offeringMethod = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+      let observedInput=input;
+      try{if(typeof nxLaunchKind==='function'&&nxLaunchKind(u,offeringMethod)==='play'&&input instanceof Request)observedInput=input.clone();}catch(_){observedInput=null;}
       const go = isPlay
         ? patchPlayRequest(input, init).then(function (x) { return nativeFetch.call(this, x.input, x.init); }.bind(this))
         : nativeFetch.call(this, input, init);
 
-      const offeringMethod = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
-      let p = nxObserveOffering(u, offeringMethod, typeof nxObserveLaunchFetch==='function'?nxObserveLaunchFetch(u,offeringMethod,go):go);
+      let p = nxObserveOffering(u, offeringMethod, typeof nxObserveLaunchFetch==='function'?nxObserveLaunchFetch(u,offeringMethod,go,observedInput,init):go);
       // Monitoramento somente de status e etapa da sessão; nunca armazena headers ou corpo.
       if (u && /xboxservices\.com$/i.test(u.hostname) &&
           /\/sessions\/cloud\/(?:play|[^/]+\/(?:state|connect|configuration|sdp|ice|keepalive))\/?$/i.test(u.pathname)) {
@@ -2020,11 +2052,16 @@ SOFTWARE.
 
   // Encontra a faixa compacta de controles do xCloud no canto superior esquerdo.
   // Não altera botões nativos: só acrescenta o acesso NX quando a estrutura é reconhecível.
+  function nxNativeStreamHandle(){
+    const hud=document.getElementById('StreamHud');
+    const handle=hud?.querySelector('button[class*="GripHandle-module__container"]');
+    return nxButtonActuallyVisible(handle,fullscreenHost())?handle:null;
+  }
   function findInGameToolbar() {
     // Detectar grupos nativos sem depender de coordenadas fixas no viewport.
     const candidates=[];
     for(const node of document.querySelectorAll('button,[role="button"]')){
-      if(node.id==='nimboxcloud-library-button'||node.id==='nimboxcloud-native-keyboard-mouse'||node.closest('#__xcu_panel__')||node.closest('#nimbo-touch-root'))continue;
+      if(node.id==='nimboxcloud-library-button'||node.id==='nimboxcloud-native-keyboard-mouse'||node.closest('#__xcu_panel__')||node.closest('#nimbo-touch-root,#nimbo-touch-panel,#nx-loading-overlay')||node.id==='nimbo-touch-nx-access')continue;
       const r=node.getBoundingClientRect();
       if(r.width<20||r.width>110||r.height<20||r.height>110||r.top<0||r.top>Math.min(155,innerHeight*.30)||r.left<0||r.right>innerWidth)continue;
       for(let p=node.parentElement,depth=0;p&&depth<4&&p!==document.body;depth++,p=p.parentElement){
@@ -2044,7 +2081,7 @@ SOFTWARE.
       }
     }
     candidates.sort((a,b)=>b.score-a.score);
-    return candidates[0]?.node||null;
+    return candidates[0]?.node||nxNativeStreamHandle();
   }
 
   function nxNativeToolbarOpen(anchor) {
@@ -2150,7 +2187,8 @@ SOFTWARE.
   (function(){
     const css=document.createElement('style');css.id='nx-native-menu-priority-style';
     css.textContent=[
-      '.nx-native-menu-priority{position:relative!important;z-index:2147483100!important;isolation:isolate!important}',
+      'html:has(#__xcu_panel__) #nimbo-touch-nx-access{display:none!important}',
+      '.nx-native-menu-priority{z-index:2147483100!important;isolation:isolate!important}',
       'html.nx-native-menu-expanded #nimbo-touch-root .hud-button,html.nx-native-menu-expanded #nimbo-touch-root .hud-stick,html.nx-native-menu-expanded #nimbo-touch-root .pad{pointer-events:none!important}',
       'html.nx-native-menu-expanded #nimbo-touch-root .mapped{pointer-events:none!important}'
     ].join('');
@@ -2173,7 +2211,9 @@ SOFTWARE.
     }
     if (playing) {
       const nativeAnchor=findInGameToolbar();
-      nxNativeMenuPriority(!!nativeAnchor&&toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor),nativeAnchor);
+      const nativeExpanded=!!nativeAnchor&&toolbarExpanded(nativeAnchor)&&nxNativeToolbarOpen(nativeAnchor);
+      nxNativeMenuPriority(nativeExpanded,nativeAnchor);
+      if(nxNativeStreamHandle()&&!nativeExpanded){nxHideDetachedControls();wrap.style.display='none';return;}
       if (nxCompactMobile()) {
         if (micTestStream) stopMicrophoneTest();
         const expanded = !!nativeAnchor && toolbarExpanded(nativeAnchor) && nxNativeToolbarOpen(nativeAnchor);
@@ -2195,8 +2235,8 @@ SOFTWARE.
           wrap.style.transform = 'none';
           wrap.style.left = 'auto';
           wrap.style.right = 'max(12px, env(safe-area-inset-right, 12px))';
-          wrap.style.top = 'max(12px, env(safe-area-inset-top, 12px))';
-          wrap.style.bottom = 'auto';
+          wrap.style.top = 'auto';
+          wrap.style.bottom = 'max(12px, env(safe-area-inset-bottom, 12px))';
           wrap.style.width = '44px';
           wrap.style.maxWidth = '44px';
           wrap.style.alignItems = 'flex-end';
@@ -2238,8 +2278,8 @@ SOFTWARE.
           wrap.style.transform = 'none';
           wrap.style.left = 'auto';
           wrap.style.right = '12px';
-          wrap.style.top = '12px';
-          wrap.style.bottom = 'auto';
+          wrap.style.top = 'auto';
+          wrap.style.bottom = '12px';
           wrap.style.width = '360px';
           wrap.style.maxWidth = 'calc(100vw - 16px)';
           wrap.style.alignItems = 'flex-end';
@@ -2253,6 +2293,11 @@ SOFTWARE.
         if (nxLibraryButton) nxLibraryButton.style.display = 'none';
         if (pillEl) pillEl.style.display = openUI ? 'none' : 'inline-flex';
         wrap.style.display = 'flex';
+        if(!openUI){
+          wrap.style.position='fixed';wrap.style.transform='none';wrap.style.left='auto';wrap.style.right='12px';wrap.style.top='auto';wrap.style.bottom='12px';wrap.style.width='44px';wrap.style.maxWidth='44px';wrap.style.alignItems='flex-end';
+          if(pillEl){pillEl.style.width='44px';pillEl.style.minWidth='44px';pillEl.style.maxWidth='44px';pillEl.style.padding='0';}
+          if(pillTxt)pillTxt.style.display='none';if(dotEl)dotEl.style.display='none';
+        }
         if (openUI) {
           wrap.style.left = '8px'; wrap.style.right = 'auto'; wrap.style.top = '58px';
           wrap.style.width = Math.min(380, innerWidth - 16) + 'px';
@@ -2407,7 +2452,7 @@ SOFTWARE.
     { id: 'inputs', label: 'Entradas', desc: 'Modo de jogo, HUD, controle físico e teclado e mouse' },
     { id: 'audio', label: 'Áudio e voz', desc: 'Microfone, volume, saída e equalização' },
     { id: 'remote', label: 'Remote Play', desc: 'Conexão experimental com Xbox local' },
-    { id: 'personalize', label: 'Interface', desc: 'Aparência dos painéis e do monitor de estatísticas' },
+    { id: 'personalize', label: 'Interface', desc: 'Aparência geral do painel NX' },
     { id: 'advanced', label: 'Sistema', desc: 'Compatibilidade, diagnóstico e manutenção' }
   ];
   const PRESETS = [
@@ -6001,9 +6046,9 @@ SOFTWARE.
     const words=normalize(query).trim().split(/\s+/).filter(Boolean);
     if(!words.length)return [];
     const keywords={inputs:'touch toque controle joystick hud virtual teclado mouse analógico zona morta deadzone gyro giroscópio vibração sensibilidade wasd macros multiteclas botões atalhos',
-      stream:'servidor server região bitrate rede',statistics:'fps rtt latência perda mbps desempenho',
+      stream:'servidor server região bitrate rede',statistics:'fps rtt latência perda mbps desempenho monitor ativar ocultar gráficos histórico fonte cores transparência posição escala layout',
       audio:'equalizador volume saída som mic microfone voz',video:'fullscreen tela cheia enquadramento desktop celular brilho contraste saturação filtros captura perfil resolução qualidade gpu nitidez cas unsharp',
-      advanced:'diagnóstico cache manutenção compatibilidade identidade user agent plataforma console',personalize:'transparência cores aparência interface monitor estatísticas fps layout posição escala'};
+      advanced:'diagnóstico cache manutenção compatibilidade identidade user agent plataforma console',personalize:'transparência cores aparência interface painel ícones textos fonte'};
     return TABS.filter(function(tab){const text=normalize(tab.label+' '+tab.desc+' '+(keywords[tab.id]||''));return words.every(function(word){return text.includes(word);});});
   }
   function nxBuildVisualActions(root) {
@@ -6151,6 +6196,7 @@ SOFTWARE.
   }
 
   let nxLoadingEl = null;
+  let nxLoadingMinimized = true;
   function nxLoadingTick(){
     nxLaunchRefresh();
     document.documentElement?.classList.toggle('nx-session-loading',nxLoadingBusy());
@@ -6169,17 +6215,24 @@ SOFTWARE.
     if(!nxLoadingEl||!nxLoadingEl.isConnected){
       nxLoadingEl=document.createElement('section');nxLoadingEl.id='nx-loading-overlay';
       nxLoadingEl.setAttribute('aria-label','Preparação da partida');
-      nxLoadingEl.style.cssText='position:fixed;z-index:2147482999;top:max(12px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(440px,calc(100vw - 24px));box-sizing:border-box;border:1px solid #ffffff24;border-radius:14px;padding:12px 16px;background:rgba(12,18,27,.93);color:#edf4fc;font:13px/1.55 system-ui,sans-serif;box-shadow:0 8px 30px #0005;pointer-events:none;white-space:pre-line';
+      nxLoadingEl.style.cssText='position:fixed;z-index:2147482999;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));width:min(300px,calc(100vw - 24px));box-sizing:border-box;border:1px solid #ffffff24;border-radius:14px;padding:12px 16px;background:rgba(12,18,27,.93);color:#edf4fc;font:13px/1.55 system-ui,sans-serif;box-shadow:0 8px 30px #0005;pointer-events:none;white-space:pre-line';
+      nxLoadingEl.toggle=document.createElement('button');nxLoadingEl.toggle.type='button';nxLoadingEl.toggle.textContent='NX';
+      nxLoadingEl.toggle.style.cssText='float:right;margin:0 0 4px 10px;border:1px solid #ffffff44;border-radius:8px;background:#223040;color:#edf4fc;padding:6px 8px;cursor:pointer;pointer-events:auto';
+      nxLoadingEl.toggle.addEventListener('click',function(event){event.stopPropagation();nxLoadingMinimized=!nxLoadingMinimized;nxLoadingTick();});
       nxLoadingEl.heading=document.createElement('strong');nxLoadingEl.heading.setAttribute('role','status');
       nxLoadingEl.time=document.createElement('div');nxLoadingEl.detail=document.createElement('div');nxLoadingEl.detail.style.cssText='margin-top:8px;color:#bfccdc;font-size:12px';
-      nxLoadingEl.append(nxLoadingEl.heading,nxLoadingEl.time,nxLoadingEl.detail);
+      nxLoadingEl.append(nxLoadingEl.toggle,nxLoadingEl.heading,nxLoadingEl.time,nxLoadingEl.detail);
     }
     if(nxLoadingEl.parentNode!==host)host.appendChild(nxLoadingEl);
     nxLoadingEl.hidden=false;
     if(nxLoadingEl.heading.textContent!==nxLaunch.stage)nxLoadingEl.heading.textContent=nxLaunch.stage;
     const elapsed=Math.max(0,Math.floor((Date.now()-nxLaunch.startedAt)/1000));
-    nxLoadingEl.time.textContent='Estimativa: '+nxLaunchEstimate()+'\nTempo decorrido: '+Math.floor(elapsed/60)+'min '+String(elapsed%60).padStart(2,'0')+'s';
-    nxLoadingEl.detail.hidden=getPref(NX_LOADING_DETAILS,'1')!=='1';
+    nxLoadingEl.time.textContent=nxLaunchEstimate()+'\nTempo decorrido: '+Math.floor(elapsed/60)+'min '+String(elapsed%60).padStart(2,'0')+'s';
+    nxLoadingEl.toggle.setAttribute('aria-label',nxLoadingMinimized?'Expandir informações do carregamento':'Recolher informações do carregamento');
+    nxLoadingEl.toggle.setAttribute('aria-expanded',String(!nxLoadingMinimized));
+    const technical=getPref(NX_LOADING_DETAILS,'1')==='1';
+    nxLoadingEl.toggle.hidden=!technical;
+    nxLoadingEl.detail.hidden=nxLoadingMinimized||!technical;
     const q=S.qos||{},fresh=S.qosAt>=nxLaunch.startedAt;
     nxLoadingEl.detail.textContent='Servidor solicitado: '+srvBtnLabel()+'\nDestino observado: '+(nxLaunch.server||'Aguardando confirmação')+
       '\nQualidade solicitada: '+resCfg().label+'\nVídeo recebido: aguardando quadros'+
@@ -6294,11 +6347,13 @@ SOFTWARE.
   }
   // Configurações no início: o monitor funciona mesmo com o painel recolhido.
   const nxOverviewOriginal=TAB_BUILDERS.overview;
+  function nxMonitorToggleButton(){
+    return actBtn(nxTelemetryEnabled?'Ocultar estatísticas':'Ativar estatísticas',function(){nxTelemetryToggle(!nxTelemetryEnabled);renderBody();},'primary');
+  }
   function nxMonitorSettingsGroup(root){
     const section=mk('div','border:1px solid '+C.line+';border-radius:12px;padding:12px;margin-bottom:12px');
     section.appendChild(mk('div','font-weight:700;font-size:14px;margin-bottom:5px','NX Stream Monitor'));
     section.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:10px','FPS do vídeo recebido, rede e servidor durante a partida. Arraste para reposicionar; os cartões mostram histórico de FPS, latência e bitrate.'));
-    section.appendChild(actBtn(nxTelemetryEnabled?'Ocultar monitor':'Ativar monitor',function(){nxTelemetryToggle(!nxTelemetryEnabled);renderBody();},'ghost'));
     function option(label,key,choices){
       const row=mk('label','display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:9px;font-size:12px');
       row.appendChild(mk('span','',label));
@@ -6382,15 +6437,16 @@ SOFTWARE.
   function nxPanelSave(){try{localStorage.setItem(NX_PANEL_APPEARANCE,JSON.stringify(nxPanelAppearance));}catch(_){}nxPanelApply();}
   TAB_BUILDERS.personalize=function(root){
     nxPanelSettingsPage(root);
-    nxMonitorSettingsPage(root);
   };
   TAB_BUILDERS.statistics=function(root){
+    root.appendChild(nxMonitorToggleButton());
+    nxSettingsSection(root,'Personalizar monitor',nxMonitorSettingsPage);
     const stream=document.createElement('div');
     nxOriginalStreamBuilder(stream);
     if(stream.firstElementChild)root.appendChild(stream.firstElementChild);
     const groups=nxLegacySystemGroups();
     [0,1].forEach(function(i){if(groups[i])root.appendChild(groups[i]);});
-    root.appendChild(actBtn('Configurar aparência do monitor',function(){setTab('personalize');},'ghost'));
+
   };
   TAB_BUILDERS.dashboard=TAB_BUILDERS.statistics;
   TAB_BUILDERS.overview=function(root){
@@ -6549,7 +6605,7 @@ SOFTWARE.
       !openUI && !document.hidden && !window.NimboTouch?.diagnostic?.().remoteActive && nxSelectedInputMode() === 'keyboard-mouse' &&
       window.NimboTouch?.inputModeStatus?.().connected &&
       !document.documentElement?.classList?.contains('nx-native-menu-expanded') &&
-      !event.target?.closest?.('input,textarea,select,[contenteditable="true"],[role="dialog"]') && !event.target?.isContentEditable);
+      !event.target?.closest?.('#StreamHud,input,textarea,select,[contenteditable="true"],[role="dialog"]') && !event.target?.isContentEditable);
   }
   function nxForwardPhysical(event) {
     if (!nxPhysicalPointerReady(event)) return false;
@@ -6923,7 +6979,7 @@ SOFTWARE.
     if(mode==='native'||openUI||!window.NimboTouch?.inputModeStatus?.().connected)return;
     if(document.documentElement.classList.contains('nx-native-menu-expanded'))return;
     const target=event.target;
-    if(target?.closest?.('#__xcu_panel__,#nimbo-touch-root,#nimbo-touch-panel,[role="dialog"],input,textarea,select,[contenteditable="true"]'))return;
+    if(target?.closest?.('#__xcu_panel__,#nimbo-touch-root,#nimbo-touch-panel,#nx-loading-overlay,#StreamHud,[role="dialog"],input,textarea,select,[contenteditable="true"]'))return;
     if(event.code==='Escape'||event.code==='F9'||(event.ctrlKey&&event.shiftKey))return;
     // Only gameplay surfaces; the library, Guide and configuration menus stay usable.
     const keyboard=event.type==='keydown';

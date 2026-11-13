@@ -254,3 +254,17 @@ test('selector refreshes on catalog arrival and preserves saved unavailable choi
   assert.equal(h.prefs.get('server'), 'auto');
   assert.equal(select.children.length, 2);
 });
+
+
+test('play title observation receives a clone captured before native fetch consumes the Request',async()=>{
+ const h=harness();let observedBody;const response={ok:true,status:200};
+ Object.assign(h.context,{window:{fetch:request=>{request.text();return Promise.resolve(response);}},location:{href:'https://play.xbox.com/'},
+  cfg:()=>({ip:null}),nxObserveOffering:(_url,_method,promise)=>promise,nxLaunchKind:()=> 'play',
+  nxObserveLaunchFetch:(_url,_method,promise,input)=>{observedBody=input.json();return promise;},
+  GEARS_RE:/^gears\.xboxservices\.com$/,EXP_PATH_RE:/experimentation/,CAP_RE:/never-matches/,
+  nxSessionRecord(){},patchPlayRequest:(input,init)=>Promise.resolve({input,init}),
+  rewriteExp:value=>Promise.resolve(value),rewriteIce:value=>Promise.resolve(value),patchTouchSessionConfiguration:value=>Promise.resolve(value)});
+ vm.runInNewContext(section('  const nativeFetch = window.fetch;','  // Limite máximo negociado por SDP;'),h.context);
+ const request=new Request('https://wus.core.gssv-play-prod.xboxservices.com/v5/sessions/cloud/play',{method:'POST',body:JSON.stringify({titleId:'fortnite'})});
+ assert.equal(await h.context.window.fetch(request),response);assert.equal(request.bodyUsed,true);assert.equal((await observedBody).titleId,'fortnite');
+});

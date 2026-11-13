@@ -16,6 +16,12 @@ A documentação oficial é um **registro do estado atual e do trabalho futuro a
 
 O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que precisa ser corrigido e o que será desenvolvido**, sem confundir experimentos abandonados com compromissos futuros.
 
+## Refinamento após teste do mantenedor — 2026-11-13 (não lançado)
+
+Carregamento passa à lateral direita e inicia compacto, com detalhes recolhíveis e previsão/tempo decorrido sempre visíveis. Estatísticas concentra ativação e personalização do monitor; Interface mantém aparência geral. O tempo informado pelo serviço exige correspondência de título/região e alocação não contraditória. Não há evidência suficiente para explicar de forma única os 57 minutos previstos versus cerca de 30 segundos observados.
+
+Preservados posicionamento e entrada da barra nativa Xbox; integração usa seu puxador reconhecido, com recuperação independente fora da área superior se necessário. Correção ainda requer validação real no dispositivo. Áudio/voz recebeu somente avaliação: priorizar equalização, bypass e seleção de dispositivos; não implementar chamadas Discord nem áudio 3D por suposição. Detalhes e referências no documento de carregamento/monitor.
+
 ## Preparação da partida e monitor — 2026-11-13 (não lançado)
 
 Por solicitação do mantenedor, a preparação xCloud apresenta estimativa do serviço ou indisponibilidade, sempre visível, com detalhes técnicos opcionais. NX fica oculto e rejeita abertura durante a preparação observada; mídia pronta, cancelamento/falha, saída e fallback por inatividade liberam o acesso. Cancelar e voltar no Xbox permanecem disponíveis.

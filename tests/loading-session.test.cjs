@@ -9,8 +9,8 @@ function boot(){
  vm.createContext(ctx);vm.runInContext(cut('  // Preparação observada:','  // Fim preparação observada.')+'\nglobalThis.state=nxLaunch;',ctx);
  const response=(json={},ok=true)=>({ok,status:ok?200:503,clone:()=>({json:()=>Promise.resolve(json)})});
  const request=(kind,promise=Promise.resolve(response()))=>{
-  const paths={play:'/v5/sessions/cloud/play',wait:'/v1/waittime/1234',state:'/v5/sessions/cloud/session/state',cancel:'/v5/sessions/cloud/session',connect:'/v5/sessions/cloud/session/configuration'};
-  return ctx.nxObserveLaunchFetch(new URL('https://region.xboxservices.com'+paths[kind]),kind==='play'?'POST':kind==='cancel'?'DELETE':'GET',promise);
+  const paths={play:'/v5/sessions/cloud/play',wait:'/v1/waittime/1234',state:'/v5/sessions/cloud/session/state',cancel:'/v5/sessions/cloud/session',connect:'/v5/sessions/cloud/session/sdp'};
+  return ctx.nxObserveLaunchFetch(new URL('https://region.xboxservices.com'+paths[kind]),kind==='play'?'POST':kind==='cancel'?'DELETE':'GET',promise,null,kind==='play'?{body:JSON.stringify({titleId:'1234'})}:undefined);
  };
  return {ctx,state:ctx.state,request,response,location,advance:ms=>now+=ms,setVideo:v=>video=v};
 }
@@ -18,11 +18,11 @@ const ready=()=>({readyState:2,videoWidth:1920,videoHeight:1080,paused:false,src
 const settle=async()=>{await Promise.resolve();await Promise.resolve();await Promise.resolve();};
 test('loading follows the real play request without modifying its response',async()=>{
  const h=boot(),response=h.response();const result=h.request('play',Promise.resolve(response));assert.equal(h.ctx.nxLoadingBusy(),true);
- assert.equal(await result,response);assert.equal(h.state.server,'SOUTHINDIA');assert.equal(h.ctx.nxLaunchEstimate(),'Estimativa indisponível');
+ assert.equal(await result,response);assert.equal(h.state.server,'SOUTHINDIA');assert.equal(h.ctx.nxLaunchEstimate(),'Previsão do serviço indisponível');
 });
 test('wait estimates are strictly numeric and do not invent a countdown',async()=>{
  const h=boot();await h.request('play');await h.request('wait',Promise.resolve(h.response({estimatedTotalWaitTimeInSeconds:600})));await settle();
- assert.equal(h.state.wait,600);assert.equal(h.ctx.nxLaunchEstimate(),'Cerca de 10 min');
+ assert.equal(h.state.wait,600);assert.equal(h.ctx.nxLaunchEstimate(),'Previsão do serviço: cerca de 10 min (pode variar)');
  h.advance(600001);assert.match(h.ctx.nxLaunchEstimate(),/Previsão ultrapassada/);
  for(const value of [null,'600',-1,Infinity,NaN,86401])assert.equal(h.ctx.nxLaunchWait({estimatedTotalWaitTimeInSeconds:value}),null);
  assert.equal(h.ctx.nxLaunchWait({estimatedAllocationTimeInSeconds:0}),0);
@@ -64,7 +64,7 @@ test('route exit and missing progress cannot leave NX locked forever',async()=>{
 });
 test('queue estimate extends the guard while an observed connection stage cannot imply gameplay',async()=>{
  const h=boot();await h.request('play');await h.request('wait',Promise.resolve(h.response({estimatedTotalWaitTimeInSeconds:600})));await settle();
- h.advance(240000);await h.request('connect');h.ctx.nxLaunchRefresh();assert.equal(h.ctx.nxLoadingBusy(),true);assert.equal(h.state.stage,'Conectando à transmissão');
+ h.advance(240000);await h.request('connect');h.ctx.nxLaunchRefresh();assert.equal(h.ctx.nxLoadingBusy(),true);assert.equal(h.state.stage,'Preparando a transmissão');assert.equal(h.state.wait,null);
 });
 test('library wait lookups, xHome and untrusted domains do not trigger a loading lock',async()=>{
  const h=boot();h.location.pathname='/play';await h.request('wait',Promise.resolve(h.response({estimatedTotalWaitTimeInSeconds:300})));assert.equal(h.state.phase,'idle');
@@ -90,4 +90,36 @@ test('failed preflight lookup unlocks without treating a running play wait looku
 test('the monitor session ends when a running game route is left',async()=>{
  const h=boot();await h.request('play');h.setVideo(ready());h.ctx.nxLaunchRefresh();assert.equal(h.state.phase,'playing');
  h.location.pathname='/play';h.ctx.nxLaunchRefresh();assert.equal(h.state.phase,'idle');
+});
+
+
+test('an explicit zero allocation wait overrides a misleading large total estimate',()=>{
+ const h=boot();assert.equal(h.ctx.nxLaunchWait({estimatedAllocationTimeInSeconds:0,estimatedTotalWaitTimeInSeconds:3420}),0);
+ assert.equal(h.ctx.nxLaunchWait({estimatedAllocationTimeInSeconds:20,estimatedTotalWaitTimeInSeconds:10}),20);
+});
+
+test('wait estimates from another title or region cannot be displayed for the current play',async()=>{
+ const h=boot();await h.request('play');
+ for(const url of ['https://region.xboxservices.com/v1/waittime/another-title','https://other.xboxservices.com/v1/waittime/1234']){
+  await h.ctx.nxObserveLaunchFetch(new URL(url),'GET',Promise.resolve(h.response({estimatedTotalWaitTimeInSeconds:3420})));await settle();assert.equal(h.state.wait,null);
+ }
+ await h.request('wait',Promise.resolve(h.response({estimatedTotalWaitTimeInSeconds:60})));await settle();assert.equal(h.state.wait,60);
+});
+
+test('unknown play title does not inherit an unrelated preflight forecast',async()=>{
+ const h=boot();await h.request('wait',Promise.resolve(h.response({estimatedTotalWaitTimeInSeconds:3420})));await settle();assert.equal(h.state.wait,null);
+ await h.ctx.nxObserveLaunchFetch(new URL('https://region.xboxservices.com/v5/sessions/cloud/play'),'POST',Promise.resolve(h.response()));assert.equal(h.state.wait,null);
+});
+
+test('allocation progress clears a forecast and delayed queue JSON cannot restore it',async()=>{
+ const h=boot();await h.request('play');let resolve;
+ await h.request('wait',Promise.resolve({ok:true,clone:()=>({json:()=>new Promise(r=>resolve=r)})}));
+ await h.request('connect');resolve({estimatedTotalWaitTimeInSeconds:3420});await settle();assert.equal(h.state.wait,null);assert.match(h.ctx.nxLaunchEstimate(),/Fila encerrada/);
+});
+
+test('play title is read from a clone without consuming or changing the native request',async()=>{
+ const h=boot();h.ctx.Request=Request;
+ const input=new Request('https://region.xboxservices.com/v5/sessions/cloud/play',{method:'POST',body:JSON.stringify({titleId:'1234',settings:{osName:'windows'}})});
+ await h.ctx.nxObserveLaunchFetch(new URL(input.url),'POST',Promise.resolve(h.response()),input);await settle();
+ const body=await input.json();assert.equal(body.titleId,'1234');assert.equal(body.settings.osName,'windows');assert.equal(h.state.title,'1234');
 });

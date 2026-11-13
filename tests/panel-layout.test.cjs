@@ -34,6 +34,7 @@ function harness(){
   nxPointerControls:root=>root.appendChild(new Node('div','CAPTURA DO MOUSE FÍSICO')),
   nxInputModePage:root=>root.appendChild(new Node('div','SELETOR ÚNICO')),
   nxPanelSettingsPage:root=>root.appendChild(new Node('div','APARÊNCIA DO PAINEL')),
+  nxMonitorToggleButton:()=>new Node('button','Ativar estatísticas'),
   nxMonitorSettingsPage:root=>root.appendChild(new Node('div','APARÊNCIA DO MONITOR')),
   chips:()=>new Node('div'),toggle:()=>new Node('div'),getAudioBands:()=>Array(10).fill(0),
   nxVideoCalibration:()=>({brightness:100,contrast:100,saturation:100}),nxVisualLibrary:()=>[{name:'Local'}],
@@ -106,9 +107,10 @@ test('one input page embeds both device builders without duplicated activation',
 test('interface contains both appearance systems while statistics retains metrics and a link',()=>{
  const h=harness();
  vm.runInContext(section('  TAB_BUILDERS.personalize=function(root){','  TAB_BUILDERS.overview=function(root){'),h.ctx);
- const ui=h.build('personalize');assert.equal(ui.textContent,'APARÊNCIA DO PAINELAPARÊNCIA DO MONITOR');
+ const ui=h.build('personalize');assert.equal(ui.textContent,'APARÊNCIA DO PAINEL');
  const stats=h.build('statistics');assert.match(stats.textContent,/Monitor de transmissão|Desempenho/);
- assert.doesNotMatch(stats.textContent,/APARÊNCIA DO MONITOR|APARÊNCIA DO PAINEL/);
+ assert.match(stats.textContent,/APARÊNCIA DO MONITOR/);assert.doesNotMatch(stats.textContent,/APARÊNCIA DO PAINEL/);
+ assert.equal(stats.children[0].textContent,'Ativar estatísticas');assert.equal(stats.children[1].tagName,'details');
 });
 
 test('old destinations resolve to the merged pages, including a retired store-region destination',()=>{

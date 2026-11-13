@@ -96,17 +96,18 @@ test('voice page extracts microphone, not the third input-diagnostic group',()=>
  assert.doesNotMatch(src,/if \(temp\.children\[2\]\) root\.appendChild\(temp\.children\[2\]\)/);
 });
 
-test('statistics contains metrics while interface owns monitor appearance',()=>{
+test('statistics owns monitor controls and interface retains general appearance',()=>{
  const start=src.indexOf('TAB_BUILDERS.statistics=function(root){');
  const end=src.indexOf('TAB_BUILDERS.dashboard=TAB_BUILDERS.statistics;',start);
  assert.ok(start>=0&&end>start);
  const body=src.slice(start,end);
  assert.match(body,/nxOriginalStreamBuilder\(stream\)/);
- assert.doesNotMatch(body,/nxMonitorSettingsPage\(root\)/);
- assert.match(body,/setTab\('personalize'\)/);
+ assert.match(body,/nxMonitorToggleButton\(\)/);
+ assert.match(body,/nxSettingsSection\(root,'Personalizar monitor',nxMonitorSettingsPage\)/);
+ assert.ok(body.indexOf('nxMonitorToggleButton()')<body.indexOf('nxOriginalStreamBuilder(stream)'));
  const ui=src.slice(src.indexOf('TAB_BUILDERS.personalize=function(root){'),start);
  assert.match(ui,/nxPanelSettingsPage\(root\)/);
- assert.match(ui,/nxMonitorSettingsPage\(root\)/);
+ assert.doesNotMatch(ui,/nxMonitorSettingsPage\(root\)/);
  assert.match(src,/function nxMonitorSettingsGroup\(root\)/);
  assert.match(src,/TAB_BUILDERS\.overview=function\(root\)\{nxOverviewOriginal\(root\);\}/);
 });
