@@ -9,7 +9,7 @@ test -f "$android_jar"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 javac --release 17 -Xlint:all -Werror -classpath "$android_jar" -d "$work/classes" \
-  "$root/java/org/nimboxcloud/psbox/PsboxPlatform.java"
+  "$root"/java/org/nimboxcloud/psbox/*.java
 jar --create --file "$work/classes.jar" -C "$work/classes" .
 python3 - "$root" "$out" "$work" <<'PY'
 import pathlib, sys, zipfile

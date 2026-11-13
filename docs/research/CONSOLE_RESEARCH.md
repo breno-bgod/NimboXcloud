@@ -404,3 +404,35 @@ incrementalmente, antes de UI compartilhada ou sessão autenticada.
 ### Build Java/JNI/AAR confirmado
 
 [CI #43497614092](https://github.com/breno-bgod/NimboXcloud/actions/runs/43497614092), commit a6098beba94e9d1cd1db88caf094c9c6c6dce46f: todos os passos aprovados, incluindo testes C++ host, link ARM64 sem símbolos indefinidos, verificação dos três símbolos JNI, ausência de dependência libc++_shared, compilação Java SDK35/release17 e montagem/verificação estrutural do AAR. Artefato nimbo-psbox-platform-arm64-not-apk, ID 14071318850, 546013 bytes, digest sha256:92be237a8962878f46fd8632a8e84c557469742b68b2bc3ea73a38619fd70a6e; contém AAR, biblioteca parcial e fonte correspondente/avisos. Não é APK nem motor completo. Não houve execução JNI em VM Android, Activity, instalação no S23, login, mídia ou gameplay. A espera de compilação deixou de ser bloqueio; próximo passo é host/lifecycle Android real e ligação gradual do núcleo antes de sessão autenticada.
+
+
+## Ligação ao lifecycle da Activity — 13/11/2026
+
+Incremento isolado: PsboxActivityBinding por composição com
+Application.ActivityLifecycleCallbacks, seleção inicial desligada, init da
+plataforma somente com Activity vinculada iniciada e motor selecionado;
+liberação em onStop/deseleção/destruição, WeakReference e limpeza de listener.
+PlatformOwner recusa outro proprietário, ignora parada de token antigo e mantém
+propriedade em falha de cleanup/stop. Retries de BUSY são limitados a eventos de
+lifecycle; sem polling. Não cria Activity, tela, launcher ou ponte WebView.
+Não misturar chamadas diretas à fachada com a binding.
+
+Teste Java do coordenador real com backend simulado passou localmente para
+idempotência, proprietário único, callbacks atrasados, falhas, retry, exceções
+sanitizadas e concorrência. Executor sem ct.sym não aceita --release17/21;
+comando aprovado: JAVA_TEST_RELEASE=runtime bash
+experiments/console/psbox-android-platform/test-java-host.sh. CI mantém release17
+com JDK completo e compila todas as classes contra android.jar35 no AAR.
+Scripts passaram bash -n. Compilação Android deste incremento pendente ao publicar.
+
+A chamada de publicação anterior foi interrompida; conferência após retomada
+confirmou que o PR não avançou e os arquivos locais foram preservados. Teste Java
+reexecutado com sucesso. Upstream c775ecaddde52024d177cce7392aae13cc6917aa e main
+Nimbo c28675d29a4e16f9a7546e091e596c9068975187 continuam iguais, sem comentário
+novo do ajudante no PR #24. Não houve merge ou alteração do produto.
+
+Sem eventos reais do framework, rotação/Activity em execução, JNI no aparelho,
+APK, login, mídia ou gameplay. Prontidão/parada aqui refere-se somente à camada de
+plataforma: antes do núcleo, neutralização, StreamPlayer::stop e workers devem
+participar do encerramento. Próximo: confirmar build da binding e preparar
+execução instrumentada do host antes de integrar núcleo/mídia/entrada.

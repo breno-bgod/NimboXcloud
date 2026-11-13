@@ -15,6 +15,8 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Test native storage behavior on host
         run: bash experiments/console/psbox-android-platform/test-host.sh
+      - name: Test Java lifecycle ownership without Android runtime
+        run: bash experiments/console/psbox-android-platform/test-java-host.sh
       - name: Install fixed official NDK
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" "platforms;android-35"'
       - name: Link Android ARM64 platform library

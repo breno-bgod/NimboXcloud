@@ -100,3 +100,14 @@ sem motor completo ou fluxo autenticado. Seu build será confirmado em CI;
 não equivale a instalação nem ao marco completo de lifecycle do aplicativo.
 O host Activity e o adaptador de sessão precisam encerrar mídia/entrada/workers
 antes de confirmar parada; shutdown de plataforma isolado não satisfaz isso.
+
+
+## Uso pelo host sem outra tela
+
+PsboxActivityBinding é composição, criada pelo futuro host em onCreate antes de
+onStart. Observa somente a Activity vinculada e seleção nativa explícita;
+não exige uma base Activity nova, não registra tela/launcher e não é bridge web.
+Propriedade por token impede que um callback antigo encerre outra instância.
+Ainda abrange só plataforma; core/workers/mídia/entrada devem integrar o stop
+antes de confirmar encerramento completo do motor. Compilar callbacks e testar
+coordenador Java com backend simulado não homologa execução real Android.

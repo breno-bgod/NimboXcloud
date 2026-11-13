@@ -96,3 +96,54 @@ camada NÃO substitui StreamPlayer::stop nem neutralização de entradas e liber
 dos workers quando forem ligados. O adaptador de motor só pode confirmar stop
 após terminar esses recursos adicionais. Próximo passo: host lifecycle real e
 ligação gradual do núcleo, preservando o painel único.
+
+
+## Ligação ao ciclo de vida da Activity do host
+
+`PsboxActivityBinding` usa Application.ActivityLifecycleCallbacks e composição:
+não exige uma nova Activity/base class, não registra tela no manifesto e não
+cria painel. O futuro host Nimbo deve construí-lo no seu onCreate (antes de
+onStart), e chamar setSelected(true/false) somente pelo seletor nativo confiável
+do motor. Seleção começa desligada; salvar/restaurar a escolha pertence ao host.
+A biblioteca não adiciona integração ao userscript nem uma ponte WebView.
+
+Quando a Activity vinculada inicia e PSBox está selecionado, adquire a camada de
+plataforma. Quando para, desmarca ou é destruída, tenta liberar. O callback recebe
+ready e error separadamente: erro zero com ready=false não significa sessão
+ativa. Nenhuma chamada consulta catálogo ou inicia streaming.
+
+PlatformOwner mantém uma proprietária por processo, recusa outro host com BUSY,
+é idempotente e ignora stop de token antigo. Stop/cleanup falho mantém propriedade
+e permite retry via detach ou seleção; nunca força encerramento alheio. Eventos
+onResume/onStop permitem uma tentativa de aquisição antes bloqueada, sem polling
+ou loop. Se ainda retornar BUSY, o host pode mostrar erro e tentar selecionar
+novamente depois. A ordem real de callbacks/rotação ainda precisa de teste Android.
+
+A binding guarda a Activity por WeakReference e remove o listener da tela ao
+destruir; detach bem-sucedido remove os callbacks. Se shutdown falhar, mantém a
+posse e registro para recuperação e não retém a UI destruída. Não misturar chamadas
+diretas à fachada PsboxPlatform com a binding no mesmo processo: a binding deve
+ser a única responsável por essa camada no host integrado.
+
+Teste Java de propriedade (backend simulado, sem Android/login):
+
+```sh
+bash experiments/console/psbox-android-platform/test-java-host.sh
+```
+
+O executor local tem Java 21/compiler module mas sem ct.sym: --release17 e
+--release21 falharam por ambiente. Teste local passou com JAVA_TEST_RELEASE=runtime;
+a lógica de teste não foi relaxada. O CI mantém --release17 e compila todas as
+classes da binding contra android.jar35 no AAR. Isso deve ser aprovado novamente
+para esta revisão; o build anterior não incluía callbacks de Activity.
+
+Cobre início idempotente, proprietário único, parada alheia/atrasada, cleanup e
+shutdown com falha, retry, exceções sanitizadas e concorrência. O teste usa o
+coordenador Java real e backend simulado; não valida eventos do framework, JNI
+executado em Android, rotação, Activity real, UI, sessão ou gameplay.
+
+A ligação atual encerra apenas a camada de plataforma: antes de ligar o núcleo,
+o contrato terá de aguardar neutralização, stop de StreamPlayer e fim de workers.
+Não usar este callback para sinalizar parada completa de um motor ainda ativo.
+Próximo passo: execução instrumentada do host/lifecycle e integração gradual do
+núcleo com assets/CA e dependências Android reais. Nenhum APK foi criado aqui.

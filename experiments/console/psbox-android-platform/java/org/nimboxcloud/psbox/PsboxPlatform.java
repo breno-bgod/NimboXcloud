@@ -15,6 +15,7 @@ public final class PsboxPlatform {
         AVAILABLE = loaded;
     }
     private PsboxPlatform() {}
+    public static boolean isAvailable() { return AVAILABLE; }
     /** Returns 0 on platform readiness, otherwise errno or NATIVE_UNAVAILABLE. */
     public static synchronized int initialize(Context context) {
         if (!AVAILABLE) return NATIVE_UNAVAILABLE;
