@@ -8,7 +8,7 @@
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/c5a4d3b38f1d5a2889a3c590052c17ec7b795d26/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.14.0
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/5e152b20043635bace45449503c9e3972c5f77c8/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.14.0
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -6929,6 +6929,7 @@ SOFTWARE.
   nxInstallInputBridge(true);
   if (typeof window !== 'undefined') {
     window.NimboInputHost = Object.freeze({
+      openSettings: function(){setTab('inputs');setOpen(true,true);return true;},
       chooseMode: nxChooseInputMode, setMode: nxSetInputRoute, sendGamepad: nxSendVirtualPad, releaseGamepad: nxReleaseVirtualPad,
       readPhysicalGamepads: function(){return nxNativeGetGamepads ? Array.from(nxNativeGetGamepads() || []) : [];},
       heldKeys: function(){return Array.from(nxKeysHeld);},

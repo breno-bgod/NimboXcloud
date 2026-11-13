@@ -23,7 +23,7 @@ Consultados:
 
 ## Verificação
 
-Testes comportamentais cobrem captura explícita, seleção física efetivamente aplicada, sessão ausente, outras entradas, conflitos, formulários, modificadores, F9/Esc, liberação, API indisponível e promessa rejeitada. Total local: 323 testes, 320 PASS, zero FAIL, três TODO preexistentes.
+Testes comportamentais cobrem captura explícita, seleção física efetivamente aplicada, sessão ausente, outras entradas, conflitos, formulários, modificadores, F9/Esc, liberação, API indisponível e promessa rejeitada. Total local: 329 testes, 326 PASS, zero FAIL, três TODO preexistentes.
 
 Pendente em navegador e sessão Xbox reais: Fortnite compatível com teclado/mouse, F8/F2 e botão após Esc, liberação ao abrir o painel, navegação em campos editáveis e preservação dos dois editores de HUD. Testes Node não validam movimento da câmera nem recepção no servidor. Não há evidência nova de gameplay ou suporte a GTA VI.
 
@@ -38,3 +38,13 @@ Referências adicionais: [Better xCloud native-mkb-handler](https://github.com/r
 Os oito testes de integração novos percorrem evento → transporte → métodos do SDK simulado; um teste adicional impede captura silenciosa com módulo antigo. A suíte dos cinco modos também verifica Gamepad API física/virtual, leituras do touchpad/teclado virtual, seleção de toque nativo, neutralização e troca de sessão. Isso não certifica recepção dos comandos pelo servidor nem funcionamento de cada modo em hardware real.
 
 Teste recomendado: instalar novamente o script da branch de teste para atualizar também @require; abrir Fortnite ou outro jogo com suporte nativo a teclado/mouse; selecionar a entrada física, capturar e testar mira, cliques, roda, WASD, Esc, retorno e mudança para cada entrada disponível. Não foi possível iniciar Chromium neste ambiente; permanece necessária validação no navegador real.
+
+## Retorno do editor e direção da Central de Controles
+
+O mantenedor relatou sucesso nos testes da correção de entradas em 2026-11-13. O relato não identifica navegador nem certifica todos os jogos. Depois apontou que salvar a HUD abria o painel amarelo antigo. O editor agora retorna explicitamente ao NX → Entradas ao salvar ou cancelar. Trocas internas de modo continuam encerrando o editor sem abrir painel; o módulo usado independentemente mantém o fallback legado. Os layouts e suas rotinas de persistência não mudaram.
+
+Foram adicionados seis testes: retorno ao host, fallback independente, salvar/cancelar, fechamento interno sem navegação e seleção explícita de Entradas. A validação visual desta nova correção permanece pendente no dispositivo do mantenedor.
+
+Direção proposta: Central de Controles com identidade visual própria. Dispositivos/perfis à esquerda, HUD ou representação do dispositivo no centro e ação do elemento selecionado à direita; no mobile, áreas acessíveis em etapas. Uma ação simples funciona sem configurar macros. Evoluir depois para modificadores, combinações e sequências, com liberação de comandos em troca de perfil, perda de foco ou sessão encerrada. Isso é proposta incremental, não recurso implementado neste lote.
+
+Referências: [reWASD Workspace](https://help.rewasd.com/interface/workspace.html), [Key Combo](https://help.rewasd.com/mapping-features/key-combo.html) e [Virtual Controller](https://help.rewasd.com/basic-functions/virtual-controller.html). A inspiração é a organização por dispositivos, perfis e ações; o Nimbo mantém implementação e identidade próprias. No navegador, as saídas são os canais autorizados do jogo e a ponte Gamepad do Nimbo; não se cria um dispositivo virtual do sistema operacional como no aplicativo nativo.

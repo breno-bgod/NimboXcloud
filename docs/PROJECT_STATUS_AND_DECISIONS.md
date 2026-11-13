@@ -16,6 +16,12 @@ A documentação oficial é um **registro do estado atual e do trabalho futuro a
 
 O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que precisa ser corrigido e o que será desenvolvido**, sem confundir experimentos abandonados com compromissos futuros.
 
+## Retorno do editor de HUD — 2026-11-13 (não lançado)
+
+O mantenedor confirmou sucesso nos testes da versão de entradas do PR #22 e relatou retorno indevido ao painel legado ao salvar a HUD. A correção usa o host NX para voltar à página Entradas ao salvar/cancelar, mantendo o fallback somente no módulo independente. Persistência dos layouts e troca interna de modos são preservadas. A nova navegação ainda requer teste visual real.
+
+Direção de produto: central própria para dispositivos, perfis, mapeamento de ações e edição de HUD, inspirada na organização do reWASD. Remapeamento avançado, camadas e macros serão lotes separados; não declarar emulação de dispositivo no sistema operacional pelo navegador. Proposta em [Ajustes de entradas](./AJUSTES_ENTRADAS.md).
+
 ## Ajuste de entradas e Sistema — 2026-11-13 (não lançado)
 
 Por decisão do mantenedor, Sistema não apresenta nem aplica os experimentos de identidade/Client Hints, mesmo com preferências antigas, e não apresenta uma segunda ação de tela cheia/horizontal. DeX não é uma categoria própria: o perfil de dispositivo usa as capacidades normais do navegador, preservando a migração interna de preferências antigas.
