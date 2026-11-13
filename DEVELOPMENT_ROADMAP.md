@@ -1117,3 +1117,59 @@ Adicionar entradas concisas com data UTC, HEAD inicial, ação, testes, HEAD fin
 - **Pendências prioritárias:** homologar sessão e mídia com console/conta autorizados; confirmar áudio e aceitação de comandos; revisar hooks globais e a ponte Gamepad; validar HUD físico/touch em navegador real.
 - **Próxima tarefa concreta (P1 — isolamento de candidatos ICE locais após falha do peer):** criar regressão que dispare `peer.onicecandidate` depois de `connectionState='failed'` e antes de Stop, além de um erro tardio na cadeia `iceSendChain`. Critérios de aceite: peer terminal não faz novo POST `/ice`; callback de peer substituído/encerrado não altera status da sessão atual; falha de envio não sobrescreve estado terminal ou sessão posterior; candidatos locais do peer ativo continuam sendo enviados em ordem e exatamente uma vez; Stop→Start, canonicalização remota, limite 30 e ambos workflows permanecem PASS. Não alterar payload, autenticação, SDP ou protocolo sem evidência.
 - **SHA de código/testes final após merge:** `e42137eb0cca1cb0eb5fd2cd958743700f4caf01`. **SHA após validação documental P00:** `d77e46ed67940c5803fe67f27173d6abcc20a52c`. Este commit acrescenta o handoff de roadmap e passa a ser o HEAD documental final desta execução.
+
+
+## Execução xHome — 2026-11-13 — isolamento e ordenação de ICE local (4.13.1)
+
+### Reconciliação do estado encontrado
+
+- **SHA inicial consultado na main:** `a271f6b290b27bdfad67e290103d09f41b4acc79`. Versão real: **4.13.0**; blob do userscript `c89a0baaa4463ee13a64ed89e0c88858bbfb5683`; módulo Touch HUD **1.3.0**.
+- O commit imediatamente anterior havia implementado a unificação de cinco modos de entrada (teclado/mouse físicos, gamepad físico, teclado/mouse virtuais, controle virtual e toque nativo), compartilhamento da ponte Gamepad API, editor HUD e organização/busca do painel. `docs/ENTRADAS_E_PAINEL.md` descreve a arquitetura e registra 267 testes (264 PASS, 0 FAIL, 3 TODO), sem validação de browser real. Essa implementação foi preservada; nenhum gerenciador de entrada foi duplicado ou alterado nesta execução.
+- **Lacuna documental encontrada:** a versão 4.13.0 e a nova arquitetura de entradas já estavam em main e no CHANGELOG, mas não havia handoff correspondente no final deste roadmap. Este registro passa a reconciliar a release antes de documentar a correção 4.13.1.
+- O handoff P1 anterior (callbacks ICE locais sem identidade/estado terminal) ainda não estava implementado. O código verificava requestId e AbortSignal, mas não identidade do peer nem failed/closed. A fila inicial enviava candidatos diretamente com `await iceSend`, enquanto candidatos emitidos durante essa espera usavam uma Promise chain separada.
+
+### Regressão primeiro, falha reproduzida
+
+- Branch: `fix/xhome-local-ice-ownership-4-13-1`.
+- PR: [#19 — guard de propriedade e ordenação de ICE local](https://github.com/breno-bgod/NimboXcloud/pull/19).
+- O commit de teste `755aee8bee425b43aab982fd886e07a0f66f9c57` adicionou um cenário em que A/B são coletados antes do SDP e C chega enquanto o POST de A está pendente.
+- A regressão falhou nos dois workflows, como esperado: [baseline 43338553594](https://github.com/breno-bgod/NimboXcloud/actions/runs/43338553594) e [xHome 43338553629](https://github.com/breno-bgod/NimboXcloud/actions/runs/43338553629). O log mostrou a ordem real **A, C, B**, em vez de **A, B, C**. A mesma regressão também cobre erro tardio depois de failed, evento posterior ao estado terminal e callback de peer substituído.
+- Essa falha confirmou um problema de ordenação reproduzível no código, não uma hipótese baseada somente em leitura estática.
+
+### Correção implementada em 4.13.1
+
+- **Arquivo:** `NimboXcloud.user.js`.
+- Cada callback e cada POST ICE local agora exigem: requestId atual, AbortSignal ativo, `nxRemotePlay.peer === peer`, sinalização não fechada e ausência de `connectionState/iceConnectionState` failed/closed.
+- Candidatos coletados antes de a resposta SDP chegar e candidatos trickle posteriores entram na mesma `iceSendChain`. O flush inicial também aguarda a cadeia, preservando a ordem A/B/C.
+- Uma resposta ou rejeição tardia não altera status quando o peer terminou ou perdeu a propriedade da sessão. Candidatos emitidos depois de failed/closed não iniciam POST.
+- O polling não agenda nova consulta depois de terminalização. O listener de conexão valida também a identidade do peer e reconcilia estados que mudaram durante a fila inicial, incluindo failed/closed.
+- Sem alteração de endpoint, autenticação, tokens, corpo do payload ICE, SDP, data channels, transporte de input, xCloud retail ou persistência.
+- **Teste:** `tests/xhome-discovery.test.cjs`, uma regressão nova. **Release:** `CHANGELOG.md`. Nenhuma dependência adicionada; Touch HUD permanece 1.3.0.
+- Commits do branch: teste `755aee8bee425b43aab982fd886e07a0f66f9c57`; implementação `3874bb2b73eddc650f8b90a3733d2e8c35a32c7e`; changelog `faf3dd759c66431e05da1d708059f3d2e3dec8b0`.
+- **Merge:** PR #19 squash-merged em `12fac62335f643ee5bc179afc3d38f45d7f7659f`. O compare antes do merge indicava 3 commits à frente, 0 atrás; merge condicionado ao head SHA esperado.
+
+### Validação real
+
+- No head final do PR: baseline [43338677098](https://github.com/breno-bgod/NimboXcloud/actions/runs/43338677098) PASS; xHome [43338677076](https://github.com/breno-bgod/NimboXcloud/actions/runs/43338677076) PASS.
+- Após merge na main: baseline [43338759828](https://github.com/breno-bgod/NimboXcloud/actions/runs/43338759828) PASS; xHome [43338759865](https://github.com/breno-bgod/NimboXcloud/actions/runs/43338759865) PASS.
+- Em cada execução aprovada: **268 testes, 265 PASS, 0 FAIL, 3 TODO**. Baseline executou `node --check NimboXcloud.user.js`, `node --check modules/NimboXcloud-Touch-HUD.user.js`, suíte `tests/*.test.cjs` + `tests/*.test.mjs` e `node tools/static-risk-report.cjs`. A integridade de @version, VER, @require e versão do módulo também passou.
+- O relatório estático continua identificando os wrappers Gamepad (duas ocorrências), fetch e XHR já existentes. Não são regressões introduzidas por este patch e não foram alterados neste ciclo.
+- Avisos não bloqueantes no CI: depreciação de `punycode` no ambiente Node e ações GitHub que declaram Node 20. Nenhum teste falhou após a implementação.
+- **Não executado:** Node local, build/lint npm (não há `package.json` na raiz), Chrome/Edge, Tampermonkey, Android/DeX, sessão autenticada, Xbox físico, NAT real, mídia, áudio ou comandos de jogo. O CI usa mocks; Remote Play permanece experimental e não homologado.
+
+### Estado xHome após esta execução
+
+- Concluído e coberto por testes: descoberta regional, criação/liberação de sessão, SDP, ICE remoto canônico/deduplicado, limite de polling, abort/Stop→Start, ownership e ordenação do ICE local, bootstrap dos quatro data channels, adaptadores experimentais de gamepad/teclado/mouse/touch e diagnóstico de mídia.
+- Não comprovado: sessão real estável, entrega de vídeo/áudio ao elemento de reprodução, áudio audível, NAT/conectividade externa e comandos aceitos por Xbox físico.
+- **SHA de runtime/testes após merge:** `12fac62335f643ee5bc179afc3d38f45d7f7659f`. **SHA após sincronizar P00:** `5656778fd059ac4706d278985553ef2792853308`. O commit deste handoff atualiza o roadmap e passa a ser o HEAD documental final da execução.
+
+### Próxima tarefa concreta — P1: bloquear bootstrap tardio de data channels após terminalização do peer
+
+Evidência: `nxRemoteInitDataChannels().isCurrent()` verifica requestId, AbortSignal, identidade do peer e identidade do objeto de canais, mas não verifica `connectionState`, `iceConnectionState` ou `signalingState` terminal. Um `onopen`/HandshakeAck tardio pode ainda executar `initialize()`, definir `dataChannelsReady=true` e substituir o texto de estado depois de o peer entrar em failed/closed.
+
+Critérios de aceite:
+1. Depois de failed/closed, callbacks tardios `onopen`, `onmessage(HandshakeAck)`, `onerror` e timer não podem executar bootstrap, enviar metadados/configurações, definir readiness ou sobrescrever o status terminal.
+2. A transição terminal cancela `channelTimer`, fecha os data channels e mantém `dataChannelsReady=false`, sem recursão de falha/Stop.
+3. O estado `disconnected` transitório continua recuperável se o mesmo peer retornar a connected; não aplicar teardown terminal a uma desconexão recuperável.
+4. Stop→Start, ICE local ordenado/isolado, ICE remoto canônico, limite de 30 polls e regressões de entrada permanecem aprovados.
+5. Baseline e xHome workflows verdes. Sem declarar validação de browser ou console físico.
