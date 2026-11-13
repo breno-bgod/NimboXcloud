@@ -344,3 +344,31 @@ entitlement ou gameplay. Nenhuma fonte PSBox copiada; referências GPL preservad
 na proposta. Nenhuma mudança no produto ou dependência nova. Executor sem toolchain
 Android. Próximo incremento: alvo ARM64 e Activity/fachada nativa no próprio
 experimento, com CI após completar dependências; sem segundo painel PSBox.
+
+
+## PSBox Android — armazenamento privado verificado (13/11/2026)
+
+[Experimento](../../experiments/console/psbox-android-platform/README.md).
+Upstream permanece c775ecaddde52024d177cce7392aae13cc6917aa; nenhum PR aberto ou
+comentário novo no PR #24; CI upstream aprovado, sem prova Android. Main Nimbo
+agora c28675d29a4e16f9a7546e091e596c9068975187 (4.15.2); não alterada nesta frente.
+
+Problema reproduzido: platform_android.cpp assumia init/dataDirWritable=true
+mesmo com erro de mkdir e possuía fallback no pacote com.rafaelngp.psbox.
+Foram incorporadas cinco fontes/avisos selecionados, hashes upstream/local em
+sources.json, GPL integral preservada. Só platform_android.cpp foi modificado:
+exige caminho absoluto do host, verifica diretórios, cria/escreve/remove probe
+exclusivo, informa errno/estado e reseta prontidão no shutdown. Host deverá usar
+filesDir/psbox, sem expor caminho a páginas web. Sem mudança de autenticação.
+
+Comando: bash experiments/console/psbox-android-platform/test-host.sh. Baseline
+upstream compilou, mas falhou em missing host directory must fail; adaptado
+compilou e passou com filesystem real. Verificados casos negativos, escrita e
+leitura de fixture sintética, limpeza, reinicialização e shutdown. Isso é build
+e teste nativo Linux do backend, não validação no Android. Sem credenciais ou
+conta usada. Script ARM64 fixa NDK 27.2.12479018/API26, recusa toolchain errado,
+linka biblioteca com --no-undefined e exige ELF AArch64. Workflow limitado ao
+experimento, artefato com fontes/avisos, sem APK e sem libdatachannel/FFmpeg/SDL.
+Resultado ARM64 ainda pendente no momento da publicação. Próximo incremento:
+confirmar CI; então configuração do host Activity/JNI e ligação gradual do núcleo,
+sem segundo painel e sem iniciar login antes de CA/assets/lifecycle reais.

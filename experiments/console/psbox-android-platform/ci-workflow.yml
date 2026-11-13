@@ -1,0 +1,30 @@
+name: PSBox Android platform experiment
+on:
+  pull_request:
+    paths:
+      - 'experiments/console/psbox-android-platform/**'
+      - '.github/workflows/psbox-android-platform.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  platform:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Test native storage behavior on host
+        run: bash experiments/console/psbox-android-platform/test-host.sh
+      - name: Install fixed official NDK
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018"'
+      - name: Link Android ARM64 platform library
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+          bash experiments/console/psbox-android-platform/build-arm64.sh "$RUNNER_TEMP/nx-arm64"
+      - name: Preserve sources and notices with experimental binary
+        run: cp -R experiments/console/psbox-android-platform "$RUNNER_TEMP/nx-arm64/source"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nimbo-psbox-platform-arm64-not-apk
+          path: ${{ runner.temp }}/nx-arm64
+          retention-days: 7

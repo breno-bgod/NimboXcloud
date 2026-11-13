@@ -12,6 +12,7 @@ Este espaço reúne pesquisa e experimentos para revisão antes de qualquer inco
 
 | Frente | Estado | Evidência / próximo passo |
 | --- | --- | --- |
+| PSBox Android: armazenamento privado | Build/teste nativo Linux aprovado; ARM64 pendente no CI | [Experimento](../../experiments/console/psbox-android-platform/README.md); biblioteca parcial, sem APK |
 | Integração Android: propriedade de sessão | Simulação aprovada; 9 testes locais | [Contrato e limites](../../experiments/console/engine-session-contract/README.md); sem JNI/APK/gameplay |
 | Identidade de cliente Xbox — pesquisa secundária | Análise e testes locais; reconhecimento pelo servidor não demonstrado | [Mapa de identidade](CONSOLE_IDENTITY_MAP.md) e [quatro testes no Nimbo real](../../experiments/console/identity-boundary/README.md) |
 | XStreaming: objeto XSTS ativo | Simulação controlada aprovada; classificação desconhecida | [Experimento](../../experiments/console/xstreaming-identity/README.md): cinco testes; DeviceToken/TitleToken comentados no caminho legado e ausentes no MSAL |

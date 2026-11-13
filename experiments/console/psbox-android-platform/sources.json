@@ -1,0 +1,37 @@
+{
+  "repository": "https://github.com/RafaelNGP/psbox-cloud-gaming",
+  "commit": "c775ecaddde52024d177cce7392aae13cc6917aa",
+  "license": "GPL-3.0-or-later (source headers); GPL v3 text in vendor/LICENSE",
+  "files": [
+    {
+      "path": "src/platform/android/platform_android.cpp",
+      "upstream_sha256": "eae94de473e2a098ba12d3180ebcc51d1bdd501f9233203f7879f7c4cfa51e87",
+      "local_sha256": "99e288a3eb6277398550b85e00bd0249407cca6e0efbe5af539fcaa6981d3f3c",
+      "modified": true
+    },
+    {
+      "path": "src/platform/platform.h",
+      "upstream_sha256": "43cdf61a90dec7af2e13d0d3f88a7a9dbc8e9c671df099ece93e4f7d9dc0e147",
+      "local_sha256": "43cdf61a90dec7af2e13d0d3f88a7a9dbc8e9c671df099ece93e4f7d9dc0e147",
+      "modified": false
+    },
+    {
+      "path": "src/platform/posix_common.cpp",
+      "upstream_sha256": "e338aa677b6cfdb18642fac555b444256be395741947f06903aed31ba03c9e29",
+      "local_sha256": "e338aa677b6cfdb18642fac555b444256be395741947f06903aed31ba03c9e29",
+      "modified": false
+    },
+    {
+      "path": "src/util/log.h",
+      "upstream_sha256": "39d31af2494417003535b3a1bb93810119ff51c5f6c56034841343002dca5734",
+      "local_sha256": "39d31af2494417003535b3a1bb93810119ff51c5f6c56034841343002dca5734",
+      "modified": false
+    },
+    {
+      "path": "LICENSE",
+      "upstream_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "local_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "modified": false
+    }
+  ]
+}
