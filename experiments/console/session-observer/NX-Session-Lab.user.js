@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NX — Laboratório passivo de sessão (experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/experiments
-// @version      0.1.2
+// @version      0.1.3
 // @description  Observação opt-in de sessão, sem alterar identidade ou autenticação.
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
@@ -13,6 +13,7 @@
   function createLab(env){
     let running=false,epoch=0,original=null,wrapper=null,timer=null,sequence=0;
     let events=[],lastVideo=null,lastFrames=null;
+    let xhrCleanup=()=>{},xhrHook=()=> 'inactive',observedXhrCalls=0;
     let lifecycle={state:'not-started',startAttempts:0,startedAt:null,stoppedAt:null,stopReason:null};
     let observedFetchCalls=0,mediaSampledAt=null,unmatchedCategories={};
     let media={liveVideo:false,decodedFramesAdvancing:false,audioTrackPresent:false};
@@ -70,6 +71,48 @@
         return family+':'+verb+':'+stage;
       }catch(_){return 'unclassifiable';}
     }
+    function installXhr(session){
+      const proto=env.XMLHttpRequest?.prototype;
+      if(!proto||typeof proto.open!=='function'||typeof proto.send!=='function'){
+        xhrHook=()=> 'unavailable';return;
+      }
+      const originalOpen=proto.open,originalSend=proto.send,metadata=new WeakMap(),pending=new Set();
+      function open(...args){
+        // Reopening an XHR aborts its previous operation: do not associate that
+        // completion with the next request. Keep only sanitized metadata.
+        const previous=metadata.get(this);if(previous?.detach)previous.detach();metadata.delete(this);
+        const result=Reflect.apply(originalOpen,this,args);
+        if(running&&epoch===session&&typeof args[0]==='string'&&typeof args[1]==='string'){
+          const init={method:args[0]},info=classify(args[1],init);
+          if(info)info.descriptor={observation:'not-captured'};
+          metadata.set(this,{info,category:categorize(args[1],init)});
+        }
+        return result;
+      }
+      function send(...args){
+        const data=metadata.get(this);let item=null,detach=()=>{};
+        if(running&&epoch===session){
+          observedXhrCalls++;
+          if(data?.info){
+            item={request:++sequence,...data.info,transport:'xhr',status:'pending'};
+            events.push(item);if(events.length>24)events.shift();
+            if(data.info.stage.startsWith('play-')){lastVideo=null;lastFrames=null;manual={heardAudio:false,controlsResponded:false};media={liveVideo:false,decodedFramesAdvancing:false,audioTrackPresent:false};}
+            const xhr=this;
+            const done=()=>{detach();if(running&&epoch===session){try{item.status=Number.isInteger(xhr.status)?xhr.status:'unknown';}catch(_){item.status='unknown';}emit();}};
+            detach=()=>{xhr.removeEventListener('loadend',done);pending.delete(detach);if(data.detach===detach)data.detach=null;};
+            data.detach=detach;
+            if(pending.size>=24)pending.values().next().value();
+            pending.add(detach);xhr.addEventListener('loadend',done);emit();
+          }else{const category=data?.category||'opened-before-observation';unmatchedCategories['xhr:'+category]=(unmatchedCategories['xhr:'+category]||0)+1;}
+        }
+        try{return Reflect.apply(originalSend,this,args);}
+        catch(error){detach();if(item&&running&&epoch===session){item.status='xhr-threw';emit();}throw error;}
+      }
+      const cleanup=()=>{for(const detach of [...pending])detach();if(proto.open===open)proto.open=originalOpen;if(proto.send===send)proto.send=originalSend;};
+      try{proto.open=open;proto.send=send;if(proto.open!==open||proto.send!==send)throw Error('XHR hook unavailable');}
+      catch(_){cleanup();xhrHook=()=> 'installation-failed';return;}
+      xhrCleanup=cleanup;xhrHook=()=>running?(proto.open===open&&proto.send===send?'installed':'replaced-or-wrapped'):'inactive';
+    }
     function sample(){
       if(!running)return;
       mediaSampledAt=new Date().toISOString();
@@ -88,7 +131,7 @@
       if(running)return;
       lifecycle.startAttempts++;
       if(typeof env.fetch!=='function'){lifecycle.state='start-failed';lifecycle.stopReason='fetch-unavailable';emit();throw Error('Fetch indisponível.');}
-      running=true;lifecycle.state='observing';lifecycle.startedAt=new Date().toISOString();lifecycle.stoppedAt=null;lifecycle.stopReason=null;observedFetchCalls=0;mediaSampledAt=null;unmatchedCategories={};const session=++epoch;events=[];sequence=0;lastVideo=null;lastFrames=null;
+      running=true;lifecycle.state='observing';lifecycle.startedAt=new Date().toISOString();lifecycle.stoppedAt=null;lifecycle.stopReason=null;observedFetchCalls=0;observedXhrCalls=0;mediaSampledAt=null;unmatchedCategories={};const session=++epoch;events=[];sequence=0;lastVideo=null;lastFrames=null;
       media={liveVideo:false,decodedFramesAdvancing:false,audioTrackPresent:false};manual={heardAudio:false,controlsResponded:false};
       original=env.fetch;const delegate=original;
       wrapper=function(...args){
@@ -110,19 +153,19 @@
         },()=>{if(running&&epoch===session){item.status='network-error';emit();}});
         return result;
       };
-      try{env.fetch=wrapper;if(env.fetch!==wrapper)throw Error('Fetch não substituível.');timer=env.setInterval(sample,1000);sample();emit();}
-      catch(error){running=false;lifecycle.state='start-failed';lifecycle.stoppedAt=new Date().toISOString();lifecycle.stopReason='hook-installation-failed';epoch++;if(env.fetch===wrapper)env.fetch=original;if(timer!==null)env.clearInterval(timer);timer=null;emit();throw error;}
+      try{env.fetch=wrapper;if(env.fetch!==wrapper)throw Error('Fetch não substituível.');installXhr(session);timer=env.setInterval(sample,1000);sample();emit();}
+      catch(error){running=false;lifecycle.state='start-failed';lifecycle.stoppedAt=new Date().toISOString();lifecycle.stopReason='hook-installation-failed';epoch++;xhrCleanup();if(env.fetch===wrapper)env.fetch=original;if(timer!==null)env.clearInterval(timer);timer=null;emit();throw error;}
     }
     function stop(){
       if(!running)return;
-      running=false;lifecycle.state='stopped';lifecycle.stoppedAt=new Date().toISOString();lifecycle.stopReason='explicit-stop';epoch++;
+      running=false;lifecycle.state='stopped';lifecycle.stoppedAt=new Date().toISOString();lifecycle.stopReason='explicit-stop';epoch++;xhrCleanup();
       if(env.fetch===wrapper)env.fetch=original;
       if(timer!==null)env.clearInterval(timer);timer=null;emit();
     }
     function report(){return JSON.parse(JSON.stringify({schema:'nx-session-observer-v1',capturedAt:new Date().toISOString(),running,events,media,
-      diagnostics:{lifecycle,observedFetchCalls,unmatchedCategories,recognizedRequests:sequence,fetchHook:running?(env.fetch===wrapper?'installed':'replaced-or-wrapped'):'inactive',mediaSampledAt,mediaIsHistorical:!running&&mediaSampledAt!==null},
+      diagnostics:{lifecycle,observedFetchCalls,observedXhrCalls,xhrHook:xhrHook(),unmatchedCategories,recognizedRequests:sequence,fetchHook:running?(env.fetch===wrapper?'installed':'replaced-or-wrapped'):'inactive',mediaSampledAt,mediaIsHistorical:!running&&mediaSampledAt!==null},
       manualConfirmation:manual,serverConsoleRecognition:'not-verified',mediaBindingToObservedRequest:'not-verified',
-      limitations:['Somente fetch observado após ativação; não cobre referências salvas, XHR, workers ou tráfego nativo.',
+      limitations:['Fetch e XHR observados após ativação; não cobre referências salvas, workers ou tráfego nativo; headers XHR não são capturados.',
         'Descritor é declaração do cliente; status HTTP não comprova identidade Xbox.',
         'Trilha de áudio não comprova som audível; comandos e áudio exigem confirmação manual.',
         'Após parar, mídia e confirmações são amostras históricas; relatório exibido é um snapshot e deve ser gerado novamente.']}));}
