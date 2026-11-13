@@ -62,3 +62,28 @@ Não alterar painel, perfis e layouts aprovados enquanto não bloquearem o exper
 ## Situação desta proposta
 
 Documento de planejamento: não contém patch do SDK, nova API ou validação de gameplay. Define o próximo lote para evitar nova dispersão para funcionalidades visuais. Arquitetura mais ampla exige revisão desta proposta antes de implementação.
+
+
+## Referência adicional: Orbita — pesquisa de 2026-11-13
+
+O site oficial apresenta o Orbita 1.1.0 como aplicativo XEX instalado no Xbox 360/Aurora. O console funciona como cliente: recebe imagem/som do xCloud e envia comandos. Essa evidência é de jogos da nuvem sendo usados no Xbox 360; não deve ser descrita como hospedagem de um Xbox 360 remoto ou desbloqueio de todo o acervo desse console.
+
+A ajuda oficial vincula catálogo/permissões à conta Microsoft e relata recuperação de rede, menu rápido, configuração de controles e login por código. A página de jogos separa resultados testados, problemas e títulos ainda não testados. A distinção entre catálogo listado e gameplay confirmado é aplicável ao Nimbo.
+
+### O que aproveitar na pesquisa
+
+- Comparar descoberta de catálogo, identificação de título, início de sessão e motivos de encerramento com PSBox/Nimbo.
+- Usar estados claros de reconexão e restabelecimento dos controles, com teste real de imagem, áudio e comandos.
+- Preservar uma matriz de validação por jogo/rota, sem tratar título listado ou conexão provisionada como partida validada.
+- Separar recursos nativos do Xbox 360 de APIs disponíveis no navegador. XEX/Aurora, controle/headset/Kinect e atualização do aplicativo não são recursos transferíveis diretamente para um userscript.
+
+### Limite verificado
+
+O link Código no GitHub do próprio site aponta para https://github.com/sergiolimasks/orbita. A abertura direta e a consulta à API GitHub retornaram 404 nesta pesquisa. A indexação de busca ainda mostra um README de uma versão ELF legada, mas isso não equivale a acesso ao código atual XEX. Não foi possível inspecionar os payloads, autenticação, oferta ou transporte da versão atual. Não inferir que ela usa uma identidade específica, libera títulos indisponíveis ou pode ser incorporada diretamente ao Nimbo.
+
+Esta referência acrescenta evidência de cliente independente no hardware antigo; não altera os requisitos de disponibilidade/autorização do serviço nem comprova suporte a GTA VI.
+
+Fontes primárias:
+- https://x360.pistatrack.com/?lang=pt-BR
+- https://x360.pistatrack.com/ajuda?lang=pt-BR
+- https://x360.pistatrack.com/jogos
