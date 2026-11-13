@@ -18,7 +18,7 @@ O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que pr
 
 ## Ajuste de entradas e Sistema — 2026-11-13 (não lançado)
 
-Por decisão do mantenedor, Sistema não apresenta identidade experimental, Client Hints ou uma segunda ação de tela cheia/horizontal. DeX não é uma categoria própria: o perfil de dispositivo usa as capacidades normais do navegador, preservando a migração interna de preferências antigas.
+Por decisão do mantenedor, Sistema não apresenta nem aplica os experimentos de identidade/Client Hints, mesmo com preferências antigas, e não apresenta uma segunda ação de tela cheia/horizontal. DeX não é uma categoria própria: o perfil de dispositivo usa as capacidades normais do navegador, preservando a migração interna de preferências antigas.
 
 A opção Fortnite Console não executava alteração alguma na versão atual. Foi substituída por orientação para escolher controle físico ou virtual em Entradas. Não há nova alteração de protocolo nem garantia de interface de console. O touchpad virtual envia movimentos diretamente ao SDK; Pointer Lock é oferecido separadamente para mouse físico, mediante gesto explícito e sessão conectada.
 

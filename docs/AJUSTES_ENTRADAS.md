@@ -6,7 +6,7 @@
 - A captura usa a API nativa no vídeo ativo. Não desbloqueia suporte a teclado/mouse em jogos incompatíveis. F9 permanece com o Xbox. Uma tecla já presente na combinação do painel é reservada ao painel.
 - Teclado e mouse virtuais usam touchpad e teclas na tela, sem Pointer Lock. **Controles na tela e editor de HUD** distingue esse editor do editor de analógicos/botões do controle virtual. Os layouts existentes não são migrados nem apagados.
 - Os atalhos configuráveis de teclado e controle abrem o painel; não remapeiam comandos do jogo. Sem combinação personalizada, aparece o atalho padrão de teclado.
-- Sistema não repete tela cheia/orientação e não exibe os seletores experimentais de identidade. Preferências históricas desses experimentos permanecem armazenadas, sem nova ativação automática.
+- Sistema não repete tela cheia/orientação e não exibe os seletores experimentais de identidade. Preferências históricas desses experimentos permanecem armazenadas, sem aplicação dos experimentos suspensos.
 
 ## Fortnite e referências
 
@@ -21,6 +21,6 @@ Consultados:
 
 ## Verificação
 
-Testes comportamentais cobrem captura explícita, seleção física efetivamente aplicada, sessão ausente, outras entradas, conflitos, formulários, modificadores, F9/Esc, liberação, API indisponível e promessa rejeitada. Total local: 312 testes, 309 PASS, zero FAIL, três TODO preexistentes.
+Testes comportamentais cobrem captura explícita, seleção física efetivamente aplicada, sessão ausente, outras entradas, conflitos, formulários, modificadores, F9/Esc, liberação, API indisponível e promessa rejeitada. Total local: 314 testes, 311 PASS, zero FAIL, três TODO preexistentes.
 
 Pendente em navegador e sessão Xbox reais: Fortnite compatível com teclado/mouse, F8/F2 e botão após Esc, liberação ao abrir o painel, navegação em campos editáveis e preservação dos dois editores de HUD. Testes Node não validam movimento da câmera nem recepção no servidor. Não há evidência nova de gameplay ou suporte a GTA VI.

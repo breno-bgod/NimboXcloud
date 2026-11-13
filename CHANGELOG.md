@@ -1,9 +1,9 @@
 ## Não lançado — ajustes de entradas e Sistema
 - Mouse físico ganha captura explícita no vídeo da sessão, com F8 padrão, alternativa F2 e Esc para liberar. Não modifica a API nativa nem intercepta F9; entrada ativa e sessão conectada são verificadas.
 - Editor de HUD fica identificado como controle virtual ou teclado/mouse por toque; retirado dos ajustes físicos. Atalhos do painel explicam seu propósito e mostram o padrão quando não há combinação personalizada.
-- Sistema deixa de exibir ação duplicada de tela cheia/horizontal e seletores experimentais de identidade/Client Hints. Removida a referência visual a DeX; o perfil usa recursos normais do navegador.
+- Sistema deixa de exibir ação duplicada de tela cheia/horizontal e seletores experimentais de identidade/Client Hints. Preferências antigas não mantêm os experimentos de identidade ativos após ocultar os seletores. Removida a referência visual a DeX; o perfil usa recursos normais do navegador.
 - Opção inoperante de Fortnite Console substituída por acesso à escolha de entradas, sem prometer interface de console ou alterar sinalização. Layouts, preferências das cinco entradas e transporte preservados.
-- Verificação local: 312 testes, 309 PASS, zero FAIL e três TODO; sessão Xbox e captura em navegador real pendentes.
+- Verificação local: 314 testes, 311 PASS, zero FAIL e três TODO; sessão Xbox e captura em navegador real pendentes.
 
 ## [4.14.0] — 2026-11-13
 - Qualidade solicitada e perfis passam para Vídeo e imagem, com dimensão do vídeo recebido. Removido o perfil redundante Compatível; selecionar qualidade deixa de zerar um limite independente de bitrate.

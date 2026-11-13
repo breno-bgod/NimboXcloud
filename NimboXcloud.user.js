@@ -167,7 +167,8 @@ SOFTWARE.
       if (p === 'xboxone' || p === 'xboxseries' || p === 'xbox') { localStorage.setItem(LS_CONSOLE_LAB, 'off'); return 'off'; }
       // Smart TV foi descontinuado: voltar à identificação nativa automática.
       if (p === 'smarttv') { localStorage.setItem(LS_CONSOLE_LAB, 'off'); return 'off'; }
-      return ['off','android','windows'].includes(p) ? p : 'off'; }
+      // Seletor suspenso: preferências históricas não alteram a identidade ativa.
+      return 'off'; }
     catch (_) { return 'off'; }
   })();
   const nxConsoleLabState = { profile: nxConsoleLabProfile, applied: false, error: '', nativeUA: nxConsoleNativeUA, startedAt: new Date().toISOString() };
@@ -219,16 +220,9 @@ SOFTWARE.
     nxSessionTrace.push(item);
     if (nxSessionTrace.length > 35) nxSessionTrace.shift();
   }
-  const nxClientHintsMode = (function () {
-    try { return localStorage.getItem('nx.consoleLab.hideClientHints.v1') === '1'; } catch (_) { return false; }
-  })();
-  let nxClientHintsApplied = false;
-  if (nxClientHintsMode && nxConsoleLabProfile !== 'off' && !nxCompatibilityMode) {
-    try {
-      Object.defineProperty(navigator, 'userAgentData', { configurable: true, get: function () { return undefined; } });
-      nxClientHintsApplied = typeof navigator.userAgentData === 'undefined';
-    } catch (err) { nxConsoleLabState.error += ' ClientHints: ' + String(err && err.message || err); }
-  }
+  // Experimento suspenso junto ao seletor; preferências antigas não ocultam a API.
+  const nxClientHintsMode = false;
+  const nxClientHintsApplied = false;
   const nxConsoleLabEvents = [];
   function nxConsoleLabEvent(type, detail) {
     const entry = { time: new Date().toISOString(), type: type, detail: String(detail || '').slice(0, 180) };
