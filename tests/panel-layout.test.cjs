@@ -33,6 +33,7 @@ function harness(){
   note:message=>new Node('p',message),nxBindControls:(root,category)=>root.appendChild(new Node('div','Atalho '+category)),
   nxPointerControls:root=>root.appendChild(new Node('div','CAPTURA DO MOUSE FÍSICO')),
   nxInputModePage:root=>root.appendChild(new Node('div','SELETOR ÚNICO')),
+  nxTouchpadSettings:root=>root.appendChild(new Node('div','SENSIBILIDADE DO TOUCHPAD')),
   nxPanelSettingsPage:root=>root.appendChild(new Node('div','APARÊNCIA DO PAINEL')),
   nxMonitorToggleButton:()=>new Node('button','Ativar estatísticas'),
   nxMonitorSettingsPage:root=>root.appendChild(new Node('div','APARÊNCIA DO MONITOR')),
@@ -95,13 +96,19 @@ test('system includes compatibility and keeps technical input diagnostics out of
  assert.doesNotMatch(keyboard.textContent,/Configurar teclado e mouse/);
 });
 
-test('one input page embeds both device builders without duplicated activation',()=>{
- const h=harness(),root=h.build('inputs');
- assert.equal(root.textContent.split('SELETOR ÚNICO').length-1,1);
- assert.match(root.textContent,/Ajustes do controle físico/);assert.match(root.textContent,/Ajustes de teclado e mouse/);
- assert.match(root.textContent,/Atalho gamepad/);assert.match(root.textContent,/Atalho keyboard/);
- assert.doesNotMatch(root.textContent,/Escolher entrada|Ativar HUD/);
- assert.equal(root.children[1].tagName,'details');assert.equal(root.children[1].open,undefined);
+test('input workspace mounts settings for the browsed device without duplicated activation',()=>{
+ const h=harness();
+ for(const family of ['keyboard','gamepad','mobile']){
+  h.ctx.nxInputModePage=root=>{root.appendChild(new Node('div','SELETOR ÚNICO'));return family;};
+  const root=h.build('inputs');
+  assert.equal(root.textContent.split('SELETOR ÚNICO').length-1,1);
+  assert.equal(root.textContent.includes('Ajustes do controle físico'),family==='gamepad');
+  assert.equal(root.textContent.includes('Ajustes de teclado e mouse'),family==='keyboard');
+  assert.equal(root.textContent.includes('Atalho gamepad'),family==='gamepad');
+  assert.equal(root.textContent.includes('Atalho keyboard'),family==='keyboard');
+  assert.doesNotMatch(root.textContent,/Escolher entrada|Ativar HUD/);
+  if(family!=='mobile')assert.equal(root.children[1].tagName,'details');
+ }
 });
 
 test('interface contains both appearance systems while statistics retains metrics and a link',()=>{

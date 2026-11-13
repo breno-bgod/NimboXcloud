@@ -1,3 +1,12 @@
+## [4.15.3] — 2026-11-13 — Central de Entradas verde
+- Publicação oficial autorizada pelo mantenedor pelo PR #29; userscript 4.15.3 e módulo 1.4.1 fixado por SHA. Desenvolvimento PSBox/Android permanece no PR #24, sem incorporação nesta versão.
+- Entradas oferece navegação entre Teclado e mouse, Controle e Mobile, com representação do dispositivo e ajustes contextuais. Navegar entre grupos mantém a entrada ativa até uma seleção explícita.
+- Painel ampliado para Entradas no desktop, navegação compacta com ícones no celular e tema grafite/verde compartilhado pelo NX e editor.
+- Editor mantém propriedades junto ao controle no desktop e usa gaveta inferior recolhível em celulares na vertical. Salvar e cancelar ficam na barra inferior.
+- Velocidade e sensibilidade horizontal/vertical do mouse por toque ficam acessíveis no NX, usando as preferências existentes do módulo.
+- Verificação local com 388 testes, 385 aprovados, zero falhas e três TODO preexistentes. Sintaxe e relatório estático executados. Edge headless em 1366×800 e 390×844 validou navegação, persistência da sensibilidade e retorno do editor.
+- Teste em partida real pendente. Representações dos dispositivos são ilustrativas. Menu radial, editor de mira, remapeamento de controle físico e saídas virtuais do sistema operacional permanecem fora desta implementação.
+
 ## [4.15.2] — 2026-11-13
 - Incorporação do PR #25 autorizada pelo mantenedor. Alça NX independente de 44 × 44 px à esquerda, arraste vertical persistente e acesso durante biblioteca/partida; painel aberto mantém o dock. Preparação continua bloqueando configurações.
 - Gerenciador de atalhos na captura window evita retenção de keyup pelo painel; Ctrl+Shift+H padrão volta a funcionar sem combinação personalizada. F8/F2 aceitam key somente quando code está ausente/Unidentified, sem remapear Backquote.
@@ -406,9 +415,3 @@ Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR
 
 ## Próximas versões
 As alterações futuras devem incluir: versão, data, recursos adicionados, correções, incompatibilidades conhecidas e evidências de testes.
-
-
-
-
-
-
