@@ -170,3 +170,116 @@ O método original rejeitou fixtures HTTP 403 e HTTP 200 sem sessionPath, preser
 Estado: simulação controlada aprovada para montagem de requisição. Nenhum login, endpoint real, CORS de navegador ou gameplay testado. Próximo passo: usar observador real com jogo autorizado e obter comparação não sensível de cliente Xbox legítimo; não portar o widget ou copiar descritor por suposição.
 
 LICENSE do projeto Tizen foi lido neste SHA e confirmado MIT; a classificação anterior NOASSERTION vinha de metadados da API e foi corrigida no relatório de triagem.
+
+
+## Revalidação de ofertas retail, clientes nativos e APIs web — 2026-11-13
+
+### Resposta provisória à pergunta central
+
+**Estado: INCONCLUSIVO para paridade geral; nenhum método público legítimo foi encontrado para transformar uma oferta retail exclusiva de console em uma oferta web.**
+
+Não foi encontrada evidência de um mesmo título que, na mesma conta, assinatura/plano, região e janela temporal, tenha iniciado via Cloud Gaming no cliente Xbox e sido recusado no navegador. A exigência de comparar as mesmas condições continua válida; compra isolada não comprova acesso à nuvem.
+
+A documentação oficial confirma que o Xbox Cloud Gaming executa o jogo em servidores Xbox/Azure, enquanto o Xbox Remote Play executa o jogo no console próprio do usuário. A página oficial de Xbox também declara que jogos disponíveis variam por região, dispositivo, plano Game Pass e modalidade/tempo de cloud play. Isso torna plausível uma diferença por dispositivo, mas não identifica qual verificação interna bloqueia um título específico. Consulta em 2026-11-13:
+- [Introdução oficial a game streaming — GDK](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/game-streaming/game-streaming-overview?view=gdk-2610).
+- [FAQ oficial Xbox Cloud Gaming](https://www.xbox.com/en-US/cloud-gaming).
+- [Atualização Xbox de abril de 2025](https://news.xbox.com/pt-br/2025/04/16/atualizacao-xbox-de-abril-compre-jogos-no-app-xbox-mobile-jogue-por-streaming-games-que-ja-possui-e-mais/).
+
+Em abril de 2025, a Xbox informou que o recurso Stream Your Own Game foi ampliado aos consoles Xbox, além dos dispositivos já anunciados, incluindo aparelhos compatíveis com navegador. No mesmo artigo, Remote Play pelo navegador é descrito separadamente como transmissão de qualquer jogo instalado no console próprio. Portanto, catálogo cloud e Remote Play não devem ser misturados.
+
+### Caso futuro: Grand Theft Auto VI
+
+- **Fonte primária:** [Xbox Wire Brasil, 2026-11-10](https://news.xbox.com/pt-br/2026/11/10/grand-theft-auto-vi-chega-ao-xbox-one-e-xbox-series-xs-por-meio-do-xbox-cloud-gaming/).
+- **Oferta anunciada:** Xbox Cloud Gaming em Xbox One e Xbox Series X|S, a partir de 2026-11-19 às 03:00 (Brasília).
+- **Modalidade:** execução cloud; a publicação separa o jogo nativo no Series X|S da transmissão para Xbox One.
+- **Conta/entitlement:** o jogo deve ser comprado separadamente; a notícia informa que tempo de jogo cloud pode ser comprado em mercados suportados. Nenhuma conta ou assinatura do mantenedor foi testada.
+- **Região e dispositivo:** a própria notícia alerta que disponibilidade, dispositivos compatíveis e elegibilidade variam por mercado e dispositivo.
+- **Navegador:** a notícia nomeia Xbox One e Series X|S, mas não declara explicitamente que o navegador está excluído. Em 2026-11-13 a oferta ainda não havia começado.
+
+**Conclusão do caso:** candidato forte para comparação após o lançamento, mas ainda não é evidência de indisponibilidade web nem prova de suporte no console de uma conta específica. Não declarar GTA VI suportado antes de oferta efetiva e teste real.
+
+A [issue #92 do Green-NX](https://github.com/rmrf404/green-nx/issues/92), aberta em 2026-11-10, pergunta se o jogo poderá ser transmitido no Switch. Continua aberta, com zero comentários na consulta, sem implementação ou resposta demonstrada.
+
+### O que a documentação oficial permite no navegador
+
+A Microsoft documenta o Web Content Test Application em `play.xbox.com` e `xbox.com/play`. Os dois ambientes web oferecem seleção de região, contas sandbox e private offerings. Uma private offering é um ambiente privado de teste de jogos em datacenter; a conta precisa estar autorizada para aquela offering e as regiões precisam estar configuradas. Os títulos dessa offering não aparecem no catálogo retail normal.
+
+A mesma documentação separa:
+- **IP Connect:** browser conectado diretamente a um Xbox Development Kit por IP, com WebSocket para sinalização e UDP para o stream; exige kit configurado, sandbox/test account e rede permitida.
+- **Remote Connect:** transmite um Development Kit pela infraestrutura Xbox Remote Play; exige o kit e a conta configurados.
+- **Private offering:** teste de jogo em datacenter, sujeito à autorização explícita da conta e às regiões configuradas.
+
+Esses fluxos comprovam que o navegador é capaz de iniciar streams autorizados, mas não fornecem um caminho público para solicitar uma offering retail exclusiva de console. O fluxo de Development Kit também não é uma forma de acessar o catálogo comercial de outro dispositivo.
+
+Fontes primárias:
+- [CTA para play.xbox.com](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/game-streaming/game-streaming-web-content-test-application?view=gdk-2610).
+- [CTA para xbox.com/play](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/game-streaming/game-streaming-web-content-test-application-xbox-com-play?view=gdk-2610).
+- [Game Streaming Overview](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/game-streaming/game-streaming-overview?view=gdk-2610).
+
+**Requisito concreto atualmente identificado:** para o navegador receber uma oferta retail, o serviço precisa disponibilizar aquele título para o dispositivo/plataforma web e a conta precisa satisfazer plano, entitlement, região e tempo de cloud. Para private offering, a conta precisa estar explicitamente autorizada. Não há API pública documentada para converter uma autorização de console em autorização web, trocar a offering retail por spoofing de UA/headers ou anexar o navegador a uma sessão cloud já criada no console. Isso é uma conclusão sobre a documentação pública atual, não prova de impossibilidade absoluta.
+
+### Alternativas revalidadas
+
+| Projeto | Versão / fonte fixada | Modalidade demonstrada e limites |
+| --- | --- | --- |
+| [PSBox](https://github.com/RafaelNGP/psbox-cloud-gaming/tree/eb63daf8f953684387a06a7bab8ef0a1e3133463) | 1.7.1, commit `eb63daf8f953684387a06a7bab8ef0a1e3133463`, GPL-3.0 | Cliente nativo PS5, PS4/GoldHEN e Linux/Steam Deck. Código separa `xgpuweb` (cloud/titleId) de `xhome` (Remote Play do Xbox próprio/serverId). 1080p60 H.264 declarado no README. Não é página web nem prova de offering console. |
+| [XCloud4](https://github.com/asp11edgr/XCloud4/tree/eb1fcba315fc768797b5398b97826506bf21ea04) | 1.3.0-beta, commit `eb1fcba315fc768797b5398b97826506bf21ea04`, GPL-3.0 | Cliente nativo PS4 com GoldHEN, autenticação Microsoft e Cloud Gaming; 1080p Max declarado. README não documenta Remote Play de console próprio. Não é browser. |
+| [Green-NX](https://github.com/rmrf404/green-nx/tree/b52dd73d2bcdd043316a2623d5871dcbd2e5000b) | 1.0.31pre1, commit `b52dd73d2bcdd043316a2623d5871dcbd2e5000b`, GPL-3.0 | Homebrew nativo de Nintendo Switch. Código inspecionado usa ofertas `xgpuweb`/`xgpuwebf2p` e separa `xhome`; não foi encontrado caminho `xgpuconsole`. Issue #92 sobre GTA VI continua sem resposta. |
+| [Orbita](https://x360.pistatrack.com/baixar?lang=pt-BR) | XEX 1.1.0, Xbox 360 720p/60 fps; página de jogos consultada em 2026-11-13 | Aplicativo nativo para Xbox 360 RGH/JTAG/Aurora, cliente de Cloud Gaming, não Remote Play e não jogo local. Ajuda declara que o jogo roda nos servidores Microsoft, que a conta define os títulos e que uma conta só joga em um aparelho por vez. A lista declara 600 títulos: 35 funcionam, 2 com problemas e 563 não testados. O repositório atual vinculado não pôde ser inspecionado via API GitHub; não inferir código XEX a partir do legado ELF. |
+| [Greenlight](https://github.com/unknownskl/greenlight/tree/ca4283b5e03f0c6604683c03cfba1221a2e65239) + [xbox-xcloud-player](https://github.com/unknownskl/xbox-xcloud-player/tree/a6511a645736f4988f77323284c6f0f36bf93aef) | Greenlight commit `ca4283b5e03f0c6604683c03cfba1221a2e65239`, MIT; player `1.0.0-beta7`, pacote declara MIT | Aplicativo desktop nativo que usa a biblioteca WebRTC para xCloud e xHome. xCloud e Remote Play do Xbox próprio são caminhos distintos. A biblioteca não é um site/browser; o exemplo do README usa token xHome. |
+| [XStreaming](https://github.com/Geocld/XStreaming/tree/06ef1c7ee01d09cf9bb2a97fc4895da85e8488a8) | 2.12.0, commit `06ef1c7ee01d09cf9bb2a97fc4895da85e8488a8`, AGPL-3.0 | Aplicativo React Native para Android/iOS, com `react-native-webrtc` e WebView. Os caminhos inspecionados separam `xgpuweb` de `xhome`; o payload de autenticação declara DeviceType Android. Não é uma página web comum nem identidade Xbox. |
+| [Better xCloud](https://github.com/redphx/better-xcloud/tree/ea4d19f2800cee9cfa387a0c9c37b3711cf208c7) | Release 6.7.13, MIT | Userscript que altera a experiência web e entradas. README atual informa que funciona em `xbox.com/play`, não no novo `play.xbox.com` em preview. O patch de toque do Fortnite é específico; não libera catálogo ou entitlement. |
+| [EvenBetter-Xcloud](https://github.com/Endymi0n74/EvenBetter-Xcloud/tree/dffae53404b9ff3cead44604d477d0d7684453cc) | 1.13.11, commit `dffae53404b9ff3cead44604d477d0d7684453cc`, package declara MIT | Fork de userscript com APK Android baseado em WebView; iOS usa Safari + userscript. O auto-spoof de UA descrito no commit contorna um gate Chromium-only da página, não concede autorização de jogo nem identidade Xbox. |
+| [OpenXCloud](https://github.com/shyim/openxcloud/tree/dfa95ebbf3dc7e46187e1ade5e56b02702190324) | commit `dfa95ebbf3dc7e46187e1ade5e56b02702190324` de 2026-11-12, GPL-3.0-only | Cliente desktop nativo Rust com webrtc-rs, FFmpeg, H.264/Opus e wgpu. README diz que o primeiro release ainda está em preparação; streaming Windows foi validado pelo autor em RTX 4070 Ti. Não é browser. |
+| [xCloudNative](https://github.com/Ricardex742/xCloudNative/tree/a6ab26f4e29d84bf09e130bd8b6ac2325f099e59) | Snapshot auditado em 2026-11-13, MIT | Cliente Android nativo. A auditoria anterior encontrou `xgpuweb`, `XboxComBrowser`, `clientAppType=browser` e `sdkType=web` no caminho inspecionado; isso é descritor declarado, não classificação do servidor. |
+
+**Leitura comum:** clientes nativos em consoles não Xbox podem consumir a oferta web `xgpuweb`; alguns também implementam Remote Play `xhome`. Ser um aplicativo em console, usar nome de console ou enviar descritor/UA específico não prova que o servidor concedeu a oferta de console Xbox. Licenças foram conferidas; nenhum código externo foi copiado nesta execução.
+
+### Compatibilidade de APIs web por plataforma
+
+Matriz de compatibilidade consultada em 2026-11-13; versões mínimas são referências de suporte da API, não homologação do Xbox Cloud Gaming:
+
+| API | Android (Chrome/Edge Chromium) | iOS no Brasil (WebKit) | Desktop |
+| --- | --- | --- | --- |
+| WebRTC / RTCPeerConnection | Suporte amplo; Chrome Android 56+ | Safari iOS 11+ | Chrome 56+, Edge 15+, Firefox 44+, Safari 11+ |
+| WebSocket | Amplamente disponível | Amplamente disponível | Amplamente disponível |
+| WebCodecs VideoDecoder | Chrome Android 94+ | Safari iOS 16.4+ | Chrome/Edge 94+, Firefox 130+, Safari 16.4+ |
+| MediaSource | Suporte amplo no Chrome Android | Parcial no Safari iOS; historicamente limitado no iPhone | Suporte amplo |
+| Gamepad | Chrome Android 25+; mapeamento/haptics variam | Safari iOS 10.3+; haptics dependem do SO/controle | Suporte amplo |
+| Pointer Lock | Chrome Android não; Firefox Android tem suporte | Safari iOS não | Suporte amplo em navegadores desktop |
+| Fullscreen | Chrome Android suporta | Safari iOS parcial; vídeo pode usar fullscreen nativo | Suporte amplo |
+| WebHID | Não suportado em Chrome Android/WebView Android | Não suportado | Chrome/Edge desktop 89+; Firefox/Safari não |
+| WebUSB | Disponibilidade limitada, HTTPS e permissão explícita | Não suportado de forma interoperável | Principalmente Chromium desktop; não depender de forma multiplataforma |
+| EME/DRM | API disponível; CDM/key system variam | API disponível; FairPlay/WebKit tem caminho próprio | API disponível; Widevine/PlayReady variam por navegador/SO |
+
+WebRTC, WebSocket e Gamepad já cobrem o transporte e controles básicos em navegadores modernos. WebCodecs pode ajudar em decodificação explícita, mas não é pré-requisito para receber um MediaStream WebRTC; MSE não deve ser confundido com o transporte WebRTC. WebHID/WebUSB, Pointer Lock e fullscreen têm lacunas relevantes para periféricos e UX mobile, mas não explicam por si só um título ausente do catálogo.
+
+Chrome bloqueia autoplay com áudio sem interação prévia; WebKit também exige gesto do usuário para áudio em cenários relevantes. O stream deve começar após ação do usuário e ser testado em primeiro plano. PWA conserva o motor e as permissões do navegador; não cria autorização nova. WebView usa o motor do sistema e pode ter bridge nativa/permissões do app, portanto não é equivalente a página comum. Em iOS distribuído no Brasil, Chrome/Edge/Firefox continuam sob WebKit: as exceções de motores alternativos da Apple são limitadas à UE e ao Japão, com entitlement.
+
+Fontes de compatibilidade:
+- [RTCPeerConnection](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection), [WebSocket](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket), [VideoDecoder/WebCodecs](https://developer.mozilla.org/en-US/docs/Web/API/VideoDecoder), [MediaSource](https://developer.mozilla.org/en-US/docs/Web/API/MediaSource), [Gamepad](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad).
+- [Pointer Lock](https://developer.mozilla.org/en-US/docs/Web/API/Element/requestPointerLock), [Fullscreen](https://developer.mozilla.org/en-US/docs/Web/API/Fullscreen_API), [WebHID](https://developer.mozilla.org/en-US/docs/Web/API/WebHID_API), [WebUSB](https://developer.mozilla.org/en-US/docs/Web/API/WebUSB_API), [EME](https://developer.mozilla.org/en-US/docs/Web/API/Encrypted_Media_Extensions_API).
+- [Política de autoplay do Chrome](https://developer.chrome.com/blog/autoplay), [políticas de vídeo WebKit](https://webkit.org/blog/6784/new-video-policies-for-ios/), [motores alternativos na UE](https://developer.apple.com/de/support/alternative-browser-engines/) e [no Japão](https://developer.apple.com/support/alternative-browser-engines-jp/).
+
+### Experimento mínimo e critério de refutação
+
+**Hipótese:** um título que o serviço oferece via Cloud Gaming no cliente Xbox pode ser recusado no cliente web devido à elegibilidade do dispositivo/oferta, mesmo com a mesma conta, plano, região e janela.
+
+**Pré-requisitos:** título efetivamente disponível na nuvem para a conta do mantenedor; mesma conta Xbox; plano e cloud playtime registrados; mesma região; console Xbox com cliente atualizado; navegador suportado em primeiro plano. GTA VI só pode ser usado depois de 2026-11-19 e se estiver realmente liberado à conta.
+
+**Procedimento:**
+1. Registrar título, Title ID se visível, região, data/hora, plano/tempo cloud e versões dos clientes, sem capturar tokens.
+2. Iniciar Cloud Gaming no Xbox (não instalação local e não Remote Play); registrar tela/resultado e se a sessão foi criada.
+3. Em até 15 minutos, abrir o mesmo título no site oficial web, na mesma conta/região, e registrar catálogo, erro e modalidade.
+4. Se a web iniciar, observar SDP/ICE, trilhas de áudio/vídeo, quadros recebidos e um comando funcional; não marcar sucesso apenas por HTTP 200, catálogo, SDP ou conexão WebRTC.
+5. Repetir uma vez em ordem inversa se a primeira comparação for ambígua.
+
+**Resultado esperado:** ambos iniciam, ou o console inicia e a web retorna uma recusa reproduzível com evidência não sensível do estado/erro.
+
+**Refutação da hipótese de bloqueio por dispositivo:** o mesmo título inicia no browser nas mesmas condições e entrega vídeo, áudio e comandos funcionais. **Confirmação de diferença observada:** o console inicia e a web recusa o mesmo título sob as condições controladas; isso ainda não identifica a regra interna até obter erro/documentação que a explique.
+
+**Limite desta execução:** nenhum teste autenticado real, console físico, Android, iOS ou gameplay foi executado. O observador passivo existente continua opt-in; os testes locais anteriores não comprovam classificação do servidor.
+
+### Próxima tarefa concreta
+
+Obter uma comparação pareada, não sensível, de um título já disponível ao mantenedor na nuvem do Xbox e no navegador oficial, com a mesma conta/plano/região e janela de até 15 minutos. Só usar GTA VI após a oferta iniciar e o jogo estar efetivamente elegível à conta. Registrar a recusa/aceitação do serviço e a cadeia de mídia/comandos, sem tokens ou HAR completo.
