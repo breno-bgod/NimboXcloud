@@ -1,3 +1,7 @@
+# Prioridade vigente
+
+[Adaptação Android baseada no PSBox](PSBOX_ANDROID_AUTOMATION.md): nova decisão do mantenedor; substitui o foco principal anterior em identidade Xbox. Histórico e evidências abaixo permanecem para consulta. Fork pendente de criação/acesso; nenhum APK próprio compilado.
+
 # Índice de pesquisa de console e streaming
 
 Ponto central: [PR #24](https://github.com/breno-bgod/NimboXcloud/pull/24).
