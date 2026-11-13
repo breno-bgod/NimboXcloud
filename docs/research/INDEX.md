@@ -12,7 +12,7 @@ Este espaço reúne pesquisa e experimentos para revisão antes de qualquer inco
 
 | Frente | Estado | Evidência / próximo passo |
 | --- | --- | --- |
-| PSBox Android: lifecycle do host | Propriedade Java testada com backend simulado; build Android pendente | [Binding por composição](../../experiments/console/psbox-android-platform/README.md); sem nova tela/aplicativo |
+| PSBox Android: lifecycle do host | Teste Java release17 e build Android/AAR aprovados | [Binding por composição](../../experiments/console/psbox-android-platform/README.md), [CI/artefato](https://github.com/breno-bgod/NimboXcloud/actions/runs/43513384405); execução Android ainda pendente |
 | PSBox Android: fachada Java/JNI | C++ no host e build Java/JNI/AAR aprovados | [Contrato e limites](../../experiments/console/psbox-android-platform/README.md), [CI/artefato](https://github.com/breno-bgod/NimboXcloud/actions/runs/43497614092); sem Activity, APK ou sessão |
 | PSBox Android: armazenamento privado | Build/teste Linux e link Android ARM64 aprovados no CI | [Experimento](../../experiments/console/psbox-android-platform/README.md) e [artefato do CI](https://github.com/breno-bgod/NimboXcloud/actions/runs/43492918003); biblioteca parcial, sem APK |
 | Integração Android: propriedade de sessão | Simulação aprovada; 9 testes locais | [Contrato e limites](../../experiments/console/engine-session-contract/README.md); sem JNI/APK/gameplay |

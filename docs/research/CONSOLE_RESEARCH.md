@@ -436,3 +436,8 @@ APK, login, mídia ou gameplay. Prontidão/parada aqui refere-se somente à cama
 plataforma: antes do núcleo, neutralização, StreamPlayer::stop e workers devem
 participar do encerramento. Próximo: confirmar build da binding e preparar
 execução instrumentada do host antes de integrar núcleo/mídia/entrada.
+
+
+### Build da binding confirmado
+
+[CI #43513384405](https://github.com/breno-bgod/NimboXcloud/actions/runs/43513384405), commit 9c2bbe5af3c0d17da618c1cb0143ef65dee90d3e: testes Java com release17 aprovados, testes C++ host aprovados, link ARM64/JNI aprovado, compilação de todas as classes Android e montagem do AAR aprovadas. Artefato nimbo-psbox-platform-arm64-not-apk, ID 14078484160, 555666 bytes, digest sha256:c5b48455ba94fea0b7e50a8928e25de056a68e36f75acfe4d1f273ed081067f6, inclui AAR e fontes/avisos. Não foi necessário relaxar release17 no CI. Ainda é biblioteca de plataforma, não APK/motor completo. Não houve eventos reais de Activity, rotação, execução JNI no Android ou sessão cloud. Próximo: execução instrumentada do host e ligação gradual do núcleo sem novo painel.
