@@ -283,3 +283,8 @@ Fontes de compatibilidade:
 ### Próxima tarefa concreta
 
 Obter uma comparação pareada, não sensível, de um título já disponível ao mantenedor na nuvem do Xbox e no navegador oficial, com a mesma conta/plano/região e janela de até 15 minutos. Só usar GTA VI após a oferta iniciar e o jogo estar efetivamente elegível à conta. Registrar a recusa/aceitação do serviço e a cadeia de mídia/comandos, sem tokens ou HAR completo.
+
+
+## Auditoria do caminho Android PSBox — 13/11/2026
+
+Experimento reproduzível [psbox-android-audit](../../experiments/console/psbox-android-audit/README.md). ZIP do mantenedor identificado por SHA256, com três arquivos confirmados idênticos ao PSBox eb63daf8f953684387a06a7bab8ef0a1e3133463. Resultado: esqueleto Android presente, mas sem MainActivity/ícones e sem integração direta do núcleo de sessão no CMake; dependências de submódulos vazias no archive. Quatro testes da auditoria aprovados; resultado real em result.json. Nenhum build/APK/sessão/identidade Xbox validado. A investigação reduz uma ambiguidade de capacidade do cliente nativo; não substitui o foco em classificação do cliente web. A existência de AMediaCodec e NDK não prova funcionamento no navegador ou identidade autenticada. Próximo passo de identidade: capturar início real com observador 0.1.3 e comparar com o núcleo PSBox; eventual trabalho Android amplo requer proposta própria.

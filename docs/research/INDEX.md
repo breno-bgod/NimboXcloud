@@ -25,3 +25,5 @@ Este espaço reúne pesquisa e experimentos para revisão antes de qualquer inco
 | Compatibilidade de APIs web | Pesquisa documental | WebRTC/WebSocket/Gamepad são amplamente disponíveis; WebHID/WebUSB/Pointer Lock e fullscreen têm lacunas mobile; matriz em CONSOLE_RESEARCH.md |
 
 Estados permitidos: pesquisa, simulação aprovada, falha, bloqueada, validada em sessão real. Simulação aprovada não comprova áudio, vídeo, comandos ou gameplay.
+
+- **PSBox Android:** [auditoria reproduzível](../../experiments/console/psbox-android-audit/README.md), quatro testes aprovados; bloqueios de entrada/recursos/build no ZIP. Sem APK, sessão ou classificação Xbox validada.
