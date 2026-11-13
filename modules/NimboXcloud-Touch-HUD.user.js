@@ -266,6 +266,17 @@ class NimboXboxTransport {
     this.hasInput=true;this.buttons=reading.Buttons&31;
     this.raw.onVirtualMouseInput({...reading,Buttons:this.buttons});
   }
+  physicalMouse(reading){
+    if(this.exclusiveMode!=='keyboard-mouse')return false;
+    this.mouse(reading);return true;
+  }
+  physicalKeyboard(event){
+    if(this.exclusiveMode!=='keyboard-mouse'||!this.connected())return false;
+    if(!event?.isTrusted||!['keydown','keyup'].includes(event.type))return false;
+    const manager=this.raw.stream?.inputManager;
+    if(typeof manager?.getKeyboardReading!=='function')throw Error('Tradutor de teclado do SDK indisponível.');
+    this.keyboard(manager.getKeyboardReading(event));return true;
+  }
   nativeChannel(){return this.raw.stream?.inputChannel;}
   keyboard(reading){
     this.assertConnected();const channel=this.nativeChannel();
@@ -2224,6 +2235,9 @@ window.NimboTouch=Object.freeze({
  diagnostic,isEnabled:()=>!!ui?.wanted,
  setPhysicalInputMode:nimboSetPhysicalInputMode,
  setInputMode:nimboSetInputMode,inputModeStatus:nimboInputModeStatus,
+ physicalMouseInput:reading=>nimboTransport?.physicalMouse(reading)??false,
+ physicalKeyboardInput:event=>nimboTransport?.physicalKeyboard(event)??false,
+ releasePhysicalInput:()=>{if(nimboTransport?.exclusiveMode==='keyboard-mouse')nimboTransport.release();},
  editHud:()=>{if(!ui)return false;touchPanel.close();ui.editHud();ui.refreshEditorOptions();if(ui.virtualGamepad?.enabled)ui.selectHud('vpad-left-stick');return true;},
  physicalInputStatus:()=>nimboTransport?.physicalInputStatus()||{mode:'native',state:'waiting',connected:false},
  toggle:()=>{touchPanel.mount();touchPanel.toggle.click();},
