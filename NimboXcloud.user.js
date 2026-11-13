@@ -6307,7 +6307,14 @@ SOFTWARE.
     if(!document.getElementById('nx-panel-appearance-style')){
       const st=document.createElement('style');st.id='nx-panel-appearance-style';
       st.textContent='#__xcu_panel__ [data-nx-panel-text="custom"] :is(div,span,p,label,button){color:var(--nx-panel-text)!important}'+
-        '#__xcu_panel__ [data-nx-panel-icons="custom"] svg{color:var(--nx-panel-icon)!important;stroke:currentColor!important}';
+        '#__xcu_panel__ [data-nx-panel-icons="custom"] svg{color:var(--nx-panel-icon)!important;stroke:currentColor!important}'+
+        '@media (max-width:640px){'+
+        '#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]{flex-direction:column!important;max-height:calc(100dvh - 16px)!important}'+
+        '#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"] > nav[aria-label="Categorias das configurações"]{order:0!important;flex:0 0 auto!important;box-sizing:border-box!important;width:100%!important;max-height:64px!important;flex-direction:row!important;align-items:center!important;gap:4px!important;padding:6px!important;border-right:0!important;border-bottom:1px solid rgba(255,255,255,.09)!important;overflow-x:auto!important;overflow-y:hidden!important;overscroll-behavior-x:contain!important;scrollbar-width:thin}'+
+        '#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"] > nav[aria-label="Categorias das configurações"] > button:not(:last-child){flex:0 0 auto!important;width:auto!important;min-width:68px!important;max-width:92px!important;min-height:44px!important;flex-direction:column!important;justify-content:center!important;gap:2px!important;padding:5px 7px!important;text-align:center!important}'+
+        '#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"] > nav[aria-label="Categorias das configurações"] > button:last-child{flex:0 0 36px!important;width:36px!important;min-height:36px!important;margin-top:0!important;margin-left:auto!important}'+
+        '#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"] > div:last-child{order:1!important;flex:1 1 auto!important;width:100%!important;min-width:0!important;min-height:0!important;overflow:hidden!important}'+
+        '}';
       (document.head||document.documentElement).appendChild(st);
     }
   }
