@@ -9,13 +9,13 @@
 
 **Em desenvolvimento para a nova experiência do Xbox Cloud Gaming — [play.xbox.com](https://play.xbox.com/)**
 
-[**Instalar versão oficial 4.15.0**](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js) · [**Reportar problema**](./../../issues) · [**Plano de desenvolvimento**](./DEVELOPMENT_ROADMAP.md)
+[**Instalar versão oficial 4.15.1**](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js) · [**Reportar problema**](./../../issues) · [**Plano de desenvolvimento**](./DEVELOPMENT_ROADMAP.md)
 
 </div>
 
 ---
 
-## Versão oficial 4.15.0
+## Versão oficial 4.15.1
 
 Entradas físicas e virtuais, retorno do editor ao NX, carregamento compacto, monitor com gráficos e ajustes da barra Xbox. Módulo de entradas/HUD 1.4.0 incluído pelo instalador. Preferências e layouts são preservados. Consulte [mudanças e validação](./CHANGELOG.md) e [limites conhecidos](./docs/CARREGAMENTO_E_MONITOR.md).
 

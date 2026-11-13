@@ -1,7 +1,7 @@
 # NimboXcloud — Estado do projeto, decisões e pendências
 
 > **Fonte de referência para mantenedores, colaboradores, forks e assistentes de IA.**
-> Última revisão: 2026-11-13. Versão de referência: `4.15.0`, branch `main`.
+> Última revisão: 2026-11-13. Versão de referência: `4.15.1`, branch `main`.
 > **Este documento registra decisões de produto, não certifica funcionamento em uma sessão real.** Consulte os testes, CI e evidências antes de declarar qualquer recurso estável.
 
 ## Política de documentação: somente escopo vigente
@@ -15,6 +15,12 @@ A documentação oficial é um **registro do estado atual e do trabalho futuro a
 - **Não apagar fatos relevantes enquanto houver risco residual:** antes de excluir a documentação de um recurso, verificar que código, interface, preferências antigas e testes associados foram tratados.
 
 O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que precisa ser corrigido e o que será desenvolvido**, sem confundir experimentos abandonados com compromissos futuros.
+
+## Publicação 4.15.1 e nova divisão de trabalho — 2026-11-13
+
+O mantenedor autorizou oficializar a correção visual do PR #23: detecção de sessão MediaStream, encaixe no grupo nativo Xbox, recuperação à esquerda e aparência do carregamento compartilhada com o NX. Versão 4.15.1, módulo de entradas/HUD 1.4.0 preservado. Ver docs/HUD_NATIVO_E_FULLSCREEN.md para critérios e limites; teste visual no dispositivo continua pendente.
+
+A automação passa a pesquisar repositórios novos/atualizados na janela móvel dos últimos 30 dias e a testar hipóteses em PR experimental. O produto em uso é mantido pelo responsável principal. Pesquisa de console, xHome e Fortnite Console não é promovida automaticamente. Política em docs/AUTOMATION_RESEARCH_POLICY.md; ponto central inicial no PR #24. PR #21 continua separado.
 
 ## Publicação oficial — 4.15.0 / 2026-11-13
 

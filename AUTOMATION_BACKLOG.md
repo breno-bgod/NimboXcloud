@@ -1,14 +1,22 @@
-# Fila técnica da automação
+# Fila técnica da automação — pesquisa e experimentos
 
-As decisões recentes do mantenedor e os PRs em andamento prevalecem. Esta fila não autoriza commits automáticos na main. Use uma branch e um PR por tarefa; não duplique trabalho já em andamento.
+A nova orientação do mantenedor prioriza pesquisa web/GitHub e experimentação isolada. Leia [a política vigente](docs/AUTOMATION_RESEARCH_POLICY.md).
 
-## Frente prioritária solicitada pelo mantenedor: serviço de sessão/console
+O ponto de consulta é o [PR #24](https://github.com/breno-bgod/NimboXcloud/pull/24): procure o head atual, docs/research/INDEX.md e os experimentos antes de repetir trabalho. Repositórios criados e projetos atualizados nos últimos 30 dias são pesquisados separadamente. PRs antigos aguardando revisão não impedem a pesquisa.
 
-A retomada foi solicitada explicitamente no chat após a publicação 4.15.0. Consulte [a proposta de retomada](docs/SERVICO_CONSOLE_PLANO.md). Primeiro lote: localizar e validar o mecanismo real do Fortnite Console no cliente atual; a preferência existente ainda não aplica o patch. Depois mapear lançamento/mídia/comandos em títulos autorizados, usando PSBox e Better xCloud como referências. xCloud e xHome permanecem rotas distintas; não prometer liberação de GTA VI ou outros títulos por identidade de navegador.
+Nenhuma alteração automática na main, versão/release, painel ou módulos em uso. Código experimental somente em experiments/console/ do PR de pesquisa. Mocks não comprovam gameplay nem autorização de títulos; falhas devem ser preservadas e orientar a próxima busca. A manutenção oficial segue pelo mantenedor/responsável principal.
 
-Esta prioridade não autoriza duplicar PRs, ignorar CI/regressões ou abrir novo PR automático enquanto o existente estiver aguardando revisão. Painel/áudio e resolução não substituem a frente principal; correções bloqueadoras continuam prioritárias.
+## Trilhas de pesquisa
 
-## Experimento posterior: qualidade acima de 1080p no navegador
+- Capacidades reais do cliente cloud e ponto equivalente ao Fortnite Console no SDK retail.
+- Catálogo, identificação e lançamento de títulos autorizados; estados de sessão, mídia e comandos.
+- Remote Play/xHome, mantendo a exigência de console autorizado e validação separada.
+- Atualizações do PSBox, Orbita e novos clientes, inclusive Linux/mobile, distinguindo APIs nativas de APIs web.
+- Negociação de qualidade e resolução como hipótese secundária quando trouxer evidência transferível; não criar seletor fictício ou sondagens indiscriminadas.
+
+## Contexto técnico preservado: qualidade acima de 1080p
+
+
 
 - Objetivo: investigar a sequência de resolução do PSBox no xCloud retail, sem confundir renderização/upscale local com resolução recebida.
 - Leia primeiro [Vídeo e imagem](docs/VIDEO_E_IMAGEM.md), decisões e roadmap atuais. Preserve a interface e os cinco modos de entrada aprovados.
@@ -16,4 +24,4 @@ Esta prioridade não autoriza duplicar PRs, ignorar CI/regressões ou abrir novo
 - Primeiro resultado revisável: mapear os pontos reais de acesso do SDK retail a controle, dimensões e codecs. Não invente métodos do SDK nem intercepte todos os data channels para enviar mensagens às cegas. Se não houver acesso verificável, entregue um diagnóstico/proposta de experimento em PR, sem seletor de resolução fictício.
 - Caso exista adaptação comprovável, implementar protótipo isolado e opt-in, com testes, aplicação única por sessão, limite de tentativas, liberação de callbacks e fallback para a negociação nativa. Não mexer em credenciais, entitlement ou sinalização xHome para forçar aceitação.
 - Aceite: medir dimensões recebidas via vídeo/WebRTC e distinguir solicitação aceita de resolução efetivamente recebida. Sem partida autenticada, marcar resultado como pendente de teste real.
-- Corrigir antes um CI quebrado ou regressão comprovada de conexão/mídia. Não reiniciar pesquisas ou abrir outro PR enquanto um trabalho da automação aguarda revisão.
+- Falhas de CI do experimento devem ser corrigidas no próprio PR. Regressões do produto oficial são registradas para o responsável principal; não expandir silenciosamente o experimento ao runtime ativo. Pesquisa pode continuar enquanto PRs de implementação aguardam revisão.
