@@ -84,3 +84,27 @@ Resultado: quatro fontes com integridade correspondente e dez âncoras localizad
 | xCloudNative cloud inspecionado | Não aparece como requisito no início cloud analisado | Android/Kotlin e reprodução nativa | Equivalência de oferta não demonstrada; APK não comprova página web |
 
 Próxima evidência necessária: comparação de um mesmo título na nuvem Xbox e na web com conta, região, assinatura e período compatíveis; registrar separadamente catálogo, início aceito, mídia e comandos. Não alterar identidade do Nimbo para inferir resultado. Sem acesso a console/sessão, investigar candidatos ainda não inspecionados ou o caminho de capacidades/catalogação, aproveitando os registros do ajudante externo.
+
+## Catálogo paginado versus oferta — aprofundamento em 2026-11-13
+
+Os heads externos consultados continuam PSBox eb63daf8f953684387a06a7bab8ef0a1e3133463 e xCloudNative a6ab26f4e29d84bf09e130bd8b6ac2325f099e59. Sem nova versão presumida; investigação focada na lacuna de catálogo identificada antes.
+
+**Achado:** PSBox listTitles (gssv.cpp:328, cursor:389) segue continuationToken. xCloudNative fetchCatalogGames (XCloudSignalingClient.kt:102) consome uma única resposta de /v2/titles sem paginação nessa função. Uma lista menor pode decorrer de enumeração incompleta, sem diferença de direitos. Não foi capturada resposta paginada real do serviço nesta execução.
+
+**Ressalva confirmada:** o mesmo cliente Android oferece resolveGalleryProduct (:123), uma consulta autenticada de produto que exige resultado único. Esse caminho pode recuperar um item da galeria pública ausente na enumeração inicial. Portanto, não há diagnóstico de bug de gameplay confirmado no aplicativo Android.
+
+CatalogService.officialGallery (:128) usa contexto Cloud:XGPUWEB. OfficialGallery.kt mantém metadados visuais separados da identidade cloud. Cartão público, identidade resolvida, autorização de início e gameplay são evidências distintas; nenhum desses arquivos demonstrou oferta exclusiva de console.
+
+### Experimento e resultados
+
+[Modelo offline de paginação](../../experiments/console/catalog-pagination/README.md), com fixture inteiramente sintética e fontes fixadas por commit. Sem login/rede ou importação no produto. A simulação contrasta leitura única com leitura das páginas fornecidas; não executa Kotlin/C++ nem reproduz a sessão completa.
+
+Comandos de sintaxe, cinco testes comportamentais e CLI executados. Cinco aprovados, zero falhas. A fixture produz um ID na leitura única e dois na paginada. Sem continuação, estratégias concordam. Página ausente, cursor repetido/cíclico e limite não produzem completude falsa. Resultado em result.synthetic.json.
+
+**Estado: simulação controlada aprovada somente para o modelo local.** Não valida disponibilidade real, autorização, mídia, comandos ou GTA VI. O teste evita atribuir uma ausência de listagem diretamente à oferta do serviço.
+
+### Próxima verificação
+
+Em uma sessão autorizada com jogo já disponível, comparar completude da enumeração e resolução de produto antes de iniciar. Um título só visto em galeria pública não basta. Sem acesso a conta/console nesta execução, comparação cloud Xbox versus web continua pendente.
+
+Android/iOS/desktop podem processar essas estruturas em JavaScript; acesso HTTP autenticado, CORS e capacidade real de sessão continuam não verificados em cada navegador. Nenhuma mudança de identidade, endpoint ou runtime aplicada ao Nimbo.
