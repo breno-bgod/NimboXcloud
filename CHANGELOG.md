@@ -1,3 +1,8 @@
+## Não publicado — correção proposta para canais xHome
+- Eventos de abertura e HandshakeAck de um peer failed/closed não podem executar bootstrap nem anunciar canais prontos.
+- A transição terminal fecha os canais do proprietário atual, cancela o timer de handshake e limpa readiness sem disparar Stop recursivo. Desconexão transitória permanece recuperável.
+- Quatro regressões novas; suíte local com 304 testes, 301 PASS, zero FAIL e três TODO. Validação de Xbox/navegador real continua pendente; versão e payloads permanecem inalterados.
+
 ## [4.14.0] — 2026-11-13
 - Qualidade solicitada e perfis passam para Vídeo e imagem, com dimensão do vídeo recebido. Removido o perfil redundante Compatível; selecionar qualidade deixa de zerar um limite independente de bitrate.
 - Tela cheia e Capturar jogo ficam no topo do painel, fora da área rolável. Capturas incluem filtro CSS ou o próximo quadro GPU processado, com erro visível se indisponíveis.

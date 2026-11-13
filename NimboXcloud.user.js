@@ -4112,7 +4112,9 @@ SOFTWARE.
     nxRemoteInputSequence=1; // ClientMetadata uses sequence 0; first input frame starts at 1.
     let handshakeAck=false,initialized=false;
     const isCurrent=function(){
-      return requestId===nxRemotePlay.requestId && !signal.aborted && nxRemotePlay.peer===peer && nxRemoteChannels===channels;
+      return requestId===nxRemotePlay.requestId && !signal.aborted && nxRemotePlay.peer===peer && nxRemoteChannels===channels &&
+        !['failed','closed'].includes(peer.connectionState) &&
+        !['failed','closed'].includes(peer.iceConnectionState) && peer.signalingState!=='closed';
     };
     let failureHandled=false;
     const fail=function(reason){
@@ -4688,7 +4690,7 @@ SOFTWARE.
             nxRemoteInputCaptureDisable(false,'Conexão WebRTC perdida; captura pausada e entradas liberadas.');
             if(nxRemoteTouchAdapter)nxRemoteTouchAdapter.release();
             nxRemoteGamepadSuspend();
-            if(terminalState)nxRemoteDetachTouchAdapter();
+            if(terminalState)nxRemoteCloseDataChannels();
             nxRemotePlay.sessionStatus='disconnected';
             nxRemotePlay.status='Conexão WebRTC '+(terminalState||connectionState)+'.';
             if(nxRemotePlay.iceTimer){clearTimeout(nxRemotePlay.iceTimer);nxRemotePlay.iceTimer=null;}
