@@ -3,19 +3,23 @@
 > Documento operacional. Toda execução autônoma deve reler a versão atual de `main` e atualizar este plano conforme evidências. Nunca presumir que a versão indicada aqui ainda é a mais recente.
 
 ## Estado de referência
-- Versão auditada do userscript: 4.12.89 (perfil de qualidade e métricas xCloud corrigidos em 4.12.88; cancelamento do controller xHome ativo corrigido em 4.12.89; código/testes na main em `5b51cc3cb8d1ab1f93d5d7571cb20b578763e881`; blob do userscript `6843b306d6847f9ba054bdc82489e53f538e112d`; consulta direta em 2026-11-12).
-- Arquivo principal: `NimboXcloud.user.js`.
-- Plataforma prioritária: navegador em `play.xbox.com`, sem reescrever como aplicativo nativo.
-- Objetivo: estabilidade real do cliente web, manutenção das funções existentes e investigação verificável das diferenças entre cliente web e cliente Xbox.
+- **HEAD de `main` consultado em 2026-11-13:** `c28675d29a4e16f9a7546e091e596c9068975187`.
+- **Versão real do userscript:** 4.15.2; blob de `NimboXcloud.user.js`: `c2a5e8f70f0f261561babeac729766e4d545f17b`. O changelog declara módulo Touch HUD 1.4.0.
+- Arquivo principal: `NimboXcloud.user.js`; interface e composição do painel permanecem no userscript, com HUD em `modules/NimboXcloud-Touch-HUD.user.js`.
+- Plataforma: navegador em `play.xbox.com`.
+- **Escopo vigente desta frente automatizada:** exclusivamente arquitetura de informação, apresentação, CSS/layout, tipografia, ícones decorativos, responsividade e UX. Alterações funcionais pertencem a outra frente/responsável.
+- Trabalho desta execução: branch `automation/visual-responsive-nav-2026-11-13`, criada a partir do HEAD acima; nenhuma alteração foi publicada diretamente em `main`.
 
-## Procedimento obrigatório a cada execução
-1. Ler o HEAD mais recente da branch `main`, histórico de commits recente, `NimboXcloud.user.js` e este documento. Não trabalhar com cópia ou SHA antigo.
-2. Verificar falhas de sintaxe, integrações, inicialização, condições de corrida, duplicidade de hooks, mudanças de APIs e regressões. Conferir especialmente `fetch`, XHR, WebRTC, Gamepad, HUD, gyro e telemetria.
-3. Comparar estado real do código com itens abaixo. Escolher a correção de maior impacto e menor risco; não reimplementar recursos existentes.
-4. Fazer mudança pequena, preservar configurações e funcionalidades, testar o que for possível. Diferenciar teste estático de teste autenticado real.
-5. Antes de publicar, reler SHA atual; se houver commit concorrente, reconciliar em vez de sobrescrever. Publicar commit somente após validação disponível.
-6. Atualizar este documento com itens concluídos, evidências, novas pendências e próximo passo. Não declarar concluído sem prova.
-7. Registrar no resumo: commit, arquivos alterados, testes executados, riscos, itens pendentes e descoberta externa relevante.
+## Procedimento obrigatório a cada execução — frente visual
+1. Consultar diretamente o HEAD/SHA atual de `main`, este roadmap, `CHANGELOG.md`, árvore do repositório, userscript, módulos de interface, testes de painel e commits recentes. Não usar SHAs memorizados.
+2. Inventariar os destinos, grupos, linhas de configuração e estados realmente presentes; comparar a apresentação com a taxonomia aprovada pelo mantenedor.
+3. Rastrear a montagem visual antes de mover nós ou alterar categorias. Se a composição tocar callbacks, handlers, ciclo de vida, persistência ou IDs, não modificar: documentar a proposta e o risco para a outra IA.
+4. Alterar somente markup/template comprovadamente visual, CSS, espaçamento, tipografia, ícones decorativos, rótulos e hierarquia. Não criar opções, controles ou estados fictícios.
+5. Não alterar jogabilidade, input, Gamepad API, pointer/touch/keyboard/mouse handlers, giroscópio funcional, rede, autenticação, sessão, streaming, WebRTC, persistência, semântica de configurações ou telemetria.
+6. Pesquisar referências atuais de design systems/produtos, extrair padrões e registrar fontes/licenças; não copiar assets ou código sem licença adequada.
+7. Reconsultar `main` e o HEAD da branch imediatamente antes de gravar. Trabalhar em uma branch `automation/*` baseada em `main`, manter um PR próprio por vez, não fazer push direto em `main` nem mesclar PR.
+8. Executar os testes disponíveis e revisar o diff. Distinguir CI/teste estático de validação visual real; nunca alegar teste em navegador/dispositivo sem execução.
+9. Atualizar este documento no GitHub em toda execução com SHA inicial/final, versão, inventário, alterações, fontes, testes, riscos e uma única próxima tarefa visual concreta. Sem mudança segura, registrar diagnóstico útil sem commit vazio.
 
 ## Frente NX — organização funcional do painel (2026-11-12)
 
@@ -31,7 +35,11 @@
 
 **Limite atual:** a reorganização foi verificada por sintaxe e testes automatizados do repositório; ainda não houve teste visual autenticado no navegador, Android/DeX ou jogo real. O código atual usa WebGL2 e filtros locais; não há implementação de FSR 1 neste build.
 
-## Backlog prioritário (reavaliar a cada execução)
+## Backlog funcional histórico — fora do escopo desta automação visual
+
+> Os itens abaixo preservam o histórico da frente funcional. Esta automação não os executa nem corrige bugs de jogabilidade, input, protocolo, rede, autenticação, sessão ou streaming. Evidências funcionais devem ser encaminhadas ao responsável pela outra frente.
+
+
 - [ ] P0 — Auditar interceptações de `fetch` e XHR, `patchPlayRequest`, `rewriteExp`, `rewriteRegions`, `rewriteIce`; comparar com Cloud Play Debug Panel original e procurar regressões.
 - [ ] P0 — Validar a confiabilidade de `nxSessionHealth`, `nxCompatibilityVerdict` e métricas da sobreposição: evitar falsos positivos, dados antigos e unidades erradas.
 - [ ] P0 — Verificar conflitos entre gamepad físico, atalhos View+Menu, gyro, HUD e teclado/mouse por toque; não quebrar entradas existentes.
@@ -1173,3 +1181,50 @@ Critérios de aceite:
 3. O estado `disconnected` transitório continua recuperável se o mesmo peer retornar a connected; não aplicar teardown terminal a uma desconexão recuperável.
 4. Stop→Start, ICE local ordenado/isolado, ICE remoto canônico, limite de 30 polls e regressões de entrada permanecem aprovados.
 5. Baseline e xHome workflows verdes. Sem declarar validação de browser ou console físico.
+
+
+## Execução visual — 2026-11-13 — navegação responsiva em telas compactas (4.15.2)
+
+### Estado consultado e reconciliação
+- **HEAD inicial de `main`:** `c28675d29a4e16f9a7546e091e596c9068975187`; versão do userscript **4.15.2**; blob inicial `NimboXcloud.user.js`: `c2a5e8f70f0f261561babeac729766e4d545f17b`.
+- Commits recentes conferidos: release 4.15.2 e commits de acesso NX/atalhos/áudio; release 4.15.1 e correção de encaixe do NX na barra Xbox. A main tinha dois workflows verdes no HEAD consultado: baseline [43482698564](https://github.com/breno-bgod/NimboXcloud/actions/runs/43482698564) e regressões [43482698345](https://github.com/breno-bgod/NimboXcloud/actions/runs/43482698345).
+- Árvore conferida: 90 entradas; userscript principal, módulo Touch HUD, 37 arquivos de teste, documentação de painel/entradas e dois workflows. Não existe `package.json` na raiz.
+- Branch de trabalho: `automation/visual-responsive-nav-2026-11-13`, criada no SHA inicial; PR em rascunho [#28](https://github.com/breno-bgod/NimboXcloud/pull/28). Commits: `aacb979c0bf5bf2878982a10d372dd36e8f314dc` (CSS inicial), `0f0a0986c4808993ab8ed8a903a0a5485dffb8a7` (teste), `572f1a4f8ab8c6a8ed35606960b5c1d46a461434` (fallback de altura), `00008538959011066d46d142a9b6b2d43208bfe4` (asserção), `97472c80538c3b64ce6bf1d95434b904fb91a059` (roadmap) e `81f2bb232a4911955b0d7a26d3300e30f87a204e` (ajuste documental). A branch ficou 6 commits à frente e 0 atrás do HEAD base; diff limitado a três arquivos.
+
+### Inventário da interface atual
+- A navegação `TABS` tem nove destinos no total: Início, Vídeo e imagem, Streaming, Estatísticas, Entradas, Áudio e voz, Remote Play, Interface e Sistema. Portanto, são oito páginas de configuração mais Início; ainda não são as nove categorias solicitadas.
+- **Início:** resumo/estado e atalhos para as páginas existentes.
+- **Vídeo e imagem:** presets de qualidade solicitada, medição de resolução recebida, dispositivo/apresentação/enquadramento, ajustes de imagem, perfis locais e processamento GPU.
+- **Streaming:** servidores/datacenter e opções de conexão/rede. O builder remove explicitamente os grupos “Qualidade de vídeo” e “Monitor de transmissão”; a qualidade continua na página Vídeo e imagem, contrariando a organização desejada de concentrar qualidade/transporte em Stream.
+- **Estatísticas:** ativação e personalização do NX Stream Monitor, métricas, histórico e detalhes de transmissão.
+- **Entradas:** seletor único dos cinco modos (teclado/mouse físicos, gamepad físico, teclado/mouse virtuais, controle virtual e toque nativo), opção Automático do Xbox e dois comandos de edição de HUD (controle virtual e teclado/mouse virtuais). A mesma página contém ajustes de gamepad físico (conexão, perfis de analógico, giroscópio, vibração e atalho do painel) e teclado/mouse físico (captura do ponteiro F8/F2 e atalho do painel).
+- **Áudio e voz:** microfone/entrada de voz e reprodução/saída/efeitos de áudio.
+- **Remote Play:** descoberta, seleção de console, controles de sessão e diagnóstico de mídia; a própria página descreve o recurso como experimental e não homologado em Xbox físico.
+- **Interface:** aparência do painel (transparência, tom, cor de texto e ícones).
+- **Sistema:** compatibilidade, ferramentas/manutenção e diagnósticos técnicos, incluindo diagnóstico de entradas e prévia técnica de HUD.
+- **IDs legados:** `nxCanonicalTab` ainda direciona `gamepad` e `gyrotouch` para `inputs`; `images` para `video`, `voice` para `audio`, `compatibility` para `advanced` e `region` para `stream`. Não foram alterados.
+- **Lacuna de arquitetura registrada:** a página Entradas mistura o seletor global de cinco modos com dois editores de HUD mobile e ajustes físicos. Os dois editores pertencem a Mobile; perfis/giroscópio/vibração/atalho físico pertencem a Joypad; captura/atalho físico pertencem a Teclado e Mouse. Porém, o seletor de cinco modos é único e transversal. Dividir a página sem duplicá-lo exige decidir um destino único para esse seletor antes de mexer nos builders. Não foi feita essa movimentação nesta execução.
+- Outras divergências a tratar na próxima matriz: qualidade de stream ainda está em Vídeo e imagem; áudio e imagem permanecem em páginas distintas; Interface deve ser avaliada como Gerais, enquanto Sistema tende a Desenvolvedor/Avançado. Não há evidência suficiente para criar uma categoria Geral separada com opções fictícias.
+
+### Mudança visual implementada na branch
+- `NimboXcloud.user.js`: somente CSS injetado pelo `nxPanelApply`. Em viewport até 640 px, o painel passa de duas colunas para fluxo vertical; a navegação de categorias fica acima do conteúdo em uma faixa horizontal rolável, com rótulos visíveis, alvos de pelo menos 44 px e conteúdo ocupando a largura disponível. A faixa preserva todos os destinos, inclusive os que ficam fora da área visível inicial.
+- Foi incluído fallback `100vh` antes de `100dvh` para limitar a altura em navegadores sem suporte a unidades dinâmicas de viewport.
+- `tests/panel-layout.test.cjs`: teste estático para assegurar breakpoint, ordem visual, rolagem horizontal e dimensões mínimas dos itens.
+- Nenhum ID, categoria, builder, callback, listener, handler, chave de armazenamento, valor, default, ordem DOM, estado, configuração ou comportamento de entrada foi alterado. A navegação muda somente por CSS; a ordem do DOM permanece intacta.
+
+### Referências pesquisadas
+- [Microsoft Fluent 2 — Nav](https://fluent2.microsoft.design/components/web/react/core/nav/usage): rótulos breves, linguagem simples, seleção clara, navegação consistente e adaptação em telas estreitas; o exemplo documenta drawer sobreposto em 640 px. Usado como referência de breakpoint e legibilidade, sem copiar implementação.
+- [IBM Carbon — UI shell left panel](https://v10.carbondesignsystem.com/components/UI-shell-left-panel/usage): painel lateral para mais de cinco destinos e limite de dois níveis; reforça manter hierarquia curta e não adicionar níveis profundos para resolver excesso de opções.
+- Não foram copiados assets, componentes ou código de terceiros.
+
+### Testes e limitações
+- Revisão estática do diff: somente `NimboXcloud.user.js` e `tests/panel-layout.test.cjs`; nenhuma mudança funcional. A asserção do novo teste foi corrigida para corresponder ao texto real do breakpoint.
+- **SHA de código/teste validado:** `81f2bb232a4911955b0d7a26d3300e30f87a204e`. O HEAD documental da branch antes deste último registro era `24e6a48766ae37affb068df238d178ad7f82d738`; `main` permaneceu em `c28675d29a4e16f9a7546e091e596c9068975187` durante a execução.
+- **CI no head `81f2bb232a4911955b0d7a26d3300e30f87a204e`:** baseline [run 43510290060](https://github.com/breno-bgod/NimboXcloud/actions/runs/43510290060) PASS e regressões [run 43510290405](https://github.com/breno-bgod/NimboXcloud/actions/runs/43510290405) PASS. Cada workflow executou **386 testes: 383 PASS, 0 FAIL, 3 TODO**. O novo teste de navegação compacta passou como subteste 185 nos dois workflows. Baseline também passou `node --check` do userscript e módulo Touch HUD e `tools/static-risk-report.cjs`; regressões passaram a validação de sintaxe e a suíte completa.
+- Não executados localmente: Node, parser, build ou lint. Não executados: screenshot, Playwright/Chromium, Chrome/Edge, Android, DeX, orientação retrato/paisagem ou jogo autenticado. Não declarar validação visual concluída.
+- Risco restante: em telas compactas, a navegação exige rolagem horizontal para alcançar todos os destinos; o comportamento precisa de verificação visual/toque real. O breakpoint e os tamanhos foram validados por inspeção do CSS e teste estático; a responsividade em navegador/dispositivo real continua pendente.
+
+### Próxima tarefa visual concreta — P1: matriz de categorias e destino único do seletor de entrada
+- Especificar o mapeamento de cada grupo/linha atual para Mobile, Joypad, Teclado e Mouse, Stream, Vídeo e Áudio, Estatísticas, Remote Play, Desenvolvedor/Avançado e Gerais quando houver preferência universal real.
+- Critérios de aceite: cada configuração aparece em exatamente uma categoria; os dois editores de HUD ficam em Mobile; Joypad contém somente gamepad físico; Teclado e Mouse contém somente ajustes físicos desse sistema; Stream reúne servidores, qualidade, resolução e rede; imagem e áudio ficam agrupados; Remote Play continua explicitamente experimental; diagnóstico técnico não se mistura com estatísticas; o seletor único dos cinco modos tem um único destino e não é duplicado; IDs legados, callbacks, armazenamento e testes permanecem preservados.
+- Não implementar a divisão até que a matriz prove uma composição visual segura sem mover handlers nem recriar o seletor.
