@@ -1,3 +1,10 @@
+## [4.13.1] — 2026-11-13
+- Isolados os callbacks de ICE local pelo requestId, AbortSignal, identidade do RTCPeerConnection e estados terminais do peer.
+- Candidatos locais coletados antes do SDP agora entram na mesma cadeia serializada dos candidatos trickle, preservando a ordem quando novos eventos chegam durante o envio inicial.
+- Falhas tardias de POST ICE não sobrescrevem o estado de um peer failed/closed ou de uma sessão substituída; o envio e o polling param após terminalização.
+- Reconciliação de estado executada após a instalação do listener também reconhece falha/fechamento ocorrido durante a fila inicial.
+- Sem alteração de endpoint, autenticação, payload ICE, SDP, data channels ou transporte de controles. Testes e evidência de CI serão registrados após validação.
+
 ## [4.13.0] — 2026-11-13
 - Página Entradas reúne teclado/mouse físicos, controle físico, teclado/mouse virtuais, controle virtual e toque nativo, com recuperação pelo Automático do Xbox.
 - Reaproveitado o joystick virtual e seu editor para xCloud, preservando a saída xHome existente; escolha independente de uma conexão Remote Play.
