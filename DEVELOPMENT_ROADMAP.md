@@ -5,7 +5,7 @@
 ## Estado de referência
 - **HEAD de `main` consultado em 2026-11-13:** `c28675d29a4e16f9a7546e091e596c9068975187`.
 - **Versão real do userscript:** 4.15.2; blob de `NimboXcloud.user.js`: `c2a5e8f70f0f261561babeac729766e4d545f17b`. O changelog declara módulo Touch HUD 1.4.0.
-- Arquivo principal: `NimboXcloud.user.js`; interface e composição do painel permanecem no userscript, com HUD em `modules/NimboXcloud-Touch-HUD.user.js).
+- Arquivo principal: `NimboXcloud.user.js`; interface e composição do painel permanecem no userscript, com HUD em `modules/NimboXcloud-Touch-HUD.user.js`.
 - Plataforma: navegador em `play.xbox.com`.
 - **Escopo vigente desta frente automatizada:** exclusivamente arquitetura de informação, apresentação, CSS/layout, tipografia, ícones decorativos, responsividade e UX. Alterações funcionais pertencem a outra frente/responsável.
 - Trabalho desta execução: branch `automation/visual-responsive-nav-2026-11-13`, criada a partir do HEAD acima; nenhuma alteração foi publicada diretamente em `main`.
@@ -1219,9 +1219,10 @@ Critérios de aceite:
 
 ### Testes e limitações
 - Revisão estática do diff: somente `NimboXcloud.user.js` e `tests/panel-layout.test.cjs`; nenhuma mudança funcional. A asserção do novo teste foi corrigida para corresponder ao texto real do breakpoint.
+- **SHA de código/teste validado:** `81f2bb232a4911955b0d7a26d3300e30f87a204e`. O HEAD documental da branch antes deste último registro era `24e6a48766ae37affb068df238d178ad7f82d738`; `main` permaneceu em `c28675d29a4e16f9a7546e091e596c9068975187` durante a execução.
 - **CI no head `81f2bb232a4911955b0d7a26d3300e30f87a204e`:** baseline [run 43510290060](https://github.com/breno-bgod/NimboXcloud/actions/runs/43510290060) PASS e regressões [run 43510290405](https://github.com/breno-bgod/NimboXcloud/actions/runs/43510290405) PASS. Cada workflow executou **386 testes: 383 PASS, 0 FAIL, 3 TODO**. O novo teste de navegação compacta passou como subteste 185 nos dois workflows. Baseline também passou `node --check` do userscript e módulo Touch HUD e `tools/static-risk-report.cjs`; regressões passaram a validação de sintaxe e a suíte completa.
 - Não executados localmente: Node, parser, build ou lint. Não executados: screenshot, Playwright/Chromium, Chrome/Edge, Android, DeX, orientação retrato/paisagem ou jogo autenticado. Não declarar validação visual concluída.
-- Risco restante: em telas compactas, a navegação exige rolagem horizontal para alcançar todos os destinos; o comportamento precisa de verificação visual/toque real. O breakpoint e os tamanhos foram validados apenas por inspeção do CSS e teste estático pendente de CI.
+- Risco restante: em telas compactas, a navegação exige rolagem horizontal para alcançar todos os destinos; o comportamento precisa de verificação visual/toque real. O breakpoint e os tamanhos foram validados por inspeção do CSS e teste estático; a responsividade em navegador/dispositivo real continua pendente.
 
 ### Próxima tarefa visual concreta — P1: matriz de categorias e destino único do seletor de entrada
 - Especificar o mapeamento de cada grupo/linha atual para Mobile, Joypad, Teclado e Mouse, Stream, Vídeo e Áudio, Estatísticas, Remote Play, Desenvolvedor/Avançado e Gerais quando houver preferência universal real.
