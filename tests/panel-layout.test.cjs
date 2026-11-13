@@ -161,3 +161,12 @@ test('monitor preserves Remote Play after a cloud session and rejects metrics fr
  ctx.tick();assert.match(monitor.textContent,/Remote Play/);assert.match(monitor.textContent,/FPS 60/);assert.doesNotMatch(monitor.textContent,/Servidor não identificado/);
  ctx.nxTelemetryEl=monitor;ctx.S.lastPc={};ctx.tick();assert.equal(monitor.style.display,'none');
 });
+
+
+test('monitor never steals native Xbox or gameplay clicks outside the NX editing panel',()=>{
+ const monitor=new Node();const ctx={openUI:false,nxTelemetryEnabled:true,document:{hidden:false},streaming:()=>true,nxTelemetryEnsure:()=>monitor,
+  nxMonitorCollect(){},nxLaunch:{startedAt:0},mountTarget:()=>null,nxMonitor:{layout:'vertical',fields:['fps'],scale:100,opacity:45,color:'white'},
+  S:{qos:{fps:60}},fmtN:n=>String(n),curLoss:()=>0,nxMonitorPlace(){}};
+ vm.runInNewContext(section('  function nxTelemetryTick(){','  setInterval(nxTelemetryTick,')+'\nglobalThis.tick=nxTelemetryTick;',ctx);
+ ctx.tick();assert.equal(monitor.style.pointerEvents,'none');ctx.openUI=true;ctx.tick();assert.equal(monitor.style.pointerEvents,'auto');
+});

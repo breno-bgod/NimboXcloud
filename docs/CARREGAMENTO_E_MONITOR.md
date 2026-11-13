@@ -24,6 +24,8 @@ O observador cobre fetch em domínios Xbox verificados. Se uma versão do client
 
 O teste do mantenedor mostrou ausência da barra nativa e o NX isolado no alto. Foram corrigidos riscos concretos, sem atribuir uma causa única à imagem: a classe de prioridade não força mais position: relative no contêiner nativo, e #StreamHud fica fora do bloqueio de entradas do Nimbo mesmo recolhido. O puxador GripHandle conhecido é detectado sem modificar seus eventos/estilos. Quando ele está visível e a barra recolhida, o NX independente fica oculto; abrir a barra permite a integração normal. Se a estrutura nativa não for reconhecida, o acesso de recuperação fica compacto no canto inferior. O botão NX duplicado do módulo HUD é oculto enquanto o host NX está montado; o fallback independente do módulo é preservado quando o host falta. Ainda é necessário testar a barra real no navegador/dispositivo do mantenedor.
 
+O monitor é passivo para cliques durante o jogo, evitando bloquear o puxador Xbox ou ações de gameplay. Abrir o NX habilita o arraste; as coordenadas salvas são preservadas.
+
 Estatísticas contém o botão Ativar/Ocultar estatísticas no início e uma seção Personalizar monitor recolhida. Interface mantém a aparência geral do NX; não há duas cópias dos ajustes do monitor.
 
 ## Monitor durante a partida
@@ -45,7 +47,7 @@ Desenhos de controle e teclado/mouse passam a ter contornos legíveis e separado
 
 ## Evidência e aceite pendente
 
-362 testes Node: 359 PASS, zero FAIL, três TODO preexistentes. A cobertura adicional cobre geração/tentativas, espera antes do play, erro HTTP/abort, clone inválido, vídeo anterior, navegação, inatividade, bloqueio real do painel, detalhes opcionais, limpeza e gráficos. Sintaxe dos dois scripts e relatório estático executados. Ícones renderizados e inspecionados em SVG via librsvg/Cairo, sem adicionar dependências ao projeto.
+363 testes Node: 360 PASS, zero FAIL, três TODO preexistentes. A cobertura adicional cobre geração/tentativas, espera antes do play, erro HTTP/abort, clone inválido, vídeo anterior, navegação, inatividade, bloqueio real do painel, detalhes opcionais, limpeza e gráficos. Sintaxe dos dois scripts e relatório estático executados. Ícones renderizados e inspecionados em SVG via librsvg/Cairo, sem adicionar dependências ao projeto.
 
 Chromium/Playwright não iniciou neste ambiente. Não foi possível validar carregamento, fila ou a nova apresentação em uma conta Xbox real. Teste recomendado no dispositivo: ativar/desativar detalhes antes de lançar; iniciar Fortnite; conferir espera/estimativa ausente; tentar abrir NX por botão, teclado e controle; cancelar e repetir; ao receber vídeo, abrir NX e ajustar layouts/cores/escala/posição do monitor. Conferir ícones e nomes em retrato e paisagem. Simulação de RTC/DOM não valida serviço, mídia real nem disponibilidade de GTA VI.
 

@@ -6273,6 +6273,7 @@ SOFTWARE.
     n.style.right='auto';n.style.bottom='auto';
   }
   function nxMonitorDrag(e){
+    if(!openUI)return;
     if(e.button!=null&&e.button!==0)return;
     const n=nxTelemetryEl,r=n.getBoundingClientRect(),dx=e.clientX-r.left,dy=e.clientY-r.top;
     try{n.setPointerCapture(e.pointerId);}catch(_){}
@@ -6332,11 +6333,12 @@ SOFTWARE.
     const layout=p.layout==='auto'?(innerWidth<700?'vertical':'horizontal'):p.layout;
     n.textContent=keys.filter(function(k){return Object.prototype.hasOwnProperty.call(vals,k);}).map(function(k){return vals[k];}).join(layout==='vertical'?'\n':'  ·  ');
     n.style.cssText='position:fixed;z-index:2147483000;display:block;pointer-events:auto;touch-action:none;user-select:none;cursor:move;box-sizing:border-box;border-radius:7px;padding:5px 8px;max-width:calc(100vw - 24px);white-space:pre-line;font-family:ui-monospace,Consolas,monospace;font-weight:600;line-height:1.5';
+    n.style.pointerEvents=typeof openUI!=='undefined'&&openUI?'auto':'none';
     n.style.fontSize=(11*Math.max(60,Math.min(140,Number(p.scale)||100))/100)+'px';
     n.style.background='rgba(0,0,0,'+(Math.max(0,Math.min(100,Number(p.opacity)||0))/100)+')';
     n.style.color=({white:'#fff',black:'#000',blue:'#65b8ff',green:'#80e5a4'})[p.color]||'#fff';
     if(layout==='cards')nxMonitorCards(n,keys,vals);else{n.style.flexWrap='';n.style.gap='';}
-    n.setAttribute('title','FPS do vídeo recebido. Arraste para reposicionar. Gráficos mostram até 60 amostras observadas.');
+    n.setAttribute('title','FPS do vídeo recebido. Abra o NX para arrastar. Gráficos mostram até 60 amostras observadas.');
     nxMonitorPlace();
   }
   setInterval(nxTelemetryTick, 1000);
@@ -6353,7 +6355,7 @@ SOFTWARE.
   function nxMonitorSettingsGroup(root){
     const section=mk('div','border:1px solid '+C.line+';border-radius:12px;padding:12px;margin-bottom:12px');
     section.appendChild(mk('div','font-weight:700;font-size:14px;margin-bottom:5px','NX Stream Monitor'));
-    section.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:10px','FPS do vídeo recebido, rede e servidor durante a partida. Arraste para reposicionar; os cartões mostram histórico de FPS, latência e bitrate.'));
+    section.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:10px','FPS do vídeo recebido, rede e servidor durante a partida. Com o NX aberto, arraste para reposicionar; os cartões mostram histórico de FPS, latência e bitrate.'));
     function option(label,key,choices){
       const row=mk('label','display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:9px;font-size:12px');
       row.appendChild(mk('span','',label));

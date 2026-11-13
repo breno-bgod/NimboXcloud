@@ -12,7 +12,7 @@
 - Editor de HUD fica identificado como controle virtual ou teclado/mouse por toque; retirado dos ajustes físicos. Atalhos do painel explicam seu propósito e mostram o padrão quando não há combinação personalizada.
 - Sistema deixa de exibir ação duplicada de tela cheia/horizontal e seletores experimentais de identidade/Client Hints. Preferências antigas não mantêm os experimentos de identidade ativos após ocultar os seletores. Removida a referência visual a DeX; o perfil usa recursos normais do navegador.
 - Fortnite Console mantido para investigação da integração: o Better xCloud possui um patch específico de sinalização de toque, distinto da seleção de controle. A preferência atual do Nimbo ainda não aplica esse patch; não há validação de funcionamento. Layouts, preferências das cinco entradas e transporte preservados.
-- Verificação local: 362 testes, 359 PASS, zero FAIL e três TODO; sessão Xbox e captura em navegador real pendentes.
+- Verificação local: 363 testes, 360 PASS, zero FAIL e três TODO; sessão Xbox e captura em navegador real pendentes.
 
 ## [4.14.0] — 2026-11-13
 - Qualidade solicitada e perfis passam para Vídeo e imagem, com dimensão do vídeo recebido. Removido o perfil redundante Compatível; selecionar qualidade deixa de zerar um limite independente de bitrate.
