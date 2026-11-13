@@ -1,6 +1,19 @@
+## Evidência adicional — 4.12.95 / PR #18 (mesclado)
+
+- PR [#18 — fix(xhome): canonicalize remote ICE candidates](https://github.com/breno-bgod/NimboXcloud/pull/18), squash-merged na main em `e42137eb0cca1cb0eb5fd2cd958743700f4caf01`.
+- [Baseline na main — run 43333473532](https://github.com/breno-bgod/NimboXcloud/actions/runs/43333473532): PASS.
+- [NX/xHome na main — run 43333473500](https://github.com/breno-bgod/NimboXcloud/actions/runs/43333473500): PASS.
+- Ambos os workflows executaram **245 testes, 242 PASS, 0 FAIL e 3 TODO**.
+- Baseline: `node --check NimboXcloud.user.js`, `node --check modules/NimboXcloud-Touch-HUD.user.js`, suíte CommonJS/ESM e `node tools/static-risk-report.cjs` passaram.
+- Regressão xHome: sintaxe do userscript e suíte completa passaram.
+- A primeira rodada test-first falhou em duas regressões que reproduziram a deduplicação ausente e a ausência de diagnóstico terminal. A implementação inicial ainda não conectava o helper ao polling; uma rodada posterior revelou uma comparação de objetos entre realms no teste Stop→Start. As três falhas foram corrigidas sem remover assertions. Os dois workflows finais passaram no mesmo SHA de código/teste.
+- `NimboXcloud.user.js` 4.12.95 normaliza objetos e JSON strings em `RTCIceCandidateInit` canônico antes de aplicar candidatos. A deduplicação considera candidate, sdpMid, sdpMLineIndex e usernameFragment, tanto na lista inicial quanto no polling. Entradas inválidas são ignoradas; erros de aplicação continuam visíveis em estado terminal e não reabrem polling.
+- Sem alterações em endpoints, autenticação, payload enviado, SDP, controle ou transporte xCloud retail.
+- Sem navegador real, Android/DeX, conta Xbox autenticada ou console físico. Remote Play permanece experimental/não homologado.
+
 # P00 — Estado de validação e evidências
 
-Revisão: 2026-11-12. PR #17 integrado na main: `e9de54e4aa79ccdb9b30e26aeb9994cb3fa6e0f4`. Runtime: 4.12.94 / Touch HUD 1.2.7.
+Revisão: 2026-11-12. PR #18 integrado na main: `e42137eb0cca1cb0eb5fd2cd958743700f4caf01`. Runtime: 4.12.95 / Touch HUD 1.2.7.
 
 ## Evidência automatizada confirmada na main
 
