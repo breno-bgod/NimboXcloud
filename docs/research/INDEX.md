@@ -13,12 +13,15 @@ Este espaço reúne pesquisa e experimentos para revisão antes de qualquer inco
 | Observação interativa no navegador | Onze testes locais aprovados; sessão real pendente | [Laboratório opt-in](../../experiments/console/session-observer/README.md): pedidos/descritor/mídia, sem promover identidade Xbox |
 | Projetos criados nas últimas duas semanas | Pesquisa / código triado | [Relatório 30/10–13/11](RECENT_REPOSITORIES_2026-11-13.md); Green-NX #92 coincide com objetivo, ainda sem solução demonstrada |
 | Ponte Tizen HTML/JS | Cinco testes locais aprovados; sem rede real | [Bootstrap isolado](../../experiments/console/tizen-bootstrap/README.md): browser/web, perfil Android com descritor Windows; permissões de widget não validam CORS no Edge |
-| PSBox: separação cloud / console próprio | Pesquisa | [Registro](CONSOLE_RESEARCH.md); investigar capacidades transferíveis ao navegador |
+| PSBox / Greenlight / XStreaming | Auditoria estática revalidada | [Registro](CONSOLE_RESEARCH.md): xgpuweb (cloud) separado de xhome (Remote Play do console próprio); todos são clientes nativos, não páginas web |
 | Fortnite Console no Better xCloud | Pesquisa | Patch de entrada de toque identificado; localizar integração real equivalente no SDK atual |
-| Orbita | Bloqueada para inspeção do código atual | Site e ajuda consultados; repositório vinculado indisponível |
+| Orbita | Site e XEX 1.1.0 revalidados; código XEX não inspecionável | [Ajuda](https://x360.pistatrack.com/ajuda?lang=pt-BR) declara xCloud nos servidores Microsoft, conta define catálogo e uma sessão por aparelho; [lista](https://x360.pistatrack.com/jogos) tem 35/600 títulos testados como funcionais |
 | Linux nativo versus navegador | Pesquisa | Mapear APIs e dependências antes de propor adaptação |
-| Novos repositórios na janela de 30 dias | Pesquisa | xCloudNative inspecionado; XCloud4 e xCloudPS4 identificados, inspeção pendente |
+| Clientes nativos atualizados | Pesquisa com SHAs fixados | [Registro](CONSOLE_RESEARCH.md): PSBox 1.7.1, XCloud4 1.3.0-beta, Green-NX 1.0.31pre1, OpenXCloud e Orbita XEX 1.1.0; nenhum demonstra oferta retail exclusiva de console no navegador |
 | Perfis cloud de clientes nativos | Pesquisa; auditoria estática reproduzida | [Auditoria offline](../../experiments/console/client-profile-audit/README.md); quatro fontes, dez âncoras, controles negativos aprovados; sem sessão real |
 | Paginação e resolução de catálogo | Simulação controlada aprovada (modelo local) | [Experimento](../../experiments/console/catalog-pagination/README.md): cinco testes; consulta Android de produto pode recuperar item ausente; sem catálogo real validado |
+
+| Disponibilidade retail console × web | Inconclusiva; comparação pareada ainda ausente | GTA VI é candidato futuro anunciado para Xbox One/Series em 19/11; browser não é explicitamente excluído e não houve teste antes do lançamento |
+| Compatibilidade de APIs web | Pesquisa documental | WebRTC/WebSocket/Gamepad são amplamente disponíveis; WebHID/WebUSB/Pointer Lock e fullscreen têm lacunas mobile; matriz em CONSOLE_RESEARCH.md |
 
 Estados permitidos: pesquisa, simulação aprovada, falha, bloqueada, validada em sessão real. Simulação aprovada não comprova áudio, vídeo, comandos ou gameplay.
