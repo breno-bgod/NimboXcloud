@@ -1,0 +1,11 @@
+{
+  "sourceCommit": "3c122b0b728b5f2ef25ffd244a50ce7f9e7f60bd",
+  "environment": "Node v24 / VM, sem rede",
+  "command": "NX_IDENTITY_SOURCE=/tmp/nx-identity-main.js node --test --test-isolation=none experiments/console/identity-boundary/probe.test.cjs",
+  "tests": 4,
+  "passed": 4,
+  "failed": 0,
+  "scope": "Funções reais do Nimbo em ambiente controlado",
+  "consoleRecognitionValidated": false,
+  "gameplayValidated": false
+}

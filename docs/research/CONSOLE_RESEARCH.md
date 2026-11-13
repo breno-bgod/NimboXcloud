@@ -108,3 +108,15 @@ Comandos de sintaxe, cinco testes comportamentais e CLI executados. Cinco aprova
 Em uma sessão autorizada com jogo já disponível, comparar completude da enumeração e resolução de produto antes de iniciar. Um título só visto em galeria pública não basta. Sem acesso a conta/console nesta execução, comparação cloud Xbox versus web continua pendente.
 
 Android/iOS/desktop podem processar essas estruturas em JavaScript; acesso HTTP autenticado, CORS e capacidade real de sessão continuam não verificados em cada navegador. Nenhuma mudança de identidade, endpoint ou runtime aplicada ao Nimbo.
+
+## Correção de foco: identidade de cliente Xbox — 2026-11-13
+
+O mantenedor esclareceu que a pergunta principal é se o serviço reconhece a sessão do navegador como cliente console Xbox. A investigação de paginação permanece secundária, sem ser descartada ou apresentada como resposta à identidade.
+
+[Mapa detalhado](CONSOLE_IDENTITY_MAP.md): análise da main 3c122b0b728b5f2ef25ffd244a50ce7f9e7f60bd, autenticação PSBox/xCloudNative, controlador Greenlight, documentação XStreaming e fontes oficiais Microsoft sobre identidades de usuário/dispositivo/título.
+
+Achados: o perfil histórico Xbox do Nimbo retorna off; patchPlayRequest reescreve osName de qualidade preservando descritor; xHome declara browser/web e seu serverId é console de destino. PSBox e xCloudNative não demonstraram identidade Xbox no caminho de usuário/XSTS inspecionado. XStreaming documenta DeviceToken Android, o que não prova identidade Xbox. Não presumir que o cloud exige atestação/certificado sem evidência específica.
+
+Experimento [identity-boundary](../../experiments/console/identity-boundary/README.md): quatro testes aprovados usando funções reais do snapshot da main em VM. Sem acesso a credenciais ou rede; sem reconhecimento Xbox ou gameplay validado. A automação foi corrigida para priorizar identidade de sessão, preservando frequência e coordenação.
+
+Próximo trabalho: verificar a cadeia real de dispositivo de referências e obter evidência não sensível do perfil/classificação de um cliente Xbox legítimo. Separar dados declarados de identidade emitida e autorização para jogo; não tentar valores/endpoints adivinhados.
