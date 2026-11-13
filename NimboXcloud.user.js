@@ -7065,11 +7065,11 @@ SOFTWARE.
     return result;
   }
   function nxPhoneTouchTarget(e){
-    if(!nxPhone.touchEnabled||!nxPhoneAllowed()||e.pointerType!=='touch'||e.isPrimary===false)return false;
+    if(!nxPhone.touchEnabled||!nxPhoneAllowed()||e.pointerType!=='touch'||e.isPrimary===false||!Number.isFinite(e.clientX)||!Number.isFinite(e.clientY))return false;
     const mode=nxSelectedInputMode(),target=e.target;
     if(mode==='virtual-gamepad')return !!target?.closest?.('#nx-phone-touchpad');
     if(mode!=='gamepad')return false;
-    return !target?.closest?.('#__xcu_panel__,#nimbo-touch-root,#nimbo-touch-panel,#nx-loading-overlay,[role="dialog"],button,a,input,textarea,select,[contenteditable="true"]');
+    return !target?.closest?.('#__xcu_panel__,#nimbo-touch-root,#nimbo-touch-panel,#nx-loading-overlay,#StreamHud,[role="dialog"],[role="button"],[role="slider"],button,a,input,textarea,select,[contenteditable="true"]');
   }
   window.addEventListener('pointerdown',function(e){
     if(!nxPhoneTouchTarget(e)||nxPhone.touch)return;
@@ -7079,7 +7079,7 @@ SOFTWARE.
   },{capture:true,passive:false});
   window.addEventListener('pointermove',function(e){
     const p=nxPhone.touch;if(!p||p.id!==e.pointerId)return;
-    if(!nxPhoneAllowed()){nxPhoneReset();return;}
+    if(!nxPhoneAllowed()||!Number.isFinite(e.clientX)||!Number.isFinite(e.clientY)){nxPhoneReset();return;}
     const settings=window.NimboTouch?.touchpadSettings?.()||{};
     const gain=(key,max)=>Number.isFinite(settings[key])?Math.max(.05,Math.min(max,settings[key])):1;
     const speed=gain('sensitivity',50);

@@ -55,7 +55,7 @@ mantém a limitação do navegador para sobreposições DOM.
 
 ## Validação
 
-401 testes locais: 398 PASS, zero FAIL, três TODO preexistentes. Treze regressões
+402 testes locais: 399 PASS, zero FAIL, três TODO preexistentes. Quatorze regressões
 novas cobrem ambas paisagens, retrato, perfil FPS/Corrida, soma, repouso, pausa,
 permissão, touchpad/TTL/cancelamento, sensibilidade, slots, ponte estrangeira e
 roteamento local nos modos. Composição de UI mantém o grupo comum e recursos do

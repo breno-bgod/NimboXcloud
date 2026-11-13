@@ -76,3 +76,9 @@ test('touchpad do controle reutiliza sensibilidade existente e não captura touc
 test('ponte substituída por outro script impede ativação em vez de anunciar sucesso',async()=>{
  const h=setup();h.ctx.navigator.getGamepads=()=>[];assert.equal(await h.ctx.nxPhoneSetProfile('fps'),false);assert.equal(h.state().profile,'off');assert.equal(h.state().lastAt,0);
 });
+test('barra Xbox e coordenada inválida não se tornam movimento do touchpad',()=>{
+ const h=setup();h.state().touchEnabled=true;
+ const native=h.event({target:{closest:s=>s.includes('#StreamHud')?{}:null}});h.events.pointerdown(native);assert.ok(!native.prevented);
+ h.events.pointerdown(h.event({clientX:NaN}));assert.equal(h.state().touch,null);
+ h.events.pointerdown(h.event());h.events.pointermove(h.event({clientY:NaN}));assert.equal(h.state().touch,null);assert.ok(h.ctx.nxPhoneApply([])[0].axes.every(Number.isFinite));
+});

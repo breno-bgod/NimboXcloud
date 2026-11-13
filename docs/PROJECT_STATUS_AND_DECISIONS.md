@@ -18,7 +18,7 @@ O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que pr
 
 ## Em revisão — giroscópio e touchpad complementares (PR #27)
 
-Especificação do mantenedor implementada em branch de teste sobre a main do PR #29: perfis FPS/Corrida em paisagem, composição nos analógicos e touchpad de mira no controle físico/virtual. Saída complementar pela ponte Gamepad, sem alterar o modo escolhido ou a autenticação; suporte real de combinações de mouse/toque e analógico precisa ser validado por jogo. Não é protocolo de touchpad PlayStation. Módulo oficial 1.4.1 e Central de Entradas preservados; userscript preparado como 4.15.4, ainda não oficial. Guia em [Giroscópio e touchpad](GIROSCOPIO_E_TOUCHPAD.md). Testes locais: 398 PASS/0 FAIL/3 TODO; hardware, orientação real e gameplay pendentes. PR #24 continua separado para PSBox/Android.
+Especificação do mantenedor implementada em branch de teste sobre a main do PR #29: perfis FPS/Corrida em paisagem, composição nos analógicos e touchpad de mira no controle físico/virtual. Saída complementar pela ponte Gamepad, sem alterar o modo escolhido ou a autenticação; suporte real de combinações de mouse/toque e analógico precisa ser validado por jogo. Não é protocolo de touchpad PlayStation. Módulo oficial 1.4.1 e Central de Entradas preservados; userscript preparado como 4.15.4, ainda não oficial. Guia em [Giroscópio e touchpad](GIROSCOPIO_E_TOUCHPAD.md). Testes locais: 399 PASS/0 FAIL/3 TODO; hardware, orientação real e gameplay pendentes. PR #24 continua separado para PSBox/Android.
 
 ## Publicação 4.15.3 — PR #29 e divisão de frentes
 
