@@ -43,3 +43,10 @@ Verificação: cinco testes comportamentais de acesso independente, persistênci
 Playwright/Chromium foi tentado, mas o processo encerrou durante inicialização (TargetClosedError). Falta validar visualmente em Edge Android e navegador iOS/desktop, inclusive fullscreen e áreas seguras. O limite de fullscreen descrito acima continua: a alça acompanha o host existente e não recupera controles que estejam fora da árvore renderizada pelo navegador.
 
 Roteiro no dispositivo: abrir e fechar NX; arrastar a alça sem abrir; recarregar e conferir altura; girar a tela; entrar/sair de fullscreen; abrir/recolher Xbox se disponível; iniciar outra partida e verificar que o acesso no carregamento só expande informações. Conferir teclado e HUD sem alteração de suas preferências.
+
+
+## Atalho personalizado e painel aberto
+
+O bloqueio de teclado do painel podia consumir keydown/keyup no document antes do gerenciador de combinações, especialmente quando o foco estava fora do painel. A soltura não era registrada e a combinação podia permanecer travada. O gerenciador passa à fase de captura no window; os filtros de eventos confiáveis, repetição e campos editáveis permanecem. Não altera teclas salvas, F8/F2 de captura, F9 nativo ou API Pointer Lock.
+
+Verificação: dois cenários falham antes; três regressões passam depois. 87 testes relacionados a painel, modos, captura e entrada física aprovados, além de sintaxe dos dois scripts e relatório estático. Sem teste visual/fullscreen ou Android real nesta revisão. Não atribuir a esse guard a alternância observada pela tecla abaixo de Esc nem todo desaparecimento do ícone; esses sintomas ainda exigem diagnóstico.

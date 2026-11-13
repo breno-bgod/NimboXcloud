@@ -8501,7 +8501,7 @@ void main(){
           warning ? 'Diálogo de incompatibilidade exibido' : 'Diálogo ausente');
       }
     }, 1200);
-    document.addEventListener('keydown',function(e){
+    window.addEventListener('keydown',function(e){
       if(!e.isTrusted||e.repeat)return;
       const target=e.target;
       if(!nxCaptureKeys&&target&&(target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))return;
@@ -8519,7 +8519,7 @@ void main(){
       const bind=nxKeyBinding();const matched=!!bind&&bind.every(function(code){return nxKeysHeld.has(code);});
       if(matched&&!nxKeyboardComboActive){nxKeyboardComboActive=true;e.preventDefault();e.stopImmediatePropagation();setOpen(!openUI,true);}
     },true);
-    document.addEventListener('keyup',function(e){
+    window.addEventListener('keyup',function(e){
       nxKeysHeld.delete(e.code);
       if(nxCaptureKeys){
         e.preventDefault();e.stopImmediatePropagation();
