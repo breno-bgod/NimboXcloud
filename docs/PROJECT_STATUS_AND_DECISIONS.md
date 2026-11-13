@@ -16,6 +16,12 @@ A documentação oficial é um **registro do estado atual e do trabalho futuro a
 
 O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que precisa ser corrigido e o que será desenvolvido**, sem confundir experimentos abandonados com compromissos futuros.
 
+## Preparação da partida e monitor — 2026-11-13 (não lançado)
+
+Por solicitação do mantenedor, a preparação xCloud apresenta estimativa do serviço ou indisponibilidade, sempre visível, com detalhes técnicos opcionais. NX fica oculto e rejeita abertura durante a preparação observada; mídia pronta, cancelamento/falha, saída e fallback por inatividade liberam o acesso. Cancelar e voltar no Xbox permanecem disponíveis.
+
+Monitor preserva preferências e acrescenta cartões com históricos limitados de FPS do vídeo, RTT e bitrate. Ícones e rótulos foram ajustados sem reorganizar categorias ou trocar o logotipo. Não há chamadas extras para estimativas nem sondagem de jogos; prévias de fila na biblioteca continuam fora do lote. Ver [comportamento, referências e aceite](./CARREGAMENTO_E_MONITOR.md). Validação Xbox/visual real pendente.
+
 ## Retorno do editor de HUD — 2026-11-13 (não lançado)
 
 O mantenedor confirmou sucesso nos testes da versão de entradas do PR #22 e relatou retorno indevido ao painel legado ao salvar a HUD. A correção usa o host NX para voltar à página Entradas ao salvar/cancelar, mantendo o fallback somente no módulo independente. Persistência dos layouts e troca interna de modos são preservadas. A nova navegação ainda requer teste visual real.

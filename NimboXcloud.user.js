@@ -1151,6 +1151,92 @@ SOFTWARE.
     }
   }
 
+  // Preparação observada: somente respostas existentes, sem novas requisições.
+  const NX_LOADING_DETAILS = 'nx.loading.details.v1';
+  const nxLaunch = {epoch:0,phase:'idle',stage:'',startedAt:0,lastAt:0,route:'',launched:false,wait:null,waitAt:0,server:'',video:null,source:null,track:null,wasReady:false};
+  function nxLoadingBusy(){return nxLaunch.phase==='loading';}
+  function nxLaunchFinish(phase,stage){nxLaunch.phase=phase;nxLaunch.stage=stage;nxLaunch.epoch++;}
+  function nxLaunchVideoReady(video){return !!(video&&video.readyState>=2&&video.videoWidth>0&&video.videoHeight>0&&!video.paused);}
+  function nxLaunchBegin(){
+    const now=Date.now(),video=typeof activeStreamVideo==='function'?activeStreamVideo():null;
+    const recent=nxLaunch.route===location.pathname&&now-nxLaunch.waitAt<30000?nxLaunch.wait:null;
+    Object.assign(nxLaunch,{epoch:nxLaunch.epoch+1,phase:'loading',stage:'Preparando a partida',startedAt:now,lastAt:now,
+      route:location.pathname,launched:false,wait:recent,waitAt:recent===null?0:nxLaunch.waitAt,server:'',video:video,source:video?.srcObject,
+      track:video?.srcObject?.getVideoTracks?.()[0],wasReady:nxLaunchVideoReady(video)});
+    return nxLaunch.epoch;
+  }
+  function nxLaunchKind(url,method){
+    if(!url||url.protocol!=='https:'||!/(?:^|\.)(?:xboxservices|xboxlive)\.com$/i.test(url.hostname))return '';
+    if(method==='POST'&&/\/sessions\/cloud\/play\/?$/i.test(url.pathname))return 'play';
+    if(method==='DELETE'&&/\/sessions\/cloud\/[^/]+\/?$/i.test(url.pathname))return 'cancel';
+    if(method==='GET'&&/\/waittime\/[^/]+\/?$/i.test(url.pathname))return 'wait';
+    if(method==='GET'&&/\/sessions\/cloud\/[^/]+\/state\/?$/i.test(url.pathname))return 'state';
+    if(/\/sessions\/cloud\/[^/]+\/(?:configuration|sdp|connect)\/?$/i.test(url.pathname))return 'connect';
+    return '';
+  }
+  function nxLaunchWait(json){
+    if(!json||typeof json!=='object')return null;
+    for(const key of ['estimatedTotalWaitTimeInSeconds','estimatedAllocationTimeInSeconds']){
+      if(typeof json[key]==='number'&&Number.isFinite(json[key])&&json[key]>=0&&json[key]<=86400)return json[key];
+    }
+    return null;
+  }
+  function nxObserveLaunchFetch(url,method,promise){
+    const kind=nxLaunchKind(url,method);
+    if(!kind)return promise;
+    if(kind==='cancel'){if(nxLoadingBusy())nxLaunchFinish('cancelled','Espera cancelada');return promise;}
+    if(kind==='play'){
+      if(!(nxLoadingBusy()&&!nxLaunch.launched&&nxLaunch.route===location.pathname))nxLaunchBegin();
+      nxLaunch.launched=true;if(typeof nxLoadingTick==='function')nxLoadingTick();
+    }
+    if(kind==='wait'&&nxLaunch.phase==='idle'&&/\/launch\//i.test(location.pathname))nxLaunchBegin();
+    const epoch=nxLaunch.epoch;
+    const current=function(){return nxLaunch.epoch===epoch&&nxLoadingBusy();};
+    return Promise.resolve(promise).then(function(response){
+      if(!current())return response;
+      nxLaunch.lastAt=Date.now();
+      if(kind==='play'){
+        if(!response.ok){nxLaunchFinish('failed','Não foi possível iniciar a sessão');return response;}
+        nxLaunch.server=typeof S!=='undefined'?S.serverActual||'':'';
+      }
+      if(kind==='wait'&&!response.ok&&!nxLaunch.launched){nxLaunchFinish('failed','Não foi possível consultar a espera');return response;}
+      if(kind==='connect'&&response.ok)nxLaunch.stage='Conectando à transmissão';
+      if((kind==='wait'||kind==='state')&&response.ok){
+        // Clone is read asynchronously. The original response and native timing are preserved.
+        try{response.clone().json().then(function(json){
+          if(!current())return;
+          if(kind==='wait'){
+            const wait=nxLaunchWait(json);
+            if(wait!==null){nxLaunch.wait=wait;nxLaunch.waitAt=Date.now();nxLaunch.stage=wait>0?'Aguardando vaga':'Preparando a transmissão';}
+          }else if(['Failed','Error','Cancelled','Canceled','Terminated'].includes(json?.state)){
+            nxLaunchFinish('failed','A preparação da sessão foi encerrada');
+          }
+        }).catch(function(){});}catch(_){}
+      }
+      return response;
+    },function(error){
+      if(current()&&(kind==='play'||(kind==='wait'&&!nxLaunch.launched)))nxLaunchFinish(error?.name==='AbortError'?'cancelled':'failed',error?.name==='AbortError'?'Espera cancelada':'Falha de conexão ao iniciar');
+      throw error;
+    });
+  }
+  function nxLaunchRefresh(){
+    if(nxLaunch.phase==='playing'&&location.pathname!==nxLaunch.route){nxLaunchFinish('idle','');return;}
+    if(!['loading','stalled'].includes(nxLaunch.phase))return;
+    if(location.pathname!==nxLaunch.route){nxLaunchFinish('idle','');return;}
+    const video=typeof activeStreamVideo==='function'?activeStreamVideo():null;
+    const replaced=video!==nxLaunch.video||video?.srcObject!==nxLaunch.source||video?.srcObject?.getVideoTracks?.()[0]!==nxLaunch.track;
+    if(nxLaunchVideoReady(video)&&(!nxLaunch.wasReady||replaced)){nxLaunchFinish('playing','Vídeo recebido');return;}
+    const now=Date.now(),deadline=Math.max(nxLaunch.lastAt+180000,nxLaunch.waitAt+(nxLaunch.wait||0)*1000+180000);
+    if(nxLoadingBusy()&&now>deadline)nxLaunchFinish('stalled','Sem atualização do carregamento; configurações liberadas');
+  }
+  function nxLaunchEstimate(){
+    if(nxLaunch.wait===null)return 'Estimativa indisponível';
+    const value=nxLaunch.wait;
+    const text=value===0?'Sem espera estimada de fila':value<60?'Menos de 1 min':'Cerca de '+Math.ceil(value/60)+' min';
+    return Date.now()>nxLaunch.waitAt+value*1000&&value>0?'Previsão ultrapassada; aguardando atualização':text;
+  }
+  // Fim preparação observada.
+
   // ---------- 9. Hook do fetch ----------
   const nativeFetch = window.fetch;
   if (typeof nativeFetch === 'function') {
@@ -1197,7 +1283,7 @@ SOFTWARE.
         : nativeFetch.call(this, input, init);
 
       const offeringMethod = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
-      let p = nxObserveOffering(u, offeringMethod, go);
+      let p = nxObserveOffering(u, offeringMethod, typeof nxObserveLaunchFetch==='function'?nxObserveLaunchFetch(u,offeringMethod,go):go);
       // Monitoramento somente de status e etapa da sessão; nunca armazena headers ou corpo.
       if (u && /xboxservices\.com$/i.test(u.hostname) &&
           /\/sessions\/cloud\/(?:play|[^/]+\/(?:state|connect|configuration|sdp|ice|keepalive))\/?$/i.test(u.pathname)) {
@@ -1913,7 +1999,7 @@ SOFTWARE.
       b.setAttribute('aria-label','Escolher entrada NimboXcloud');
       b.title='Escolher entrada';
       b.style.cssText='all:unset;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:40px;height:40px;min-width:40px;flex-shrink:0;cursor:pointer;border-radius:50%;color:white;position:relative;z-index:2147483000';
-      b.innerHTML='<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="pointer-events:none"><rect x="2" y="5" width="13" height="10" rx="2"/><path d="M4 9h9M5 12h7M7 18h6"/><rect x="17" y="4" width="5" height="12" rx="2.5"/><path d="M19.5 4v5"/></svg>';
+      b.appendChild(ico(ICONS.gyrotouch,26));
       b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();setTab('inputs');setOpen(true,true);});
       nxKeyboardMouseButton=b;
     }
@@ -2300,12 +2386,15 @@ SOFTWARE.
     media: 'M11 5L6 9H2v6h4l5 4V5z M15.5 8.5a5 5 0 0 1 0 7 M19 5a10 10 0 0 1 0 14',
     audio: 'M11 5L6 9H2v6h4l5 4V5z M15.5 8.5a5 5 0 0 1 0 7 M19 5a10 10 0 0 1 0 14',
     voice: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z M5 10v2a7 7 0 0 0 14 0v-2 M12 19v3 M8 22h8',
-    controls: 'M6 12h4 M8 10v4 M15 13h.01 M18 11h.01 M17.3 5H6.7a4 4 0 0 0-3.9 3.3L1.5 15a3 3 0 0 0 5.3 2L8 15h8l1.2 2a3 3 0 0 0 5.3-2l-1.3-6.7A4 4 0 0 0 17.3 5z',
-    gamepad: 'M6 12h4 M8 10v4 M15 13h.01 M18 11h.01 M17.3 5H6.7a4 4 0 0 0-3.9 3.3L1.5 15a3 3 0 0 0 5.3 2L8 15h8l1.2 2a3 3 0 0 0 5.3 2l-1.3-6.7A4 4 0 0 0 17.3 5z',
+    controls: 'M8 7h8c3 0 4 2 4.5 4l1 6c.4 2-1.8 3-3 1.5L16 16H8l-2.5 2.5C4.3 20 2.1 19 2.5 17l1-6C4 9 5 7 8 7z M6 12h4 M8 10v4 M15 11h.01 M18 13h.01',
+    gamepad: 'M8 7h8c3 0 4 2 4.5 4l1 6c.4 2-1.8 3-3 1.5L16 16H8l-2.5 2.5C4.3 20 2.1 19 2.5 17l1-6C4 9 5 7 8 7z M6 12h4 M8 10v4 M15 11h.01 M18 13h.01',
+    inputs: 'M8 7h8c3 0 4 2 4.5 4l1 6c.4 2-1.8 3-3 1.5L16 16H8l-2.5 2.5C4.3 20 2.1 19 2.5 17l1-6C4 9 5 7 8 7z M6 12h4 M8 10v4 M15 11h.01 M18 13h.01',
+    remote: 'M3 4h18v12H3z M8 20h8 M12 16v4 M7 8l3 2-3 2 M13 12h4',
+    personalize: 'M4 6h16 M4 12h16 M4 18h16 M8 4v4 M16 10v4 M10 16v4',
     video: 'M4 4h16v12H4z M8 20h8 M12 16v4',
     images: 'M3 4h18v16H3z M7 15l3-3 3 3 2-2 4 4 M8 9h.01',
     statistics: 'M4 19V5 M4 19h16 M8 15v-3 M12 15V7 M16 15V9',
-    gyrotouch: 'M3 5h13v14H3z M6 8h.01 M9 8h.01 M12 8h.01 M6 11h.01 M9 11h.01 M12 11h.01 M6 14h4 M18 5a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V8a3 3 0 0 0-3-3z M18 8v2',
+    gyrotouch: 'M2 7h12v10H2z M5 10h.01 M8 10h.01 M11 10h.01 M5 13h6 M19 6a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V9a3 3 0 0 0-3-3z M19 7v4',
     region: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M2 12h20 M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20',
     advanced: 'M9 2h6v4H9z M7 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2 M8 12h8 M8 16h5',
     close: 'M18 6L6 18 M6 6l12 12'
@@ -2417,7 +2506,7 @@ SOFTWARE.
     const r = mk('div', 'padding:12px 0;display:flex;flex-direction:column;gap:9px;align-items:stretch;justify-content:flex-start;min-width:0');
     const t = mk('div', 'min-width:0;width:100%;flex:0 0 auto');
     t.appendChild(mk('div', 'font-size:13px;font-weight:600;color:' + C.text, label));
-    const d = mk('div', 'font-size:11px;color:' + C.dim + ';margin-top:2px;line-height:1.4;word-break:break-word', desc || '');
+    const d = mk('div', 'font-size:11px;color:' + C.dim + ';margin-top:2px;line-height:1.4;word-break:normal;overflow-wrap:normal;hyphens:none', desc || '');
     if (!desc) d.style.display = 'none';
     t.appendChild(d);
     r.appendChild(t);
@@ -6040,12 +6129,12 @@ SOFTWARE.
     home.addEventListener('click',function (e) { e.stopPropagation(); setOpen(false,true); }); navBar.appendChild(home);
     navBar.style.display='flex';
     cardEl.insertBefore(navBar,el.body);
-    const rail=mk('nav','flex:0 0 108px;display:flex;flex-direction:column;gap:3px;padding:8px 4px;background:#101419;border-right:1px solid '+C.line+';overflow-y:auto;min-height:0');
+    const rail=mk('nav','flex:0 0 126px;display:flex;flex-direction:column;gap:3px;padding:8px 4px;background:#101419;border-right:1px solid '+C.line+';overflow-y:auto;min-height:0');
     rail.setAttribute('aria-label','Categorias das configurações');
     el.nxRailButtons=[];
     TABS.map(function(tab){return [tab.id,tab.label];}).forEach(function(item){
       const btn=mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:7px;min-height:44px;flex:0 0 auto;width:100%;padding:7px 6px;border-radius:8px;font-size:11px;line-height:1.3;color:'+C.dim);
-      btn.title=item[1];btn.setAttribute('aria-label',item[1]);btn.appendChild(ico(ICONS[item[0]]||ICONS.gamepad,17));btn.appendChild(mk('span','overflow-wrap:anywhere',item[1]));
+      btn.title=item[1];btn.setAttribute('aria-label',item[1]);btn.appendChild(ico(ICONS[item[0]]||ICONS.gamepad,17));btn.appendChild(mk('span','min-width:0;word-break:normal;overflow-wrap:normal;hyphens:none;white-space:normal',item[1]));
       btn.addEventListener('click',function(e){e.stopPropagation();setTab(item[0]);});rail.appendChild(btn);
       el.nxRailButtons.push({id:item[0],button:btn});
     });
@@ -6061,10 +6150,47 @@ SOFTWARE.
     return wrap;
   }
 
+  let nxLoadingEl = null;
+  function nxLoadingTick(){
+    nxLaunchRefresh();
+    document.documentElement?.classList.toggle('nx-session-loading',nxLoadingBusy());
+    if(!document.getElementById('nx-loading-style')){
+      const css=document.createElement('style');css.id='nx-loading-style';css.textContent='html.nx-session-loading #__xcu_panel__,html.nx-session-loading #nimboxcloud-library-button,html.nx-session-loading #nimboxcloud-native-keyboard-mouse,html.nx-session-loading #nimbo-touch-nx-access,html.nx-session-loading #nimbo-touch-panel,html.nx-session-loading #nimbo-touch-launcher,html.nx-session-loading #nimbo-touch-quick-toggle,html.nx-session-loading #nimbo-touch-root{display:none!important}';(document.head||document.documentElement)?.appendChild(css);
+    }
+    const visible=['loading','stalled'].includes(nxLaunch.phase);
+    if(!visible||document.hidden){if(nxLoadingEl)nxLoadingEl.hidden=true;return;}
+    if(nxLoadingBusy()){
+      if(openUI)setOpen(false);
+      if(wrap)wrap.style.display='none';
+      if(nxLibraryButton)nxLibraryButton.style.display='none';
+      if(pillEl)pillEl.style.display='none';
+    }
+    const host=mountTarget();if(!host)return;
+    if(!nxLoadingEl||!nxLoadingEl.isConnected){
+      nxLoadingEl=document.createElement('section');nxLoadingEl.id='nx-loading-overlay';
+      nxLoadingEl.setAttribute('aria-label','Preparação da partida');
+      nxLoadingEl.style.cssText='position:fixed;z-index:2147482999;top:max(12px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(440px,calc(100vw - 24px));box-sizing:border-box;border:1px solid #ffffff24;border-radius:14px;padding:12px 16px;background:rgba(12,18,27,.93);color:#edf4fc;font:13px/1.55 system-ui,sans-serif;box-shadow:0 8px 30px #0005;pointer-events:none;white-space:pre-line';
+      nxLoadingEl.heading=document.createElement('strong');nxLoadingEl.heading.setAttribute('role','status');
+      nxLoadingEl.time=document.createElement('div');nxLoadingEl.detail=document.createElement('div');nxLoadingEl.detail.style.cssText='margin-top:8px;color:#bfccdc;font-size:12px';
+      nxLoadingEl.append(nxLoadingEl.heading,nxLoadingEl.time,nxLoadingEl.detail);
+    }
+    if(nxLoadingEl.parentNode!==host)host.appendChild(nxLoadingEl);
+    nxLoadingEl.hidden=false;
+    if(nxLoadingEl.heading.textContent!==nxLaunch.stage)nxLoadingEl.heading.textContent=nxLaunch.stage;
+    const elapsed=Math.max(0,Math.floor((Date.now()-nxLaunch.startedAt)/1000));
+    nxLoadingEl.time.textContent='Estimativa: '+nxLaunchEstimate()+'\nTempo decorrido: '+Math.floor(elapsed/60)+'min '+String(elapsed%60).padStart(2,'0')+'s';
+    nxLoadingEl.detail.hidden=getPref(NX_LOADING_DETAILS,'1')!=='1';
+    const q=S.qos||{},fresh=S.qosAt>=nxLaunch.startedAt;
+    nxLoadingEl.detail.textContent='Servidor solicitado: '+srvBtnLabel()+'\nDestino observado: '+(nxLaunch.server||'Aguardando confirmação')+
+      '\nQualidade solicitada: '+resCfg().label+'\nVídeo recebido: aguardando quadros'+
+      (fresh?'\nFPS do vídeo: '+fmtN(q.decodedFps??q.fps)+' · Bitrate: '+(Number.isFinite(q.kbps)?fmtN(q.kbps/1000,' Mbps',1):'—'):'\nFPS e bitrate: aguardando medição');
+  }
+  // Fim do painel de preparação.
+
   // HUD independente do painel, sem interferir com o fluxo do jogo.
   const NX_TELEMETRY_KEY = 'nx.telemetry.overlay.v1';
   let nxTelemetryEnabled = (function(){try{return localStorage.getItem(NX_TELEMETRY_KEY)==='1';}catch(_){return false;}})();
-  let nxTelemetryEl = null, nxLoadingStarted = 0, nxLoadingLastStage = '';
+  let nxTelemetryEl = null;
   function nxTelemetryEnsure() {
     if (nxTelemetryEl && nxTelemetryEl.isConnected) return nxTelemetryEl;
     const host = mountTarget();
@@ -6101,14 +6227,54 @@ SOFTWARE.
     const stop=function(v){if(v.pointerId!==e.pointerId)return;n.removeEventListener('pointermove',move);n.removeEventListener('pointerup',stop);n.removeEventListener('pointercancel',stop);nxMonitorSave();};
     n.addEventListener('pointermove',move);n.addEventListener('pointerup',stop);n.addEventListener('pointercancel',stop);e.stopPropagation();
   }
+  const nxMonitorHistory={session:0,lastAt:0,fps:[],rtt:[],bitrate:[]};
+  function nxMonitorCollect(q,now,session){
+    if(nxMonitorHistory.session!==session){nxMonitorHistory.session=session;nxMonitorHistory.lastAt=0;for(const key of ['fps','rtt','bitrate'])nxMonitorHistory[key]=[];}
+    if(nxMonitorHistory.lastAt&&now-nxMonitorHistory.lastAt<900)return;
+    nxMonitorHistory.lastAt=now;
+    const values={fps:q.decodedFps??q.fps,rtt:q.rtt,bitrate:Number.isFinite(q.kbps)?q.kbps/1000:null};
+    for(const key of Object.keys(values)){
+      const value=values[key];nxMonitorHistory[key].push(typeof value==='number'&&Number.isFinite(value)&&value>=0?value:null);
+      if(nxMonitorHistory[key].length>60)nxMonitorHistory[key].shift();
+    }
+  }
+  function nxMonitorGraphPath(values){
+    const valid=values.filter(function(v){return typeof v==='number'&&Number.isFinite(v)&&v>=0;});
+    const maximum=Math.max(1,...valid);let connected=false;
+    return values.map(function(value,index){
+      if(typeof value!=='number'||!Number.isFinite(value)||value<0){connected=false;return '';}
+      const command=connected?'L':'M';connected=true;
+      return command+(index*120/Math.max(1,values.length-1)).toFixed(1)+' '+(28-value*26/maximum).toFixed(1);
+    }).filter(Boolean).join(' ');
+  }
+  function nxMonitorCards(node,keys,values){
+    node.textContent='';
+    for(const key of keys){
+      if(!Object.prototype.hasOwnProperty.call(values,key))continue;
+      const card=document.createElement('div');card.style.cssText='min-width:125px;border:1px solid currentColor;border-radius:7px;padding:6px 9px';
+      const label=document.createElement('div');label.textContent=values[key];card.appendChild(label);
+      if(nxMonitorHistory[key]?.length>1){
+        const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 120 30');svg.setAttribute('width','120');svg.setAttribute('height','30');
+        svg.setAttribute('aria-label','Histórico recente de '+key);svg.setAttribute('role','img');
+        const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',nxMonitorGraphPath(nxMonitorHistory[key]));path.setAttribute('fill','none');path.setAttribute('stroke','currentColor');path.setAttribute('stroke-width','1.5');svg.appendChild(path);card.appendChild(svg);
+      }
+      node.appendChild(card);
+    }
+    node.style.display='flex';node.style.flexWrap='wrap';node.style.gap='6px';
+  }
+
   function nxTelemetryTick(){
-    if(!nxTelemetryEnabled||document.hidden||!streaming()){if(nxTelemetryEl)nxTelemetryEl.style.display='none';return;}
+    if((typeof nxLoadingBusy==='function'&&nxLoadingBusy())||!nxTelemetryEnabled||document.hidden||!streaming()){if(nxTelemetryEl)nxTelemetryEl.style.display='none';return;}
+    const remote=typeof nxRemotePlay!=='undefined'&&nxRemotePlay.peer&&nxRemotePlay.sessionStatus==='connected';
+    if(remote&&S.lastPc!==nxRemotePlay.peer){if(nxTelemetryEl)nxTelemetryEl.style.display='none';return;}
+    if(!remote&&typeof nxLaunch!=='undefined'&&nxLaunch.startedAt&&(nxLaunch.phase!=='playing'||!(S.qosAt>=nxLaunch.startedAt))){if(nxTelemetryEl)nxTelemetryEl.style.display='none';return;}
     const n=nxTelemetryEnsure();if(!n)return;
     const host=mountTarget();if(host&&n.parentNode!==host)host.appendChild(n);
     const q=S.qos||{},p=nxMonitor;
+    nxMonitorCollect(q,S.qosAt||Date.now(),remote?'xhome:'+nxRemotePlay.requestId:nxLaunch.startedAt);
     const flags={JAPANEAST:'🇯🇵',KOREACENTRAL:'🇰🇷',EASTUS:'🇺🇸',WESTEUROPE:'🇪🇺',BRAZILSOUTH:'🇧🇷',SOUTHINDIA:'🇮🇳',CENTRALINDIA:'🇮🇳'};
     const srv=String(S.serverActual||'').toUpperCase();
-    const vals={server:(flags[srv]||'◈')+' '+(srv||'Servidor não identificado'),fps:'FPS '+fmtN(q.decodedFps||q.fps),rtt:'RTT '+fmtN(q.rtt,' ms'),bitrate:'Bitrate '+(Number.isFinite(q.kbps)?fmtN(q.kbps/1000,' Mbps',1):'—'),loss:'Perda '+fmtN(curLoss(),'% ',1),resolution:'Res '+(q.h?q.h+'p':'—'),jitter:'Jitter '+fmtN(q.jitter,' ms')};
+    const vals={server:remote?'Remote Play · console autorizado':(flags[srv]||'◈')+' '+(srv||'Servidor não identificado'),fps:'FPS '+fmtN(q.decodedFps??q.fps),rtt:'RTT '+fmtN(q.rtt,' ms'),bitrate:'Bitrate '+(Number.isFinite(q.kbps)?fmtN(q.kbps/1000,' Mbps',1):'—'),loss:'Perda '+fmtN(curLoss(),'% ',1),resolution:'Res '+(q.h?q.h+'p':'—'),jitter:'Jitter '+fmtN(q.jitter,' ms')};
     const keys=p.layout==='compact'?['server','fps','rtt']:p.fields;
     const layout=p.layout==='auto'?(innerWidth<700?'vertical':'horizontal'):p.layout;
     n.textContent=keys.filter(function(k){return Object.prototype.hasOwnProperty.call(vals,k);}).map(function(k){return vals[k];}).join(layout==='vertical'?'\n':'  ·  ');
@@ -6116,6 +6282,8 @@ SOFTWARE.
     n.style.fontSize=(11*Math.max(60,Math.min(140,Number(p.scale)||100))/100)+'px';
     n.style.background='rgba(0,0,0,'+(Math.max(0,Math.min(100,Number(p.opacity)||0))/100)+')';
     n.style.color=({white:'#fff',black:'#000',blue:'#65b8ff',green:'#80e5a4'})[p.color]||'#fff';
+    if(layout==='cards')nxMonitorCards(n,keys,vals);else{n.style.flexWrap='';n.style.gap='';}
+    n.setAttribute('title','FPS do vídeo recebido. Arraste para reposicionar. Gráficos mostram até 60 amostras observadas.');
     nxMonitorPlace();
   }
   setInterval(nxTelemetryTick, 1000);
@@ -6129,7 +6297,7 @@ SOFTWARE.
   function nxMonitorSettingsGroup(root){
     const section=mk('div','border:1px solid '+C.line+';border-radius:12px;padding:12px;margin-bottom:12px');
     section.appendChild(mk('div','font-weight:700;font-size:14px;margin-bottom:5px','NX Stream Monitor'));
-    section.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:10px','Informações mínimas durante a partida; arraste o monitor para reposicionar.'));
+    section.appendChild(mk('div','font-size:11px;color:'+C.dim+';margin-bottom:10px','FPS do vídeo recebido, rede e servidor durante a partida. Arraste para reposicionar; os cartões mostram histórico de FPS, latência e bitrate.'));
     section.appendChild(actBtn(nxTelemetryEnabled?'Ocultar monitor':'Ativar monitor',function(){nxTelemetryToggle(!nxTelemetryEnabled);renderBody();},'ghost'));
     function option(label,key,choices){
       const row=mk('label','display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:9px;font-size:12px');
@@ -6139,7 +6307,12 @@ SOFTWARE.
       sel.value=String(nxMonitor[key]);sel.addEventListener('change',function(){nxMonitor[key]=['opacity','scale'].includes(key)?Number(sel.value):sel.value;if(key==='position'){nxMonitor.x=null;nxMonitor.y=null;}nxMonitorSave();});
       row.appendChild(sel);section.appendChild(row);
     }
-    option('Layout','layout',[['auto','Automático'],['horizontal','Horizontal'],['vertical','Vertical'],['compact','Compacto']]);
+    const loading=mk('label','display:flex;align-items:center;gap:8px;margin:12px 0;font-size:12px');
+    const details=document.createElement('input');details.type='checkbox';details.checked=getPref(NX_LOADING_DETAILS,'1')==='1';
+    details.addEventListener('change',function(){setPref(NX_LOADING_DETAILS,details.checked?'1':'0');});
+    loading.appendChild(details);loading.appendChild(mk('span','','Mostrar informações técnicas no carregamento'));section.appendChild(loading);
+    section.appendChild(mk('div','font-size:11px;color:'+C.dim,'A estimativa de espera permanece visível. Ajustes e arraste ficam disponíveis fora do carregamento.'));
+    option('Layout','layout',[['auto','Automático'],['horizontal','Horizontal'],['vertical','Vertical'],['compact','Compacto'],['cards','Cartões com gráficos']]);
     option('Posição','position',[['top-left','Superior esquerdo'],['top-right','Superior direito'],['bottom-left','Inferior esquerdo'],['bottom-right','Inferior direito']]);
     option('Fundo','opacity',[['0','Transparente'],['25','25%'],['45','45%'],['65','65%'],['85','85%'],['100','Preto']]);
     option('Texto','color',[['white','Branco'],['black','Preto'],['blue','Azul'],['green','Verde']]);
@@ -6282,6 +6455,7 @@ SOFTWARE.
   // Gerenciamento de foco independente do Pointer Lock: nunca recapturar automaticamente.
   let nxFocusBeforePanel = null;
   function setOpen(v, byUser) {
+    if(v && nxLoadingBusy())return false;
     const wasOpen = openUI;
     openUI = !!v;
     if (byUser) userTouched = true;
@@ -6313,7 +6487,7 @@ SOFTWARE.
         try{document.activeElement.blur();}catch(_){}
       }
     }
-    if (wrap) wrap.style.display = 'flex';
+    if (wrap) wrap.style.display = nxLoadingBusy()?'none':'flex';
   }
 
   const NX_PAD_BIND_KEY='nx.panel.padBinding.v1';
@@ -7521,6 +7695,7 @@ SOFTWARE.
 
   // ---------- 15. Loop principal ----------
   function tick() {
+    nxLoadingTick();
     try {
       if (wrap && wrap.isConnected) {
         const r = wrap.getBoundingClientRect();
@@ -7546,7 +7721,15 @@ SOFTWARE.
       autoFolded = true;
       if (!userTouched) setOpen(false);
     }
+    if(nxLoadingBusy()){
+      if(openUI)setOpen(false);
+      if(wrap)wrap.style.display='none';
+      if(nxLibraryButton)nxLibraryButton.style.display='none';
+      if(pillEl)pillEl.style.display='none';
+      if(cardEl)cardEl.style.display='none';
+    }
     update();
+    if(nxLoadingBusy()){if(wrap)wrap.style.display='none';if(nxLibraryButton)nxLibraryButton.style.display='none';}
   }
 
   function detectedDeviceProfile() {

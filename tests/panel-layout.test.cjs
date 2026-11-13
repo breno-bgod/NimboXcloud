@@ -120,7 +120,7 @@ test('old destinations resolve to the merged pages, including a retired store-re
 test('vertical monitor creates real line breaks',()=>{
  const monitor=new Node();
  const ctx={nxTelemetryEnabled:true,document:{hidden:false},streaming:()=>true,nxTelemetryEnsure:()=>monitor,
-  mountTarget:()=>null,nxMonitor:{layout:'vertical',fields:['fps','rtt'],scale:100,opacity:45,color:'white'},
+  nxMonitorCollect(){},nxLaunch:{startedAt:0},mountTarget:()=>null,nxMonitor:{layout:'vertical',fields:['fps','rtt'],scale:100,opacity:45,color:'white'},
   S:{qos:{fps:60,rtt:25}},fmtN:(n,unit='')=>n+unit,curLoss:()=>0,nxMonitorPlace(){}};
  vm.runInNewContext(section('  function nxTelemetryTick(){','  setInterval(nxTelemetryTick,')+'\nglobalThis.tick=nxTelemetryTick;',ctx);
  ctx.tick();assert.equal(monitor.textContent,'FPS 60\nRTT 25 ms');
@@ -147,4 +147,15 @@ test('GPU brightness and contrast follow the same order as CSS over shadows, mid
   const css=clamp((clamp(x*brightness)-.5)*contrast+.5);
   assert.ok(Math.abs(gpu(x,brightness,contrast)-css)<1e-12);
  }
+});
+
+
+test('monitor preserves Remote Play after a cloud session and rejects metrics from another peer',()=>{
+ const monitor=new Node(),peer={};const ctx={nxTelemetryEnabled:true,document:{hidden:false},streaming:()=>true,nxTelemetryEnsure:()=>monitor,
+  nxMonitorCollect(){},nxLaunch:{startedAt:100,phase:'idle'},nxRemotePlay:{peer,requestId:2,sessionStatus:'connected'},
+  mountTarget:()=>null,nxMonitor:{layout:'vertical',fields:['server','fps'],scale:100,opacity:45,color:'white'},
+  S:{qos:{fps:60},qosAt:200,lastPc:peer},fmtN:n=>String(n),curLoss:()=>0,nxMonitorPlace(){}};
+ vm.runInNewContext(section('  function nxTelemetryTick(){','  setInterval(nxTelemetryTick,')+'\nglobalThis.tick=nxTelemetryTick;',ctx);
+ ctx.tick();assert.match(monitor.textContent,/Remote Play/);assert.match(monitor.textContent,/FPS 60/);assert.doesNotMatch(monitor.textContent,/Servidor não identificado/);
+ ctx.nxTelemetryEl=monitor;ctx.S.lastPc={};ctx.tick();assert.equal(monitor.style.display,'none');
 });

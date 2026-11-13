@@ -1,11 +1,15 @@
-## Não lançado — ajustes de entradas e Sistema
+## Não lançado — ajustes de entradas, carregamento e monitor
+- Preparação da partida observa play/waittime/state já consultados pelo cliente, mostra estimativa real ou indisponibilidade e tempo decorrido. Informações técnicas são opcionais e separam destino observado/qualidade solicitada de métricas recebidas.
+- NX e seus atalhos de abertura ficam bloqueados durante a preparação, sem ocultar os controles do Xbox. Vídeo recebido, cancelamento, falha e navegação liberam o painel; um limite por inatividade evita bloqueio permanente.
+- Monitor mantém preferências e ganha cartões com históricos limitados de FPS do vídeo, RTT e bitrate. Não há sondagem adicional, leitura de disco/GPU do sistema ou métricas simuladas.
+- Ícones de controle/teclado-mouse corrigidos; categorias com símbolos próprios e nomes sem quebra de letras na navegação. Logotipo do projeto preservado.
 - Salvar ou cancelar uma HUD integrada retorna à página Entradas do NX, sem abrir o painel amarelo legado. Salvar e voltar reflete essa navegação; uso independente do módulo mantém seu próprio painel.
 - Corrigido o caminho de captura sem transmissão: movimento, botões, roda e teclado físico passam explicitamente ao adaptador existente da sessão; Esc/perda de foco liberam estados mantidos. Eventos consumidos evitam cópias no caminho nativo. O script de teste fixa o módulo correspondente por commit para impedir cache antigo.
 - Mouse físico ganha captura explícita no vídeo da sessão, com F8 padrão, alternativa F2 e Esc para liberar. Não modifica a API nativa nem intercepta F9; entrada ativa e sessão conectada são verificadas.
 - Editor de HUD fica identificado como controle virtual ou teclado/mouse por toque; retirado dos ajustes físicos. Atalhos do painel explicam seu propósito e mostram o padrão quando não há combinação personalizada.
 - Sistema deixa de exibir ação duplicada de tela cheia/horizontal e seletores experimentais de identidade/Client Hints. Preferências antigas não mantêm os experimentos de identidade ativos após ocultar os seletores. Removida a referência visual a DeX; o perfil usa recursos normais do navegador.
 - Fortnite Console mantido para investigação da integração: o Better xCloud possui um patch específico de sinalização de toque, distinto da seleção de controle. A preferência atual do Nimbo ainda não aplica esse patch; não há validação de funcionamento. Layouts, preferências das cinco entradas e transporte preservados.
-- Verificação local: 329 testes, 326 PASS, zero FAIL e três TODO; sessão Xbox e captura em navegador real pendentes.
+- Verificação local: 351 testes, 348 PASS, zero FAIL e três TODO; sessão Xbox e captura em navegador real pendentes.
 
 ## [4.14.0] — 2026-11-13
 - Qualidade solicitada e perfis passam para Vídeo e imagem, com dimensão do vídeo recebido. Removido o perfil redundante Compatível; selecionar qualidade deixa de zerar um limite independente de bitrate.
