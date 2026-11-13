@@ -2208,3 +2208,105 @@ test('xHome local ICE sends stay ordered and reject terminal or replaced peer ca
   api.state.peer=peer;
   await api.stop();
 });
+
+async function pendingChannelSession() {
+  const scheduled=new Map(),requests=[];let nextId=0,peer;
+  class Channel {
+    constructor(label){this.label=label;this.readyState='connecting';this.sent=[];this.closes=0;}
+    send(data){this.sent.push(data);}
+    close(){this.closes++;this.readyState='closed';this.onclose?.();}
+  }
+  class Peer {
+    constructor(){peer=this;this.channels={};this.connectionState='new';this.iceConnectionState='checking';this.signalingState='stable';}
+    createDataChannel(label){return this.channels[label]=new Channel(label);}
+    addTransceiver(){}
+    async createOffer(){return {type:'offer',sdp:'v=0'};}
+    async setLocalDescription(value){this.localDescription=value;}
+    async setRemoteDescription(value){this.remoteDescription=value;}
+    async addIceCandidate(){}
+    close(){this.connectionState='closed';}
+  }
+  const api=harness(async(url,options)=>{
+    requests.push({url,method:options.method});
+    if(options.method==='DELETE')return {ok:true,status:204};
+    switch(requests.length){
+      case 1:return ok(login);
+      case 2:return ok({sessionId:'12345678-1234-1234-1234-123456789abc'});
+      case 3:return ok({state:'Provisioned'});
+      case 4:return {ok:true,status:204};
+      case 5:return ok({exchangeResponse:JSON.stringify({sdpType:'answer',sdp:'v=0'})});
+      default:return ok({candidates:[]});
+    }
+  },null,Peer,{setTimeout(fn,ms){const id=++nextId;scheduled.set(id,{fn,ms});return id;},clearTimeout(id){scheduled.delete(id);}});
+  api.state.consoles=[{id:'console-1'}];api.state.selectedId='console-1';api.state.regionShortName='wus';
+  await api.startSession();
+  const channels=api.channels(),timeout=scheduled.get(api.state.channelTimer);
+  assert.ok(timeout&&timeout.ms===12000);
+  return {api,peer,channels,scheduled,timeout,requests};
+}
+
+test('data channels: queued events after a terminal peer cannot bootstrap or replace terminal status',async()=>{
+  for(const [field,value]of [['connectionState','failed'],['connectionState','closed'],['iceConnectionState','failed'],['iceConnectionState','closed'],['signalingState','closed']]){
+    const {api,peer,channels,scheduled,timeout,requests}=await pendingChannelSession();
+    const staleOpen=Object.values(channels).map(channel=>channel.onopen),staleAck=channels.message.onmessage;
+    const staleError=channels.input.onerror,staleClose=channels.input.onclose;
+    for(const channel of Object.values(channels))channel.readyState='open';
+    peer[field]=value;api.state.status='Estado terminal preservado';
+    // Queue can run before the aggregate connectionstatechange is delivered.
+    for(const callback of staleOpen)callback();staleAck({data:JSON.stringify({type:'HandshakeAck'})});
+    assert.equal(api.state.dataChannelsReady,false,field+'='+value+' must not initialize');
+    assert.ok(Object.values(channels).every(channel=>channel.sent.length===0),'no handshake/configuration/metadata after terminal');
+    assert.equal(api.state.status,'Estado terminal preservado');
+    const requestId=api.state.requestId;peer.onconnectionstatechange();const terminalStatus=api.state.status;
+    assert.equal(api.state.channelTimer,null);assert.equal(api.channels(),null);
+    assert.ok(Object.values(channels).every(channel=>channel.readyState==='closed'&&channel.closes===1));
+    assert.equal(Array.from(scheduled.values()).some(timer=>timer.ms===12000),false);
+    for(const callback of staleOpen)callback();staleAck({data:JSON.stringify({type:'HandshakeAck'})});staleError();staleClose();timeout.fn();
+    await Promise.resolve();await Promise.resolve();
+    assert.equal(api.state.status,terminalStatus);assert.equal(api.state.dataChannelsReady,false);
+    assert.equal(api.state.requestId,requestId,'terminal teardown must not recurse into Stop');
+    assert.equal(requests.filter(request=>request.method==='DELETE').length,0);
+  }
+});
+
+test('data channels: terminal transition closes an initialized bootstrap and keeps stale errors inert',async()=>{
+  const {api,peer,channels,requests}=await pendingChannelSession();
+  for(const channel of Object.values(channels)){channel.readyState='open';channel.onopen();}
+  channels.message.onmessage({data:JSON.stringify({type:'HandshakeAck'})});
+  assert.equal(api.state.dataChannelsReady,true);
+  const staleError=channels.input.onerror,requestId=api.state.requestId;
+  peer.connectionState='failed';peer.onconnectionstatechange();const status=api.state.status;
+  assert.equal(api.state.dataChannelsReady,false);assert.equal(api.channels(),null);
+  staleError();await Promise.resolve();await Promise.resolve();
+  assert.equal(api.state.status,status);assert.equal(api.state.requestId,requestId);
+  assert.equal(requests.some(request=>request.method==='DELETE'),false);
+});
+
+test('data channels: transient disconnected peer keeps channels and can finish the same handshake after recovery',async()=>{
+  const {api,peer,channels}=await pendingChannelSession();
+  peer.connectionState='disconnected';peer.onconnectionstatechange();
+  assert.equal(api.channels(),channels);assert.notEqual(api.state.channelTimer,null);
+  assert.ok(Object.values(channels).every(channel=>channel.closes===0));
+  peer.connectionState='connected';peer.iceConnectionState='connected';peer.onconnectionstatechange();
+  for(const channel of Object.values(channels)){channel.readyState='open';channel.onopen();}
+  channels.message.onmessage({data:JSON.stringify({type:'HandshakeAck'})});
+  assert.equal(api.state.dataChannelsReady,true);assert.equal(api.state.sessionStatus,'connected');
+  assert.equal(channels.input.sent.length,1,'one metadata bootstrap after recovery');
+  channels.message.onmessage({data:JSON.stringify({type:'HandshakeAck'})});
+  assert.equal(channels.input.sent.length,1);
+  await api.stop();
+});
+
+test('data channels: terminal callbacks from a replaced peer do not close the new owner channels or timeout',async()=>{
+  const {api,peer,channels,scheduled}=await pendingChannelSession();
+  const replacement={connectionState:'new',iceConnectionState:'checking',signalingState:'stable',channels:{},
+    createDataChannel(label){return this.channels[label]={readyState:'connecting',close(){this.readyState='closed';},send(){}};}};
+  api.state.peer=replacement;const next=api.initChannels(replacement,api.state.requestId,new AbortController().signal);
+  const nextTimer=api.state.channelTimer;api.state.status='Nova sessão aguardando';
+  peer.connectionState='failed';peer.onconnectionstatechange();channels.input.onerror();
+  channels.message.onmessage({data:JSON.stringify({type:'HandshakeAck'})});
+  assert.equal(api.channels(),next);assert.equal(api.state.channelTimer,nextTimer);assert.ok(scheduled.has(nextTimer));
+  assert.equal(api.state.status,'Nova sessão aguardando');assert.equal(api.state.dataChannelsReady,false);
+  api.closeChannels();
+});
+

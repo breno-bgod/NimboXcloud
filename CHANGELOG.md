@@ -7,6 +7,11 @@
 - Diagnóstico distingue barra nativa fora da subárvore real de fullscreen. Não há movimento do DOM nativo, override de Fullscreen API ou garantia de renderização em fullscreen exclusivo de vídeo.
 - Verificação local: 371 testes, 368 PASS, zero FAIL e três TODO preexistentes; reteste real de Edge/mobile, retrato/paisagem e tela cheia pendente.
 
+## Não publicado — correção proposta para canais xHome
+- Eventos de abertura e HandshakeAck de um peer failed/closed não podem executar bootstrap nem anunciar canais prontos.
+- A transição terminal fecha os canais do proprietário atual, cancela o timer de handshake e limpa readiness sem disparar Stop recursivo. Desconexão transitória permanece recuperável.
+- Quatro regressões novas; suíte local da base 4.15.0 reconciliada: 367 testes, 364 PASS, zero FAIL e três TODO. Validação de Xbox/navegador real continua pendente; versão e payloads permanecem inalterados.
+
 ## [4.15.0] — 2026-11-13
 - Publicação oficial autorizada pelo mantenedor: userscript 4.15.0 e módulo de entradas/HUD 1.4.0. Preferências e layouts preservados.
 - Após teste do mantenedor: carregamento compacto na lateral direita; NX expande/recolhe detalhes sem esconder previsão e tempo decorrido. Ativar/ocultar estatísticas passa ao início de Estatísticas; a personalização do monitor fica expansível nessa página.
