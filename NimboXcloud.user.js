@@ -8,7 +8,7 @@
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.14.0
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/c5a4d3b38f1d5a2889a3c590052c17ec7b795d26/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.14.0
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -6335,6 +6335,7 @@ SOFTWARE.
   let nxKeyboardComboActive=false;
   function nxBindingLabel(b,names){if(!b)return 'Não configurado';return b.map(function(v){return names?names[v]||('Botão '+v):v.replace(/^Key/,'');}).join(' + ');}
   const NX_POINTER_KEY = 'nx.pointerCapture.key.v1';
+  let nxPointerVideo = null;
   function nxPointerShortcut() {
     const key = getPref(NX_POINTER_KEY, 'F8');
     return ['F8', 'F2', 'off'].includes(key) ? key : 'F8';
@@ -6350,37 +6351,98 @@ SOFTWARE.
       return fail('Inicie uma sessão e selecione Teclado e mouse físicos em Entradas.');
     if (document.pointerLockElement) {
       if (document.pointerLockElement !== video) return fail('Libere a captura atual com Esc antes de continuar.');
-      try { document.exitPointerLock(); return true; } catch (_) { return fail('Não foi possível liberar o mouse. Use Esc.'); }
+      try { nxReleasePhysicalPointer(); if (document.pointerLockElement === video) document.exitPointerLock(); return true; } catch (_) { return fail('Não foi possível liberar o mouse. Use Esc.'); }
     }
+    if (typeof window.NimboTouch?.physicalMouseInput !== 'function' || typeof window.NimboTouch?.physicalKeyboardInput !== 'function') return fail('Atualize o módulo de entradas junto com o script principal para transmitir mouse e teclado.');
     if (typeof video.requestPointerLock !== 'function') return fail('Este navegador não oferece captura do mouse.');
     // Called synchronously from a trusted click/key gesture. Never recapture on blur or Escape.
     setOpen(false, true);
     try {
+      nxPointerVideo = video;
       const result = video.requestPointerLock();
-      if (result && typeof result.catch === 'function') result.catch(function() { fail('O navegador recusou a captura. Clique em Capturar mouse para tentar novamente.'); });
+      if (result && typeof result.catch === 'function') result.catch(function() { nxReleasePhysicalPointer(); fail('O navegador recusou a captura. Clique em Capturar mouse para tentar novamente.'); });
       return true;
-    } catch (_) { return fail('Não foi possível capturar o mouse neste navegador.'); }
+    } catch (_) { nxReleasePhysicalPointer(); return fail('Não foi possível capturar o mouse neste navegador.'); }
   }
+  function nxReleasePhysicalPointer() {
+    const owned = nxPointerVideo && document.pointerLockElement === nxPointerVideo;
+    try { window.NimboTouch?.releasePhysicalInput?.(); } catch (_) {}
+    nxPointerVideo = null;
+    if (owned) try { document.exitPointerLock(); } catch (_) {}
+  }
+  function nxPhysicalPointerReady(event) {
+    return !!(event.isTrusted && nxPointerVideo && document.pointerLockElement === nxPointerVideo &&
+      !openUI && !document.hidden && !window.NimboTouch?.diagnostic?.().remoteActive && nxSelectedInputMode() === 'keyboard-mouse' &&
+      window.NimboTouch?.inputModeStatus?.().connected &&
+      !document.documentElement?.classList?.contains('nx-native-menu-expanded') &&
+      !event.target?.closest?.('input,textarea,select,[contenteditable="true"],[role="dialog"]') && !event.target?.isContentEditable);
+  }
+  function nxForwardPhysical(event) {
+    if (!nxPhysicalPointerReady(event)) return false;
+    if (event.type === 'keydown' || event.type === 'keyup') {
+      if (['Escape','F9'].includes(event.code) || (event.ctrlKey && event.shiftKey) || (nxKeyBinding() || []).includes(event.code)) return false;
+    } else if (event.sourceCapabilities?.firesTouchEvents) return false;
+    try {
+      let sent;
+      if (event.type === 'keydown' || event.type === 'keyup') {
+        sent = window.NimboTouch.physicalKeyboardInput(event);
+      } else {
+        const wheel = event.type === 'wheel';
+        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? Math.max(1, nxPointerVideo.clientHeight || 720) : 1;
+        const reading = {Type:0, X:wheel?0:(event.movementX || 0), Y:wheel?0:(event.movementY || 0),
+          Buttons:event.buttons || 0, WheelX:wheel?event.deltaX*unit:0, WheelY:wheel?event.deltaY*unit:0};
+        if (event.type !== 'mousemove') { reading.X = 0; reading.Y = 0; }
+        sent = window.NimboTouch.physicalMouseInput(reading);
+      }
+      if (!sent) throw Error('A entrada física não está ativa no transporte.');
+      if (event.cancelable) event.preventDefault();
+      event.stopImmediatePropagation(); // Do not send a second copy through the SDK DOM listeners.
+      return true;
+    } catch (error) {
+      nxReleasePhysicalPointer();
+      try { document.exitPointerLock(); } catch (_) {}
+      toast('Falha ao transmitir entrada: ' + String(error.message || error));
+      return false;
+    }
+  }
+  // Pointer events precede their compatibility mouse events. Keep default generation,
+  // but stop the SDK from receiving a second path for the same physical motion.
+  ['pointermove','pointerdown','pointerup'].forEach(function(type) {
+    window.addEventListener(type, function(event) {
+      if (event.pointerType === 'mouse' && !event.sourceCapabilities?.firesTouchEvents && nxPhysicalPointerReady(event)) event.stopImmediatePropagation();
+    }, true);
+  });
+  ['mousemove','mousedown','mouseup','wheel'].forEach(function(type) {
+    window.addEventListener(type, nxForwardPhysical, {capture:true,passive:false});
+  });
+  document.addEventListener('pointerlockchange', function() {
+    if (nxPointerVideo && document.pointerLockElement !== nxPointerVideo) nxReleasePhysicalPointer();
+  }, true);
+  document.addEventListener('pointerlockerror', function() {
+    if (!nxPointerVideo) return;
+    nxReleasePhysicalPointer(); toast('O navegador recusou a captura do mouse.');
+  }, true);
+  document.addEventListener('visibilitychange', function() { if (document.hidden) nxReleasePhysicalPointer(); });
   let nxPointerHeldKey = '';
   window.addEventListener('keydown', function(e) {
     if (e.isTrusted && e.repeat && e.code === nxPointerHeldKey) { e.preventDefault(); e.stopImmediatePropagation(); return; }
     const key = nxPointerShortcut();
-    if (!e.isTrusted || e.repeat || e.code !== key || key === 'off' || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey || openUI || nxCaptureKeys || nxPointerConflict(key)) return;
+    if (!e.isTrusted || e.repeat || e.code !== key || key === 'off' || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey || openUI || nxCaptureKeys || nxPointerConflict(key)) { nxForwardPhysical(e); return; }
     if (e.target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || '')) return;
     if (nxSelectedInputMode() !== 'keyboard-mouse') return;
     if (nxTogglePointer()) { nxPointerHeldKey = e.code; e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
   window.addEventListener('keyup', function(e) {
-    if (!e.isTrusted || e.code !== nxPointerHeldKey) return;
+    if (!e.isTrusted || e.code !== nxPointerHeldKey) { nxForwardPhysical(e); return; }
     nxPointerHeldKey = ''; e.preventDefault(); e.stopImmediatePropagation();
   }, true);
-  window.addEventListener('blur', function() { nxPointerHeldKey = ''; });
+  window.addEventListener('blur', function() { nxPointerHeldKey = ''; nxReleasePhysicalPointer(); });
   function nxPointerControls(root) {
     const g = group('Mouse físico e captura do ponteiro', 'Para mirar com mouse USB ou Bluetooth, selecione Teclado e mouse físicos e capture o ponteiro durante a partida. O jogo precisa aceitar essa entrada.');
     const button = actBtn('Capturar mouse', nxTogglePointer, 'primary');
     const update = function() { button.textContent = document.pointerLockElement ? 'Liberar mouse' : 'Capturar mouse'; };
     update(); liveFns.push(update);
-    g.add(setRow('Captura do mouse', 'Use o botão ou o atalho abaixo. Esc libera o ponteiro; abrir o painel também o libera. O F9 do Xbox permanece disponível.', button));
+    g.add(setRow('Captura do mouse', 'Teste de transmissão física: mouse e teclado seguem para a sessão. Use o botão ou o atalho abaixo. Esc libera o ponteiro; abrir o painel também o libera. O F9 do Xbox permanece disponível.', button));
     g.add(setRow('Atalho para capturar ou liberar', 'F8 é o padrão. Se a tecla estiver no atalho personalizado do painel, escolha outra aqui.',
       chips([{k:'F8',label:'F8'},{k:'F2',label:'F2'},{k:'off',label:'Sem atalho'}], nxPointerShortcut(), function(key) { setPref(NX_POINTER_KEY, key); renderBody(); }), true));
     if (nxPointerConflict(nxPointerShortcut())) g.add(note('Esse atalho está reservado para abrir o painel. Escolha outra tecla para capturar o mouse.'));

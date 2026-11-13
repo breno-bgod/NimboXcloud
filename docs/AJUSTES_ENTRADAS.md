@@ -23,6 +23,18 @@ Consultados:
 
 ## Verificação
 
-Testes comportamentais cobrem captura explícita, seleção física efetivamente aplicada, sessão ausente, outras entradas, conflitos, formulários, modificadores, F9/Esc, liberação, API indisponível e promessa rejeitada. Total local: 314 testes, 311 PASS, zero FAIL, três TODO preexistentes.
+Testes comportamentais cobrem captura explícita, seleção física efetivamente aplicada, sessão ausente, outras entradas, conflitos, formulários, modificadores, F9/Esc, liberação, API indisponível e promessa rejeitada. Total local: 323 testes, 320 PASS, zero FAIL, três TODO preexistentes.
 
 Pendente em navegador e sessão Xbox reais: Fortnite compatível com teclado/mouse, F8/F2 e botão após Esc, liberação ao abrir o painel, navegação em campos editáveis e preservação dos dois editores de HUD. Testes Node não validam movimento da câmera nem recepção no servidor. Não há evidência nova de gameplay ou suporte a GTA VI.
+
+## Regressão relatada: ponteiro capturado sem movimento no jogo
+
+O mantenedor observou F8 escondendo o cursor local e exibindo o cursor da sessão, sem movimento remoto. A versão anterior só solicitava Pointer Lock; dependia de listeners nativos do cliente e não enviava eventos físicos pelo adaptador do Nimbo. A correção conecta mousemove, botões, roda e KeyboardEvent confiável ao NimboXboxTransport: onVirtualMouseInput para leituras relativas e inputManager.getKeyboardReading/inputChannel.sendKeyboardInput para teclado, com o flush já existente. Não há novo payload de rede.
+
+O encaminhamento vale somente enquanto o vídeo capturado pelo Nimbo possui o lock, a sessão está conectada e o modo físico está selecionado. HUD Remote Play ativo, campos editáveis, painel e documentos ocultos não enviam comandos. Eventos de ponteiro compatíveis não seguem também ao SDK; a cópia mousemove é encaminhada uma vez. Esc, desbloqueio e perda de foco liberam teclas/botões. Erro do transporte encerra a captura com mensagem visível. O módulo é fixado por commit no @require para a versão de teste carregar a mesma implementação.
+
+Referências adicionais: [Better xCloud native-mkb-handler](https://github.com/redphx/better-xcloud/blob/typescript/src/modules/mkb/native-mkb-handler.ts), com movimento relativo explicitamente colocado no canal, e [PSBox kbm_sdl.cpp](https://github.com/RafaelNGP/psbox-cloud-gaming/blob/main/src/input/kbm_sdl.cpp), que captura eventos SDL, filtra movimentos enquanto capturado e distingue touchpad de controle. A integração SDL do cliente nativo não existe no navegador; aqui usamos eventos DOM confiáveis e o adaptador Xbox já presente.
+
+Os oito testes de integração novos percorrem evento → transporte → métodos do SDK simulado; um teste adicional impede captura silenciosa com módulo antigo. A suíte dos cinco modos também verifica Gamepad API física/virtual, leituras do touchpad/teclado virtual, seleção de toque nativo, neutralização e troca de sessão. Isso não certifica recepção dos comandos pelo servidor nem funcionamento de cada modo em hardware real.
+
+Teste recomendado: instalar novamente o script da branch de teste para atualizar também @require; abrir Fortnite ou outro jogo com suporte nativo a teclado/mouse; selecionar a entrada física, capturar e testar mira, cliques, roda, WASD, Esc, retorno e mudança para cada entrada disponível. Não foi possível iniciar Chromium neste ambiente; permanece necessária validação no navegador real.

@@ -8,7 +8,7 @@ function boot(options={}) {
  const listeners={},messages=[],prefs={},calls={request:0,exit:0,close:0};
  const video={requestPointerLock(){calls.request++;if(options.reject)return Promise.reject(Error('denied'));if(options.throws)throw Error('denied');}};
  const document={pointerLockElement:null,addEventListener(name,fn){listeners[name]=fn;},exitPointerLock(){calls.exit++;document.pointerLockElement=null;}};
- const context={document,window:{NimboTouch:{inputModeStatus:()=>({connected:options.connected!==false,mode:options.actualMode||'keyboard-mouse'})},addEventListener(name,fn){listeners[name]=fn;}},
+ const context={document,window:{NimboTouch:{physicalMouseInput:()=>true,physicalKeyboardInput:()=>true,releasePhysicalInput(){},inputModeStatus:()=>({connected:options.connected!==false,mode:options.actualMode||'keyboard-mouse'})},addEventListener(name,fn){listeners[name]=fn;}},
   activeStreamVideo:()=>options.noVideo?null:video,nxSelectedInputMode:()=>options.mode||'keyboard-mouse',
   getPref:(key,fallback)=>prefs[key]??fallback,nxKeyBinding:()=>options.binding||null,
   toast:message=>messages.push(message),setOpen:()=>calls.close++,openUI:false,nxCaptureKeys:null};
@@ -54,4 +54,80 @@ test('unsupported API and rejected capture provide feedback without recapture',a
  const h=boot();delete h.video.requestPointerLock;assert.equal(h.context.nxTogglePointer(),false);assert.equal(h.messages.length,1);
  const rejected=boot({reject:true});rejected.context.nxTogglePointer();await Promise.resolve();assert.equal(rejected.messages.length,1);assert.equal(rejected.calls.request,1);
  const thrown=boot({throws:true});assert.equal(thrown.context.nxTogglePointer(),false);assert.equal(thrown.messages.length,1);
+});
+
+function connectedRelay() {
+ const h=boot(),frames=[],keys=[];
+ const raw={connectionState:'Connected',isShutdown:false,configuration:{inputConfiguration:{enableKeyboardInput:true,enableMouseInput:true,enableTouchInput:true}},
+  onVirtualMouseInput:reading=>frames.push(JSON.parse(JSON.stringify(reading))),
+  updateInputConfigurationAsync(options){Object.assign(this.configuration.inputConfiguration,options);return Promise.resolve();},
+  stream:{inputManager:{getKeyboardReading:event=>({windowsKey:event.code==='KeyW'?87:65,reportType:0,isPressed:event.type==='keydown'})},
+   inputChannel:{sendKeyboardInput:reading=>keys.push(JSON.parse(JSON.stringify(reading)))}}};
+ const touch=fs.readFileSync('modules/NimboXcloud-Touch-HUD.user.js','utf8');
+ const start=touch.indexOf('class NimboXboxTransport {'),end=touch.indexOf('\nfunction nimboApplyInput',start);
+ Object.assign(h.context,{setTimeout,clearTimeout,nimboApplyInput:(raw,options)=>raw.updateInputConfigurationAsync(options)});
+ vm.runInContext(touch.slice(start,end)+'\nglobalThis.makeTransport=raw=>new NimboXboxTransport(raw);',h.context);
+ const transport=h.context.makeTransport(raw);transport.exclusiveMode='keyboard-mouse';
+ Object.assign(h.context.window.NimboTouch,{
+  physicalMouseInput:reading=>transport.physicalMouse(reading),
+  physicalKeyboardInput:event=>transport.physicalKeyboard(event),
+  releasePhysicalInput:()=>transport.release()
+ });
+ h.context.nxTogglePointer();h.document.pointerLockElement=h.video;
+ h.listeners.pointerlockchange();
+ const emit=(type,extra={})=>{const e=h.event('',{type,cancelable:true,...extra});h.listeners[type](e);return e;};
+ return {...h,raw,transport,frames,keys,emit};
+}
+test('regression: F8 capture forwards relative movement to the real transport instead of just hiding the cursor',()=>{
+ const h=connectedRelay();const event=h.emit('mousemove',{movementX:14,movementY:-9,buttons:0});
+ assert.deepEqual(h.frames.at(-1),{Type:0,X:14,Y:-9,Buttons:0,WheelX:0,WheelY:0});
+ assert.equal(event.stopped,true);assert.equal(event.prevented,true);h.transport.release();
+});
+test('captured physical buttons, wheel units and keyboard reach the SDK once',()=>{
+ const h=connectedRelay();h.emit('mousedown',{buttons:1,movementX:50});assert.equal(h.frames.at(-1).Buttons,1);assert.equal(h.frames.at(-1).X,0);
+ h.emit('wheel',{deltaX:1,deltaY:-2,deltaMode:1,buttons:1});assert.equal(h.frames.at(-1).WheelX,16);assert.equal(h.frames.at(-1).WheelY,-32);
+ h.emit('mouseup',{buttons:0});assert.equal(h.frames.at(-1).Buttons,0);
+ const down=h.emit('keydown',{code:'KeyW'});const up=h.emit('keyup',{code:'KeyW'});
+ assert.deepEqual(h.keys.map(k=>k.isPressed),[true,false]);assert.equal(down.stopped,true);assert.equal(up.stopped,true);h.transport.release();
+});
+test('Esc/unlock releases held keys and buttons and later movements cannot reach the old capture',()=>{
+ const h=connectedRelay();h.emit('keydown',{code:'KeyW'});h.emit('mousedown',{buttons:1});
+ h.document.pointerLockElement=null;h.listeners.pointerlockchange();
+ assert.equal(h.keys.at(-1).isPressed,false);assert.equal(h.frames.at(-1).Buttons,0);
+ const count=h.frames.length;h.emit('mousemove',{movementX:20,movementY:30});assert.equal(h.frames.length,count);
+});
+test('capture forwards no synthetic/touch-originated event and reserves panel/recovery keys',()=>{
+ const h=connectedRelay();
+ for(const extra of [{isTrusted:false},{sourceCapabilities:{firesTouchEvents:true}}])h.emit('mousemove',{movementX:50,...extra});
+ assert.equal(h.frames.length,0);
+ for(const code of ['F9','Escape']){const e=h.emit('keydown',{code});assert.equal(e.stopped,undefined);}
+ h.context.openUI=true;h.emit('mousemove',{movementX:10});assert.equal(h.frames.length,0);h.transport.release();
+});
+test('other selected transports and disconnected sessions refuse physical injection and report failure',()=>{
+ for(const mode of ['virtual-keyboard-mouse','virtual-gamepad','native-touch','gamepad','native']){
+  const h=connectedRelay();h.transport.exclusiveMode=mode;
+  assert.equal(h.transport.physicalMouse({Type:0,X:1,Y:1,Buttons:0,WheelX:0,WheelY:0}),false);
+  h.emit('mousemove',{movementX:8});assert.equal(h.frames.length,0);assert.equal(h.messages.length,1);
+ }
+ const h=connectedRelay();h.raw.isShutdown=true;h.emit('mousemove',{movementX:8});assert.equal(h.frames.length,0);assert.equal(h.messages.length,1);
+});
+test('focus loss releases a pressed physical key and prevents further forwarding',()=>{
+ const h=connectedRelay();h.emit('keydown',{code:'KeyW'});h.listeners.blur();assert.equal(h.keys.at(-1).isPressed,false);assert.equal(h.document.pointerLockElement,null);
+ const count=h.frames.length;h.emit('mousemove',{movementX:1});assert.equal(h.frames.length,count);
+});
+
+test('pointer compatibility events do not double-send the physical movement',()=>{
+ const h=connectedRelay();const pointer=h.emit('pointermove',{pointerType:'mouse',movementX:7,movementY:3});
+ assert.equal(pointer.stopped,true);assert.equal(pointer.prevented,undefined);assert.equal(h.frames.length,0);
+ h.emit('mousemove',{movementX:7,movementY:3});assert.equal(h.frames.length,1);h.transport.release();
+});
+
+test('an active Remote Play HUD cannot route physical events into the cloud session',()=>{
+ const h=connectedRelay();h.context.window.NimboTouch.diagnostic=()=>({remoteActive:true});
+ h.emit('mousemove',{movementX:7});assert.equal(h.frames.length,0);h.transport.release();
+});
+
+test('old cached HUD module cannot silently capture without a physical transport',()=>{
+ const h=boot();delete h.context.window.NimboTouch.physicalMouseInput;
+ assert.equal(h.context.nxTogglePointer(),false);assert.equal(h.calls.request,0);assert.match(h.messages[0],/Atualize o módulo/);
 });
