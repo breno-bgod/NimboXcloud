@@ -399,3 +399,8 @@ fontes/avisos upstream preservados. Nenhum login, token, mídia, Activity, APK,
 instalação ou gameplay. Shutdown de plataforma não é stop completo do motor.
 Próximo: confirmar AAR/ABI no CI e ligar Activity/lifecycle do host e núcleo
 incrementalmente, antes de UI compartilhada ou sessão autenticada.
+
+
+### Build Java/JNI/AAR confirmado
+
+[CI #43497614092](https://github.com/breno-bgod/NimboXcloud/actions/runs/43497614092), commit a6098beba94e9d1cd1db88caf094c9c6c6dce46f: todos os passos aprovados, incluindo testes C++ host, link ARM64 sem símbolos indefinidos, verificação dos três símbolos JNI, ausência de dependência libc++_shared, compilação Java SDK35/release17 e montagem/verificação estrutural do AAR. Artefato nimbo-psbox-platform-arm64-not-apk, ID 14071318850, 546013 bytes, digest sha256:92be237a8962878f46fd8632a8e84c557469742b68b2bc3ea73a38619fd70a6e; contém AAR, biblioteca parcial e fonte correspondente/avisos. Não é APK nem motor completo. Não houve execução JNI em VM Android, Activity, instalação no S23, login, mídia ou gameplay. A espera de compilação deixou de ser bloqueio; próximo passo é host/lifecycle Android real e ligação gradual do núcleo antes de sessão autenticada.
