@@ -16,6 +16,10 @@ A documentação oficial é um **registro do estado atual e do trabalho futuro a
 
 O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que precisa ser corrigido e o que será desenvolvido**, sem confundir experimentos abandonados com compromissos futuros.
 
+## Em revisão — giroscópio na mira do mouse virtual
+
+Pedido do mantenedor: ativação durante a partida pelo HUD ou configuração. Implementada a alternativa de configuração em Entradas → Ajustes de teclado e mouse, sem mudar layout do HUD. Não usa o caminho antigo de controle físico: deltas do sensor seguem o move/canal do touchpad virtual com guardas de pausa, foco e sessão. Opt-in a cada página, sem recarga. Guia em [Giroscópio no mouse virtual](GIROSCOPIO_MOUSE_VIRTUAL.md). Preparado userscript 4.15.3 e módulo 1.4.1 em branch de correção; main segue a versão publicada até incorporação. 390 PASS/0 FAIL/3 TODO locais; sensor e gameplay reais pendentes. PSBox continua separado no PR #24.
+
 ## Publicação 4.15.2 — correções autorizadas
 
 Incorporação do PR #25 autorizada no chat: acesso NX independente, atalhos de painel/captura, seleção da fonte de áudio e opt-out dos ajustes de microfone. 385 testes locais: 382 aprovados, zero falhas, três TODO preexistentes. Sintaxe e relatório estático executados. CI deve ser conferido no head publicado. Homologação no Edge Android, som audível e fullscreen continuam pendentes; não declarar resolução de toda falha relatada apenas pelos testes. Produto mantém módulo 1.4.0 e preferências. PSBox/Android segue separado no PR #24, sem APK oficial.

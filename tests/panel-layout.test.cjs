@@ -26,6 +26,7 @@ function harness(){
  const ctx={document:{createElement:tag=>new Node(tag)},C:{dim:'#888',line:'#333',panel:'#111',accent:'#0f0',text:'#fff'},
   mk:(tag,style,text)=>{const n=new Node(tag,text||'');n.style.cssText=style;return n;},
   liveFns:[],getPref:(key,fallback)=>fallback,stopEv(){},
+  nxVirtualGyro:{enabled:false},NX_VIRTUAL_GYRO_GAIN_KEY:'gyro-gain',nxGyroPreview:{permission:'não solicitada'},
   PRESETS:[{name:'Máximo',res:'hq',sub:'1080p HQ'},{name:'Padrão',res:'auto',sub:'1080p'}],
   RES_MODES:{hq:{},auto:{}},resCfg:()=>({}),
   nxVisualStatus:()=> 'Filtros padrão',nxGpuStatus:()=> 'Desligada',nxResetVisualSettings(){},
@@ -45,6 +46,7 @@ function harness(){
   nxConsoleLabFullScreen(){},activeStreamAudio:()=>null,sliderDragging:false,S:{},tabId:'video'};
  vm.createContext(ctx);
  vm.runInContext(section('  function group(title, hint) {','  function liveDesc(')+section('  function liveDesc(row, getter) {','  function chips('),ctx);
+ vm.runInContext(section('  function nxVirtualGyroControls(root){','  async function nxToggleVirtualGyro(){'),ctx);
  const group=(title,rows=[])=>{const g=ctx.group(title);for(const name of rows)g.add(ctx.setRow(name,'',new Node('button',name+' action')));return g.root;};
  const controls=root=>[
   group('Dispositivo',['Experiência','Dispositivo detectado']),
@@ -90,7 +92,8 @@ test('system includes compatibility and keeps technical input diagnostics out of
  assert.match(system.textContent,/Fontes observadas/);
  const pad=h.build('gamepad'),keyboard=h.build('gyrotouch');
  assert.doesNotMatch(pad.textContent,/Fontes observadas|Última alteração de conexão|Falhas de leitura/);
- assert.doesNotMatch(keyboard.textContent,/Módulo|Dispositivo detectado|Ativação|Toque e mouse detectados/);
+ assert.doesNotMatch(keyboard.textContent,/Módulo|Dispositivo detectado|Toque e mouse detectados/);
+ assert.match(keyboard.textContent,/Ativar giroscópio da mira/);
  assert.match(keyboard.textContent,/CAPTURA DO MOUSE FÍSICO/);
  assert.doesNotMatch(keyboard.textContent,/Configurar teclado e mouse/);
 });
@@ -170,3 +173,4 @@ test('monitor never steals native Xbox or gameplay clicks outside the NX editing
  vm.runInNewContext(section('  function nxTelemetryTick(){','  setInterval(nxTelemetryTick,')+'\nglobalThis.tick=nxTelemetryTick;',ctx);
  ctx.tick();assert.equal(monitor.style.pointerEvents,'none');ctx.openUI=true;ctx.tick();assert.equal(monitor.style.pointerEvents,'auto');
 });
+

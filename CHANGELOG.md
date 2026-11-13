@@ -1,3 +1,9 @@
+## Não publicado — 4.15.3: giroscópio para mouse virtual
+- Ativação explícita em Entradas → Ajustes de teclado e mouse → Mira por giroscópio · mouse virtual, sem recarregar e sem exigir controle físico. Desligado a cada carregamento, com permissão solicitada somente pela ação do usuário.
+- Sensor contribui com deltas no mesmo canal/move do touchpad; intensidades Suave/Normal/Forte. Mantém teclas, botões e cinco modos existentes. Não adiciona botão ao HUD nesta revisão.
+- Pausa com menus, editor, sessão inativa, background, perda de foco e outros modos; referência reiniciada após pausa/rotação/gap e saltos descartados. Módulo 1.4.1 expõe somente deltas limitados com guardas próprias.
+- 393 testes locais: 390 aprovados, zero falhas e três TODO preexistentes. Oito regressões novas; sintaxe e relatório estático executados. Sem sensor real, homologação visual, ganho de latência medido ou gameplay validado. Guia: docs/GIROSCOPIO_MOUSE_VIRTUAL.md.
+
 ## [4.15.2] — 2026-11-13
 - Incorporação do PR #25 autorizada pelo mantenedor. Alça NX independente de 44 × 44 px à esquerda, arraste vertical persistente e acesso durante biblioteca/partida; painel aberto mantém o dock. Preparação continua bloqueando configurações.
 - Gerenciador de atalhos na captura window evita retenção de keyup pelo painel; Ctrl+Shift+H padrão volta a funcionar sem combinação personalizada. F8/F2 aceitam key somente quando code está ausente/Unidentified, sem remapear Backquote.

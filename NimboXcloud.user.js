@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.15.2
+// @version      4.15.3
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch, cinco modos de entrada e HUD de controle virtual.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/f805067fbdab0b91e2681646e969e70be806e001/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.15.2
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/5c16e051c52f8043397915d35cd869eaf29d416f/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.15.3
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.15.2';
+  const VER = '4.15.3';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -5855,6 +5855,7 @@ SOFTWARE.
   };
   TAB_BUILDERS.controls=TAB_BUILDERS.gamepad;
   TAB_BUILDERS.gyrotouch=function(root){
+    nxVirtualGyroControls(root);
     nxPointerControls(root);
     nxBindControls(root,'keyboard');
   };
@@ -7108,7 +7109,49 @@ SOFTWARE.
     return { count: kinds.length, kinds: Array.from(new Set(kinds)), injectionEnabled: false,
       note: 'Registro interno de atividade virtual; nenhuma entrada é enviada ao xCloud.' };
   }
-  // Giroscópio em modo de observação: exige ativação explícita e nunca move o jogo.
+  // Giroscópio para mouse virtual: opt-in durante esta página, sem recarga.
+  const nxVirtualGyro = {enabled:false,pending:false,last:null};
+  window.addEventListener('blur',function(){nxVirtualGyro.last=null;});
+  document.addEventListener('visibilitychange',function(){nxVirtualGyro.last=null;});
+  const NX_VIRTUAL_GYRO_GAIN_KEY = 'nx.gyro.virtualMouseGain.v1';
+  function nxVirtualGyroControls(root){
+    const g=group('Mira por giroscópio · mouse virtual','Selecione Teclado e mouse virtuais. O movimento do aparelho complementa o touchpad; o jogo precisa aceitar mouse. Pausa com menus ou fora de foco.');
+    g.add(setRow('Giroscópio na mira virtual','Ativação por toque, sem recarregar. A primeira amostra define a referência; não exige controle físico.',actBtn(nxVirtualGyro.enabled?'Desativar giroscópio da mira':'Ativar giroscópio da mira',async function(){
+      await nxToggleVirtualGyro();renderBody();
+    },'ghost')));
+    g.add(setRow('Intensidade do giroscópio virtual','Independente dos ajustes do giroscópio do controle físico.',chips([{k:'2',label:'Suave'},{k:'4',label:'Normal'},{k:'8',label:'Forte'}],getPref(NX_VIRTUAL_GYRO_GAIN_KEY,'4'),function(value){setPref(NX_VIRTUAL_GYRO_GAIN_KEY,value);nxVirtualGyro.last=null;})));
+    g.add(infoRow('Estado do sensor',function(){return nxVirtualGyro.enabled?'Ligado · envia somente com mouse virtual ativo':nxGyroPreview.permission;}));
+    root.appendChild(g.root);
+  }
+  async function nxToggleVirtualGyro(){
+    if(nxVirtualGyro.pending)return false;
+    nxVirtualGyro.last=null;
+    if(nxVirtualGyro.enabled){nxVirtualGyro.enabled=false;if(!nxGyroGameEnabled())nxStopGyroPreview();return true;}
+    if(nxSelectedInputMode()!=='virtual-keyboard-mouse'){toast('Selecione Teclado e mouse virtuais em Entradas.');return false;}
+    if(typeof window.NimboTouch?.virtualMouseDelta!=='function'){toast('Atualize o módulo de entradas junto com o Nimbo.');return false;}
+    nxVirtualGyro.pending=true;
+    try{nxVirtualGyro.enabled=await nxStartGyroPreview();if(!nxVirtualGyro.enabled)toast('Sensor não ativado: '+nxGyroPreview.permission);return nxVirtualGyro.enabled;}
+    finally{nxVirtualGyro.pending=false;}
+  }
+  function nxVirtualGyroSample(beta,gamma,angle){
+    const now=Date.now(),last=nxVirtualGyro.last;
+    if(!nxVirtualGyro.enabled||!nxGyroPreview.enabled||nxSelectedInputMode()!=='virtual-keyboard-mouse'||openUI||document.hidden||!document.hasFocus()||!Number.isFinite(beta)||!Number.isFinite(gamma)){
+      nxVirtualGyro.last=null;return;
+    }
+    nxVirtualGyro.last={beta:beta,gamma:gamma,angle:angle,at:now};
+    if(!last||last.angle!==angle||now-last.at>250)return;
+    const delta=function(value){return ((value+540)%360)-180;};
+    const db=delta(beta-last.beta),dg=delta(gamma-last.gamma);
+    if(Math.abs(db)>20||Math.abs(dg)>20)return;
+    const rad=angle*Math.PI/180;
+    const raw=Number(getPref(NX_VIRTUAL_GYRO_GAIN_KEY,'4'));
+    const gain=Number.isFinite(raw)?Math.max(1,Math.min(8,raw)):4;
+    const x=(dg*Math.cos(rad)+db*Math.sin(rad))*gain;
+    const y=(db*Math.cos(rad)-dg*Math.sin(rad))*gain;
+    if(!x&&!y)return;
+    if(window.NimboTouch?.virtualMouseDelta?.(Math.max(-128,Math.min(128,x)),Math.max(-128,Math.min(128,y)))!==true)nxVirtualGyro.last=null;
+  }
+  // Leitura compartilhada; saída para controle físico e mouse têm opt-ins separados.
   const NX_GYRO_INVERT_X_KEY = 'nx.gyro.previewInvertX.v1';
   const NX_GYRO_INVERT_Y_KEY = 'nx.gyro.previewInvertY.v1';
   function nxGyroInvertX() { return getPref(NX_GYRO_INVERT_X_KEY, '0') === '1'; }
@@ -7167,6 +7210,7 @@ SOFTWARE.
       nxGyroPreview.filteredY = nxGyroPreview.filteredY === null ? y : nxGyroPreview.filteredY + factor * (y - nxGyroPreview.filteredY);
     }
     nxRegisterVirtualInput('nx-gyro-preview', 'gyro', true);
+    nxVirtualGyroSample(e.beta,e.gamma,angle);
   }
   async function nxStartGyroPreview() {
     if (nxGyroPreview.enabled) return true;
@@ -7196,6 +7240,7 @@ SOFTWARE.
     }
   }
   function nxStopGyroPreview() {
+    nxVirtualGyro.enabled=false;nxVirtualGyro.last=null;
     ++nxGyroRequestGeneration;
     nxGyroPreview.enabled = false;
     window.removeEventListener('deviceorientation', nxGyroOnOrientation);
