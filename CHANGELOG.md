@@ -1,4 +1,5 @@
-## Não publicado — HUD nativo e aparência do carregamento
+## [4.15.1] — 2026-11-13
+- Publicação da correção visual autorizada pelo mantenedor. A automação passa a pesquisar e experimentar exclusivamente em PRs de pesquisa; manutenção do produto fica com o responsável principal.
 - Sessão com vídeo MediaStream/srcObject é reconhecida mesmo sem blob URL, test id ou estatísticas RTC interceptadas. Evita tratar o jogo como biblioteca e deixar o NX no canto direito.
 - NX se encaixa no grupo nativo, ao lado do Xbox quando identificado, sem inserir controles dentro de invólucros individuais recortados. Reconciliação de orientação não duplica botões nem altera eventos nativos.
 - Acesso independente de recuperação fica compacto à esquerda. O lançador não reativa o percentual de perda depois da reconciliação visual; estatísticas continuam no monitor.

@@ -9,13 +9,13 @@
 
 **Under development for the new Xbox Cloud Gaming experience — [play.xbox.com](https://play.xbox.com/)**
 
-[**Install official version 4.15.0**](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js) · [**Report an issue**](./../../issues) · [**Development roadmap**](./DEVELOPMENT_ROADMAP.md)
+[**Install official version 4.15.1**](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js) · [**Report an issue**](./../../issues) · [**Development roadmap**](./DEVELOPMENT_ROADMAP.md)
 
 </div>
 
 ---
 
-## Official version 4.15.0
+## Official version 4.15.1
 
 Physical and virtual inputs, HUD editor return to NX, compact loading status, monitor charts and Xbox toolbar refinements. Input/HUD module 1.4.0 is included by the installer. Preferences and layouts are preserved. See [changes and validation](./CHANGELOG.md) and [known limitations](./docs/CARREGAMENTO_E_MONITOR.md).
 

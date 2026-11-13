@@ -1,4 +1,4 @@
-# HUD nativo e tema do carregamento — correção proposta
+# HUD nativo e tema do carregamento — versão 4.15.1
 
 ## Evidência e diagnóstico
 
@@ -27,4 +27,4 @@ Fullscreen API renderiza a subárvore do elemento escolhido. Se o cliente coloca
 
 Aceite pendente no dispositivo: abrir Fortnite, expandir/recolher a barra Xbox, girar retrato/paisagem, entrar/sair de tela cheia e conferir NX ao lado do Xbox sem duplicação. Conferir carregamento recolhido/expandido e personalização de tom/transparência/texto. Se a barra ainda faltar, copiar o diagnóstico do Sistema e observar nativeUi, sem enviar credenciais.
 
-Não há alteração de versão oficial, módulos de entradas, sinalização, autenticação, endpoints, áudio, preferências ou layouts salvos. Referências existentes: Better xCloud css.ts/stream-ui.ts identificam StreamHud e GripHandle; a estrutura real do cliente novo pode variar e requer teste no dispositivo.
+Publicação 4.15.1. Não há alteração dos módulos de entradas, sinalização, autenticação, endpoints, áudio, preferências ou layouts salvos. Referências existentes: Better xCloud css.ts/stream-ui.ts identificam StreamHud e GripHandle; a estrutura real do cliente novo pode variar e requer teste no dispositivo.
