@@ -146,3 +146,13 @@ Onze testes Node/VM aprovados e sintaxe verificada. Incluem transparência, aus�
 Chromium/Playwright tentou cenário com rotas locais substituídas, mas encerrou antes de navegar: Crashpad setsockopt Operation not permitted / SIGTRAP. Interface visual e sessão Xbox real não validadas. Estado: testes locais aprovados; teste real pendente. Não é prova de comunicação autenticada ou gameplay.
 
 Próximo passo: mantenedor instalar o addon experimental, iniciar observação antes de abrir um jogo disponível e revisar o relatório sanitizado conforme roteiro. Login já ocorrido ou tráfego em worker/XHR pode permanecer não observado. Não pedir HAR/tokens ou substituir aprovação. O instalador oficial, os módulos e a main permanecem intactos.
+
+## Busca dirigida de duas semanas — 13/11/2026
+
+[Relatório e fontes](RECENT_REPOSITORIES_2026-11-13.md) para repositórios criados de 30/10 a 13/11. Novos candidatos de código efetivamente triados incluem xcloud-tizen (HTML/JS/widget), xcloud-toolkit (userscript), GoyXCloud e XboxCloudTVLite (WebViews), xcloud-switch (fase inicial) e proxy recente. Falsos positivos de armazenamento e cópias/ponte de atualização foram separados.
+
+Achado mais direto: [Green-NX #92](https://github.com/rmrf404/green-nx/issues/92), aberta em 10/11, pede investigar requisitos de dispositivo/sessão do Xbox One para GTA VI no Switch. Ainda sem comentários/resposta/implementação demonstrada. O repositório é anterior à quinzena.
+
+O autor do Better xCloud também discute a hipótese no post público 961 do Telegram, explicitamente como especulação. Uma pista acadêmica histórica menciona xgpuconsole, mas não constitui contrato atual nem autorização para mudar offering.
+
+Estado: pesquisa com inspeção de código/documentação; sem instalação ou testes de execução. Main e experimentos existentes intactos. Prioridade sugerida: conferir a ponte JS do Tizen e acompanhar a issue Green-NX, mantendo identidade declarada e classificação autenticada separadas.
