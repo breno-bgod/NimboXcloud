@@ -116,6 +116,11 @@ SOFTWARE.
   const LS_PHYSICAL_INPUT = 'nx.input.physicalMode.v1';
   const LS_CONSOLE_LAB = 'xcu.consoleLab.profile.v1';
   const LS_CONSOLE_NOTES = 'xcu.consoleLab.notes.v1';
+  const LS_FORTNITE_CONSOLE = 'nx.fortnite.consoleExperience.v1';
+  const nxFortniteConsoleEnabled = (function () { try { return localStorage.getItem(LS_FORTNITE_CONSOLE) === '1'; } catch (_) { return false; } })();
+  const nxFortniteConsoleState = { enabled: nxFortniteConsoleEnabled, matched: false, inspected: 0, patched: 0, previousTouch: null, note: 'Experimental: sinalização de toque na configuração da sessão; não emula hardware Xbox.' };
+  function nxIsFortniteRoute() { return /(?:^|\/)(?:fortnite)(?:\/|$)/i.test(location.pathname); }
+
   const LS_NX_SHORTCUT = 'xcu.nxShortcut';
   const LS_RTT_HISTORY = 'xcu.rttHistory.v1';
   const LS_VIBRATION = 'xcu.vibrationLevel';
@@ -405,6 +410,7 @@ SOFTWARE.
        compatibility: { enabled: nxCompatibilityMode, identityMode: nxConsoleLabState.identityMode, nativeUserAgentPreserved: navigator.userAgent === nxConsoleNativeUA, sessionOsRewriteDisabled: nxCompatibilityMode, clientHintsOverrideDisabled: nxCompatibilityMode },
        clientHintsExperiment: { enabled: nxClientHintsMode, applied: nxClientHintsApplied, note: 'Somente navigator.userAgentData JS; nao altera cabecalhos HTTP' },
       protocolEvidence: nxProtocolEvidence(), consoleProfileValidation: nxConsoleProfileValidation(),
+      fortniteConsoleExperience: Object.assign({}, nxFortniteConsoleState),
       offeringTrace: nxOfferingTrace.slice(), offeringTraceNotice: 'Somente host, metodo, status e duracao; sem credenciais.',
        sessionTrace: nxSessionTrace.slice(),
       sessionHealth: nxSessionHealth(), compatibilityVerdict: nxCompatibilityVerdict(),
@@ -5672,9 +5678,14 @@ SOFTWARE.
       lab.add(infoRow('Aviso de incompatibilidade', function () { return nxConsoleLabWarning() ? 'Detectado' : 'Não detectado'; }));
       lab.add(infoRow('WebRTC / H.264 MSE', function () { const c = nxConsoleLabCapabilities(); return (c.webRTC ? 'Sim' : 'Não') + ' / ' + (c.mediaSourceH264 === null ? 'Indefinido' : c.mediaSourceH264 ? 'Sim' : 'Não'); }));
       lab.add(infoRow('Tela cheia', function () { return document.fullscreenElement || document.webkitFullscreenElement ? 'Ativa' : 'Desativada'; }));
-      lab.add(setRow('Fortnite: jogar com controle',
-        'Escolha Controle físico ou Controle virtual em Entradas. O toque nativo é outra experiência; trocar a entrada não garante a interface de console do jogo.',
-        actBtn('Escolher entrada', function () { setTab('inputs'); }, 'ghost')));
+      lab.add(setRow('Fortnite: experiência de console (experimental)',
+        'Desativa a sinalização de toque na configuração da sessão do Fortnite. Não muda User-Agent, não emula Xbox e pode não alterar a experiência no cliente novo. Requer reiniciar a sessão.',
+        chips([{k:'off',label:'Desligado'},{k:'on',label:'Ativar'}],
+          nxFortniteConsoleEnabled ? 'on' : 'off', function (k) {
+            try { localStorage.setItem(LS_FORTNITE_CONSOLE, k === 'on' ? '1' : '0'); } catch (_) {}
+            location.reload();
+          }), true));
+      lab.add(infoRow('Fortnite: aplicação', function () { return nxFortniteConsoleState.patched ? 'Configuração de toque modificada' : (nxFortniteConsoleEnabled ? 'Aguardando configuração da sessão' : 'Desligado'); }));
       lab.add(setRow('Registrar observação', 'Anote o jogo, se apareceu no catálogo, se iniciou e eventuais mensagens de erro.',
         actBtn('Anotar', function () {
           let old = ''; try { old = localStorage.getItem(LS_CONSOLE_NOTES) || ''; } catch (_) {}

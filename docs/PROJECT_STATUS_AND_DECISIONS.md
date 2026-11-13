@@ -20,7 +20,7 @@ O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que pr
 
 Por decisão do mantenedor, Sistema não apresenta nem aplica os experimentos de identidade/Client Hints, mesmo com preferências antigas, e não apresenta uma segunda ação de tela cheia/horizontal. DeX não é uma categoria própria: o perfil de dispositivo usa as capacidades normais do navegador, preservando a migração interna de preferências antigas.
 
-A opção Fortnite Console não executava alteração alguma na versão atual. Foi substituída por orientação para escolher controle físico ou virtual em Entradas. Não há nova alteração de protocolo nem garantia de interface de console. O touchpad virtual envia movimentos diretamente ao SDK; Pointer Lock é oferecido separadamente para mouse físico, mediante gesto explícito e sessão conectada.
+A preferência Fortnite Console não aplica alteração na versão atual do Nimbo, mas o recurso do Better xCloud é real e deve ser preservado como objetivo. Seu patch força o argumento de sendTouchInputEnabledMessage para false na rota /launch/fortnite/, com a finalidade declarada de disponibilizar Salve o Mundo no mobile. A substituição por simples escolha de entrada foi retirada do PR após esclarecimento do mantenedor. A integração no Nimbo continua pendente e não equivale a liberar títulos sem autorização. O touchpad virtual envia movimentos diretamente ao SDK; Pointer Lock é oferecido separadamente para mouse físico, mediante gesto explícito e sessão conectada.
 
 Referências e roteiro de verificação: [ajustes de entradas](./AJUSTES_ENTRADAS.md). Os cinco modos, HUD/editor e preferências existentes permanecem. Não é validação de gameplay.
 
@@ -139,7 +139,7 @@ Antes de reativar um módulo:
 - **Leia primeiro:** `README.md` → **este arquivo** → `docs/ROADMAP.md` → `CONTRIBUTING.md` → auditorias em `docs/`.
 - Remote Play (xHome) teve retomada técnica explicitamente autorizada pelo mantenedor em 2026-11-12; continuar o trabalho incremental, mas manter a aba/controles ocultos até mídia e comandos serem comprovados em Xbox real.
 - **Não reative** curvas do analógico, equalizador ou identidade Xbox apenas porque existem no código.
-- **Não remova** giroscópio ou seletor de servidor sem nova decisão fundamentada. A substituição da opção inoperante de Fortnite foi decidida pelo mantenedor e documentada acima.
+- **Não remova** giroscópio ou seletor de servidor sem nova decisão fundamentada. Fortnite Console deve ser preservado e investigado como sinalização específica da sessão, conforme esclarecimento do mantenedor.
 - **Não presuma** que a opção de 50 Mbps força 50 Mbps, que a escolha de perfil muda a identidade aceita pelo servidor, ou que WebRTC provisionado significa Remote Play jogável.
 - Preserve as opções nativas de toque e gamepad; evite múltiplos wrappers concorrentes para `navigator.getGamepads`.
 - Em toda alteração: atualizar esta matriz se houver mudança de escopo/status, `CHANGELOG.md` se houver mudança de comportamento e testes/CI correspondentes.

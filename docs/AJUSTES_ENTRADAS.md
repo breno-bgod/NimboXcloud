@@ -10,9 +10,11 @@
 
 ## Fortnite e referências
 
-A opção antiga lia uma preferência e exibia um estado, mas não aplicava alteração de configuração. Foi substituída por orientação e botão para Entradas, sem criar outra preferência ou trocar a entrada sem escolha do jogador.
+A preferência atual do Nimbo lê um valor e exibe um estado, mas ainda não aplica a integração. O recurso de referência é real: no Better xCloud, forceFortniteConsole injeta a condição da rota /launch/fortnite/ em sendTouchInputEnabledMessage(e), forçando e = false. A configuração descreve a finalidade como disponibilizar Salve o Mundo no mobile. Não se trata de uma simples seleção de controle. A proposta de substituir a opção foi retirada deste PR; sua implementação no Nimbo exige análise do cliente Xbox atual e teste autenticado. Isso não demonstra acesso a outros títulos ou mudança de autorização do serviço.
 
 Consultados:
+
+- [Better xCloud: forceFortniteConsole, linhas 335–345](https://github.com/redphx/better-xcloud/blob/ea4d19f2800cee9cfa387a0c9c37b3711cf208c7/src/modules/patcher/patcher.ts#L335): patch real da mensagem de toque, condicionado à rota do Fortnite. [Configuração e finalidade](https://github.com/redphx/better-xcloud/blob/ea4d19f2800cee9cfa387a0c9c37b3711cf208c7/src/utils/settings-storages/global-settings-storage.ts).
 
 - [Better xCloud: xcloud-interceptor.ts](https://github.com/redphx/better-xcloud/blob/typescript/src/utils/xcloud-interceptor.ts): sinalização explícita de teclado/mouse e toque. Não oferece evidência de que desativar toque garanta outra interface no cliente atual.
 - [Better xCloud: mkb-handler.ts](https://github.com/redphx/better-xcloud/blob/typescript/src/modules/mkb/mkb-handler.ts): captura por gesto e tratamento da API nativa, sem substituição do protótipo. Seu emulador de gamepad difere do nosso caminho de mouse nativo.
