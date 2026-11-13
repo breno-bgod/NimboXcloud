@@ -22,5 +22,6 @@ test('F9 is not intercepted by a userscript keyboard handler', () => {
 
 test('opening the NX panel releases an existing lock but never requests it again', () => {
   assert.match(src, /if\(document\.pointerLockElement\)\{\s*try\{document\.exitPointerLock\(\);\}catch\(_\)\{\}\s*\}/);
-  assert.doesNotMatch(src, /\.requestPointerLock\s*\(/);
+  assert.equal((src.match(/\.requestPointerLock\s*\(/g) || []).length, 1, 'only the explicit mouse action may request capture');
 });
+

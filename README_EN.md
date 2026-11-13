@@ -9,11 +9,15 @@
 
 **Under development for the new Xbox Cloud Gaming experience — [play.xbox.com](https://play.xbox.com/)**
 
-[**Try the userscript**](./NimboXcloud.user.js) · [**Report an issue**](./../../issues) · [**Development roadmap**](./DEVELOPMENT_ROADMAP.md)
+[**Install official version 4.15.0**](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js) · [**Report an issue**](./../../issues) · [**Development roadmap**](./DEVELOPMENT_ROADMAP.md)
 
 </div>
 
 ---
+
+## Official version 4.15.0
+
+Physical and virtual inputs, HUD editor return to NX, compact loading status, monitor charts and Xbox toolbar refinements. Input/HUD module 1.4.0 is included by the installer. Preferences and layouts are preserved. See [changes and validation](./CHANGELOG.md) and [known limitations](./docs/CARREGAMENTO_E_MONITOR.md).
 
 ## A solo project in development
 
@@ -48,20 +52,20 @@ My priority is **preserving native inputs**, including touch and physical contro
 
 ## Touch keyboard and mouse HUD (experimental)
 
-The integrated **NimboTouch** module is loaded by the main userscript through `@require`. It provides relative mouse movement by touch, a WASD joystick, keyboard buttons, and an editable HUD. Open **NX → Keyboard and mouse → Enable keyboard and mouse**. It requires a game/session that accepts keyboard and mouse input; it does not convert mouse movement into an analog stick. Do not install older standalone NimboTouch copies alongside the main userscript.
+The integrated **NimboTouch** module is loaded by the main userscript through `@require`. It provides relative mouse movement by touch, a WASD joystick, keyboard buttons, and an editable HUD. Open **NX → Inputs → Virtual keyboard and mouse**. It requires a game/session that accepts keyboard and mouse input; it does not convert mouse movement into an analog stick. Do not install older standalone NimboTouch copies alongside the main userscript.
 
 ## The new NX experience — minimal interface (in development)
 
-The **NX** panel is being reorganized to reduce clutter during gameplay without removing advanced tools. Its navigation separates **Video, Streaming, Audio, Voice, Controls, Keyboard and mouse, Servers, Personalization, Compatibility, and System**. Each area keeps its own settings instead of mixing physical-controller input with keyboard and mouse.
+The **NX** panel is being reorganized to reduce clutter during gameplay without removing advanced tools. Its navigation separates **Video and image, Streaming, Statistics, Inputs, Audio and voice, Remote Play, Interface, and System**. Each area keeps its own settings instead of mixing physical-controller input with keyboard and mouse.
 
 ### NX Stream Monitor
 
 An optional overlay, independent from the main panel, is present in the code for use while the panel is closed:
 
 - **Selectable metrics:** decoded FPS, WebRTC RTT, received bitrate, packet loss, resolution, and jitter, when available.
-- **Layouts:** horizontal, vertical, compact, and automatic based on viewport width.
+- **Layouts:** horizontal, vertical, compact, automatic, and cards with observed FPS/network history.
 - **Appearance:** transparent-to-black background, four text colors, and adjustable scale.
-- **Placement:** four screen corners or drag-to-position.
+- **Placement:** four screen corners or drag-to-position while NX is open. Controls are under Statistics.
 - **Region:** flags for known identified streaming datacenters; selecting a region does not prove the physical streaming location.
 - **Local preferences:** settings are stored in the browser.
 

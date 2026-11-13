@@ -9,11 +9,15 @@
 
 **Em desenvolvimento para a nova experiência do Xbox Cloud Gaming — [play.xbox.com](https://play.xbox.com/)**
 
-[**Testar versão em desenvolvimento**](./NimboXcloud.user.js) · [**Reportar problema**](./../../issues) · [**Plano de desenvolvimento**](./DEVELOPMENT_ROADMAP.md)
+[**Instalar versão oficial 4.15.0**](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js) · [**Reportar problema**](./../../issues) · [**Plano de desenvolvimento**](./DEVELOPMENT_ROADMAP.md)
 
 </div>
 
 ---
+
+## Versão oficial 4.15.0
+
+Entradas físicas e virtuais, retorno do editor ao NX, carregamento compacto, monitor com gráficos e ajustes da barra Xbox. Módulo de entradas/HUD 1.4.0 incluído pelo instalador. Preferências e layouts são preservados. Consulte [mudanças e validação](./CHANGELOG.md) e [limites conhecidos](./docs/CARREGAMENTO_E_MONITOR.md).
 
 ## Um projeto pessoal em desenvolvimento
 
@@ -36,7 +40,7 @@ Consulte a [avaliação comparativa e o plano de atualização](./docs/PLANO_ATU
 O NimboXcloud ainda **não está homologado como versão estável**. Algumas funções estão no código, mas foram retiradas da interface ou congeladas para evitar expectativas incorretas:
 
 - **Congelados:** curvas do analógico, laboratório de identidade Xbox e equalizador avançado. A ocultação e a desativação completa desses módulos ainda estão em andamento.
-- **Em retomada técnica experimental:** Remote Play xHome, por autorização explícita do mantenedor em 2026-11-12. A interface permanece oculta; descoberta, criação de sessão, negociação WebRTC e encerramento remoto best-effort estão em desenvolvimento, mas vídeo, áudio e controles jogáveis ainda não foram comprovados.
+- **Em retomada técnica experimental:** Remote Play xHome, por autorização explícita do mantenedor em 2026-11-12. A interface Remote Play é experimental; descoberta, criação de sessão, negociação WebRTC e encerramento remoto best-effort estão em desenvolvimento, mas vídeo, áudio e controles jogáveis ainda não foram comprovados.
 - **Experimentais disponíveis para testes:** Fortnite Console e giroscópio aplicado ao jogo; GPU/WebGL2 e editor de HUD continuam sob avaliação, sem garantia de funcionamento.
 - **Mantidos:** painel NX, diagnóstico e seleção de servidor (troca de servidor já relatada como funcional pelo mantenedor).
 - **Em revisão:** bitrate/qualidade (50 Mbps configurados não garantem 50 Mbps recebidos), perfil Automático e estabilidade do CI.
@@ -45,9 +49,9 @@ O NimboXcloud ainda **não está homologado como versão estável**. Algumas fun
 
 ## HUD de teclado e mouse por toque (experimental)
 
-O módulo [`NimboXcloud Touch HUD v1.2.6`](./modules/NimboXcloud-Touch-HUD.user.js) está incluído no repositório e é **carregado pelo userscript principal via `@require`**, com acesso em **NX → Teclado e mouse → Ativar teclado e mouse**. Permite testar movimento relativo do mouse pelo dedo, joystick WASD, botões de teclado e edição do HUD. Requer jogo/sessão com suporte a mouse e teclado; não transforma mouse em analógico. **Não instale simultaneamente versões antigas do Nimbo Touch.**
+O módulo [`NimboXcloud Touch HUD v1.4.0`](./modules/NimboXcloud-Touch-HUD.user.js) está incluído no repositório e é **carregado pelo userscript principal via `@require`**, com acesso em **NX → Entradas → Teclado e mouse virtuais**. Permite testar movimento relativo do mouse pelo dedo, joystick WASD, botões de teclado e edição do HUD. Requer jogo/sessão com suporte a mouse e teclado; não transforma mouse em analógico. **Não instale simultaneamente versões antigas do Nimbo Touch.**
 
-Para testar: atualize/reinstale o userscript principal no Tampermonkey para aplicar o novo `@require`, abra um jogo compatível em `play.xbox.com` e acesse **NX → Teclado e mouse → Ativar teclado e mouse**. Desative instalações separadas antigas do Nimbo Touch para evitar duplicidade. Os testes reais de streaming continuam pendentes.
+Para testar: atualize/reinstale o userscript principal no Tampermonkey para aplicar o novo `@require`, abra um jogo compatível em `play.xbox.com` e acesse **NX → Entradas → Teclado e mouse virtuais**. Desative instalações separadas antigas do Nimbo Touch para evitar duplicidade. Os testes reais de streaming continuam pendentes.
 
 ## O que estou implementando e testando
 

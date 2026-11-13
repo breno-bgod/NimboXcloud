@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NimboXcloud — HUD Teclado e Mouse (Experimental)
 // @namespace    https://github.com/breno-bgod/NimboXcloud/touch
-// @version      1.3.0
+// @version      1.4.0
 // @description  Módulo opcional NimboXcloud: mouse relativo, WASD, HUD editável e controle virtual compartilhado entre xCloud e xHome.
 // @author       KReight / colaboradores (créditos nos avisos legais)
 // @license      GPL-3.0-or-later
@@ -63,7 +63,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-const VERSION='1.3.0';
+const VERSION='1.4.0';
 if(window.NimboTouch){console.warn('[NimboXcloud Touch] Outra instância de Nimbo Touch está ativa; evitando duplicação.');return;}
 const finite=(v,min,max,fallback)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
 // Separate namespace; read existing HUD data once, without overwriting the fork.
@@ -266,6 +266,17 @@ class NimboXboxTransport {
     this.hasInput=true;this.buttons=reading.Buttons&31;
     this.raw.onVirtualMouseInput({...reading,Buttons:this.buttons});
   }
+  physicalMouse(reading){
+    if(this.exclusiveMode!=='keyboard-mouse')return false;
+    this.mouse(reading);return true;
+  }
+  physicalKeyboard(event){
+    if(this.exclusiveMode!=='keyboard-mouse'||!this.connected())return false;
+    if(!event?.isTrusted||!['keydown','keyup'].includes(event.type))return false;
+    const manager=this.raw.stream?.inputManager;
+    if(typeof manager?.getKeyboardReading!=='function')throw Error('Tradutor de teclado do SDK indisponível.');
+    this.keyboard(manager.getKeyboardReading(event));return true;
+  }
   nativeChannel(){return this.raw.stream?.inputChannel;}
   keyboard(reading){
     this.assertConnected();const channel=this.nativeChannel();
@@ -417,6 +428,13 @@ function nimboInputModeStatus(){return {mode:nimboInputCoordinator.mode,state:ni
  connected:!!nimboTransport?.connected(),active:!!ui?.active,editing:!!ui?.editingHud,
  touchIsolation:nimboTransport?.exclusiveMode==='native'||typeof nimboTransport?.exclusiveApplied?.enableTouchInput==='boolean'};}
 
+function nimboOpenSettings(){
+ const host=window.NimboInputHost;
+ if(typeof host?.openSettings==='function'){
+  touchPanel.close();host.openSettings();return true;
+ }
+ touchPanel.open();return false;
+}
 const touchPanel={isOpen:false,element:null,launcher:null,quickToggle:null,nxAccess:null,
  mount(){
   if(this.element)return;
@@ -877,7 +895,7 @@ class BxTouchpadHud extends BxTouchpad {
     catch (error) {this.stop();this.status.textContent = error.message;this.showMenu(true);}
   }
   
-  openTouchSettings(){touchPanel.open();}
+  openTouchSettings(){nimboOpenSettings();}
   showMenu(show) {
     if (!this.toolbar) return;
     this.toolbar.hidden = !show;
@@ -1547,7 +1565,7 @@ class BxTouchpadOverlay extends BxTouchpadProfiles {
     add.textContent='+ Tecla';add.setAttribute('aria-label','Adicionar tecla vazia');add.onclick=()=>{this.placeBlank=true;this.properties.note.textContent='Toque no jogo onde a nova tecla deve ficar.';this.setInspectorCollapsed(true);};
     this.undoButton=button('↶','Desfazer',()=>this.restoreEditorHistory());this.redoButton=button('↷','Refazer',()=>this.restoreEditorHistory(true));
     this.fullscreenButton=button('Tela cheia','Entrar em tela cheia',()=>this.requestEditorFullscreen());tools.append(add,this.undoButton,this.redoButton,this.fullscreenButton);
-    const end=document.createElement('div');end.className='forma-actions';save.textContent='Salvar e jogar';save.className='forma-save';end.append(cancel,save);actions.remove();bar.append(tools,end);this.root.append(bar);
+    const end=document.createElement('div');end.className='forma-actions';save.textContent=typeof window.NimboInputHost?.openSettings==='function'?'Salvar e voltar':'Salvar e jogar';save.className='forma-save';end.append(cancel,save);actions.remove();bar.append(tools,end);this.root.append(bar);
     this.properties.note.className='forma-editor-note';this.properties.note.textContent='Edição: os toques ajustam a HUD. O jogo continua rodando.';this.root.append(this.properties.note);
     // Existing validated editor handlers remain responsible for data mutations.
     for(const input of [this.properties.size,this.properties.opacity,this.properties.visible,this.properties.w,this.properties.h]){const original=input.oninput;input.oninput=()=>this.editorChange(()=>original());}
@@ -1559,6 +1577,7 @@ class BxTouchpadOverlay extends BxTouchpadProfiles {
     this.editorBar=null;this.propertyBody=null;this.propertyCaption=null;this.undoButton=null;this.redoButton=null;this.fullscreenButton=null;this.editorPointerHistory=null;
     super.finishEditing(cancel,false);
     if(!returnToSettings)return;
+    if(typeof window.NimboInputHost?.openSettings==='function'){this.openTouchSettings();return;}
     if(cancel){this.openTouchSettings();return;}
     // Saved HUD returns to play; start() retains all native support checks.
     this.start().then(()=>{if(!this.active){const message=this.status?.textContent;this.openTouchSettings();for(const section of this.nativeSections)section.state.textContent=message||'HUD salva. Ative os controles quando o jogo estiver pronto.';}});
@@ -2219,11 +2238,14 @@ function boot(){
 }
 // Public integration point for a host; existing third-party globals are left untouched.
 window.NimboTouch=Object.freeze({
- version:VERSION,attachSession:nimboCapture,open:()=>touchPanel.open(),
+ version:VERSION,attachSession:nimboCapture,open:nimboOpenSettings,
  stop:()=>ui?.remoteMode?ui.stopRemote():ui?.stop(),
  diagnostic,isEnabled:()=>!!ui?.wanted,
  setPhysicalInputMode:nimboSetPhysicalInputMode,
  setInputMode:nimboSetInputMode,inputModeStatus:nimboInputModeStatus,
+ physicalMouseInput:reading=>nimboTransport?.physicalMouse(reading)??false,
+ physicalKeyboardInput:event=>nimboTransport?.physicalKeyboard(event)??false,
+ releasePhysicalInput:()=>{if(nimboTransport?.exclusiveMode==='keyboard-mouse')nimboTransport.release();},
  editHud:()=>{if(!ui)return false;touchPanel.close();ui.editHud();ui.refreshEditorOptions();if(ui.virtualGamepad?.enabled)ui.selectHud('vpad-left-stick');return true;},
  physicalInputStatus:()=>nimboTransport?.physicalInputStatus()||{mode:'native',state:'waiting',connected:false},
  toggle:()=>{touchPanel.mount();touchPanel.toggle.click();},
