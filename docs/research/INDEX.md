@@ -27,3 +27,5 @@ Este espaço reúne pesquisa e experimentos para revisão antes de qualquer inco
 Estados permitidos: pesquisa, simulação aprovada, falha, bloqueada, validada em sessão real. Simulação aprovada não comprova áudio, vídeo, comandos ou gameplay.
 
 - **PSBox Android:** [auditoria reproduzível](../../experiments/console/psbox-android-audit/README.md), quatro testes aprovados; bloqueios de entrada/recursos/build no ZIP. Sem APK, sessão ou classificação Xbox validada.
+
+- **Client Hints e perfil JavaScript:** [experimento com método real](../../experiments/console/client-hints-boundary/README.md), cinco testes em VM; ocultação depende de propriedade herdada/própria. Sem headers HTTP ou classificação Xbox observados.

@@ -109,3 +109,8 @@ Onze testes locais aprovados; navegador de teste bloqueado na inicialização, s
 A ponte usa interface própria, mas declara browser/web/xgpuweb. O perfil de mídia android não muda o descritor Windows fixo. Isso reforça a separação entre perfil pedido, descritor e classificação emitida. Nenhuma identidade Xbox foi validada.
 
 O manifesto de widget permite declarar rede externa; tal declaração não equivale a autorização CORS para o Edge Android/iOS/desktop. A viabilidade de um cliente independente nessas plataformas permanece condicionada ao fluxo de autenticação/SDK e permissões reais, sem necessidade presumida de reescrita nativa.
+
+
+## Client Hints — método real do Better xCloud em VM
+
+Novo experimento [client-hints-boundary](../../experiments/console/client-hints-boundary/README.md): corpo de UserAgent.spoof em fonte fixada por SHA256, cinco testes aprovados. Propriedade herdada é escondida; propriedade própria com valor existente é preservada por defineProperty com descriptor vazio. UA não configurável pode deixar estado parcialmente alterado. Esses são resultados de objetos sintéticos, não diagnóstico confirmado do Edge do mantenedor. HTTP hints, tokens e classificação do servidor permanecem não observados/não verificados. A pesquisa de identidade não é pré-requisito para um port Android autorizado. Sem mudança do produto ou autenticação.

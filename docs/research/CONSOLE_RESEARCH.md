@@ -288,3 +288,8 @@ Obter uma comparação pareada, não sensível, de um título já disponível ao
 ## Auditoria do caminho Android PSBox — 13/11/2026
 
 Experimento reproduzível [psbox-android-audit](../../experiments/console/psbox-android-audit/README.md). ZIP do mantenedor identificado por SHA256, com três arquivos confirmados idênticos ao PSBox eb63daf8f953684387a06a7bab8ef0a1e3133463. Resultado: esqueleto Android presente, mas sem MainActivity/ícones e sem integração direta do núcleo de sessão no CMake; dependências de submódulos vazias no archive. Quatro testes da auditoria aprovados; resultado real em result.json. Nenhum build/APK/sessão/identidade Xbox validado. A investigação reduz uma ambiguidade de capacidade do cliente nativo; não substitui o foco em classificação do cliente web. A existência de AMediaCodec e NDK não prova funcionamento no navegador ou identidade autenticada. Próximo passo de identidade: capturar início real com observador 0.1.3 e comparar com o núcleo PSBox; eventual trabalho Android amplo requer proposta própria.
+
+
+## Client Hints — método real do Better xCloud em VM
+
+Novo experimento [client-hints-boundary](../../experiments/console/client-hints-boundary/README.md): corpo de UserAgent.spoof em fonte fixada por SHA256, cinco testes aprovados. Propriedade herdada é escondida; propriedade própria com valor existente é preservada por defineProperty com descriptor vazio. UA não configurável pode deixar estado parcialmente alterado. Esses são resultados de objetos sintéticos, não diagnóstico confirmado do Edge do mantenedor. HTTP hints, tokens e classificação do servidor permanecem não observados/não verificados. A pesquisa de identidade não é pré-requisito para um port Android autorizado. Sem mudança do produto ou autenticação.
