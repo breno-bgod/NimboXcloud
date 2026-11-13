@@ -15,8 +15,11 @@ function boot(){
   document:{hidden:false,head:host,documentElement:{classList:{toggle:(key,value)=>classes.set(key,value)}},getElementById:id=>nodes.get(id),createElement:tag=>new Node(tag)},
   mountTarget:()=>host,NX_LOADING_DETAILS:'details',getPref:(key,fallback)=>prefs[key]??fallback,
   S:{qos:{fps:999,kbps:900000},qosAt:1},srvBtnLabel:()=> 'Índia',resCfg:()=>({label:'1080p HQ'}),fmtN:n=>String(n),
+  BRAND_ICON:'data:image/png;base64,AA==',UI_FONT:'system-ui',C:{text:'#eee',dim:'#999',line:'#333',panel:'#222'},nxPanelAppearance:{tone:'dark',opacity:90,text:'default',icons:'default'},nxPanelColors:{default:null,green:'#0f0'},
   openUI:true,setOpen(value){ctx.openUI=value;},wrap:new Node('div'),nxLibraryButton:new Node('button'),pillEl:new Node('button')};
- vm.createContext(ctx);const a=source.indexOf('  let nxLoadingEl = null;'),b=source.indexOf('  // Fim do painel de preparação.',a);vm.runInContext(source.slice(a,b),ctx);
+ vm.createContext(ctx);
+ const paletteStart=source.indexOf('  function nxPanelPalette(){'),paletteEnd=source.indexOf('  function nxPanelApply(){',paletteStart);vm.runInContext(source.slice(paletteStart,paletteEnd),ctx);
+ const a=source.indexOf('  let nxLoadingEl = null;'),b=source.indexOf('  // Fim do painel de preparação.',a);vm.runInContext(source.slice(a,b),ctx);
  return {ctx,prefs,nodes,host,classes,tick:()=>ctx.nxLoadingTick()};
 }
 test('estimate remains visible when optional loading details are hidden and stale stats are excluded',()=>{
@@ -42,4 +45,12 @@ test('NX disclosure only toggles technical details and keeps the estimate and lo
  panel.toggle.onclick({stopPropagation(){}});assert.equal(panel.detail.hidden,false);assert.equal(panel.toggle.attributes['aria-expanded'],'true');
  panel.toggle.onclick({stopPropagation(){}});assert.equal(panel.detail.hidden,true);assert.equal(panel.hidden,false);assert.equal(panel.time.textContent,time);
  assert.equal(h.classes.get('nx-session-loading'),true);assert.equal(h.ctx.openUI,false);
+});
+
+
+test('loading uses the NX palette, font and existing brand icon rather than its own theme',()=>{
+ const h=boot();h.tick();const panel=h.nodes.get('nx-loading-overlay');
+ assert.equal(panel.style.background,'rgba(12,16,22,0.9)');assert.equal(panel.style.fontFamily,h.ctx.UI_FONT);assert.equal(panel.toggle.children[0].src,h.ctx.BRAND_ICON);
+ h.ctx.nxPanelAppearance.tone='black';h.ctx.nxPanelAppearance.opacity=65;h.ctx.nxPanelAppearance.text='green';h.tick();
+ assert.equal(panel.style.background,'rgba(0,0,0,0.65)');assert.equal(panel.style.color,'#0f0');assert.equal(panel.detail.style.color,'#0f0');
 });
