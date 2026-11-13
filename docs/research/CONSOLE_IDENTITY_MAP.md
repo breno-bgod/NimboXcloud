@@ -95,3 +95,9 @@ Verificação nova sobre o snapshot 06ef1c7ee01d09cf9bb2a97fc4895da85e8488a8; a 
 Estado: simulação controlada aprovada para construção de requisição; servidor e gameplay não verificados. A pista XStreaming deve ser tratada como autenticação Android com dois caminhos de usuário examinados, não como solução pronta para identidade Xbox.
 
 Próximo passo: localizar evidência não sensível da classificação de cliente Xbox ou testar portabilidade criptográfica isolada para Web Crypto, sem confundir capacidade de assinar com identidade console. Não alterar a autenticação oficial.
+
+## Instrumentação para próxima validação no navegador
+
+Foi adicionado um [laboratório passivo opt-in](../../experiments/console/session-observer/README.md), separado do produto oficial, para acompanhar uma sessão iniciada manualmente no site. Ele não cria login/sessão nem implementa identidade Xbox. O relatório distingue declaração de descritor, status HTTP, observação de vídeo e confirmação manual de áudio/comandos, mantendo classificação do servidor não verificada.
+
+Onze testes locais aprovados; navegador de teste bloqueado na inicialização, sem sessão real disponível. Use o roteiro para obter uma referência web não sensível antes de qualquer alteração de identidade. O resultado esperado inicial é observabilidade, não reconhecimento como console.

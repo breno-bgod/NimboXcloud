@@ -130,3 +130,19 @@ Achado novo na implementação: src/xal/index.ts declara Android no construtor d
 [Experimento](../../experiments/console/xstreaming-identity/README.md): cinco testes aprovados sobre construção de objetos extraída de fontes reais; valores sintéticos, hashes fixados, VM e nenhuma rede. Um controle local ativa os campos para verificar sensibilidade do teste. Resultado não equivale a autenticação aceita.
 
 Fontes/linhas, licença AGPL-3.0, limites e próximos passos no [mapa de identidade](CONSOLE_IDENTITY_MAP.md#implementação-xstreaming-claims-declarados-no-xsts--2026-11-13). Nada foi alterado no userscript ou nas credenciais. Sem evidência de identidade Xbox em Android/iOS/desktop.
+
+## Laboratório passivo para sessão real — 2026-11-13
+
+Atendendo à lacuna de teste interativo discutida com o mantenedor, foi preparado um [userscript experimental independente](../../experiments/console/session-observer/README.md) que roda no play.xbox.com e observa somente após o usuário clicar em Iniciar observação.
+
+Hipótese: produzir referência observável de pedidos de login/início, descritor de cliente e vídeo em progressão sem mudar a comunicação. Refutação prática: se o SDK não usar o fetch acessível ou o descritor não estiver exposto, marcar a etapa não observada; não concluir falha ou identidade Xbox.
+
+O observador preserva argumentos, this, promise e resposta. Lê exclusivamente o header X-MS-Device-Info quando presente, enumera campos permitidos e não acessa Authorization, corpos, cookies ou armazenamento. Até 24 eventos sanitizados em memória. Amostragem de vídeo com trilha viva e contador de quadros, presença de áudio e confirmações manuais separadas. Vínculo entre mídia e pedido e reconhecimento Xbox permanecem não verificados.
+
+Fontes atuais relidas: Nimbo main 3c122b0b728b5f2ef25ffd244a50ce7f9e7f60bd, PSBox eb63daf8f953684387a06a7bab8ef0a1e3133463 (gssv.cpp) e Better xCloud ea4d19f2800cee9cfa387a0c9c37b3711cf208c7 (patcher.ts). Nenhuma mudança externa presumida. Busca criada desde 14/10 retornou candidatos já registrados.
+
+Onze testes Node/VM aprovados e sintaxe verificada. Incluem transparência, ausência de leitura de Authorization/corpo, sanitização, Request não consumido, confirmação manual sem atribuir identidade, troca de época, wrappers concorrentes, vídeo, montagem/fullscreen apenas do painel próprio e falha de instalação. Resultado resumido preservado no experimento.
+
+Chromium/Playwright tentou cenário com rotas locais substituídas, mas encerrou antes de navegar: Crashpad setsockopt Operation not permitted / SIGTRAP. Interface visual e sessão Xbox real não validadas. Estado: testes locais aprovados; teste real pendente. Não é prova de comunicação autenticada ou gameplay.
+
+Próximo passo: mantenedor instalar o addon experimental, iniciar observação antes de abrir um jogo disponível e revisar o relatório sanitizado conforme roteiro. Login já ocorrido ou tráfego em worker/XHR pode permanecer não observado. Não pedir HAR/tokens ou substituir aprovação. O instalador oficial, os módulos e a main permanecem intactos.
