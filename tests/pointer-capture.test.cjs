@@ -131,3 +131,11 @@ test('old cached HUD module cannot silently capture without a physical transport
  const h=boot();delete h.context.window.NimboTouch.physicalMouseInput;
  assert.equal(h.context.nxTogglePointer(),false);assert.equal(h.calls.request,0);assert.match(h.messages[0],/Atualize o módulo/);
 });
+
+
+test('F8/F2 usam a identificação lógica apenas quando code está ausente, sem remapear Backquote',()=>{
+ for(const code of ['', 'Unidentified']){
+  const h=boot();h.listeners.keydown(h.event(code,{key:'F8'}));assert.equal(h.calls.request,1);const up=h.event(code,{key:'F8'});h.listeners.keyup(up);assert.equal(up.prevented,true);
+ }
+ const h=boot();h.listeners.keydown(h.event('Backquote',{key:'F8'}));assert.equal(h.calls.request,0);
+});

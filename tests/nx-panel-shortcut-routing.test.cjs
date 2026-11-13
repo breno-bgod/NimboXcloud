@@ -24,3 +24,7 @@ test('combinação mantém estado correto, ignora repetição e neutraliza em bl
 test('campo editável e evento não confiável não acionam atalho; Escape fecha sem alterar captura nativa',()=>{
  const h=setup();h.dispatch('keydown','Backquote',{target:{tagName:'INPUT'}});h.dispatch('keydown','Backquote',{isTrusted:false});assert.equal(h.changes(),0);h.dispatch('keydown','Backquote');h.dispatch('keyup','Backquote');h.dispatch('keydown','Escape');assert.equal(h.opened(),false);
 });
+
+test('atalho padrão anunciado Ctrl+Shift+H abre e fecha quando não há combinação personalizada',()=>{
+ const h=setup();h.combo(null);h.dispatch('keydown','KeyH',{ctrlKey:true,shiftKey:true});assert.equal(h.opened(),true);h.dispatch('keyup','KeyH');h.dispatch('keydown','KeyH',{ctrlKey:true,shiftKey:true});assert.equal(h.opened(),false);
+});

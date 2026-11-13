@@ -1,4 +1,4 @@
-# HUD nativo e tema do carregamento — versão 4.15.1
+# HUD nativo e tema do carregamento — versão 4.15.2
 
 ## Evidência e diagnóstico
 
@@ -30,7 +30,7 @@ Aceite pendente no dispositivo: abrir Fortnite, expandir/recolher a barra Xbox, 
 Publicação 4.15.1. Não há alteração dos módulos de entradas, sinalização, autenticação, endpoints, áudio, preferências ou layouts salvos. Referências existentes: Better xCloud css.ts/stream-ui.ts identificam StreamHud e GripHandle; a estrutura real do cliente novo pode variar e requer teste no dispositivo.
 
 
-## Alteração proposta: acesso independente na borda esquerda
+## Comportamento vigente: acesso independente na borda esquerda
 
 O relato posterior à versão 4.15.1 mostra o NX visível, mas sem a alça Xbox. A imagem não determina a causa da ausência nativa. Por decisão do mantenedor, o acesso NX deixa de depender dessa barra: a reconciliação não chama a montagem de ações nativas e exibe apenas um botão próprio na borda esquerda, tanto na biblioteca quanto na partida. O menu Xbox continua recebendo prioridade sobre áreas de toque quando reconhecido.
 
@@ -50,3 +50,8 @@ Roteiro no dispositivo: abrir e fechar NX; arrastar a alça sem abrir; recarrega
 O bloqueio de teclado do painel podia consumir keydown/keyup no document antes do gerenciador de combinações, especialmente quando o foco estava fora do painel. A soltura não era registrada e a combinação podia permanecer travada. O gerenciador passa à fase de captura no window; os filtros de eventos confiáveis, repetição e campos editáveis permanecem. Não altera teclas salvas, F8/F2 de captura, F9 nativo ou API Pointer Lock.
 
 Verificação: dois cenários falham antes; três regressões passam depois. 87 testes relacionados a painel, modos, captura e entrada física aprovados, além de sintaxe dos dois scripts e relatório estático. Sem teste visual/fullscreen ou Android real nesta revisão. Não atribuir a esse guard a alternância observada pela tecla abaixo de Esc nem todo desaparecimento do ícone; esses sintomas ainda exigem diagnóstico.
+
+
+## Correções 4.15.2
+
+Ctrl+Shift+H padrão funciona quando não existe combinação personalizada. F8/F2 usam key como fallback somente quando code está vazio ou Unidentified; um Backquote identificado permanece Backquote. O navegador pode interceptar teclas antes de JavaScript: a mudança não comprova a causa no aparelho. Totais atuais: 385 testes locais, 382 aprovados e três TODO; reteste real pendente. Equalizador seleciona fonte audível; desligar ajustes NX de microfone devolve alterações próprias ao cliente. Esses testes não validam qualidade sonora nem microfone no jogo.

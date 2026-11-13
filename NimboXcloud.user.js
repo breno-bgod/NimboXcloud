@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.15.1
+// @version      4.15.2
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch, cinco modos de entrada e HUD de controle virtual.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/f805067fbdab0b91e2681646e969e70be806e001/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.15.1
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/f805067fbdab0b91e2681646e969e70be806e001/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.15.2
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.15.1';
+  const VER = '4.15.2';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -5519,11 +5519,12 @@ SOFTWARE.
 
       const g3 = group('Acessórios');
       const micButtons = mk('div', 'display:flex;gap:6px;flex-wrap:wrap');
-      const micToggle = actBtn(getPref(LS_MIC_ENABLED, '0') === '1' ? 'Microfone: ativado' : 'Microfone: desativado', function () {
+      const micToggle = actBtn(getPref(LS_MIC_ENABLED, '0') === '1' ? 'Ajustes NX de microfone: ligados' : 'Ajustes NX de microfone: desligados', function () {
         const enabled = getPref(LS_MIC_ENABLED, '0') !== '1';
         setPref(LS_MIC_ENABLED, enabled ? '1' : '0');
+        applyVoiceMute();
         if (!enabled) stopMicrophoneTest();
-        S.micStatus = enabled ? 'Preferência ativa. Teste a entrada; a voz no jogo depende do xCloud.' : 'Microfone desativado nas preferências NX.';
+        S.micStatus = enabled ? 'Preferência ativa. Teste a entrada; a voz no jogo depende do xCloud.' : 'Ajustes NX desligados. O microfone continua sob controle do xCloud e do navegador.';
         renderBody(); update();
       }, 'ghost');
       micButtons.appendChild(micToggle);
@@ -6551,17 +6552,21 @@ SOFTWARE.
     nxReleasePhysicalPointer(); toast('O navegador recusou a captura do mouse.');
   }, true);
   document.addEventListener('visibilitychange', function() { if (document.hidden) nxReleasePhysicalPointer(); });
+  function nxPointerEventCode(e) {
+    if (e.code && e.code !== 'Unidentified') return e.code;
+    return e.key === 'F8' || e.key === 'F2' ? e.key : '';
+  }
   let nxPointerHeldKey = '';
   window.addEventListener('keydown', function(e) {
-    if (e.isTrusted && e.repeat && e.code === nxPointerHeldKey) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+    if (nxPointerHeldKey && e.isTrusted && e.repeat && nxPointerEventCode(e) === nxPointerHeldKey) { e.preventDefault(); e.stopImmediatePropagation(); return; }
     const key = nxPointerShortcut();
-    if (!e.isTrusted || e.repeat || e.code !== key || key === 'off' || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey || openUI || nxCaptureKeys || nxPointerConflict(key)) { nxForwardPhysical(e); return; }
+    if (!e.isTrusted || e.repeat || nxPointerEventCode(e) !== key || key === 'off' || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey || openUI || nxCaptureKeys || nxPointerConflict(key)) { nxForwardPhysical(e); return; }
     if (e.target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || '')) return;
     if (nxSelectedInputMode() !== 'keyboard-mouse') return;
-    if (nxTogglePointer()) { nxPointerHeldKey = e.code; e.preventDefault(); e.stopImmediatePropagation(); }
+    if (nxTogglePointer()) { nxPointerHeldKey = nxPointerEventCode(e); e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
   window.addEventListener('keyup', function(e) {
-    if (!e.isTrusted || e.code !== nxPointerHeldKey) { nxForwardPhysical(e); return; }
+    if (!nxPointerHeldKey || !e.isTrusted || nxPointerEventCode(e) !== nxPointerHeldKey) { nxForwardPhysical(e); return; }
     nxPointerHeldKey = ''; e.preventDefault(); e.stopImmediatePropagation();
   }, true);
   window.addEventListener('blur', function() { nxPointerHeldKey = ''; nxReleasePhysicalPointer(); });
@@ -7717,11 +7722,29 @@ SOFTWARE.
   }
   // Respeita o pedido de áudio feito pelo próprio xCloud. Não inicia chat nem cria conexão.
   const nxVoiceTracks = new Set();
+  const nxVoiceTrackState = new WeakMap();
   let nxNativeGetUserMedia = null;
   let nxPttHeld = false;
   function applyVoiceMute() {
+    const enabled = getPref(LS_MIC_ENABLED, '0') === '1';
     const allowed = getPref(LS_MIC_MUTE, '0') !== '1' && (getPref(LS_MIC_PTT, '0') !== '1' || nxPttHeld);
-    nxVoiceTracks.forEach(function (track) { if (track.readyState === 'live') track.enabled = allowed; });
+    nxVoiceTracks.forEach(function (track) {
+      const state = nxVoiceTrackState.get(track);
+      if (!enabled) {
+        // Return only the state owned by NX; do not stop the site's track or
+        // overwrite a later change made by the native client.
+        if (state && track.readyState === 'live' && track.enabled === state.applied) track.enabled = state.original;
+        nxVoiceTracks.delete(track); nxVoiceTrackState.delete(track);
+        return;
+      }
+      if (track.readyState !== 'live') return;
+      const own = state || {original:track.enabled,applied:track.enabled};
+      if (state && track.enabled !== state.applied) {
+        nxVoiceTracks.delete(track); nxVoiceTrackState.delete(track); return;
+      }
+      own.applied = allowed && own.original;
+      track.enabled = own.applied; nxVoiceTrackState.set(track, own);
+    });
   }
   document.addEventListener('keydown', function (e) {
     if (e.code !== 'KeyV' || e.repeat || e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
@@ -7748,7 +7771,7 @@ SOFTWARE.
       const requested = Object.assign({}, constraints, { audio: audio });
       return original(requested).then(function (stream) {
         const track = stream.getAudioTracks()[0];
-        if (track) { nxVoiceTracks.add(track); track.addEventListener('ended', function () { nxVoiceTracks.delete(track); }); applyVoiceMute(); }
+        if (track) { nxVoiceTracks.add(track); track.addEventListener('ended', function () { nxVoiceTracks.delete(track); nxVoiceTrackState.delete(track); }); applyVoiceMute(); }
         const settings = track && typeof track.getSettings === 'function' ? track.getSettings() : {};
         if (selected && settings.deviceId && settings.deviceId !== selected) {
           S.micStatus = 'O navegador escolheu outro microfone; dispositivo solicitado indisponível.';
@@ -8429,13 +8452,18 @@ void main(){
   function activeStreamAudio() {
     const media=Array.from(document.querySelectorAll('video,audio'));
     const candidates=media.filter(function(v){
+      if(v.isConnected===false)return false;
       const stream=v.srcObject;
       if(stream && typeof stream.getAudioTracks==='function')return stream.getAudioTracks().some(function(t){return t.readyState==='live';});
       return !!(v.currentSrc && v.currentSrc.startsWith('blob:'));
     });
     const playable=candidates.filter(function(v){return !v.paused && !v.ended && v.readyState>=2;});
-    return playable.find(function(v){return v.srcObject && v.srcObject.getAudioTracks && v.srcObject.getAudioTracks().length;})
-      || playable[0] || candidates[0] || null;
+    // The host can attach the same stream to a muted video and a separate
+    // audible audio element. Processing the first DOM match misses the sound.
+    const audible=playable.filter(function(v){return !v.muted && (typeof v.volume!=='number'||v.volume>0);});
+    const preferred=audible.length?audible:playable;
+    return preferred.find(function(v){return v.srcObject && v.srcObject.getAudioTracks && v.srcObject.getAudioTracks().length;})
+      || preferred[0] || candidates[0] || null;
   }
   function activeStreamVideo() {
     const videos=Array.from(document.querySelectorAll('video')).filter(function(video){
@@ -8516,7 +8544,7 @@ void main(){
         }
         return;
       }
-      const bind=nxKeyBinding();const matched=!!bind&&bind.every(function(code){return nxKeysHeld.has(code);});
+      const bind=nxKeyBinding();const matched=bind?bind.every(function(code){return nxKeysHeld.has(code);}):!!(e.ctrlKey&&e.shiftKey&&!e.altKey&&!e.metaKey&&e.code===getPref(LS_NX_SHORTCUT,'KeyH'));
       if(matched&&!nxKeyboardComboActive){nxKeyboardComboActive=true;e.preventDefault();e.stopImmediatePropagation();setOpen(!openUI,true);}
     },true);
     window.addEventListener('keyup',function(e){
@@ -8623,6 +8651,7 @@ void main(){
     boot();
   }
 })();
+
 
 
 

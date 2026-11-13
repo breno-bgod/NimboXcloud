@@ -1,7 +1,7 @@
 # NimboXcloud — Estado do projeto, decisões e pendências
 
 > **Fonte de referência para mantenedores, colaboradores, forks e assistentes de IA.**
-> Última revisão: 2026-11-13. Versão de referência: `4.15.1`, branch `main`.
+> Última revisão: 2026-11-13. Versão de referência: `4.15.2`, branch `main`.
 > **Este documento registra decisões de produto, não certifica funcionamento em uma sessão real.** Consulte os testes, CI e evidências antes de declarar qualquer recurso estável.
 
 ## Política de documentação: somente escopo vigente
@@ -15,6 +15,10 @@ A documentação oficial é um **registro do estado atual e do trabalho futuro a
 - **Não apagar fatos relevantes enquanto houver risco residual:** antes de excluir a documentação de um recurso, verificar que código, interface, preferências antigas e testes associados foram tratados.
 
 O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que precisa ser corrigido e o que será desenvolvido**, sem confundir experimentos abandonados com compromissos futuros.
+
+## Publicação 4.15.2 — correções autorizadas
+
+Incorporação do PR #25 autorizada no chat: acesso NX independente, atalhos de painel/captura, seleção da fonte de áudio e opt-out dos ajustes de microfone. 385 testes locais: 382 aprovados, zero falhas, três TODO preexistentes. Sintaxe e relatório estático executados. CI deve ser conferido no head publicado. Homologação no Edge Android, som audível e fullscreen continuam pendentes; não declarar resolução de toda falha relatada apenas pelos testes. Produto mantém módulo 1.4.0 e preferências. PSBox/Android segue separado no PR #24, sem APK oficial.
 
 ## Publicação 4.15.1 e nova divisão de trabalho — 2026-11-13
 

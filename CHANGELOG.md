@@ -1,3 +1,11 @@
+## [4.15.2] — 2026-11-13
+- Incorporação do PR #25 autorizada pelo mantenedor. Alça NX independente de 44 × 44 px à esquerda, arraste vertical persistente e acesso durante biblioteca/partida; painel aberto mantém o dock. Preparação continua bloqueando configurações.
+- Gerenciador de atalhos na captura window evita retenção de keyup pelo painel; Ctrl+Shift+H padrão volta a funcionar sem combinação personalizada. F8/F2 aceitam key somente quando code está ausente/Unidentified, sem remapear Backquote.
+- Equalizador prioriza elemento de áudio audível sobre vídeo mudo e ignora elementos desconectados/trilhas encerradas. Corrige cenário reproduzido; eficácia audível no Edge Android ainda exige teste real.
+- Desligar ajustes NX de microfone restaura somente mute aplicado pelo NX e preserva controle nativo do site/navegador. Não inicia chat nem captura própria.
+- Verificação: 385 testes locais, 382 aprovados, zero falhas e três TODO preexistentes; sintaxe dos dois scripts e relatório estático executados. Módulo de entradas/HUD 1.4.0 preservado; versão do userscript e cache key 4.15.2.
+- Limites: sem homologação no aparelho; fullscreen exclusivo do vídeo não admite garantia de sobreposição DOM. Não implementa atalho físico de energia/volume, ganho de latência ou integração PSBox.
+
 ## [4.15.1] — 2026-11-13
 - Publicação da correção visual autorizada pelo mantenedor. A automação passa a pesquisar e experimentar exclusivamente em PRs de pesquisa; manutenção do produto fica com o responsável principal.
 - Sessão com vídeo MediaStream/srcObject é reconhecida mesmo sem blob URL, test id ou estatísticas RTC interceptadas. Evita tratar o jogo como biblioteca e deixar o NX no canto direito.
