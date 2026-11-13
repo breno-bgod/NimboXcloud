@@ -1,7 +1,7 @@
 # NimboXcloud — Estado do projeto, decisões e pendências
 
 > **Fonte de referência para mantenedores, colaboradores, forks e assistentes de IA.**
-> Última revisão: 2026-11-11. Versão de referência: `4.12.27`, branch `main`.
+> Última revisão: 2026-11-13. Versão de referência: `4.15.0`, branch `main`.
 > **Este documento registra decisões de produto, não certifica funcionamento em uma sessão real.** Consulte os testes, CI e evidências antes de declarar qualquer recurso estável.
 
 ## Política de documentação: somente escopo vigente
@@ -15,6 +15,40 @@ A documentação oficial é um **registro do estado atual e do trabalho futuro a
 - **Não apagar fatos relevantes enquanto houver risco residual:** antes de excluir a documentação de um recurso, verificar que código, interface, preferências antigas e testes associados foram tratados.
 
 O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que precisa ser corrigido e o que será desenvolvido**, sem confundir experimentos abandonados com compromissos futuros.
+
+## Publicação oficial — 4.15.0 / 2026-11-13
+
+O mantenedor autorizou promover o lote do PR #22 à versão oficial. Userscript 4.15.0 e módulo 1.4.0 mantêm preferências/layouts e os cinco modos de entrada. O @require fixa o módulo correspondente, e os endereços de atualização/instalação continuam na main. O PR automático #21 permanece separado desta publicação.
+
+A publicação não amplia a validação realizada: o mantenedor relatou funcionamento das entradas e apresentou capturas da sessão; os últimos refinamentos de barra nativa, previsão e apresentação continuam sujeitos a teste no dispositivo. A revisão funcional tem 363 testes, 360 PASS, zero FAIL e três TODO preexistentes. A versão oficial será verificada pelo CI; o ambiente local ficou indisponível durante sua preparação. Não há nova evidência de áudio/voz, Remote Play jogável ou disponibilidade de GTA VI.
+
+## Refinamento após teste do mantenedor — 2026-11-13 (4.15.0)
+
+Carregamento passa à lateral direita e inicia compacto, com detalhes recolhíveis e previsão/tempo decorrido sempre visíveis. Estatísticas concentra ativação e personalização do monitor; Interface mantém aparência geral. O tempo informado pelo serviço exige correspondência de título/região e alocação não contraditória. Não há evidência suficiente para explicar de forma única os 57 minutos previstos versus cerca de 30 segundos observados.
+
+Preservados posicionamento e entrada da barra nativa Xbox; integração usa seu puxador reconhecido, com recuperação independente fora da área superior se necessário. Correção ainda requer validação real no dispositivo. Áudio/voz recebeu somente avaliação: priorizar equalização, bypass e seleção de dispositivos; não implementar chamadas Discord nem áudio 3D por suposição. Detalhes e referências no documento de carregamento/monitor.
+
+## Preparação da partida e monitor — 2026-11-13 (4.15.0)
+
+Por solicitação do mantenedor, a preparação xCloud apresenta estimativa do serviço ou indisponibilidade, sempre visível, com detalhes técnicos opcionais. NX fica oculto e rejeita abertura durante a preparação observada; mídia pronta, cancelamento/falha, saída e fallback por inatividade liberam o acesso. Cancelar e voltar no Xbox permanecem disponíveis.
+
+Monitor preserva preferências e acrescenta cartões com históricos limitados de FPS do vídeo, RTT e bitrate. Ícones e rótulos foram ajustados sem reorganizar categorias ou trocar o logotipo. Não há chamadas extras para estimativas nem sondagem de jogos; prévias de fila na biblioteca continuam fora do lote. Ver [comportamento, referências e aceite](./CARREGAMENTO_E_MONITOR.md). Validação Xbox/visual real pendente.
+
+## Retorno do editor de HUD — 2026-11-13 (4.15.0)
+
+O mantenedor confirmou sucesso nos testes da versão de entradas do PR #22 e relatou retorno indevido ao painel legado ao salvar a HUD. A correção usa o host NX para voltar à página Entradas ao salvar/cancelar, mantendo o fallback somente no módulo independente. Persistência dos layouts e troca interna de modos são preservadas. A nova navegação ainda requer teste visual real.
+
+Direção de produto: central própria para dispositivos, perfis, mapeamento de ações e edição de HUD, inspirada na organização do reWASD. Remapeamento avançado, camadas e macros serão lotes separados; não declarar emulação de dispositivo no sistema operacional pelo navegador. Proposta em [Ajustes de entradas](./AJUSTES_ENTRADAS.md).
+
+## Ajuste de entradas e Sistema — 2026-11-13 (4.15.0)
+
+Por decisão do mantenedor, Sistema não apresenta nem aplica os experimentos de identidade/Client Hints, mesmo com preferências antigas, e não apresenta uma segunda ação de tela cheia/horizontal. DeX não é uma categoria própria: o perfil de dispositivo usa as capacidades normais do navegador, preservando a migração interna de preferências antigas.
+
+A preferência Fortnite Console não aplica alteração na versão atual do Nimbo, mas o recurso do Better xCloud é real e deve ser preservado como objetivo. Seu patch força o argumento de sendTouchInputEnabledMessage para false na rota /launch/fortnite/, com a finalidade declarada de disponibilizar Salve o Mundo no mobile. A substituição por simples escolha de entrada foi retirada do PR após esclarecimento do mantenedor. A integração no Nimbo continua pendente e não equivale a liberar títulos sem autorização.
+
+Após relato do mantenedor de cursor capturado sem movimento, o PR de entradas passou a encaminhar eventos físicos explicitamente pelo transporte existente, com liberação ao perder foco e módulo de teste fixado por commit. Há testes de integração até o SDK simulado; recepção no servidor e gameplay continuam pendentes. O touchpad virtual envia movimentos diretamente ao SDK; Pointer Lock é oferecido separadamente para mouse físico, mediante gesto explícito e sessão conectada.
+
+Referências e roteiro de verificação: [ajustes de entradas](./AJUSTES_ENTRADAS.md). Os cinco modos, HUD/editor e preferências existentes permanecem. Não é validação de gameplay.
 
 ## Revisão incremental — 2026-11-12 / v4.12.88
 
@@ -131,7 +165,7 @@ Antes de reativar um módulo:
 - **Leia primeiro:** `README.md` → **este arquivo** → `docs/ROADMAP.md` → `CONTRIBUTING.md` → auditorias em `docs/`.
 - Remote Play (xHome) teve retomada técnica explicitamente autorizada pelo mantenedor em 2026-11-12; continuar o trabalho incremental, mas manter a aba/controles ocultos até mídia e comandos serem comprovados em Xbox real.
 - **Não reative** curvas do analógico, equalizador ou identidade Xbox apenas porque existem no código.
-- **Não remova** Fortnite experimental, giroscópio ou seletor de servidor sem nova decisão fundamentada.
+- **Não remova** giroscópio ou seletor de servidor sem nova decisão fundamentada. Fortnite Console deve ser preservado e investigado como sinalização específica da sessão, conforme esclarecimento do mantenedor.
 - **Não presuma** que a opção de 50 Mbps força 50 Mbps, que a escolha de perfil muda a identidade aceita pelo servidor, ou que WebRTC provisionado significa Remote Play jogável.
 - Preserve as opções nativas de toque e gamepad; evite múltiplos wrappers concorrentes para `navigator.getGamepads`.
 - Em toda alteração: atualizar esta matriz se houver mudança de escopo/status, `CHANGELOG.md` se houver mudança de comportamento e testes/CI correspondentes.

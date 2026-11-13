@@ -31,8 +31,10 @@ function harness(){
   nxVisualStatus:()=> 'Filtros padrão',nxGpuStatus:()=> 'Desligada',nxResetVisualSettings(){},
   actBtn:(label,callback)=>{const n=new Node('button',label);n.action=callback;return n;},
   note:message=>new Node('p',message),nxBindControls:(root,category)=>root.appendChild(new Node('div','Atalho '+category)),
+  nxPointerControls:root=>root.appendChild(new Node('div','CAPTURA DO MOUSE FÍSICO')),
   nxInputModePage:root=>root.appendChild(new Node('div','SELETOR ÚNICO')),
   nxPanelSettingsPage:root=>root.appendChild(new Node('div','APARÊNCIA DO PAINEL')),
+  nxMonitorToggleButton:()=>new Node('button','Ativar estatísticas'),
   nxMonitorSettingsPage:root=>root.appendChild(new Node('div','APARÊNCIA DO MONITOR')),
   chips:()=>new Node('div'),toggle:()=>new Node('div'),getAudioBands:()=>Array(10).fill(0),
   nxVideoCalibration:()=>({brightness:100,contrast:100,saturation:100}),nxVisualLibrary:()=>[{name:'Local'}],
@@ -89,7 +91,8 @@ test('system includes compatibility and keeps technical input diagnostics out of
  const pad=h.build('gamepad'),keyboard=h.build('gyrotouch');
  assert.doesNotMatch(pad.textContent,/Fontes observadas|Última alteração de conexão|Falhas de leitura/);
  assert.doesNotMatch(keyboard.textContent,/Módulo|Dispositivo detectado|Ativação|Toque e mouse detectados/);
- assert.match(keyboard.textContent,/Configurar teclado e mouse/);
+ assert.match(keyboard.textContent,/CAPTURA DO MOUSE FÍSICO/);
+ assert.doesNotMatch(keyboard.textContent,/Configurar teclado e mouse/);
 });
 
 test('one input page embeds both device builders without duplicated activation',()=>{
@@ -104,9 +107,10 @@ test('one input page embeds both device builders without duplicated activation',
 test('interface contains both appearance systems while statistics retains metrics and a link',()=>{
  const h=harness();
  vm.runInContext(section('  TAB_BUILDERS.personalize=function(root){','  TAB_BUILDERS.overview=function(root){'),h.ctx);
- const ui=h.build('personalize');assert.equal(ui.textContent,'APARÊNCIA DO PAINELAPARÊNCIA DO MONITOR');
+ const ui=h.build('personalize');assert.equal(ui.textContent,'APARÊNCIA DO PAINEL');
  const stats=h.build('statistics');assert.match(stats.textContent,/Monitor de transmissão|Desempenho/);
- assert.doesNotMatch(stats.textContent,/APARÊNCIA DO MONITOR|APARÊNCIA DO PAINEL/);
+ assert.match(stats.textContent,/APARÊNCIA DO MONITOR/);assert.doesNotMatch(stats.textContent,/APARÊNCIA DO PAINEL/);
+ assert.equal(stats.children[0].textContent,'Ativar estatísticas');assert.equal(stats.children[1].tagName,'details');
 });
 
 test('old destinations resolve to the merged pages, including a retired store-region destination',()=>{
@@ -118,7 +122,7 @@ test('old destinations resolve to the merged pages, including a retired store-re
 test('vertical monitor creates real line breaks',()=>{
  const monitor=new Node();
  const ctx={nxTelemetryEnabled:true,document:{hidden:false},streaming:()=>true,nxTelemetryEnsure:()=>monitor,
-  mountTarget:()=>null,nxMonitor:{layout:'vertical',fields:['fps','rtt'],scale:100,opacity:45,color:'white'},
+  nxMonitorCollect(){},nxLaunch:{startedAt:0},mountTarget:()=>null,nxMonitor:{layout:'vertical',fields:['fps','rtt'],scale:100,opacity:45,color:'white'},
   S:{qos:{fps:60,rtt:25}},fmtN:(n,unit='')=>n+unit,curLoss:()=>0,nxMonitorPlace(){}};
  vm.runInNewContext(section('  function nxTelemetryTick(){','  setInterval(nxTelemetryTick,')+'\nglobalThis.tick=nxTelemetryTick;',ctx);
  ctx.tick();assert.equal(monitor.textContent,'FPS 60\nRTT 25 ms');
@@ -145,4 +149,24 @@ test('GPU brightness and contrast follow the same order as CSS over shadows, mid
   const css=clamp((clamp(x*brightness)-.5)*contrast+.5);
   assert.ok(Math.abs(gpu(x,brightness,contrast)-css)<1e-12);
  }
+});
+
+
+test('monitor preserves Remote Play after a cloud session and rejects metrics from another peer',()=>{
+ const monitor=new Node(),peer={};const ctx={nxTelemetryEnabled:true,document:{hidden:false},streaming:()=>true,nxTelemetryEnsure:()=>monitor,
+  nxMonitorCollect(){},nxLaunch:{startedAt:100,phase:'idle'},nxRemotePlay:{peer,requestId:2,sessionStatus:'connected'},
+  mountTarget:()=>null,nxMonitor:{layout:'vertical',fields:['server','fps'],scale:100,opacity:45,color:'white'},
+  S:{qos:{fps:60},qosAt:200,lastPc:peer},fmtN:n=>String(n),curLoss:()=>0,nxMonitorPlace(){}};
+ vm.runInNewContext(section('  function nxTelemetryTick(){','  setInterval(nxTelemetryTick,')+'\nglobalThis.tick=nxTelemetryTick;',ctx);
+ ctx.tick();assert.match(monitor.textContent,/Remote Play/);assert.match(monitor.textContent,/FPS 60/);assert.doesNotMatch(monitor.textContent,/Servidor não identificado/);
+ ctx.nxTelemetryEl=monitor;ctx.S.lastPc={};ctx.tick();assert.equal(monitor.style.display,'none');
+});
+
+
+test('monitor never steals native Xbox or gameplay clicks outside the NX editing panel',()=>{
+ const monitor=new Node();const ctx={openUI:false,nxTelemetryEnabled:true,document:{hidden:false},streaming:()=>true,nxTelemetryEnsure:()=>monitor,
+  nxMonitorCollect(){},nxLaunch:{startedAt:0},mountTarget:()=>null,nxMonitor:{layout:'vertical',fields:['fps'],scale:100,opacity:45,color:'white'},
+  S:{qos:{fps:60}},fmtN:n=>String(n),curLoss:()=>0,nxMonitorPlace(){}};
+ vm.runInNewContext(section('  function nxTelemetryTick(){','  setInterval(nxTelemetryTick,')+'\nglobalThis.tick=nxTelemetryTick;',ctx);
+ ctx.tick();assert.equal(monitor.style.pointerEvents,'none');ctx.openUI=true;ctx.tick();assert.equal(monitor.style.pointerEvents,'auto');
 });

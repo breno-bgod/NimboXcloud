@@ -73,12 +73,13 @@ test('gamepad owns gyro, vibration and controller shortcuts',()=>{
  assert.match(body,/Controles conectados/);
 });
 
-test('keyboard and mouse tuning reuses HUD settings without another activation selector',()=>{
+test('physical keyboard and mouse tuning separates capture from the virtual HUD',()=>{
  const start=src.indexOf('TAB_BUILDERS.gyrotouch=function(root){');
  const end=src.indexOf('\n  };',start);
  assert.ok(start>=0&&end>start);
  const body=src.slice(start,end);
- assert.match(body,/Touchpad e botões/);
+ assert.match(body,/nxPointerControls/);
+ assert.doesNotMatch(body,/Configurar teclado e mouse|nxLegacyControlGroups/);
  assert.doesNotMatch(body,/const activation|toggle\(|Toque e mouse detectados/);
  assert.match(body,/nxBindControls\(root,'keyboard'\)/);
  assert.doesNotMatch(body,/Giroscópio|Vibração do Gamepad/);
@@ -95,17 +96,18 @@ test('voice page extracts microphone, not the third input-diagnostic group',()=>
  assert.doesNotMatch(src,/if \(temp\.children\[2\]\) root\.appendChild\(temp\.children\[2\]\)/);
 });
 
-test('statistics contains metrics while interface owns monitor appearance',()=>{
+test('statistics owns monitor controls and interface retains general appearance',()=>{
  const start=src.indexOf('TAB_BUILDERS.statistics=function(root){');
  const end=src.indexOf('TAB_BUILDERS.dashboard=TAB_BUILDERS.statistics;',start);
  assert.ok(start>=0&&end>start);
  const body=src.slice(start,end);
  assert.match(body,/nxOriginalStreamBuilder\(stream\)/);
- assert.doesNotMatch(body,/nxMonitorSettingsPage\(root\)/);
- assert.match(body,/setTab\('personalize'\)/);
+ assert.match(body,/nxMonitorToggleButton\(\)/);
+ assert.match(body,/nxSettingsSection\(root,'Personalizar monitor',nxMonitorSettingsPage\)/);
+ assert.ok(body.indexOf('nxMonitorToggleButton()')<body.indexOf('nxOriginalStreamBuilder(stream)'));
  const ui=src.slice(src.indexOf('TAB_BUILDERS.personalize=function(root){'),start);
  assert.match(ui,/nxPanelSettingsPage\(root\)/);
- assert.match(ui,/nxMonitorSettingsPage\(root\)/);
+ assert.doesNotMatch(ui,/nxMonitorSettingsPage\(root\)/);
  assert.match(src,/function nxMonitorSettingsGroup\(root\)/);
  assert.match(src,/TAB_BUILDERS\.overview=function\(root\)\{nxOverviewOriginal\(root\);\}/);
 });

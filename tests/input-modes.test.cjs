@@ -221,6 +221,19 @@ test('settings search finds accent-insensitive destinations and matches multiple
  assert.equal(ctx.search('audio')[0].id,'audio');assert.equal(ctx.search('controle virtual')[0].id,'inputs');
  assert.equal(ctx.search('zona morta')[0].id,'inputs');assert.equal(ctx.search('fps')[0].id,'statistics');
  assert.equal(ctx.search('microfone')[0].id,'audio');assert.equal(ctx.search('brilho')[0].id,'video');
- assert.equal(ctx.search('identidade')[0].id,'advanced');assert.equal(ctx.search('layout')[0].id,'personalize');
+ assert.equal(ctx.search('identidade')[0].id,'advanced');assert.equal(ctx.search('layout')[0].id,'statistics');
+ assert.equal(ctx.search('ocultar estatísticas')[0].id,'statistics');assert.equal(ctx.search('monitor')[0].id,'statistics');
+ assert.equal(ctx.search('aparência interface')[0].id,'personalize');
  assert.equal(ctx.search('desconhecido').length,0);
+});
+
+test('collapsed native Xbox HUD accepts mouse and touch regardless of the chosen game input',async()=>{
+ for(const mode of ['keyboard-mouse','gamepad','virtual-keyboard-mouse','virtual-gamepad','native-touch']){
+  const h=harness({pads:[physical]});await h.select(mode);
+  for(const pointerType of ['touch','mouse']){
+   const event={type:'pointerdown',pointerType,cancelable:true,target:{closest:selector=>selector.includes('#StreamHud')?{}:null},
+    preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;}};
+   h.ctx.gate(event);assert.equal(event.stopped,undefined,mode+' must not block Xbox navigation');assert.equal(event.prevented,undefined);
+  }
+ }
 });

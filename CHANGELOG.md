@@ -1,3 +1,20 @@
+## [4.15.0] — 2026-11-13
+- Publicação oficial autorizada pelo mantenedor: userscript 4.15.0 e módulo de entradas/HUD 1.4.0. Preferências e layouts preservados.
+- Após teste do mantenedor: carregamento compacto na lateral direita; NX expande/recolhe detalhes sem esconder previsão e tempo decorrido. Ativar/ocultar estatísticas passa ao início de Estatísticas; a personalização do monitor fica expansível nessa página.
+- Previsão exige título/região correspondentes, ignora total alto com alocação explicitamente zerada e é removida quando a negociação comprova avanço além da fila. Request é clonado antes de o fetch nativo consumir o corpo. O valor continua sendo previsão do serviço, não cálculo garantido.
+- Barra nativa preserva posicionamento; seu puxador é reconhecido e fica fora do bloqueio de entradas. NX se integra quando a barra é reconhecida; fallback independente fica no canto inferior, sem cobrir o puxador.
+- Preparação da partida observa play/waittime/state já consultados pelo cliente, mostra estimativa real ou indisponibilidade e tempo decorrido. Informações técnicas são opcionais e separam destino observado/qualidade solicitada de métricas recebidas.
+- NX e seus atalhos de abertura ficam bloqueados durante a preparação, sem ocultar os controles do Xbox. Vídeo recebido, cancelamento, falha e navegação liberam o painel; um limite por inatividade evita bloqueio permanente.
+- Monitor mantém preferências e ganha cartões com históricos limitados de FPS do vídeo, RTT e bitrate. Não há sondagem adicional, leitura de disco/GPU do sistema ou métricas simuladas.
+- Ícones de controle/teclado-mouse corrigidos; categorias com símbolos próprios e nomes sem quebra de letras na navegação. Logotipo do projeto preservado.
+- Salvar ou cancelar uma HUD integrada retorna à página Entradas do NX, sem abrir o painel amarelo legado. Salvar e voltar reflete essa navegação; uso independente do módulo mantém seu próprio painel.
+- Corrigido o caminho de captura sem transmissão: movimento, botões, roda e teclado físico passam explicitamente ao adaptador existente da sessão; Esc/perda de foco liberam estados mantidos. Eventos consumidos evitam cópias no caminho nativo. O script de teste fixa o módulo correspondente por commit para impedir cache antigo.
+- Mouse físico ganha captura explícita no vídeo da sessão, com F8 padrão, alternativa F2 e Esc para liberar. Não modifica a API nativa nem intercepta F9; entrada ativa e sessão conectada são verificadas.
+- Editor de HUD fica identificado como controle virtual ou teclado/mouse por toque; retirado dos ajustes físicos. Atalhos do painel explicam seu propósito e mostram o padrão quando não há combinação personalizada.
+- Sistema deixa de exibir ação duplicada de tela cheia/horizontal e seletores experimentais de identidade/Client Hints. Preferências antigas não mantêm os experimentos de identidade ativos após ocultar os seletores. Removida a referência visual a DeX; o perfil usa recursos normais do navegador.
+- Fortnite Console mantido para investigação da integração: o Better xCloud possui um patch específico de sinalização de toque, distinto da seleção de controle. A preferência atual do Nimbo ainda não aplica esse patch; não há validação de funcionamento. Layouts, preferências das cinco entradas e transporte preservados.
+- Verificação local: 363 testes, 360 PASS, zero FAIL e três TODO; sessão Xbox e captura em navegador real pendentes.
+
 ## [4.14.0] — 2026-11-13
 - Qualidade solicitada e perfis passam para Vídeo e imagem, com dimensão do vídeo recebido. Removido o perfil redundante Compatível; selecionar qualidade deixa de zerar um limite independente de bitrate.
 - Tela cheia e Capturar jogo ficam no topo do painel, fora da área rolável. Capturas incluem filtro CSS ou o próximo quadro GPU processado, com erro visível se indisponíveis.
@@ -365,6 +382,7 @@ Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR
 
 ## Próximas versões
 As alterações futuras devem incluir: versão, data, recursos adicionados, correções, incompatibilidades conhecidas e evidências de testes.
+
 
 
 
