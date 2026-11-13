@@ -41,15 +41,17 @@ test('suspension releases the remote slot and requires fresh input after resume'
   assert.equal(pad.buttons[1],0);assert.equal(releases.length,1);assert.equal(pad.beginButton(51,1,1),true);
   assert.equal(sent.at(-1).buttons[1].value,1);pad.setEnabled(false);assert.equal(releases.length,2);assert.equal(pad.beginButton(52,1,1),false);
 });
-test('virtual HUD is xHome-only and does not patch the browser Gamepad API',()=>{
-  assert.match(moduleSource,/renderVirtualGamepadControls\(\)\s*\{\s*if\(!this\.mapped\|\|!this\.remoteMode\)return;/);
+test('virtual HUD is shared by xCloud and xHome and delegates the browser Gamepad API to the host',()=>{
+  assert.match(moduleSource,/renderVirtualGamepadControls\(\)\s*\{\s*if\(!this\.mapped\)return;/);
   assert.match(moduleSource,/this\.remoteAdapter\?\.sendGamepad\?\.\(state\)===true/);
   assert.match(moduleSource,/this\.virtualGamepad\.suspend\(\)/);
-  assert.match(moduleSource,/if\(this\.remoteMode&&this\.virtualGamepad\?\.enabled&&!this\.editingHud\)element\.hidden=true/);
+  assert.match(moduleSource,/if\(this\.virtualGamepad\?\.enabled&&!this\.editingHud\)element\.hidden=true/);
+  assert.match(moduleSource,/window\.NimboInputHost\?\.sendGamepad\?\.\(state\)===true/);
   assert.match(moduleSource,/this\.virtualToggle=button\('Ativar controle virtual'/);
   assert.match(moduleSource,/this\.virtualToggle\.hidden=!virtualAvailable/);
   assert.match(moduleSource,/'vpad-left-stick'/);assert.match(moduleSource,/'vpad-home'/);
   assert.doesNotMatch(moduleSource,/navigator\.getGamepads\s*=/);
-  assert.match(moduleSource,/if\(!remote\)await transport\.activateKeyboardMouse\(\)/);
+  assert.match(moduleSource,/if\(!remote&&!this\.virtualGamepad\?\.enabled\)await transport\.activateKeyboardMouse\(\)/);
   assert.match(hostSource,/function nxRemoteSetVirtualGamepadState\(/);
 });
+

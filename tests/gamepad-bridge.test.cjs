@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const src = fs.readFileSync(path.join(__dirname, '..', 'NimboXcloud.user.js'), 'utf8');
 
-const sectionStart = src.indexOf('  const NX_INPUT_APPLY_KEY = ');
+const sectionStart = src.indexOf('  const nxInputRoute = ');
 const sectionEnd = src.indexOf('  // Telemetria agregada de fontes de entrada;', sectionStart);
 assert.ok(sectionStart > 0 && sectionEnd > sectionStart, 'Gamepad bridge boundaries not found');
 const bridgeSource = src.slice(sectionStart, sectionEnd);
@@ -22,6 +22,7 @@ function boot(settings, nativePads, configure) {
     nxGyroPreview: { enabled: false },
     nxGyroPreviewState: () => ({ calibrated: false }),
     nxPreviewAxis: (value, profile) => value,
+    nxTransformStickAxis: value => value * .5,
     getPref: (key, fallback) => Object.hasOwn(store, key) ? store[key] : fallback,
     setPref: (key, value) => { store[key] = value; }
   };
@@ -29,10 +30,11 @@ function boot(settings, nativePads, configure) {
   vm.runInNewContext(source, ctx, { timeout: 1000 });
   return { navigator, store, bridge: ctx.__testBridge, restore: ctx.__restore, status: ctx.__status, install: ctx.__install, nativeGet };
 }
-test('native Gamepad API is untouched when experimental modules are disabled', () => {
-  const a = boot({}, []);
-  assert.equal(a.navigator.getGamepads, a.nativeGet);
-  assert.equal(a.bridge.installed, false);
+test('automatic mode passes through the native array and device identities unchanged', () => {
+  const pads=[{id:'physical',connected:true,axes:[.4,0]}];
+  const a = boot({}, pads);
+  assert.equal(a.navigator.getGamepads(),pads);
+  assert.equal(a.bridge.installed, true);
 });
 test('experimental axis profile can be reverted to native Gamepad API', () => {
   const pad = { id: 'pad', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0], buttons: [] };
@@ -71,11 +73,12 @@ test('repeated native restore does not overwrite another script', () => {
   a.restore('second');
   assert.equal(a.navigator.getGamepads, foreign);
 });
-test('disabled bridge does not replace existing native Gamepad function', () => {
-  const foreign = () => [];
-  const a = boot({}, [], nav => { nav.getGamepads = foreign; });
-  assert.equal(a.navigator.getGamepads, foreign);
-  assert.equal(a.bridge.installed, false);
+test('boot passes through a previously installed function and restores its original descriptor', () => {
+  const pads=[{id:'existing-wrapper'}],foreign = () => pads;
+  const a = boot({}, pads, nav => { nav.getGamepads = foreign; });
+  assert.equal(a.navigator.getGamepads(),pads);
+  a.restore('manual');
+  assert.equal(a.navigator.getGamepads,foreign);
 });
 
 test('non-configurable native Gamepad API is never replaced', () => {
@@ -93,6 +96,13 @@ test('non-standard controllers are passed through without rewriting their identi
   assert.equal(a.navigator.getGamepads()[0], pad);
 });
 
+test('the shared bridge processes physical axes once and keeps its ownership after a read', () => {
+  const pad={id:'physical',index:0,connected:true,mapping:'standard',axes:[.8,-.4,0,0],buttons:[]};
+  const a=boot({'nx.input.applyAxes.v1':'1'},[pad]);const output=a.navigator.getGamepads()[0];
+  assert.deepEqual(Array.from(output.axes),[.4,-.2,0,0]);assert.equal(pad.axes[0],.8);
+  assert.equal(a.bridge.installed,true);assert.equal(a.bridge.fallbacks,0);
+});
+
 test('repeated bridge installation never replaces an existing owner', () => {
   const a = boot({ 'nx.input.applyAxes.v1': '1' }, []);
   const original = a.navigator.getGamepads;
@@ -107,3 +117,4 @@ test('repeated bridge installation never replaces an existing owner', () => {
   assert.equal(a.navigator.getGamepads, foreign);
   assert.equal(a.bridge.foreignOverride, true);
 });
+

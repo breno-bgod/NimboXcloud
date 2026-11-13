@@ -38,6 +38,14 @@ Foram adicionadas solicitações explícitas de teclado/mouse e gamepad físicos
 
 Validação local: 242 testes, 239 PASS, zero FAIL, três TODO. Funcionalidade física no Fortnite/DeX ainda depende de teste autenticado. [Roteiro e limites](./ENTRADA_FISICA.md).
 
+## Revisão incremental — 2026-11-13 / v4.13.0
+
+O mantenedor confirmou que já testou o controle virtual e pediu seu aproveitamento no xCloud, independente do Remote Play, além de cinco modos selecionáveis e reorganização do painel. Relato de uso real preservado; a leitura do vínculo do adaptador no snapshot anterior não deve ser apresentada como prova de que o HUD não existia ou não funcionava para o mantenedor.
+
+Implementados seletor único em Entradas, gerenciador de transições/recuperação, saída xCloud do joystick existente e navegação com nomes, busca e destinos expostos. O editor usado no jogo fica em Entradas; a prévia demonstrativa fica em Sistema. Automático preserva a negociação original e a ponte padrão entrega a leitura nativa intacta sem processamento.
+
+Validação local: 267 testes, 264 PASS, zero FAIL, três TODO, incluindo 22 casos novos. Testes de VM com SDK/DOM controlados não homologam partida. Chromium falhou em setsockopt antes de abrir. Exclusividade em cliente real, compatibilidade do toque nativo, mobile/DeX e persistência visual exigem o [roteiro de aceite](./ENTRADAS_E_PAINEL.md). Nenhuma mudança de catálogo, entitlement, identidade de console, disponibilidade de GTA VI ou sinalização xHome neste lote. A integração de controles prepara os próximos testes; não comprova acesso a títulos ainda não testados.
+
 ## Propósito e princípios
 
 O NimboXcloud é um userscript independente para a nova experiência de Xbox Cloud Gaming em `https://play.xbox.com/`. Busca oferecer monitoramento, personalização, controles e recursos de acessibilidade sem substituir o serviço Xbox. Prioridade: **iniciar e manter partidas estáveis**, preservar controle/toque nativos e permitir recuperação quando uma opção falhar.
@@ -125,6 +133,7 @@ Antes de reativar um módulo:
 - **2026-11-12 — decisão do mantenedor:** retomada técnica do Remote Play xHome autorizada. Desenvolvimento de descoberta, sessão, WebRTC e teardown pode continuar; a aba permanece oculta e o recurso não pode ser anunciado como jogável antes de comprovar mídia e controles em Xbox real.
 
 > **Política de transparência:** nunca confundir "opção aparece", "código existe", "teste automatizado passa" e "funcionou em partida real". São níveis distintos de evidência.
+
 
 
 

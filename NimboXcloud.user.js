@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.12.95
-// @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch e controle virtual experimental exclusivo do xHome.
+// @version      4.13.0
+// @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch, cinco modos de entrada e HUD de controle virtual.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.12.95
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.13.0
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.12.95';
+  const VER = '4.13.0';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -992,6 +992,96 @@ SOFTWARE.
     root.appendChild(g.root);
   }
 
+  // Preferência única; o hardware detectado nunca substitui a escolha manual.
+  const NX_INPUT_MODE_KEY = 'nx.input.mode.v1';
+  const NX_INPUT_MODES = [
+    { id: 'keyboard-mouse', label: 'Teclado e mouse físicos', hint: 'USB ou Bluetooth. Requer suporte a teclado e mouse no jogo.' },
+    { id: 'gamepad', label: 'Controle físico', hint: 'Controle conectado por USB ou Bluetooth.' },
+    { id: 'virtual-keyboard-mouse', label: 'Teclado e mouse virtuais', hint: 'Touchpad e botões do NimboTouch. Requer suporte a teclado e mouse no jogo.' },
+    { id: 'virtual-gamepad', label: 'Controle virtual', hint: 'Analógicos e botões na tela, com o nosso editor de HUD.' },
+    { id: 'native-touch', label: 'Toque nativo do jogo', hint: 'Controles disponibilizados pelo Xbox nos jogos compatíveis.' }
+  ];
+  const nxInputSelection = { busy: false, message: '' };
+  function nxSelectedInputMode() {
+    const saved = getPref(NX_INPUT_MODE_KEY, '');
+    if (saved === 'native' || NX_INPUT_MODES.some(function(m){return m.id === saved;})) return saved;
+    return nxPhysicalInputMode();
+  }
+  function nxInputModeLabel(mode) {
+    const item = NX_INPUT_MODES.find(function(m){return m.id === mode;});
+    return item ? item.label : 'Automático do Xbox';
+  }
+  function nxInputSelectionSummary() {
+    if (nxInputSelection.busy) return 'Trocando entrada…';
+    if (nxInputSelection.message) return nxInputSelection.message;
+    const status = window.NimboTouch?.inputModeStatus?.();
+    if (status?.error) return status.error;
+    if(status?.connected&&status.mode!=='native'&&window.NimboInputHost?.getMode?.()!==status.mode)
+      return 'Isolamento de entradas indisponível. Restaure o Automático antes de continuar.';
+    if (!status?.connected) return 'Preferência salva · aguardando uma partida.';
+    if (status.state === 'waiting') return 'Aguardando os recursos de entrada desta sessão.';
+    if (status.mode?.startsWith('virtual-') && !status.active) return 'Selecionado · o HUD aparece ao fechar os menus e voltar ao jogo.';
+    return 'Selecionado: ' + nxInputModeLabel(status.mode) + '. Teste os comandos no jogo.';
+  }
+  async function nxChooseInputMode(mode, notify = true) {
+    if (nxInputSelection.busy || (mode !== 'native' && !NX_INPUT_MODES.some(function(m){return m.id === mode;}))) return false;
+    const apply = window.NimboTouch?.setInputMode;
+    if (typeof apply !== 'function') { toast('Atualize o NimboXcloud para carregar o módulo de entradas.'); return false; }
+    nxInputSelection.busy = true; nxInputSelection.message = ''; renderBody();
+    const previous = nxSelectedInputMode();
+    try {
+      await apply(mode);
+      setPref(NX_INPUT_MODE_KEY, mode);
+      if (getPref(NX_INPUT_MODE_KEY, '') !== mode) {
+        await apply(previous);
+        throw Error('Não foi possível salvar a escolha. A entrada anterior foi restaurada.');
+      }
+      if (notify) toast(nxInputModeLabel(mode) + ' selecionado');
+      return true;
+    } catch (error) {
+      nxInputSelection.message = String(error?.message || 'Não foi possível trocar a entrada.');
+      if (notify) toast(nxInputSelection.message);
+      return false;
+    } finally { nxInputSelection.busy = false; renderBody(); }
+  }
+  function nxInputModePage(root) {
+    const g = group('Como você quer jogar?', 'Escolha uma entrada por vez. A troca solta os comandos anteriores e pausa os outros controles do Nimbo.');
+    const status = mk('div', 'padding:10px 0;font-size:12px;line-height:1.5;color:' + C.dim);
+    status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+    g.add(status); liveFns.push(function(){status.textContent = nxInputSelectionSummary();});
+    NX_INPUT_MODES.forEach(function(mode) {
+      const button = actBtn('Selecionar', function(){nxChooseInputMode(mode.id);}, 'ghost');
+      button.setAttribute('aria-label','Selecionar '+mode.label);
+      const refresh = function() {
+        const selected = nxSelectedInputMode() === mode.id;
+        button.setAttribute('aria-pressed', String(selected));
+        button.textContent=selected?'Selecionado':'Selecionar';
+        button.style.borderColor = selected ? C.accent : C.line;
+        button.style.background = selected ? 'rgba(74,222,128,.12)' : 'transparent';
+        button.disabled = nxInputSelection.busy;
+      };
+      refresh(); liveFns.push(refresh);
+      g.add(setRow(mode.label, mode.hint, button, true));
+    });
+    g.add(setRow('Automático do Xbox', 'Restaura a combinação de entradas do serviço.',
+      actBtn('Restaurar automático', function(){nxChooseInputMode('native');}, 'ghost')));
+    root.appendChild(g.root);
+    const hud = group('HUD e botões na tela', 'Reaproveita seus layouts e o editor existente. Não precisa de Remote Play.');
+    [['virtual-gamepad','Editar controle virtual'],['virtual-keyboard-mouse','Editar teclado e mouse virtuais']].forEach(function(item){
+      hud.add(setRow(item[1], 'Seleciona esse modo e abre o editor de posições e botões.', actBtn('Editar HUD', async function(){
+        if (!await nxChooseInputMode(item[0])) return;
+        setOpen(false, true); window.NimboTouch?.editHud?.();
+      }, 'ghost')));
+    });
+    root.appendChild(hud.root);
+    const tuning = group('Ajustes por dispositivo');
+    [['gamepad','Controle físico · analógicos, giroscópio e vibração'],['gyrotouch','Teclado e mouse · touchpad, botões e atalhos']].forEach(function(item){
+      tuning.add(setRow(item[1], '', actBtn('Abrir ajustes', function(){setTab(item[0]);}, 'ghost')));
+    });
+    root.appendChild(tuning.root);
+    root.appendChild(note('O toque nativo precisa estar disponível na sessão. Se o cliente Xbox não aceitar uma troca durante a partida, volte ao Automático e reinicie o jogo.'));
+  }
+
   // ---------- 8. Faixa de qualidade: reescrever o corpo de /sessions/cloud/play ----------
   // O perfil HQ usa tizen apenas na negociacao do stream. 1440p real nao e garantido.
   // Diagnóstico sanitizado da negociação de entrada: somente nomes de campos e booleanos.
@@ -1403,7 +1493,9 @@ SOFTWARE.
   // Configuração independente de toque; preserva a negociação nativa.
   let touchSessionDiagnostics = { inspected: false, applied: false };
   function patchTouchSessionConfiguration(response) {
-    // Apenas escolha física explícita; toque nativo e seus campos não são alterados.
+    // O seletor unificado aplica os campos na sessão conectada, preservando a resposta original.
+    if(typeof getPref==='function'&&getPref('nx.input.mode.v1',''))return Promise.resolve(response);
+    // Compatibilidade com a preferência física anterior.
     let mode = nxPhysicalInputMode();
     if (mode === 'gamepad' && !inputCapabilities().gamepadsConnected) mode = 'native';
     touchSessionDiagnostics = { inspected: false, applied: false,
@@ -1829,11 +1921,11 @@ SOFTWARE.
     if(!nxLibraryButton)nxLibraryButton=buildLibraryButton();
     if(!nxKeyboardMouseButton){
       const b=document.createElement('button');b.id='nimboxcloud-native-keyboard-mouse';b.type='button';
-      b.setAttribute('aria-label','Ativar ou desativar teclado e mouse NimboXcloud');
-      b.title='Teclado e mouse NimboTouch';
+      b.setAttribute('aria-label','Escolher entrada NimboXcloud');
+      b.title='Escolher entrada';
       b.style.cssText='all:unset;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:40px;height:40px;min-width:40px;flex-shrink:0;cursor:pointer;border-radius:50%;color:white;position:relative;z-index:2147483000';
       b.innerHTML='<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="pointer-events:none"><rect x="2" y="5" width="13" height="10" rx="2"/><path d="M4 9h9M5 12h7M7 18h6"/><rect x="17" y="4" width="5" height="12" rx="2.5"/><path d="M19.5 4v5"/></svg>';
-      b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();const api=window.NimboTouch;if(!api?.toggle){toast('NimboTouch indisponível nesta sessão');return;}api.toggle();nxUpdateNativeTouchButton();});
+      b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();setTab('inputs');setOpen(true,true);});
       nxKeyboardMouseButton=b;
     }
     if(nxLibraryButton.parentElement!==parent||nxLibraryButton.previousElementSibling!==anchor)anchor.after(nxLibraryButton);
@@ -1848,7 +1940,7 @@ SOFTWARE.
     nxKeyboardMouseButton.setAttribute('aria-pressed',String(on));
     nxKeyboardMouseButton.style.background=on?'rgba(60,185,125,.28)':'transparent';
     nxKeyboardMouseButton.style.color=on?'#a4ffd0':'white';
-    nxKeyboardMouseButton.title=on?'Desativar teclado e mouse':'Ativar teclado e mouse';
+    nxKeyboardMouseButton.title='Escolher entrada · '+nxInputModeLabel(nxSelectedInputMode());
   }
 
   // Encontra a faixa compacta de controles do xCloud no canto superior esquerdo.
@@ -2235,7 +2327,8 @@ SOFTWARE.
     { id: 'images', label: 'Imagens', desc: 'Filtros e processamento gráfico' },
     { id: 'stream', label: 'Streaming', desc: 'Servidores, qualidade solicitada e rede' },
     { id: 'statistics', label: 'Estatísticas', desc: 'Métricas da sessão e monitor configurável' },
-    { id: 'gamepad', label: 'Gamepad', desc: 'Controles físicos, giroscópio, vibração e atalhos' },
+    { id: 'inputs', label: 'Entradas', desc: 'Escolha como jogar e edite os controles na tela' },
+    { id: 'gamepad', label: 'Controle físico', desc: 'Analógicos, giroscópio, vibração e atalhos' },
     { id: 'gyrotouch', label: 'Teclado e mouse', desc: 'NimboTouch, HUD, toque e atalhos de teclado' },
     { id: 'audio', label: 'Áudio', desc: 'Volume, saída e equalização' },
     { id: 'voice', label: 'Voz', desc: 'Microfone e entrada de voz' },
@@ -2433,7 +2526,7 @@ SOFTWARE.
       ghost: 'background:transparent;color:' + C.text + ';border:1px solid ' + C.line
     };
     const b = mk('button', 'all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;' +
-      'cursor:pointer;padding:8px 14px;border-radius:9px;font-size:12px;font-weight:700;line-height:1.2;text-align:center;' +
+      'cursor:pointer;min-height:44px;padding:8px 14px;border-radius:9px;font-size:12px;font-weight:700;line-height:1.2;text-align:center;' +
       '-webkit-tap-highlight-color:transparent;' + styles[kind || 'ghost'], label);
     b.setAttribute('role', 'button');
     b.addEventListener('pointerdown', stopEv);
@@ -3971,7 +4064,7 @@ SOFTWARE.
       if(!pad || pad.connected===false || pad.mapping!=='standard') continue;
       const slot=Number.isInteger(pad.index)?pad.index:i;
       if(slot<0 || slot>3 || active.has(slot)) continue;
-      active.set(slot,pad);
+      active.set(slot,typeof nxTransformPhysicalPad==='function'?nxTransformPhysicalPad(pad):pad);
     }
     let virtual=nxRemoteVirtualGamepad;
     if(virtual && (virtual.requestId!==nxRemotePlay.requestId || virtual.peer!==nxRemotePlay.peer || virtual.channels!==nxRemoteChannels)) {
@@ -5184,17 +5277,10 @@ SOFTWARE.
       root.appendChild(g2.root);
 
       const coordination = group('Coordenação de entradas — diagnóstico',
-        'Prioridade visual das fontes. Não bloqueia toque, mouse, teclado ou controle.');
-      coordination.add(setRow('Preferência de fonte', 'Automático sugere a fonte com atividade mais recente nos últimos 2 segundos.',
-        chips(Object.keys(nxCoordModes).map(function (k) {
-          return { k: k, label: nxCoordModes[k] };
-        }), nxCoordMode(), function (k) {
-          setPref(NX_INPUT_COORD_KEY, k);
-          renderBody();
-        }), true));
-      coordination.add(infoRow('Fonte sugerida', function () {
-        const state = nxCoordState();
-        return nxCoordModes[state.suggested] || 'Nenhuma';
+        'Observação das fontes. A escolha usada no jogo fica na página Entradas.');
+      coordination.add(infoRow('Entrada escolhida', function () {return nxInputModeLabel(nxSelectedInputMode());}));
+      coordination.add(infoRow('Fontes observadas', function () {
+        return nxCoordState().activeSources.join(', ') || 'Nenhuma';
       }));
       coordination.add(infoRow('Fontes simultâneas', function () {
         return nxCoordState().mixed ? nxCoordState().activeSources.join(' + ') : 'Não detectadas';
@@ -5203,7 +5289,7 @@ SOFTWARE.
         const v = nxVirtualInputState();
         return v.count ? v.kinds.join(', ') : 'Nenhuma';
       }, 'Registro interno preparado para HUD, giroscópio e teclado/mouse virtuais. Ainda não controla o jogo.'));
-      coordination.add(infoRow('Interferência no jogo', function () { return 'Nenhuma (somente diagnóstico)'; }));
+      coordination.add(infoRow('Este diagnóstico', function () { return 'Somente leitura; não escolhe a entrada do jogo'; }));
       coordination.add(infoRow('Autoteste de entradas', function () {
         const result = nxInputSelfCheck();
         return result.passed + '/' + result.total + ' verificações';
@@ -5379,13 +5465,13 @@ SOFTWARE.
           setPref(NX_INPUT_APPLY_KEY, nxInputEnabled() ? '0' : '1');
           location.reload();
         }, 'Ativar processamento experimental de eixos')));
-      inputPreview.add(setRow('Restaurar controle nativo',
-        'Desativa o processamento experimental imediatamente, sem precisar recarregar.',
+      inputPreview.add(setRow('Desligar processamento dos eixos',
+        'Desativa curvas e giroscópio sem mudar a entrada escolhida. Para liberar todas as entradas, restaure Automático em Entradas.',
         actBtn('Restaurar', function () {
           nxRestoreNativeGamepads('Restauração solicitada pelo usuário');
           nxSampleGamepads();
           renderBody();
-          toast('Leitura nativa restaurada');
+          toast('Curvas e giroscópio desligados');
         }, 'ghost')));
       inputPreview.add(infoRow('Integridade da Gamepad API', function () {
         nxInputBridgeStatus();
@@ -5697,7 +5783,15 @@ SOFTWARE.
     });
     pg.card.appendChild(row);root.appendChild(pg.root);
   }
-  TAB_BUILDERS.advanced=function(root){const nodes=nxLegacySystemGroups();[4,5,6].forEach(function(i){if(nodes[i])root.appendChild(nodes[i]);});};
+  TAB_BUILDERS.advanced=function(root){
+    const nodes=nxLegacySystemGroups();[4,5,6].forEach(function(i){if(nodes[i])root.appendChild(nodes[i]);});
+    const preview=nxFindGroup(nxLegacyControlGroups('keyboard'),'Editor de HUD — prévia arrastável');
+    if(preview){
+      const details=document.createElement('details');
+      const summary=mk('summary','cursor:pointer;padding:12px 0;color:'+C.dim,'Prévia técnica de HUD · não controla o jogo');
+      details.append(summary,preview);root.appendChild(details);
+    }
+  };
   TAB_BUILDERS.compatibility=function(root){const nodes=nxLegacySystemGroups();if(nodes[3])root.appendChild(nodes[3]);};
   TAB_BUILDERS.region=function(root){nxLegacyRegionBuilder(root);};
   TAB_BUILDERS.stream=function(root){
@@ -5734,8 +5828,10 @@ SOFTWARE.
     if(profiles)root.appendChild(profiles);
     root.appendChild(note('O processamento gráfico disponível neste build usa WebGL2 e filtros locais. FSR 1 ainda não está implementado.'));
   };
+  TAB_BUILDERS.inputs=nxInputModePage;
   TAB_BUILDERS.gamepad=function(root){
-    nxPhysicalInputGroup(root,'gamepad');
+    root.appendChild(note('Escolha a entrada ativa na página Entradas. Aqui ficam os ajustes do controle.'));
+    root.appendChild(actBtn('Escolher entrada', function(){setTab('inputs');}, 'primary'));
     const nodes=nxLegacyControlGroups('gamepad');
     nxAppendControlRows(root,nodes,'Gamepad conectado',
       ['Controles conectados','Controles com atividade','Última alteração de conexão','Falhas de leitura'],
@@ -5750,17 +5846,17 @@ SOFTWARE.
   };
   TAB_BUILDERS.controls=TAB_BUILDERS.gamepad;
   TAB_BUILDERS.gyrotouch=function(root){
-    nxPhysicalInputGroup(root,'keyboard');
-    const activation=group('Ativação','Ative ou desative o NimboTouch. O Gamepad físico permanece independente.');
+    root.appendChild(actBtn('Escolher entrada ou editar HUD', function(){setTab('inputs');}, 'primary'));
+    const activation=group('Ativação','Ative ou desative o NimboTouch pelo seletor único de entradas.');
     activation.add(setRow('Ativar HUD de teclado e mouse por toque','Liga ou desliga apenas os botões virtuais e o touchpad do NimboTouch.',
       toggle(!!(window.NimboTouch&&window.NimboTouch.isEnabled()),function(){
         if(!window.NimboTouch||typeof window.NimboTouch.toggle!=='function'){toast('Módulo de teclado e mouse indisponível; atualize o userscript');renderBody();return;}
-        window.NimboTouch.toggle();renderBody();
+        nxChooseInputMode(nxSelectedInputMode()==='virtual-keyboard-mouse'?'native':'virtual-keyboard-mouse');
       },'Ativar HUD de teclado e mouse por toque')));
     root.appendChild(activation.root);
     const nodes=nxLegacyControlGroups('keyboard');
     nxMoveGroup(root,nodes,'Teclado e mouse');
-    nxMoveGroup(root,nodes,'Editor de HUD — prévia arrastável');
+    root.appendChild(note('O editor do HUD usado no jogo está em Entradas → HUD e botões na tela.'));
     nxAppendControlRows(root,nodes,'Toque e mouse detectados',
       ['Tela de toque','Mouse capturado','Sobreposições toque/mouse'],
       'Capacidades locais de toque e mouse observadas no navegador.');
@@ -5779,6 +5875,7 @@ SOFTWARE.
     el.navTitle.textContent = current.label;
     if (el.navBack) el.navBack.style.visibility = tabId === 'overview' ? 'hidden' : 'visible';
     if(el.nxRailButtons)el.nxRailButtons.forEach(function(item){const active=item.id===tabId;
+      item.button.setAttribute('aria-current',active?'page':'false');
       item.button.style.color=active?C.text:C.dim;
       item.button.style.background=active?'rgba(255,255,255,.13)':'transparent';
       item.button.style.boxShadow=active?'inset 3px 0 '+C.accent:'none';});
@@ -5806,7 +5903,7 @@ SOFTWARE.
     liveFns = [];
     el.body.textContent = '';
     const title=TABS.find(function(t){return t.id===tabId;});
-    el.body.appendChild(mk('div','font-size:16px;font-weight:750;margin:0 0 14px',title?title.label:'Início'));
+    const heading=mk('h2','font-size:16px;font-weight:750;margin:0 0 14px',title?title.label:'Início');heading.tabIndex=-1;el.body.appendChild(heading);
     try { TAB_BUILDERS[tabId](el.body); nxMoveRecoveryActionsToEnd(el.body); }
     catch (err) {
       S.lastErr = 'Painel: ' + String(err && err.message || err);
@@ -5822,6 +5919,31 @@ SOFTWARE.
     const wr = wrap.getBoundingClientRect();
     const used = pillEl && pillEl.offsetHeight ? pillEl.offsetHeight + 6 : 0;
     cardEl.style.maxHeight = Math.max(260, Math.min(640, innerHeight - (wr.top + used) - 14)) + 'px';
+  }
+
+  function nxSettingsSearch(query) {
+    const normalize=function(value){return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();};
+    const words=normalize(query).trim().split(/\s+/).filter(Boolean);
+    if(!words.length)return [];
+    const keywords={inputs:'touch toque controle joystick hud virtual teclado mouse entradas',gamepad:'analógico zona morta deadzone gyro giroscópio vibração',
+      gyrotouch:'sensibilidade wasd macros multiteclas botões atalhos teclado mouse',stream:'servidor server região bitrate resolução qualidade rede',
+      statistics:'fps rtt latência perda mbps monitor afterburner',audio:'equalizador volume saída som',voice:'mic microfone voz',
+      video:'fullscreen tela cheia enquadramento desktop celular dex',images:'brilho contraste saturação filtros captura',
+      compatibility:'identidade user agent plataforma console',advanced:'diagnóstico cache manutenção',personalize:'transparência cores aparência interface'};
+    return TABS.filter(function(tab){const text=normalize(tab.label+' '+tab.desc+' '+(keywords[tab.id]||''));return words.every(function(word){return text.includes(word);});});
+  }
+  function nxBuildSettingsSearch(root) {
+    const box=mk('div','padding:10px 12px;border-bottom:1px solid '+C.line+';flex:0 0 auto');
+    const input=document.createElement('input');input.type='search';input.placeholder='Buscar configuração';input.setAttribute('aria-label','Buscar configurações');
+    input.style.cssText='box-sizing:border-box;width:100%;min-height:40px;border-radius:8px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text+';font:inherit;padding:8px';
+    const results=mk('div','max-height:180px;overflow:auto');results.setAttribute('aria-label','Resultados da busca');results.hidden=true;
+    input.addEventListener('input',function(){
+      results.textContent='';results.hidden=!input.value.trim();if(results.hidden)return;
+      const matches=nxSettingsSearch(input.value);
+      if(!matches.length)results.appendChild(mk('p','font-size:12px;color:'+C.dim,'Nenhuma categoria encontrada.'));
+      matches.forEach(function(tab){const button=actBtn(tab.label,function(){input.value='';results.hidden=true;setTab(tab.id);el.body.querySelector('h2')?.focus();},'ghost');results.appendChild(button);});
+    });
+    box.append(input,results);root.appendChild(box);
   }
 
   function buildUI() {
@@ -5922,15 +6044,16 @@ SOFTWARE.
     el.navTitle = mk('span','font-size:13px;font-weight:700;flex:1','Início');
     navBar.appendChild(el.navBack); navBar.appendChild(el.navTitle);
     const home = mk('button','all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;width:34px;height:34px;color:'+C.dim);
-    home.title = 'Central de controle'; home.setAttribute('aria-label','Central de controle'); home.appendChild(ico('M3 10l9-7 9 7 M5 9v12h14V9 M9 21v-8h6v8',18));
-    home.addEventListener('click',function (e) { e.stopPropagation(); setTab('overview'); }); navBar.appendChild(home);
-    navBar.style.display='none';
+    home.title = 'Fechar painel'; home.setAttribute('aria-label','Fechar painel'); home.appendChild(ico(ICONS.close,18));
+    home.addEventListener('click',function (e) { e.stopPropagation(); setOpen(false,true); }); navBar.appendChild(home);
+    navBar.style.display='flex';
     cardEl.insertBefore(navBar,el.body);
-    const rail=mk('div','flex:0 0 48px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;background:#101419;border-right:1px solid '+C.line+';overflow-y:auto');
+    const rail=mk('nav','flex:0 0 108px;display:flex;flex-direction:column;gap:3px;padding:8px 4px;background:#101419;border-right:1px solid '+C.line+';overflow-y:auto;min-height:0');
+    rail.setAttribute('aria-label','Categorias das configurações');
     el.nxRailButtons=[];
-    [['overview','Início'],['video','Vídeo'],['images','Imagens'],['stream','Streaming'],['statistics','Estatísticas'],['gamepad','Gamepad'],['gyrotouch','Teclado e mouse'],['audio','Áudio'],['voice','Voz'],['remote','Remote Play'],['region','Região da loja'],['personalize','Interface'],['compatibility','Compatibilidade'],['advanced','Sistema']].forEach(function(item){
-      const btn=mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 42px;width:40px;border-radius:8px;color:'+C.dim);
-      btn.title=item[1];btn.setAttribute('aria-label',item[1]);btn.appendChild(ico(ICONS[item[0]]||ICONS.overview,22));
+    TABS.map(function(tab){return [tab.id,tab.label];}).forEach(function(item){
+      const btn=mk('button','all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:7px;min-height:44px;flex:0 0 auto;width:100%;padding:7px 6px;border-radius:8px;font-size:11px;line-height:1.3;color:'+C.dim);
+      btn.title=item[1];btn.setAttribute('aria-label',item[1]);btn.appendChild(ico(ICONS[item[0]]||ICONS.gamepad,17));btn.appendChild(mk('span','overflow-wrap:anywhere',item[1]));
       btn.addEventListener('click',function(e){e.stopPropagation();setTab(item[0]);});rail.appendChild(btn);
       el.nxRailButtons.push({id:item[0],button:btn});
     });
@@ -5938,7 +6061,7 @@ SOFTWARE.
     closeRail.title='Fechar';closeRail.setAttribute('aria-label','Fechar painel');closeRail.appendChild(ico(ICONS.close,22));
     closeRail.addEventListener('click',function(e){e.stopPropagation();setOpen(false,true);});rail.appendChild(closeRail);
     const content=mk('div','display:flex;flex-direction:column;flex:1;min-width:0;min-height:0');
-    content.appendChild(navBar);content.appendChild(el.body);
+    content.appendChild(navBar);nxBuildSettingsSearch(content);content.appendChild(el.body);
     cardEl.appendChild(rail);cardEl.appendChild(content);cardEl.style.flexDirection='row';
 
     wrap.appendChild(cardEl);
@@ -6121,21 +6244,21 @@ SOFTWARE.
     const groups=[
       {title:'Imagem e apresentação',sub:'Perfil do dispositivo e processamento visual',icon:ICONS.video,links:[['video','Vídeo e perfil do dispositivo'],['images','Imagens e filtros']]},
       {title:'Conexão',sub:'Servidores, qualidade e indicadores da sessão',icon:ICONS.stream,links:[['stream','Streaming'],['statistics','Estatísticas'],['remote','Remote Play · Xbox em casa'],['region','Região da loja']]},
-      {title:'Controles',sub:'Cada tipo de entrada em sua própria categoria',icon:ICONS.gamepad,links:[['gamepad','Gamepad'],['gyrotouch','Teclado e mouse']]},
+      {title:'Entradas e controles',sub:'Escolha como jogar, edite o HUD e ajuste seus dispositivos',icon:ICONS.gamepad,links:[['inputs','Escolher entrada e editar HUD'],['gamepad','Controle físico · ajustes'],['gyrotouch','Teclado e mouse · ajustes']]},
       {title:'Som',sub:'Reprodução e entrada de voz',icon:ICONS.audio,links:[['audio','Áudio'],['voice','Voz']]},
       {title:'Sistema e interface',sub:'Aparência, compatibilidade e manutenção',icon:ICONS.advanced,links:[['personalize','Interface do painel'],['compatibility','Compatibilidade'],['advanced','Sistema']]}
     ];
     groups.forEach(function(g){
       const section=mk('div','margin-bottom:8px;border:1px solid '+C.line+';border-radius:11px;overflow:hidden;background:'+C.panel);
       const button=mk('button','all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:11px;padding:12px;color:'+C.text+';text-align:left');
-      button.setAttribute('aria-expanded','false');
+      button.setAttribute('aria-expanded','true');
       button.appendChild(ico(g.icon,19));
       const titles=mk('span','display:flex;flex-direction:column;gap:3px;min-width:0;flex:1');
       titles.appendChild(mk('span','font-size:13px;font-weight:700',g.title));
       titles.appendChild(mk('span','font-size:10.5px;color:'+C.dim,g.sub));
       button.appendChild(titles);
       button.appendChild(ico('M6 9l6 6 6-6',15));
-      const details=mk('div','display:none;padding:0 8px 8px');
+      const details=mk('div','display:block;padding:0 8px 8px');
       g.links.forEach(function(link){
         const entry=mk('button','all:unset;box-sizing:border-box;display:block;cursor:pointer;width:100%;text-align:left;font-size:12px;color:'+C.text+';padding:11px 12px;border-top:1px solid '+C.line,link[1]);
         entry.addEventListener('click',function(e){e.stopPropagation();setTab(link[0]);});
@@ -6252,7 +6375,7 @@ SOFTWARE.
   let nxGamepadLastReadAt=0;
   function nxReadGamepadSnapshot() {
     if(typeof navigator.getGamepads!=='function') throw new Error('Gamepad API indisponível');
-    const pads=Array.from(navigator.getGamepads() || []).filter(Boolean);
+    const pads=Array.from(nxNativeGetGamepads ? nxNativeGetGamepads() : navigator.getGamepads() || []).filter(Boolean);
     nxGamepadLastPads=pads;
     nxGamepadLastReadAt=Date.now();
     return pads;
@@ -6419,7 +6542,7 @@ SOFTWARE.
     try { anyCoarse = !!window.matchMedia('(any-pointer: coarse)').matches; } catch (e) {}
     try { hover = !!window.matchMedia('(any-hover: hover)').matches; } catch (e) {}
     let gamepads = 0;
-    try { gamepads = Array.from(navigator.getGamepads ? navigator.getGamepads() : []).filter(function (pad) { return pad && pad.connected !== false; }).length; } catch (e) {}
+    try { gamepads = Array.from(typeof nxNativeGetGamepads === 'function' ? nxNativeGetGamepads() : navigator.getGamepads ? navigator.getGamepads() : []).filter(function (pad) { return pad && pad.connected !== false; }).length; } catch (e) {}
     return {
       touch: touchPoints > 0 || ('ontouchstart' in window) || coarse || anyCoarse,
       maxTouchPoints: touchPoints, pointerCoarse: coarse,
@@ -6485,16 +6608,100 @@ SOFTWARE.
     const normalized = (magnitude - profile.deadzone) / (1 - profile.deadzone);
     return Math.sign(x) * Math.pow(normalized, profile.curve);
   }
+  // Uma única ponte para perfis de analógico, isolamento e controle virtual.
+  const nxInputRoute = { mode: 'native', virtual: null };
+  function nxNeutralVirtualPad() {
+    return { id: 'NimboXcloud Virtual Controller', index: 0, connected: true, mapping: 'standard',
+      timestamp: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+      axes: [0,0,0,0], buttons: Array.from({length:17}, function(){return {pressed:false,touched:false,value:0};}) };
+  }
+  function nxReleaseVirtualPad() {
+    if (nxInputRoute.virtual) nxInputRoute.virtual = nxNeutralVirtualPad();
+    return true;
+  }
+  function nxSendVirtualPad(state) {
+    if (nxInputRoute.mode !== 'virtual-gamepad' || !state || !Array.isArray(state.axes) || state.axes.length !== 4 ||
+        !Array.isArray(state.buttons) || state.buttons.length !== 17) return false;
+    if (!state.axes.every(Number.isFinite) || !state.buttons.every(function(b){return b && Number.isFinite(b.value);})) return false;
+    const pad = nxNeutralVirtualPad();
+    pad.axes = state.axes.map(function(v){return Math.max(-1,Math.min(1,v));});
+    pad.buttons = state.buttons.map(function(b){const value=Math.max(0,Math.min(1,b.value));return {value:value,pressed:value>0,touched:value>0};});
+    nxInputRoute.virtual = pad;
+    return true;
+  }
+  function nxRouteGamepads(pads) {
+    if (nxInputRoute.mode === 'native' || nxInputRoute.mode === 'gamepad') return pads;
+    const result = Array.from(pads || [], function(){return null;});
+    if (nxInputRoute.mode === 'virtual-gamepad') {
+      const paused = typeof document !== 'undefined' && (document.hidden || (typeof openUI !== 'undefined' && openUI));
+      result[0] = paused ? nxNeutralVirtualPad() : (nxInputRoute.virtual || nxNeutralVirtualPad());
+    }
+    return result;
+  }
+  function nxGateGameInput(event) {
+    const mode=nxInputRoute.mode;
+    if(mode==='native'||openUI||!window.NimboTouch?.inputModeStatus?.().connected)return;
+    if(document.documentElement.classList.contains('nx-native-menu-expanded'))return;
+    const target=event.target;
+    if(target?.closest?.('#__xcu_panel__,#nimbo-touch-root,#nimbo-touch-panel,[role="dialog"],input,textarea,select,[contenteditable="true"]'))return;
+    if(event.code==='Escape'||event.code==='F9'||(event.ctrlKey&&event.shiftKey))return;
+    // Only gameplay surfaces; the library, Guide and configuration menus stay usable.
+    const keyboard=event.type==='keydown';
+    const surface=target?.closest?.('#game-stream,video[data-testid*="stream"],video[src^="blob:"]');
+    if(!surface&&!document.pointerLockElement&&!(keyboard&&(target===document.body||target===document.documentElement)))return;
+    const touch=event.pointerType==='touch'||event.type.startsWith('touch')||event.sourceCapabilities?.firesTouchEvents===true;
+    const allowed=mode==='keyboard-mouse'?!touch:mode==='native-touch'?touch:false;
+    if(allowed)return;
+    if(event.cancelable)event.preventDefault();event.stopImmediatePropagation();
+  }
+  function nxSetInputRoute(mode) {
+    if (!['native','keyboard-mouse','gamepad','virtual-keyboard-mouse','virtual-gamepad','native-touch'].includes(mode)) throw Error('Modo de entrada inválido.');
+    const previous=nxInputRoute.mode;
+    nxReleaseVirtualPad(); nxInputRoute.mode=mode;
+    nxInstallInputBridge();
+    if (mode !== 'native' && (!nxInputBridge.installed || navigator.getGamepads !== nxInputBridge.wrapper)) {
+      nxInputRoute.mode=previous;
+      throw Error('Não foi possível isolar os controles: outro script ou navegador controla a Gamepad API.');
+    }
+    if (mode==='virtual-gamepad' && previous!==mode) {
+      nxInputRoute.virtual=nxNeutralVirtualPad();
+      if (typeof window !== 'undefined' && typeof Event === 'function') {
+        const event=new Event('gamepadconnected');Object.defineProperty(event,'gamepad',{value:nxInputRoute.virtual});window.dispatchEvent(event);
+      }
+    } else if (previous==='virtual-gamepad' && mode!==previous && typeof window !== 'undefined' && typeof Event === 'function') {
+      const pad=nxNeutralVirtualPad();pad.connected=false;
+      const event=new Event('gamepaddisconnected');Object.defineProperty(event,'gamepad',{value:pad});window.dispatchEvent(event);
+    }
+    return true;
+  }
+  function nxTransformPhysicalPad(pad) {
+  if (!pad || !pad.connected || !pad.axes || !pad.axes.length || pad.mapping !== 'standard') return pad;
+  // Apenas eixos padrão dos sticks. Eixos adicionais ficam intactos.
+  const nativeAxes = Array.from(pad.axes);
+  const profiledAxes = nxInputEnabled() ? nativeAxes.map(function (v, i) {
+    return i < 4 ? nxTransformStickAxis(v, i) : v;
+  }) : nativeAxes;
+  const axes = nxMergeGyroAxes(profiledAxes, pad.buttons, pad.index);
+  // Evita criar um novo objeto se não houver diferença perceptível.
+  if (axes.every(function (v, i) { return Object.is(v, pad.axes[i]); })) return pad;
+  const output = { id: pad.id, index: pad.index, connected: pad.connected,
+    mapping: pad.mapping, timestamp: pad.timestamp, axes: axes, buttons: pad.buttons };
+  try { if ('vibrationActuator' in pad) output.vibrationActuator = pad.vibrationActuator; } catch (_) {}
+  try { if ('hapticActuators' in pad) output.hapticActuators = pad.hapticActuators; } catch (_) {}
+  nxInputBridge.transformedReads++;
+  return output;
+  }
   const NX_INPUT_APPLY_KEY = 'nx.input.applyAxes.v1';
   const nxInputBridge = { enabled: false, installed: false, error: '', transformedReads: 0, nativeReads: 0, fallbacks: 0, lastFallback: '', foreignOverride: false, restored: false };
   const nxOriginalGamepadDescriptor = Object.getOwnPropertyDescriptor(navigator, 'getGamepads');
+  const nxOriginalGetGamepads = navigator.getGamepads;
   const nxNativeGetGamepads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads.bind(navigator) : null;
   const NX_GYRO_GAME_KEY = 'nx.gyro.gameInput.v1';
   const NX_GYRO_TRIGGER_KEY = 'nx.gyro.activation.v1';
   function nxGyroGameEnabled() { return getPref(NX_GYRO_GAME_KEY, '0') === '1'; }
   function nxGyroActivationMode() { return getPref(NX_GYRO_TRIGGER_KEY, 'lt') === 'always' ? 'always' : 'lt'; }
   function nxInputEnabled() { return getPref(NX_INPUT_APPLY_KEY, '0') === '1'; }
-  function nxGameBridgeRequested() { return nxInputEnabled() || nxGyroGameEnabled(); }
+  function nxGameBridgeRequested() { return nxInputRoute.mode !== 'native' || nxInputEnabled() || nxGyroGameEnabled(); }
   const NX_GYRO_BLEND_KEY = 'nx.gyro.blend.v1';
   const NX_GYRO_MAX_AGE_MS = 250;
   function nxGyroBlend() {
@@ -6544,6 +6751,9 @@ SOFTWARE.
     nxInputBridge.enabled = false;
     setPref(NX_INPUT_APPLY_KEY, '0');
     setPref(NX_GYRO_GAME_KEY, '0');
+    if(nxInputRoute.mode!=='native'&&nxInputBridge.wrapper&&navigator.getGamepads===nxInputBridge.wrapper){
+      nxInputBridge.enabled=true;nxInputBridge.error+='; modo de entrada preservado';return;
+    }
     if (nxNativeGetGamepads) {
       try {
         if (!nxInputBridge.wrapper || navigator.getGamepads !== nxInputBridge.wrapper) {
@@ -6562,9 +6772,11 @@ SOFTWARE.
       } catch (err) { nxInputBridge.error += '; restauração: ' + String(err && err.message || err); }
     }
   }
-  function nxInstallInputBridge() {
-    nxInputBridge.enabled = nxGameBridgeRequested();
+  function nxInstallInputBridge(keepNativeRoute) {
+    // Instala uma passagem transparente no boot: o SDK pode guardar a função antes da primeira troca.
+    nxInputBridge.enabled = !!keepNativeRoute || nxGameBridgeRequested();
     if (!nxInputBridge.enabled || !nxNativeGetGamepads) return;
+    if(!nxInputBridge.wrapper&&navigator.getGamepads!==nxOriginalGetGamepads)nxInputBridge.foreignOverride=true;
     // Não instalar por cima de outro wrapper que assumiu a API após o boot.
     // O descriptor original é capturado uma única vez; ownership deve ser conferido.
     if (nxInputBridge.wrapper && navigator.getGamepads === nxInputBridge.wrapper) {
@@ -6572,7 +6784,8 @@ SOFTWARE.
       return;
     }
     if (nxInputBridge.wrapper && navigator.getGamepads !== nxInputBridge.wrapper) {
-      nxInputBridge.foreignOverride = true;
+      if(nxInputBridge.restored&&navigator.getGamepads===nxOriginalGetGamepads)nxInputBridge.restored=false;
+      else nxInputBridge.foreignOverride = true;
     }
     if (nxInputBridge.foreignOverride) {
       nxInputBridge.enabled = false;
@@ -6590,25 +6803,11 @@ SOFTWARE.
           pads = nxNativeGetGamepads();
           nxInputBridge.nativeReads++;
           if (!pads) return pads;
-          const result = Array.from(pads, function (pad) {
-            if (!pad || !pad.connected || !pad.axes || !pad.axes.length || pad.mapping !== 'standard') return pad;
-            // Apenas eixos padrão dos sticks. Eixos adicionais ficam intactos.
-            const nativeAxes = Array.from(pad.axes);
-            const profiledAxes = nxInputEnabled() ? nativeAxes.map(function (v, i) {
-              return i < 4 ? nxTransformStickAxis(v, i) : v;
-            }) : nativeAxes;
-            const axes = nxMergeGyroAxes(profiledAxes, pad.buttons, pad.index);
-            // Evita criar um novo objeto se não houver diferença perceptível.
-            if (axes.every(function (v, i) { return Object.is(v, pad.axes[i]); })) return pad;
-            const output = { id: pad.id, index: pad.index, connected: pad.connected,
-              mapping: pad.mapping, timestamp: pad.timestamp, axes: axes, buttons: pad.buttons };
-            try { if ('vibrationActuator' in pad) output.vibrationActuator = pad.vibrationActuator; } catch (_) {}
-            try { if ('hapticActuators' in pad) output.hapticActuators = pad.hapticActuators; } catch (_) {}
-            nxInputBridge.transformedReads++;
-            return output;
-          });
-          return result;
+          if(nxInputRoute.mode==='native'&&!nxInputEnabled()&&!nxGyroGameEnabled())return pads;
+          const result = Array.from(pads, nxTransformPhysicalPad);
+          return nxRouteGamepads(result);
         } catch (err) {
+          nxInputRoute.mode='native';nxReleaseVirtualPad();
           nxRestoreNativeGamepads('Falha no processamento: ' + String(err && err.message || err));
           if (pads) return pads;
           try { return nxNativeGetGamepads(); } catch (_) { return []; }
@@ -6621,7 +6820,19 @@ SOFTWARE.
     } catch (err) { nxInputBridge.error = String(err && err.message || err); }
   }
   // Instala no início do userscript, antes de a interface do site inicializar.
-  nxInstallInputBridge();
+  nxInstallInputBridge(true);
+  if (typeof window !== 'undefined') {
+    window.NimboInputHost = Object.freeze({
+      chooseMode: nxChooseInputMode, setMode: nxSetInputRoute, sendGamepad: nxSendVirtualPad, releaseGamepad: nxReleaseVirtualPad,
+      readPhysicalGamepads: function(){return nxNativeGetGamepads ? Array.from(nxNativeGetGamepads() || []) : [];},
+      heldKeys: function(){return Array.from(nxKeysHeld);},
+      getMode: function(){return nxInputRoute.mode;}
+    });
+    ['keydown','pointerdown','pointermove','pointerup','pointercancel','mousedown','mousemove','mouseup','wheel','touchstart','touchmove','touchend'].forEach(function(type){
+      window.addEventListener(type,nxGateGameInput,{capture:true,passive:false});
+    });
+    Promise.resolve().then(function(){if(nxSelectedInputMode()!=='native')nxChooseInputMode(nxSelectedInputMode(),false);});
+  }
   // Telemetria agregada de fontes de entrada; nunca envia ou injeta comandos.
   const nxInputEvents = [];
   const NX_INPUT_EVENTS_MAX = 30;
@@ -6980,7 +7191,7 @@ SOFTWARE.
       return;
     }
     const next = [];
-    const axesAreProcessed=nxInputBridge.installed && navigator.getGamepads===nxInputBridge.wrapper;
+    // O monitor lê dispositivos físicos pela API original; a prévia aplica a curva uma vez.
     try {
       for (let i = 0; i < (pads ? pads.length : 0); i++) {
         const pad = pads[i];
@@ -6992,7 +7203,7 @@ SOFTWARE.
           buttons: buttons.length, axes: axes.length,
           pressed: buttons.reduce(function (n, b) { return n + (b && b.pressed ? 1 : 0); }, 0),
           movingAxes: axes.filter(function (v) { return Number.isFinite(v) && Math.abs(v) > 0.18; }).length,
-          axisPreview: axes.slice(0, 4).map(function (v, i) { return Math.round((axesAreProcessed?v:nxTransformStickAxis(v, i)) * 100) / 100; })
+          axisPreview: axes.slice(0, 4).map(function (v, i) { return Math.round(nxTransformStickAxis(v, i) * 100) / 100; })
         });
       }
     } catch (err) {
@@ -7103,6 +7314,7 @@ SOFTWARE.
       url: location.href,
       inputCapabilities: inputCapabilities(),
       physicalInput: { requested: nxPhysicalInputMode(), summary: nxPhysicalInputSummary() },
+      selectedInput: { requested: nxSelectedInputMode(), status: window.NimboTouch?.inputModeStatus?.() || null },
       inputSources: nxInputSourcesReport(),
       relativeMouse: { samples: nxRelativeMouse.samples, lastAt: nxRelativeMouse.lastAt,
         distance: Math.round(nxRelativeMouse.distance), maxStep: Math.round(nxRelativeMouse.maxStep),
@@ -8094,3 +8306,4 @@ void main(){
     boot();
   }
 })();
+

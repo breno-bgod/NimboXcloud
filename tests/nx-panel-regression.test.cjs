@@ -78,7 +78,7 @@ test('keyboard and mouse owns NimboTouch, HUD and keyboard shortcuts only',()=>{
  assert.ok(start>=0&&end>start);
  const body=src.slice(start,end);
  assert.match(body,/Ative ou desative o NimboTouch/);
- assert.match(body,/Editor de HUD — prévia arrastável/);
+ assert.match(body,/O editor do HUD usado no jogo está em Entradas/);
  assert.match(body,/nxBindControls\(root,'keyboard'\)/);
  assert.doesNotMatch(body,/Giroscópio|Vibração do Gamepad/);
 });
@@ -124,3 +124,4 @@ test('controller and keyboard shortcuts keep separate storage keys and pages',()
  assert.match(src,/category==='gamepad'/);
  assert.match(src,/category==='keyboard'/);
 });
+

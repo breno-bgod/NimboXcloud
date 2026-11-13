@@ -28,8 +28,8 @@ test('INPUT-003 relative mouse sampling ignores synthetic and non-mouse events',
   sample({ isTrusted: true, pointerType: 'mouse' });
   assert.equal(state.invalid, 2);
 });
-test('INPUT-004 physical gamepad wrapper remains explicitly opt-in', () => {
-  assert.match(src, /function nxGameBridgeRequested\(\) \{ return nxInputEnabled\(\) \|\| nxGyroGameEnabled\(\); \}/);
+test('INPUT-004 processing and exclusive routes require explicit selection over the transparent boot bridge', () => {
+  assert.match(src, /function nxGameBridgeRequested\(\) \{ return nxInputRoute\.mode !== 'native' \|\| nxInputEnabled\(\) \|\| nxGyroGameEnabled\(\); \}/);
   assert.match(src, /if \(!nxInputBridge.enabled \|\| !nxNativeGetGamepads\) return;/);
 });
 test('INPUT-005 diagnostics do not record keyboard text or codes', () => {
@@ -72,3 +72,4 @@ test('INPUT-006 snapshot processing errors clear stale gamepad state', () => {
   assert.match(sample, /nxGamepadMonitor\.errors\+\+;\s*nxGamepadMonitor\.connected = 0;\s*nxGamepadMonitor\.active = 0;\s*nxGamepadMonitor\.snapshots = \[\];/);
   assert.equal((sample.match(/nxGamepadMonitor\.snapshots = \[\];/g) || []).length, 2);
 });
+

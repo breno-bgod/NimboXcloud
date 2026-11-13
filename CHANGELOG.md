@@ -1,3 +1,12 @@
+## [4.13.0] — 2026-11-13
+- Página Entradas reúne teclado/mouse físicos, controle físico, teclado/mouse virtuais, controle virtual e toque nativo, com recuperação pelo Automático do Xbox.
+- Reaproveitado o joystick virtual e seu editor para xCloud, preservando a saída xHome existente; escolha independente de uma conexão Remote Play.
+- Gerenciador único serializa liberação, configuração e ativação, recupera o modo anterior em falhas e invalida operações de uma sessão substituída.
+- Ponte de Gamepad API compartilhada com os perfis de eixos, instalada como passagem transparente no boot; modos explícitos isolam dispositivos. Leitura física separada evita confundir o joystick virtual com um controle conectado.
+- Painel passa a mostrar nomes das categorias, título da página, busca e destinos expostos no Início. Editor real fica em Entradas; prévia técnica é identificada e movida para Sistema.
+- Preservadas as correções xHome 4.12.94/4.12.95, configurações, layouts e avisos legais. Nenhuma dependência nova.
+- Validação local: 267 testes, 264 PASS, zero FAIL, três TODO. Chromium bloqueado ao iniciar por setsockopt; gameplay e exclusividade em cliente Xbox real ainda exigem teste. Roteiro: docs/ENTRADAS_E_PAINEL.md.
+
 ## [4.12.95] — 2026-11-12
 - Normalizados candidatos ICE xHome recebidos como objeto ou JSON string antes da aplicação e deduplicação.
 - A chave canônica considera candidate, sdpMid, sdpMLineIndex e usernameFragment; propriedades opcionais ausentes e nulas compartilham a representação padrão.
@@ -332,6 +341,7 @@ Este arquivo registra as mudanças relevantes do Xbox Cloud Gaming Unlock (PT-BR
 
 ## Próximas versões
 As alterações futuras devem incluir: versão, data, recursos adicionados, correções, incompatibilidades conhecidas e evidências de testes.
+
 
 
 

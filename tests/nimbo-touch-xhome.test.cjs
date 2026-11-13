@@ -28,7 +28,7 @@ test('NimboTouch routes touch HUD mouse, keyboard, scroll and release through th
 test('xHome HUD mode does not install a second Gamepad API hook or alter the xCloud transport', () => {
   assert.doesNotMatch(source, /navigator\.getGamepads\s*=/);
   assert.match(source, /new NimboXboxTransport\(raw\)/);
-  assert.match(source, /if\(!remote\)await transport\.activateKeyboardMouse\(\)/);
+  assert.match(source, /if\(!remote&&!this\.virtualGamepad\?\.enabled\)await transport\.activateKeyboardMouse\(\)/);
 });
 
 
@@ -68,7 +68,7 @@ test('xHome HUD teardown releases virtual inputs before clearing its adapter', (
 
 test('xHome HUD startup selects the remote transport without changing xCloud input configuration', () => {
   assert.ok(source.includes('const remote=this.remoteMode===true;\n    const transport=remote?this.remoteAdapter:nimboTransport;'));
-  assert.ok(source.includes('if(!remote)await transport.activateKeyboardMouse();'));
+  assert.ok(source.includes('if(!remote&&!this.virtualGamepad?.enabled)await transport.activateKeyboardMouse();'));
   assert.ok(source.includes("if(remote){\n      if(!transport||transport!==remoteInputAdapter||!transport.isReady?.())"));
 });
 
@@ -103,3 +103,4 @@ test('xHome touch and virtual-gamepad transport remain in main and distribution 
   assert.ok(downloadLine?.includes('/main/NimboXcloud.user.js'));
   assert.equal(hostSource.includes('fix/virtual-gamepad-panel-integration'), false);
 });
+

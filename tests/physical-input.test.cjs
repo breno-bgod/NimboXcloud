@@ -183,7 +183,7 @@ test('public physical activation pauses HUD and uses only the current cloud tran
   const owner = { connected: () => true, setPhysicalInputMode: async mode => { calls.push(mode); return { mode, state: 'configured' }; } };
   const ctx = { ui: { wanted: true, active: true, stop() { calls.push('stop-hud'); } }, nimboTransport: owner,
     nimboHasPhysicalGamepad: () => false };
-  vm.runInNewContext(section(touch, 'async function nimboSetPhysicalInputMode(mode){', '\n\n\nconst touchPanel=') +
+  vm.runInNewContext(section(touch, 'async function nimboSetPhysicalInputMode(mode){', 'const NIMBO_INPUT_MODES=') +
     '\nglobalThis.apply=nimboSetPhysicalInputMode;', ctx);
   assert.equal((await ctx.apply('keyboard-mouse')).state, 'configured');
   assert.deepEqual(calls, ['stop-hud', 'keyboard-mouse']);
@@ -224,8 +224,8 @@ test('physical mode summary does not claim gameplay confirmation when SDK only a
 });
 
 test('physical UI is separate from the touch HUD and monitor names bitrate explicitly', () => {
-  assert.match(main, /nxPhysicalInputGroup\(root,'keyboard'\)/);
-  assert.match(main, /nxPhysicalInputGroup\(root,'gamepad'\)/);
+  assert.match(main, /TAB_BUILDERS\.inputs=nxInputModePage/);
+  assert.match(main, /nxChooseInputMode\(nxSelectedInputMode\(\)==='virtual-keyboard-mouse'/);
   assert.match(main, /Ativar HUD de teclado e mouse por toque/);
   const monitor = section(main, '  function nxTelemetryTick(){', '  setInterval(nxTelemetryTick,');
   assert.match(monitor, /bitrate:'Bitrate '/);
