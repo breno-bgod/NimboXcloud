@@ -1,0 +1,56 @@
+{
+  "checkedAt": "2026-11-13",
+  "normalization": "UTF-8; CRLF para LF; exatamente uma quebra de linha final",
+  "sources": [
+    {
+      "id": "psbox-header",
+      "repo": "RafaelNGP/psbox-cloud-gaming",
+      "sha": "eb63daf8f953684387a06a7bab8ef0a1e3133463",
+      "path": "src/xcloud/gssv.h",
+      "url": "https://github.com/RafaelNGP/psbox-cloud-gaming/blob/eb63daf8f953684387a06a7bab8ef0a1e3133463/src/xcloud/gssv.h",
+      "anchors": [
+        "std::string offering = \"xgpuweb\""
+      ],
+      "sha256": "4de29b53db9ccc4790f24e4cedf16c4a89d5b0961940c7fc7dbc601b448f5c30"
+    },
+    {
+      "id": "psbox-session",
+      "repo": "RafaelNGP/psbox-cloud-gaming",
+      "sha": "eb63daf8f953684387a06a7bab8ef0a1e3133463",
+      "path": "src/xcloud/gssv.cpp",
+      "url": "https://github.com/RafaelNGP/psbox-cloud-gaming/blob/eb63daf8f953684387a06a7bab8ef0a1e3133463/src/xcloud/gssv.cpp",
+      "anchors": [
+        "kClientHeader = \"XboxComBrowser\"",
+        "settings.set(\"sdkType\", \"web\")",
+        "body.set(\"titleId\", home ? \"\" : titleId)",
+        "body.set(\"serverId\", home ? titleId : \"\")"
+      ],
+      "sha256": "9594d79a21b43e9f40ada0bf46009816de80bbb96967089fc15540b9c057d022"
+    },
+    {
+      "id": "android-auth",
+      "repo": "Ricardex742/xCloudNative",
+      "sha": "a6ab26f4e29d84bf09e130bd8b6ac2325f099e59",
+      "path": "app/src/main/java/com/xcloud/tclnative/auth/XalAuthenticator.kt",
+      "url": "https://github.com/Ricardex742/xCloudNative/blob/a6ab26f4e29d84bf09e130bd8b6ac2325f099e59/app/src/main/java/com/xcloud/tclnative/auth/XalAuthenticator.kt",
+      "anchors": [
+        ".put(\"offeringId\", \"xgpuweb\")",
+        "\"XboxComBrowser\""
+      ],
+      "sha256": "94c66b12f19b432e556b10394144113f2cae9da8167dbd25a7e6d262ba8f99d5"
+    },
+    {
+      "id": "android-session",
+      "repo": "Ricardex742/xCloudNative",
+      "sha": "a6ab26f4e29d84bf09e130bd8b6ac2325f099e59",
+      "path": "app/src/main/java/com/xcloud/tclnative/signaling/XCloudSignalingClient.kt",
+      "url": "https://github.com/Ricardex742/xCloudNative/blob/a6ab26f4e29d84bf09e130bd8b6ac2325f099e59/app/src/main/java/com/xcloud/tclnative/signaling/XCloudSignalingClient.kt",
+      "anchors": [
+        ".put(\"clientAppType\", \"browser\")",
+        ".put(\"sdkType\", \"web\")",
+        "\"/v5/sessions/cloud/play\""
+      ],
+      "sha256": "8962b8be87e1a9bf873b7e1fba7aa87b1a6466ace568aef9b4881773a5cef1c7"
+    }
+  ]
+}

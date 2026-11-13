@@ -1,0 +1,12 @@
+[
+  {
+    "case": "modified-source",
+    "exitCode": 1,
+    "observed": "source-mismatch"
+  },
+  {
+    "case": "missing-source",
+    "exitCode": 1,
+    "observed": "source-unavailable"
+  }
+]

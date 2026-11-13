@@ -12,7 +12,7 @@ Este espaço reúne pesquisa e experimentos para revisão antes de qualquer inco
 | Fortnite Console no Better xCloud | Pesquisa | Patch de entrada de toque identificado; localizar integração real equivalente no SDK atual |
 | Orbita | Bloqueada para inspeção do código atual | Site e ajuda consultados; repositório vinculado indisponível |
 | Linux nativo versus navegador | Pesquisa | Mapear APIs e dependências antes de propor adaptação |
-| Novos repositórios na janela de 30 dias | Pesquisa pendente | Registrar created_at, SHA e datas verificadas; evitar duplicatas |
-| Experimentos de protocolo | Nenhum executado neste espaço | [Regras](../../experiments/console/README.md) |
+| Novos repositórios na janela de 30 dias | Pesquisa | xCloudNative inspecionado; XCloud4 e xCloudPS4 identificados, inspeção pendente |
+| Perfis cloud de clientes nativos | Pesquisa; auditoria estática reproduzida | [Auditoria offline](../../experiments/console/client-profile-audit/README.md); quatro fontes, dez âncoras, controles negativos aprovados; sem sessão real |
 
 Estados permitidos: pesquisa, simulação aprovada, falha, bloqueada, validada em sessão real. Simulação aprovada não comprova áudio, vídeo, comandos ou gameplay.

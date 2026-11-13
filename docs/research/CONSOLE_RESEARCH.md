@@ -38,3 +38,49 @@ Android também pode anunciar Linux no user-agent. Esse texto não fornece APIs 
 - Limites e próximo passo. Sem credenciais, tokens ou afirmação de gameplay baseada apenas em WebRTC/CI.
 
 Nenhum resultado de GTA VI é declarado. A validação depende da disponibilidade efetiva do título ao mantenedor e de sessão autorizada.
+
+## Investigação de perfis — 2026-11-13
+
+### Pergunta e conclusão delimitada
+
+PSBox e um cliente Android TV novo usam oferta específica de console nos caminhos de sessão inspecionados? A evidência localizada aponta para xgpuweb/perfis web; não foi demonstrado acesso a oferta exclusiva do Xbox. Não se conclui que toda adaptação seja impossível nem que todos os caminhos desses aplicativos tenham sido auditados.
+
+### Janela e candidatos
+
+Busca delimitada: 2026-10-14 a 2026-11-13, queries GitHub `xcloud created:>=2026-10-14` e `xcloud pushed:>=2026-10-14`, além de busca web PSBox/Orbita/cloud no console. O fetch REST genérico de search/repositories foi rejeitado pela ferramenta; usado o conector específico de busca. A lista não é exaustiva.
+
+- **Ricardex742/xCloudNative**: criado 2026-10-31T06:06:50Z, MIT; snapshot a6ab26f4e29d84bf09e130bd8b6ac2325f099e59 de 2026-11-12T21:36:14Z. Esse head é documental. Último commit retornado para XCloudSignalingClient.kt: 739d2b79be555b1f90d23f4ce005d59600352b2e de 2026-11-11T04:24:22Z, mudança de internacionalização. O mecanismo abaixo foi inspecionado no snapshot, sem alegar que foi introduzido por esse commit.
+- **asp11edgr/XCloud4**: criado 2026-10-20T06:50:00Z, GPL-3.0. Candidato descoberto; código/último commit ainda não inspecionados, sem conclusão funcional.
+- **ironweb10/xCloudPS4**: criado 2026-10-16T13:37:06Z. Candidato descoberto; licença/código/último commit ainda não verificados, sem conclusão funcional.
+- **PSBox**: criado 2026-10-07T03:34:58Z, fora da janela de criação; projeto existente atualizado. Snapshot eb63daf8f953684387a06a7bab8ef0a1e3133463 de 2026-11-13T02:38:53Z, mensagem de versão 1.7.1 e ajustes de login/biblioteca. Fonte LICENSE GPL-3.0 consultada.
+- **Better xCloud**: snapshot ea4d19f2800cee9cfa387a0c9c37b3711cf208c7 de 2026-11-11T14:29:48Z. Patcher forceFortniteConsole continua localizado em patcher.ts; não é evidência de autorização geral de catálogo.
+
+### Evidência primária
+
+Fontes fixadas e hashes em [sources.json](../../experiments/console/client-profile-audit/sources.json).
+
+PSBox: gssv.h define xgpuweb como offering padrão; gssv.cpp usa XboxComBrowser, sdkType web e separa título cloud de serverId home. Existem perfis condicionais de dispositivo no arquivo: uma busca de texto não prova qual perfil foi usado em determinada sessão real.
+
+Android TV: XalAuthenticator.kt declara offeringId xgpuweb e XboxComBrowser; XCloudSignalingClient.kt declara clientAppType browser, sdkType web e início sessions/cloud/play. Mensagens internas denominadas CONSOLE_CONNECT não foram tratadas como prova de oferta console; nome de estado não substitui análise de autorização.
+
+O anúncio [Xbox Wire de 10/11](https://news.xbox.com/en-us/2026/11/10/grand-theft-auto-6-comes-to-xbox-cloud-gaming-november-19/) informa início futuro do streaming de GTA VI em Xbox One/Series em 19/11, com condições por dispositivo/mercado e compra separada. A leitura confirma o contexto de investigação, mas não oferece uma sessão comparativa ou garantia para navegador. Nenhum teste de GTA VI foi executado.
+
+### Experimento reproduzível e resultado
+
+[client-profile-audit](../../experiments/console/client-profile-audit/README.md): ferramenta offline sem dependências ou importação no userscript. Hipótese limitada: localizar as declarações nos snapshots verificáveis antes de tentar reproduzir um perfil. Não são inventados endpoints ou payloads; nenhuma chamada autenticada é executada.
+
+Comando: `node experiments/console/client-profile-audit/audit.mjs DIRETORIO_DAS_FONTES`.
+
+Resultado: quatro fontes com integridade correspondente e dez âncoras localizadas. Fonte modificada foi rejeitada com source-mismatch/código 1; fonte removida com source-unavailable/código 1. Sintaxe Node aprovada. Saídas positivas/negativas preservadas no diretório do experimento.
+
+**Estado: pesquisa / auditoria estática reproduzida.** Não é simulação de sessão aprovada nem gameplay validado.
+
+### Aplicabilidade e próximo passo
+
+| Caminho | Console próprio | Dependência observada | Android / iOS / desktop em navegador |
+| --- | --- | --- | --- |
+| PSBox cloud inspecionado | Não é usado serverId home nesse caminho | Cliente nativo, mídia/transporte próprios; autorização cloud | Equivalência de oferta não demonstrada nas três plataformas |
+| PSBox xHome | Sim | Console autorizado e fluxo home | Validação real pendente; não substitui oferta cloud |
+| xCloudNative cloud inspecionado | Não aparece como requisito no início cloud analisado | Android/Kotlin e reprodução nativa | Equivalência de oferta não demonstrada; APK não comprova página web |
+
+Próxima evidência necessária: comparação de um mesmo título na nuvem Xbox e na web com conta, região, assinatura e período compatíveis; registrar separadamente catálogo, início aceito, mídia e comandos. Não alterar identidade do Nimbo para inferir resultado. Sem acesso a console/sessão, investigar candidatos ainda não inspecionados ou o caminho de capacidades/catalogação, aproveitando os registros do ajudante externo.

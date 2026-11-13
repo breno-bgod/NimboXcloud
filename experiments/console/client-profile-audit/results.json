@@ -1,0 +1,74 @@
+{
+  "kind": "static-source-audit",
+  "gameplayValidated": false,
+  "results": [
+    {
+      "id": "psbox-header",
+      "commit": "eb63daf8f953684387a06a7bab8ef0a1e3133463",
+      "sourceIntegrity": "matched",
+      "anchors": [
+        {
+          "anchor": "std::string offering = \"xgpuweb\"",
+          "line": 103
+        }
+      ]
+    },
+    {
+      "id": "psbox-session",
+      "commit": "eb63daf8f953684387a06a7bab8ef0a1e3133463",
+      "sourceIntegrity": "matched",
+      "anchors": [
+        {
+          "anchor": "kClientHeader = \"XboxComBrowser\"",
+          "line": 23
+        },
+        {
+          "anchor": "settings.set(\"sdkType\", \"web\")",
+          "line": 495
+        },
+        {
+          "anchor": "body.set(\"titleId\", home ? \"\" : titleId)",
+          "line": 513
+        },
+        {
+          "anchor": "body.set(\"serverId\", home ? titleId : \"\")",
+          "line": 516
+        }
+      ]
+    },
+    {
+      "id": "android-auth",
+      "commit": "a6ab26f4e29d84bf09e130bd8b6ac2325f099e59",
+      "sourceIntegrity": "matched",
+      "anchors": [
+        {
+          "anchor": ".put(\"offeringId\", \"xgpuweb\")",
+          "line": 191
+        },
+        {
+          "anchor": "\"XboxComBrowser\"",
+          "line": 80
+        }
+      ]
+    },
+    {
+      "id": "android-session",
+      "commit": "a6ab26f4e29d84bf09e130bd8b6ac2325f099e59",
+      "sourceIntegrity": "matched",
+      "anchors": [
+        {
+          "anchor": ".put(\"clientAppType\", \"browser\")",
+          "line": 72
+        },
+        {
+          "anchor": ".put(\"sdkType\", \"web\")",
+          "line": 257
+        },
+        {
+          "anchor": "\"/v5/sessions/cloud/play\"",
+          "line": 258
+        }
+      ]
+    }
+  ]
+}
