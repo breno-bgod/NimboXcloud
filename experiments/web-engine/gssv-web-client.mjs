@@ -66,7 +66,7 @@ export class GssvWebClient {
     return this.#url(this.#session + suffix);
   }
   async catalogRequest(path, { signal } = {}) {
-    if (!/^\\/v2\\/titles(?:\\?|\\/mru\\?)/.test(path)) throw new Error('INVALID_CATALOG_PATH');
+    if (!/^\/v2\/titles(?:\?(?:mr=\d+)(?:&ct=[^&#]+)?|\/mru\?mr=\d+)$/.test(path)) throw new Error('INVALID_CATALOG_PATH');
     return this.#request('GET', this.#url(path), undefined, { signal });
   }
   async startSession(titleId, { locale = 'pt-BR', signal } = {}) {
