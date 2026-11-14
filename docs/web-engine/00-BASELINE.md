@@ -2,7 +2,7 @@
 
 **Data:** 2026-11-14
 **Branch:** `experiment/web-engine-phase-0-baseline`
-**Estado:** EM ANDAMENTO — inventário remoto parcial; testes locais e homologação pendentes.
+**Estado:** EM ANDAMENTO — CI automatizado verificado; auditoria detalhada e homologação real pendentes.
 **Escopo:** documentação e auditoria, sem alterações no runtime.
 
 ## 0.1 Referência do repositório
@@ -63,7 +63,7 @@ Linhas referentes ao arquivo da `main` lido em 2026-11-14; posições podem muda
 
 ## 0.5 Testes e limitações
 
-**Não executados neste ambiente:** `node --check NimboXcloud.user.js`, `node --test tests/*.test.cjs tests/*.test.mjs`, testes de hardware, Edge/Chrome, partida autorizada e CI deste novo commit. O acesso local à rede GitHub pelo contêiner falhou na resolução DNS; leitura e escrita foram feitas via conector GitHub. Não registrar PASS sem execução.
+**Executados pelo GitHub Actions no PR #32:** workflow \`NimboXcloud baseline\`, execução #43623816047, job \`smoke\` (#132535136180), sucesso no commit \`e54adcd428589bc57cd195483acce5e287108990\`. Sintaxe do userscript e Touch HUD: PASS; testes Node: **403 total, 400 PASS, 0 FAIL, 3 TODO**; relatório estático executado com quatro ocorrências de risco: \`gamepad-override\` (linhas 7285 e 7336), \`xhr-send-override\` (1750) e \`fetch-override\` (1356). São padrões para revisão, não falhas demonstradas. Log: https://github.com/breno-bgod/NimboXcloud/actions/runs/43623816047 .\n\n**Não executados localmente neste ambiente:** `node --check NimboXcloud.user.js`, `node --test tests/*.test.cjs tests/*.test.mjs`, testes de hardware, Edge/Chrome, partida autorizada e CI deste novo commit. O acesso local à rede GitHub pelo contêiner falhou na resolução DNS; leitura e escrita foram feitas via conector GitHub. Não registrar PASS sem execução.
 
 **Resultados históricos, não repetidos:** documentação de 4.15.4 relata 399 PASS, 0 FAIL, 3 TODO. Esse total não deve ser atribuído à versão 4.15.5 nem à branch atual sem novo teste.
 
@@ -75,8 +75,8 @@ Linhas referentes ao arquivo da `main` lido em 2026-11-14; posições podem muda
 - [x] Bíblia 1.0 registrada.
 - [x] HEAD inicial, versão observada e PR #31 verificados.
 - [x] Inventário de arquivos, testes e funções principais iniciado.
-- [ ] CI e testes realmente executados no HEAD experimental.
+- [x] CI e testes realmente executados no HEAD experimental (400 PASS, 0 FAIL, 3 TODO; ver execução #43623816047).
 - [ ] Mapa completo de responsabilidades e riscos revisado.
 - [ ] Aceite explícito do mantenedor para encerrar Fase 0.
 
-**Conclusão:** Fase 0 **não concluída**. Fases 1–9 permanecem bloqueadas.
+**Conclusão:** Fase 0 **não concluída**; resta revisar hooks, persistência e riscos do baseline antes do avanço automático. Fases 1–9 permanecem bloqueadas.
