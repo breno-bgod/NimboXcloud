@@ -2,6 +2,10 @@
 
 > Documento operacional. Toda execução autônoma deve reler a versão atual de `main` e atualizar este plano conforme evidências. Nunca presumir que a versão indicada aqui ainda é a mais recente.
 
+## Escopo vigente da automação visual — 2026-11-14
+
+Esta frente trabalha exclusivamente na apresentação visual, arquitetura de informação, layout, navegação, legibilidade, responsividade e UX. Não altera lógica de jogabilidade/entrada, Gamepad API, eventos, sensores funcionais, rede, autenticação, sessão, streaming, WebRTC, persistência, semântica de configuração ou telemetria. Reclassificações devem reutilizar os mesmos nós/builders e callbacks, sem duplicar opções. Bugs funcionais são registrados para a outra frente, não corrigidos aqui.
+
 ## Prioridade vigente — unificação autorizada
 
 Uma versão oficial na main, com interface do PR #29 preservada. Giroscópio/touchpad do PR #27 e fontes experimentais PSBox do PR #24 foram reunidos; fontes nativas não executam no userscript. Validar giroscópio/touchpad no aparelho; continuar port de núcleo/mídia/entrada com contratos de sessão e lifecycle, preservando todas as funções existentes. Sem alegar APK/streaming PSBox integrado enquanto não existir. Automação a cada duas horas; próximos avanços em branches/PRs sobre a main unificada, sem force push, merge próprio automático ou release automática.
@@ -1214,3 +1218,62 @@ Critérios de aceite:
 - Resultados anteriores preservados, não reexecutados: observer 11/11 Node/VM; identity-boundary 4/4; demais experiências usam objetos/fixtures sintéticos. Playwright/Chromium falhou antes da navegação por Crashpad `setsockopt Operation not permitted`/SIGTRAP. Não houve teste real em Chrome, Edge, Android, iOS, Xbox, stream ou gameplay.
 - **Risco:** inferir reconhecimento Xbox a partir de UA, header, app nativo, nome de console, catálogo ou WebRTC conectado. Não fazer isso.
 - **Próxima tarefa única:** obter a comparação pareada de um título já disponível ao mantenedor na nuvem do Xbox e no browser oficial, com conta/plano/região iguais; só usar GTA VI após 19/11 e entitlement efetivo.
+
+
+## Execução visual — 2026-11-14 — navegação compacta e classificação Mobile (4.15.5)
+
+### Estado consultado e reconciliação
+- HEAD inicial e final de main nesta execução: 3c50bf0c4619f29e472348bd75a18495b73ee87d. A main não foi modificada.
+- Versão lida no userscript e CHANGELOG: 4.15.5. Blobs iniciais: NimboXcloud.user.js 2379a5858287a30db93cf822699b14d9817c81b6; CHANGELOG.md 06ff03ec3fdf7c64abbf55faaf840e6ae8f0d7f4; DEVELOPMENT_ROADMAP.md f416e8509ffe278e0c10233815059b31dde21355.
+- Árvore: 209 entradas, 40 arquivos de teste e três workflows (baseline, regressões xHome e plataforma Android PSBox). Não existe package.json na raiz.
+- Commits recentes relidos: 3c50bf0 (merge do PR #31, acesso NX no catálogo/menu), 6a53051 (metadados 4.15.5), 58eb76d (posicionamento na barra nativa) e 7f0e0e1 (unificação 4.15.4). O PR #31 alterou posicionamento/âncora e metadados, não a taxonomia interna do painel.
+- PR visual anterior #28 usava base 4.15.2 e estava 49 commits atrás da main atual. Foi encerrado sem merge e substituído pelo PR #35. A branch antiga foi preservada; sem force push.
+
+### Inventário atual da interface
+- TABS mantém nove destinos: Início, Vídeo e imagem, Streaming, Estatísticas, Entradas, Áudio e voz, Remote Play, Interface e Sistema.
+- Entradas possui uma navegação interna com Teclado e mouse, Controle e Mobile. Navegar entre famílias não ativa outro modo; o seletor único continua controlando os cinco modos e a recuperação Automático do Xbox.
+- Mobile: controle virtual e teclado/mouse virtuais, dois editores de HUD, controles do sensor do smartphone (FPS/Corrida), toggle do touchpad e sensibilidade compartilhada do touchpad. Nesta execução, os grupos de giroscópio/touchpad passaram a ser montados somente quando a família Mobile está selecionada. Os mesmos builders, callbacks, valores e preferências foram preservados.
+- Joypad: gamepads físicos conectados, perfis de analógico, vibração e atalho para abrir o painel. O atalho não remapeia comandos do jogo. Não foi encontrado editor de layout físico nem remapeamento real de botões A/B/X/Y.
+- Teclado e Mouse: captura de mouse físico/Pointer Lock, atalhos do painel e modo físico; macros e remapeamento de teclas do jogo não foram encontrados como controles funcionais.
+- Stream: servidores/datacenter e opções de conexão/rede. A implementação atual exclui os grupos legados “Qualidade de vídeo” e “Monitor de transmissão”.
+- Vídeo e imagem: presets de qualidade solicitada (Máximo/HQ 1080p e Padrão/1080p), medição da resolução recebida, dispositivo, enquadramento, filtros, perfis locais e processamento GPU.
+- Estatísticas: métricas, histórico, ativação e personalização do NX Stream Monitor.
+- Áudio e voz: microfone/entrada de voz e reprodução/saída/efeitos; o builder já apresenta microfone antes dos ajustes de áudio.
+- Remote Play: destino próprio e identificado como experimental. A documentação 4.15.4 declara ausência de homologação com console físico; não foi feita validação física nesta execução.
+- Desenvolvedor/Sistema: compatibilidade, relatório sanitizado, identificação de browser/cliente, observação de protocolo, diagnóstico de entradas, estado do sistema e ferramentas de manutenção.
+- Gerais/Interface: aparência do painel NX (transparência, tom e cores). Não existe seletor de idioma da interface; navigator.language aparece apenas em dados observacionais. Não foi encontrada opção funcional FSR ou HDR; a ocorrência textual HDR refere-se ao objeto do cabeçalho, não a uma configuração de High Dynamic Range.
+- Divergência documental: docs/PAINEL_ORGANIZADO.md 4.13.2 afirma que Streaming reúne qualidade solicitada, mas o builder atual coloca os presets em Vídeo e imagem e os remove da página Stream. Áudio e vídeo também continuam em páginas separadas. A próxima matriz deve corrigir o mapeamento documental antes de qualquer divisão.
+
+### Alterações visuais nesta branch
+- NimboXcloud.user.js: CSS exclusivo de apresentação em viewports até 640 px. O painel passa a empilhar navegação e conteúdo; a navegação de categorias vira uma faixa horizontal rolável, com rótulos visíveis também abaixo de 480 px, alvos mínimos de 44 px e altura dinâmica com fallback 100vh/100dvh. O conteúdo mantém rolagem própria. Nenhuma ordem DOM ou handler foi alterado.
+- NimboXcloud.user.js: nxPhoneControls e nxTouchpadSettings são renderizados somente na família Mobile. Os dois editores de HUD já estavam nessa família. A saída do giroscópio do smartphone pode complementar um gamepad físico, mas a configuração do sensor permanece classificada em Mobile; não há cópia duplicada em Joypad.
+- tests/panel-layout.test.cjs: novo teste estático da navegação compacta e asserções para garantir que controles de telefone/touchpad só apareçam na família Mobile.
+- CHANGELOG.md não foi alterado: a proposta permanece em PR, não é release publicada.
+
+### Referências de design pesquisadas
+- Microsoft Fluent 2 Nav — https://fluent2.microsoft.design/components/web/react/core/nav/usage/: rótulos breves, linguagem simples, hierarquia curta, conteúdo fácil de escanear e adaptação da navegação em 640 px.
+- Microsoft Fluent 2 Accessibility — https://fluent2.microsoft.design/accessibility: hierarquia de títulos, foco visível, navegação por teclado, contraste WCAG AA e reflow.
+- Microsoft Fluent 2 Layout — https://fluent2.microsoft.design/layout: escala de espaçamento baseada em 4 px, reflow responsivo e alvos de toque de 44 px para iOS/Web e 48 px para Android.
+- Apple Human Interface Guidelines — Tab bars — https://developer.apple.com/design/human-interface-guidelines/tab-bars: rótulos claros para destinos de navegação e uso de ícone acompanhado de texto em contextos compactos.
+- Foram extraídos princípios; nenhum asset ou código de terceiros foi copiado.
+
+### Commits, testes e resultados
+- Branch: automation/visual-mobile-nav-2026-11-14, criada sobre o HEAD atual da main.
+- Commits de implementação/teste: 5cff73ed97469ce5835eb5451b556d926064f141 (CSS), 8e9f281acc8ef5447463fe4a590bbf88baee3178 (teste de navegação), edbaac61c9ea0ac1f92ccf430e3e9d99de431c2f (classificação Mobile), 31072811eb73320e008ee6b7204da5a338af2359 (teste de classificação).
+- PR #35: https://github.com/breno-bgod/NimboXcloud/pull/35 — rascunho, sem merge.
+- Baseline GitHub Actions run 43645151053: PASS. Executou node --check do userscript e módulo Touch HUD, suíte Node e static-risk-report.
+- Regressões GitHub Actions run 43645151084: PASS. Sintaxe e suíte completa.
+- Cada workflow executou 404 testes: 401 PASS, 0 FAIL, 3 TODO preexistentes. O teste de composição das famílias de entrada passou como subteste 181; o teste da navegação compacta passou como subteste 189 em ambos os workflows.
+- Não executados nesta rodada: Node local, build/lint npm independente (não há package.json raiz), screenshot, Playwright/Chromium, Chrome/Edge, Android, DeX, orientação retrato/paisagem ou partida autenticada. CI não equivale a homologação visual em dispositivo.
+
+### Riscos e pendências
+- A faixa horizontal mantém todos os destinos alcançáveis, mas exige rolagem para as categorias fora da área inicial. A aparência, a rolagem por toque, foco e safe areas ainda precisam de inspeção real.
+- O giroscópio do smartphone pode complementar o controle físico; ao classificar a configuração em Mobile, o usuário precisa abrir essa família para ajustar o sensor. O modo de entrada ativo não é alterado pela navegação entre famílias.
+- A taxonomia principal ainda não corresponde às nove categorias solicitadas. A divisão não foi feita porque o seletor único de cinco modos é transversal e não deve ser duplicado.
+- A qualidade solicitada continua em Vídeo e imagem, não em Stream; áudio e imagem permanecem em páginas distintas. Não mover builders nesta execução.
+
+### Próxima tarefa visual única — P1: matriz definitiva de categorias e destino único do seletor
+1. Mapear cada grupo e cada linha dos builders atuais para Mobile, Joypad, Teclado e Mouse, Stream, Vídeo e Áudio, Estatísticas, Remote Play, Desenvolvedor/Avançado e Gerais.
+2. Definir um único destino para o seletor dos cinco modos, mantendo-o único e acessível.
+3. Critérios de aceite: cada configuração em exatamente uma categoria; HUDs e sensor/touchpad do smartphone em Mobile; somente controles físicos em Joypad; somente teclado/mouse físicos em sua categoria; servidores, qualidade, resolução e rede em Stream; imagem e áudio agrupados; estatísticas separadas de diagnóstico; Remote Play explicitamente experimental; Gerais somente com preferências universais existentes; IDs, aliases, callbacks, storage keys, valores, defaults e eventos preservados.
+4. Testes devem montar os builders reais e provar ausência de grupos duplicados ou perdidos. Não iniciar a divisão visual até a matriz e os testes cobrirem o seletor único.
