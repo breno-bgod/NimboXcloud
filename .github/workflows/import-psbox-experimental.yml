@@ -6,6 +6,9 @@ on:
     paths:
       - .github/workflows/import-psbox-experimental.yml
   workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/import-psbox-experimental.yml
 permissions:
   contents: write
 jobs:
