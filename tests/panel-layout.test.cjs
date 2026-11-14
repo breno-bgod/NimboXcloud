@@ -183,3 +183,18 @@ test('monitor never steals native Xbox or gameplay clicks outside the NX editing
  ctx.tick();assert.equal(monitor.style.pointerEvents,'none');ctx.openUI=true;ctx.tick();assert.equal(monitor.style.pointerEvents,'auto');
 });
 
+
+
+test('compact panel navigation keeps category labels visible in a horizontal touch rail',()=>{
+ const start=src.indexOf('  function nxWorkspaceStyle() {');
+ const end=src.indexOf('  function buildUI() {',start);
+ assert.ok(start>=0&&end>start,'workspace presentation stylesheet exists');
+ const styles=src.slice(start,end);
+ assert.match(styles,/@media\(max-width:640px\)/);
+ assert.match(styles,/flex-direction:column!important/);
+ assert.match(styles,/overflow-x:auto!important/);
+ assert.match(styles,/min-height:44px!important/);
+ assert.match(styles,/button:not\(:last-child\)>span:nth-child\(2\)\{display:block!important/);
+ assert.match(styles,/overscroll-behavior-x:contain!important/);
+ assert.match(styles,/order:1!important/);
+});
