@@ -1,3 +1,8 @@
+## [4.15.5] — 2026-11-14 — acesso NX na barra nativa
+- NX junto ao indicador de controle no catálogo e ao Xbox no menu recolhível durante o jogo; acompanha expansão/recolhimento, sem aba móvel à esquerda.
+- Recuperação compacta no topo quando a barra nativa não é encontrada. Painel, preferências, entradas e módulo 1.4.1 preservados.
+- Baseline e regressão aprovados no PR #31 antes da atualização de metadados. Validação visual no Edge Android e fullscreen permanece pendente.
+
 ## [4.15.4] — 2026-11-13 — base oficial unificada
 - Perfis FPS/Corrida disponíveis em todas as famílias da Central de Entradas, sem mudar a entrada selecionada; permissão após ação explícita, sem recarga. FPS soma velocidade angular no analógico direito; Corrida soma rotação de volante no eixo horizontal esquerdo.
 - Paisagens 90°/270° com referência orientada à tela; retrato, menu, perda de foco, background e amostras antigas não contribuem. Desligar mantém entrada original.
