@@ -40,6 +40,7 @@ jobs:
           cp experiments/web-engine/*.mjs _site/
           cp experiments/web-engine/cloud.html _site/index.html
           cp experiments/web-engine/player.html _site/player.html
+          cp experiments/web-engine/auth-test.html _site/auth-test.html
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
