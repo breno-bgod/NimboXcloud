@@ -6099,6 +6099,14 @@ SOFTWARE.
 #__xcu_panel__ .nx-device-mobile .nx-device-key-3{right:42px;top:30px}
 @media(max-width:760px){#__xcu_panel__ .nx-input-workspace{grid-template-columns:1fr;gap:4px}#__xcu_panel__ .nx-device-preview{min-height:200px;gap:18px}#__xcu_panel__ .nx-input-devices{gap:4px}#__xcu_panel__ .nx-input-devices button{min-width:85px;font-size:11px!important}}
 @media(max-width:480px){#__xcu_panel__ .nx-category-rail{flex-basis:55px!important}#__xcu_panel__ .nx-category-rail button{justify-content:center!important}#__xcu_panel__ .nx-category-rail button>span:nth-child(2){display:none!important}}
+@media(max-width:640px){
+#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]{flex-direction:column!important;max-height:calc(100vh - 16px)!important;max-height:calc(100dvh - 16px)!important}
+#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>nav[aria-label="Categorias das configurações"]{order:0!important;flex:0 0 auto!important;box-sizing:border-box!important;width:100%!important;max-height:64px!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:4px!important;padding:6px!important;border-right:0!important;border-bottom:1px solid var(--nx-edge)!important;overflow-x:auto!important;overflow-y:hidden!important;overscroll-behavior-x:contain!important;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>nav[aria-label="Categorias das configurações"]>button:not(:last-child){flex:0 0 auto!important;width:auto!important;min-width:68px!important;max-width:92px!important;min-height:44px!important;flex-direction:column!important;justify-content:center!important;gap:2px!important;padding:5px 7px!important;text-align:center!important;white-space:normal!important}
+#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>nav[aria-label="Categorias das configurações"]>button:not(:last-child)>span:nth-child(2){display:block!important;min-width:0!important;max-width:100%;line-height:1.15;text-align:center!important;overflow-wrap:normal!important;word-break:normal!important}
+#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>nav[aria-label="Categorias das configurações"]>button:last-child{flex:0 0 44px!important;width:44px!important;height:44px!important;min-height:44px!important;margin-top:0!important;margin-left:auto!important}
+#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>div:last-child{order:1!important;flex:1 1 auto!important;width:100%!important;min-width:0!important;min-height:0!important;overflow:hidden!important}
+}
 `;
     (document.head || document.documentElement).appendChild(style);
   }
