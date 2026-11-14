@@ -14,15 +14,31 @@ export class PsboxGameLibrary {
     if (!response.ok) throw new Error('CATALOG_HTTP_' + response.status);
     return response.json();
   }
+  async #titlePage(path, signal) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { return await this.#gssv.catalogRequest(path, { signal }); }
+      catch (error) {
+        const retryable = /(?:GSSV_HTTP_(?:408|429|5\\d\\d)|GSSV_NETWORK_OR_CORS_ERROR)/.test(error.message);
+        if (!retryable || attempt === 2 || signal?.aborted) throw error;
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => { signal?.removeEventListener('abort', cancel); resolve(); }, 1000 * (2 ** attempt));
+          const cancel = () => { clearTimeout(timer); reject(new Error('CATALOG_CANCELLED')); };
+          if (signal?.aborted) cancel();
+          else signal?.addEventListener('abort', cancel, { once: true });
+        });
+      }
+    }
+  }
   async list({ recentOnly = false, market = 'BR', language = 'pt-BR', signal, hydrate = true } = {}) {
     const games = [];
     let continuation = '', page = 0;
     const seen = new Set();
+    const seenContinuations = new Set();
     do {
       if (signal?.aborted) throw new Error('CATALOG_CANCELLED');
       const path = recentOnly ? '/v2/titles/mru?mr=25' : '/v2/titles?mr=200';
       const query = continuation ? '&ct=' + encodeURIComponent(continuation) : '';
-      const data = await this.#gssv.catalogRequest(path + query, { signal });
+      const data = await this.#titlePage(path + query, signal);
       const results = Array.isArray(data?.results) ? data.results : [];
       for (const item of results) {
         const d = item?.details ?? {}, titleId = String(item?.titleId ?? '');
@@ -39,7 +55,8 @@ export class PsboxGameLibrary {
       }
       const next = recentOnly ? '' : String(data?.continuationToken ?? '');
       page++;
-      if (!next || next === continuation || !results.length || page >= 50 || games.length >= 10000) break;
+      if (!next || seenContinuations.has(next) || !results.length || page >= 50 || games.length >= 10000) break;
+      seenContinuations.add(next);
       continuation = next;
     } while (true);
     if (hydrate) await this.hydrate(games, { market, language, signal });
