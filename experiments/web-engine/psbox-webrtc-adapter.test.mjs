@@ -5,8 +5,8 @@ import { PsboxWebRtcAdapter } from './psbox-webrtc-adapter.mjs';
 function fixture() {
   const channels = [];
   const peer = {
-    createDataChannel(label) {
-      const channel = { label, readyState: 'open', sent: [], close() { this.readyState = 'closed'; }, send(data) { this.sent.push(data); } };
+    createDataChannel(label, options) {
+      const channel = { label, options, readyState: 'open', sent: [], close() { this.readyState = 'closed'; }, send(data) { this.sent.push(data); } };
       channels.push(channel);
       return channel;
     },
@@ -30,9 +30,11 @@ test('negotiates synthetic SDP, ICE and opens four PSBox channels', async () => 
   assert.deepEqual(offers, ['synthetic-offer']);
   assert.equal(peer.remoteDescription.sdp, 'synthetic-answer');
   assert.equal(peer.ice.length, 1);
-  assert.deepEqual(channels.map(c => c.label), ['message', 'control', 'input', 'chat']);
+  assert.deepEqual(channels.map(c => c.label), ['chat', 'control', 'input', 'message']);
   adapter.send('input', new Uint8Array([1]));
   assert.equal(channels[2].sent.length, 1);
+  assert.deepEqual(channels[2].options, { protocol: '1.0', ordered: false, maxRetransmits: 0 });
+  assert.equal(channels[3].options.protocol, 'messageV1');
   adapter.close();
   assert.equal(adapter.state, 'idle');
   assert.equal(peer.closed, true);
