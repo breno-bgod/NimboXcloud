@@ -9,12 +9,14 @@ export class PsboxWebRtcAdapter {
   #onTrack;
   #onState;
   #factory;
+  #handshake = false;
   constructor({ peerFactory = (config) => new RTCPeerConnection(config), onTrack = () => {}, onState = () => {} } = {}) {
     this.#factory = peerFactory;
     this.#onTrack = onTrack;
     this.#onState = onState;
   }
   get state() { return this.#state; }
+  get handshakeComplete() { return this.#handshake; }
   get channels() { return new Map(this.#channels); }
   #setState(state) { this.#state = state; this.#onState(state); }
   async start({ iceServers = [], sendOffer, receiveAnswer, sendIceCandidate, receiveIceCandidates } = {}) {
@@ -33,10 +35,25 @@ export class PsboxWebRtcAdapter {
         if (generation !== this.#generation || !event.candidate || typeof sendIceCandidate !== 'function') return;
         Promise.resolve().then(() => sendIceCandidate(event.candidate.toJSON?.() ?? event.candidate)).catch(() => {});
       };
-      for (const label of ['message', 'control', 'input', 'chat']) {
-        const channel = peer.createDataChannel(label);
+      const configs = [
+        ['chat', { protocol: 'chatV1' }],
+        ['control', { protocol: 'controlV1' }],
+        ['input', { protocol: '1.0', ordered: false, maxRetransmits: 0 }],
+        ['message', { protocol: 'messageV1' }]
+      ];
+      for (const [label, options] of configs) {
+        const channel = peer.createDataChannel(label, options);
         this.#channels.set(label, channel);
       }
+      const message = this.#channels.get('message');
+      message.addEventListener?.('open', () => {
+        if (generation !== this.#generation || message.readyState !== 'open') return;
+        message.send(JSON.stringify({ type: 'Handshake', version: 'messageV1', id: 'be0bfc6d-1e83-4c8a-90ed-fa8601c5a179', cv: '0' }));
+      });
+      message.addEventListener?.('message', event => {
+        if (generation !== this.#generation) return;
+        try { if (JSON.parse(event.data)?.type === 'HandshakeAck') this.#handshake = true; } catch {}
+      });
       const offer = await peer.createOffer();
       if (generation !== this.#generation) throw new Error('SESSION_CANCELLED');
       await peer.setLocalDescription(offer);
@@ -71,6 +88,7 @@ export class PsboxWebRtcAdapter {
   }
   close() {
     ++this.#generation;
+    this.#handshake = false;
     for (const channel of this.#channels.values()) {
       try { channel.close(); } catch {}
     }
