@@ -10,7 +10,7 @@
 
 ## 1. Identidade, visão e limites
 
-**Construiremos:** motor Web para autenticação autorizada, catálogo, criação e gestão de sessões, sinalização, WebRTC, áudio/vídeo, entrada e observabilidade, integrado progressivamente à interface NX existente.
+**Estratégia aprovada: portabilidade incremental do que já existe no NimboXcloud.** Antes de criar qualquer módulo novo, localizar e copiar os componentes próprios já desenvolvidos para um laboratório Web isolado, preservando histórico, autoria e testes. Adaptar incompatibilidades gradualmente com base em falhas reproduzíveis. Não copiar indiscriminadamente bibliotecas nativas: C++/JNI/Android exigem substituição por APIs Web ou compilação WebAssembly avaliada; código de terceiros exige licença e atribuição. A cópia não deve modificar os originais nem a main.\n\n**Construiremos:** motor Web para autenticação autorizada, catálogo, criação e gestão de sessões, sinalização, WebRTC, áudio/vídeo, entrada e observabilidade, integrado progressivamente à interface NX existente.
 
 **Não construiremos:** app Android como objetivo principal; dependência de PS5/Xbox/PC próprio; simples camada visual sobre a página oficial como solução final; contorno de autenticação, licenças, georrestrições ou segurança.
 
@@ -75,15 +75,15 @@ Separações obrigatórias: UI não manipula tokens/SDP diretamente; input não 
 
 ### FASE 0 — Congelamento e linha de base
 
-**Meta:** entender a base existente antes de modificar.
+**Meta:** entender a base existente antes de modificar. Mapear integralmente a base experimental já construída e selecionar os componentes próprios candidatos à cópia/portabilidade Web.
 
 - [ ] Registrar HEAD, versão, branches, PRs abertos e situação do PR #31.
 - [ ] Inventariar arquivos, módulos, scripts de build e CI.
 - [ ] Executar testes existentes e validação sintática; registrar PASS/FAIL/TODO e ambiente.
-- [ ] Catalogar funções de sessão, WebRTC, SDP/ICE, input, QoS e região.
+- [ ] Catalogar funções de sessão, WebRTC, SDP/ICE, input, QoS e região.\n- [ ] Mapear todos os arquivos de experiments/console e classificar: copiar sem alteração, adaptar, usar só como referência ou manter nativo.
 - [ ] Registrar comportamentos e preferências a preservar.
 
-**Entregável:** `docs/web-engine/00-BASELINE.md` com funções → arquivos → responsabilidades → riscos.
+**Entregável:** `docs/web-engine/00-BASELINE.md` com funções → arquivos → responsabilidades → riscos, mais matriz de portabilidade dos componentes existentes.
 **Aceite:** inventário revisado e testes de base documentados. Comprovados os critérios, iniciar automaticamente a Fase 1 na branch experimental, sem merge.
 **Bloqueio:** não refatorar antes de cumprir os critérios objetivos.
 
@@ -98,9 +98,9 @@ Separações obrigatórias: UI não manipula tokens/SDP diretamente; input não 
 **Entregável:** `docs/web-engine/01-MATRIZ_REFERENCIAS.md`, com links por arquivo e commit.
 **Aceite:** nenhuma dependência sem licença/origem/compatibilidade verificadas.
 
-### FASE 2 — Contratos e máquina de estados
+### FASE 2 — Cópia isolada, contratos e máquina de estados
 
-- [ ] Definir interfaces AuthProvider, CatalogProvider, SessionProvider, SignalingProvider, Transport, InputAdapter e Telemetry.
+- [ ] Copiar os componentes próprios compatíveis da base existente para `experiments/web-engine/` sem modificar originais; registrar origem e SHA.\n- [ ] Definir interfaces AuthProvider, CatalogProvider, SessionProvider, SignalingProvider, Transport, InputAdapter e Telemetry.
 - [ ] Estados: idle → authenticating → ready → creating → negotiating → connecting → playing → stopping → stopped; error e cancelled.
 - [ ] Definir ownership, timeout, cancelamento, retry limitado, cleanup e idempotência.
 - [ ] Testes unitários com fixtures fictícias e falhas simuladas.
@@ -250,7 +250,7 @@ Ao iniciar cada fase: objetivo, estado atual, arquivos, riscos e testes esperado
 
 ## 12. Próxima ação autorizada
 
-**Somente Fase 0:** leitura do HEAD e testes, execução do baseline quando o ambiente permitir, relatório `00-BASELINE.md` em branch experimental. Não iniciar auth nova, não modificar main, não publicar release.
+**Fase 0 em execução, com avanço automático autorizado:** auditar integralmente a base existente e classificar os componentes para portabilidade; registrar relatório e testes. Após cumprir os critérios, iniciar Fase 1 automaticamente. Não modificar main, não publicar release.
 
 ---
 
@@ -259,4 +259,4 @@ Ao iniciar cada fase: objetivo, estado atual, arquivos, riscos e testes esperado
 | Versão | Data | Alteração | Situação |
 |---|---|---|---|
 | 1.0 | 2026-11-14 | Plano mestre, fases, critérios e salvaguardas | APROVADA; Fase 0 autorizada |
-| 1.1 | 2026-11-14 | Avanço automático entre fases após critérios comprovados; main/release protegidos | APROVADA pelo mantenedor |
+| 1.1 | 2026-11-14 | Avanço automático entre fases após critérios comprovados; main/release protegidos | APROVADA pelo mantenedor |\n| 1.2 | 2026-11-14 | Priorizar cópia isolada e portabilidade incremental da base existente; adaptar por testes e erros | APROVADA pelo mantenedor |
