@@ -5934,8 +5934,10 @@ SOFTWARE.
   };
   TAB_BUILDERS.inputs=function(root){
     const family = nxInputModePage(root);
-    nxPhoneControls(root);
-    nxTouchpadSettings(root);
+    if (family === 'mobile') {
+      nxPhoneControls(root);
+      nxTouchpadSettings(root);
+    }
     if (family === 'gamepad') nxSettingsSection(root,'Ajustes do controle físico',TAB_BUILDERS.gamepad);
     if (family === 'keyboard') nxSettingsSection(root,'Ajustes de teclado e mouse',TAB_BUILDERS.gyrotouch);
   };
@@ -5945,7 +5947,7 @@ SOFTWARE.
       ['Controles conectados'],
       'Estado dos controles físicos reconhecidos pelo navegador.');
     nxMoveGroup(root,nodes,'Perfis de analógico');
-    // Phone gyroscope profiles are shared above, independent of the browsed device.
+    // Phone gyro and touchpad controls are presented only in the Mobile family.
     const vibration=nxTakeGroupRows(nxFindGroup(nodes,'Acessórios'),'Vibração do Gamepad',['Vibração'],
       'Teste local de vibração. Não altera automaticamente a vibração enviada pelo xCloud.');
     if(vibration)root.appendChild(vibration);
