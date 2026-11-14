@@ -109,8 +109,9 @@ test('input workspace mounts settings for the browsed device without duplicated 
   assert.equal(root.textContent.includes('Ajustes de teclado e mouse'),family==='keyboard');
   assert.equal(root.textContent.includes('Atalho gamepad'),family==='gamepad');
   assert.equal(root.textContent.includes('Atalho keyboard'),family==='keyboard');
-  assert.match(root.textContent,/Ativar FPS|Ativar Corrida/);
-  assert.match(root.textContent,/SENSIBILIDADE DO TOUCHPAD/);
+  assert.equal(root.textContent.includes('Giroscópio e touchpad complementares'),family==='mobile');
+  assert.equal(root.textContent.includes('SENSIBILIDADE DO TOUCHPAD'),family==='mobile');
+  assert.equal(/Ativar FPS|Ativar Corrida/.test(root.textContent),family==='mobile');
   assert.doesNotMatch(root.textContent,/Escolher entrada|Ativar HUD/);
   if(family!=='mobile')assert.ok(root.children.some(node=>node.tagName==='details'));
  }
