@@ -17,7 +17,7 @@
 <p id="code"></p>
 </section>
 <p id="profile"></p>
-<label for="title">ID do título Xbox Cloud (titleId)</label>
+<section><h2>Biblioteca PSBox</h2><button id="library" disabled>Carregar jogos</button><input id="search" placeholder="Pesquisar jogos" aria-label="Pesquisar jogos"><p id="library-status"></p><div id="games" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;max-height:450px;overflow:auto"></div></section><label for="title">ID do título Xbox Cloud (titleId)</label>
 <input id="title" placeholder="ID de um título autorizado" autocomplete="off">
 <div><button id="start" disabled>Iniciar sessão cloud</button><button id="play">Ativar reprodução com som</button><button id="stop">Encerrar sessão</button><button id="logout">Sair da conta</button></div>
 <video id="screen" autoplay playsinline controls></video>
@@ -25,10 +25,46 @@
 <script type="module">
 import { XboxWebAuth } from './xbox-web-auth.mjs';
 import { PsboxCloudWebSession } from './psbox-cloud-session.mjs';
+import { GssvWebClient } from './gssv-web-client.mjs';
+import { PsboxGameLibrary } from './psbox-game-library.mjs';
 const $ = id => document.getElementById(id);
 const auth = new XboxWebAuth();
-let session = null, signingIn = false, starting = false;
+let session = null, signingIn = false, starting = false, games = [], catalogClient = null;
 const status = message => { $('status').textContent = message; };
+const renderGames = () => {
+  $('games').replaceChildren();
+  const q = $('search').value.trim().toLocaleLowerCase('pt-BR');
+  for (const game of games.filter(x => (x.name || x.titleId).toLocaleLowerCase('pt-BR').includes(q)).slice(0, 200)) {
+    const button = document.createElement('button');
+    button.style.cssText = 'min-width:0;background:#1c2536;color:inherit;border:1px solid #526077;display:flex;flex-direction:column;align-items:stretch;gap:6px';
+    if (game.imageUrl) {
+      const img = document.createElement('img');
+      img.src = game.imageUrl; img.loading = 'lazy'; img.alt = '';
+      img.style.cssText = 'width:100%;aspect-ratio:3/4;object-fit:cover';
+      button.append(img);
+    }
+    const label = document.createElement('span');
+    label.textContent = game.name || game.titleId; button.append(label);
+    button.onclick = () => { $('title').value = game.titleId; status('Jogo selecionado: ' + label.textContent + '. Clique em Iniciar sessão cloud.'); };
+    $('games').append(button);
+  }
+};
+$('search').oninput = renderGames;
+$('library').onclick = async () => {
+  $('library').disabled = true;
+  try {
+    const { xstsToken } = await auth.sessionCredentials();
+    catalogClient?.dispose();
+    catalogClient = new GssvWebClient();
+    const login = await catalogClient.login(xstsToken);
+    $('library-status').textContent = 'Buscando jogos no catálogo GSSV do PSBox...';
+    games = await new PsboxGameLibrary({ gssv: catalogClient }).list({ market: login.market || 'BR', language: 'pt-BR' });
+    renderGames();
+    $('library-status').textContent = games.length + ' jogos carregados. Escolha um para iniciar.';
+  } catch (error) {
+    $('library-status').textContent = 'Falha ao carregar biblioteca: ' + error.message;
+  } finally { $('library').disabled = !auth.signedIn; }
+};
 $('login').onclick = async () => {
   if (signingIn || starting) return;
   signingIn = true; $('login').disabled = true;
@@ -45,7 +81,8 @@ $('login').onclick = async () => {
     $('code').textContent = '';
     $('profile').textContent = profile?.gamertag ? 'Conectado: ' + profile.gamertag : 'Conta Xbox conectada';
     $('start').disabled = false;
-    status('Autenticação Xbox concluída. Informe o ID do título.');
+    $('library').disabled = false;
+    status('Autenticação Xbox concluída. Carregue a biblioteca PSBox.');
   } catch (error) { status('Falha de autenticação: ' + error.message); }
   finally { signingIn = false; $('login').disabled = false; }
 };
@@ -77,7 +114,7 @@ $('stop').onclick = async () => {
 };
 $('logout').onclick = async () => {
   if (session) await session.stop().catch(() => {});
-  session = null; auth.signOut();
+  session = null; auth.signOut(); catalogClient?.dispose(); catalogClient = null; games = []; renderGames(); $('library').disabled = true; $('library-status').textContent = '';
   $('auth').hidden = true; $('code').textContent = ''; $('profile').textContent = '';
   $('start').disabled = true; status('Sessão e credenciais em memória encerradas.');
 };
