@@ -65,6 +65,10 @@ export class GssvWebClient {
     if (!this.#session) throw new Error('GSSV_SESSION_REQUIRED');
     return this.#url(this.#session + suffix);
   }
+  async catalogRequest(path, { signal } = {}) {
+    if (!/^\\/v2\\/titles(?:\\?|\\/mru\\?)/.test(path)) throw new Error('INVALID_CATALOG_PATH');
+    return this.#request('GET', this.#url(path), undefined, { signal });
+  }
   async startSession(titleId, { locale = 'pt-BR', signal } = {}) {
     if (!titleId) throw new Error('TITLE_ID_REQUIRED');
     if (this.#session) throw new Error('SESSION_OCCUPIED');
