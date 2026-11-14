@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         NimboXcloud PSBox WebRTC LAB (PR #34)
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      0.2.0
+// @version      0.2.1
 // @description  Laboratório experimental Xbox Cloud: login Microsoft, GSSV e WebRTC. Não substitui o NimboXcloud oficial.
 // @match        https://www.xbox.com/*
 // @match        https://xbox.com/*
 // @run-at       document-idle
+// @noframes
 // @grant        none
 // @connect      login.live.com
 // @connect      user.auth.xboxlive.com
@@ -23,7 +24,8 @@
  */
 (async () => {
   'use strict';
-  if (document.getElementById('nimbo-psbox-lab-root')) return;
+  if (window.__nimboPsboxLabMounted) return;
+  window.__nimboPsboxLabMounted = true;
   const root = document.createElement('section');
   root.id = 'nimbo-psbox-lab-root';
   root.style.cssText = 'position:fixed;z-index:2147483647;right:12px;bottom:12px;width:min(410px,calc(100vw - 24px));max-height:85vh;overflow:auto;background:#101522;color:#e8edf8;border:1px solid #6b7c98;border-radius:12px;box-shadow:0 8px 35px #0009;font:14px system-ui;padding:14px;box-sizing:border-box';
@@ -36,15 +38,21 @@
     <p><button id="nx-start" disabled>Iniciar sessão</button><button id="nx-play">Ativar som</button><button id="nx-stop">Encerrar</button><button id="nx-logout">Sair</button></p>
     <video id="nx-video" autoplay playsinline controls style="width:100%;aspect-ratio:16/9;background:#000"></video>
     <small>Experimental: sem garantia de CORS, handshake completo ou gameplay. Não cole tokens em mensagens.</small>`;
-  document.body.appendChild(root);
+  const mount = () => { if (!closed && document.body && !root.isConnected) document.body.appendChild(root); };
+  let closed = false;
+  mount();
+  // xbox.com/play is a SPA: navigation may replace the body and detach overlays.
+  const observer = new MutationObserver(() => { if (!closed && !root.isConnected) mount(); });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
   const $ = id => root.querySelector('#' + id);
   const status = message => { $('nx-status').textContent = message; };
-  let auth, session = null, busy = false, closed = false, games = [], libraryClient = null;
+  let auth, session = null, busy = false, games = [], libraryClient = null;
   const setStart = () => { $('nx-start').disabled = busy || !auth?.signedIn || !!session || closed; };
-  $('nx-close').onclick = async () => { closed = true; try { await session?.stop(); } catch {} auth?.signOut(); root.remove(); };
+  $('nx-close').onclick = async () => { closed = true; observer.disconnect(); window.__nimboPsboxLabMounted = false; try { await session?.stop(); } catch {} auth?.signOut(); root.remove(); };
   try {
     // jsDelivr serves .mjs as JavaScript and resolves the relative ESM imports.
-    const base = 'https://cdn.jsdelivr.net/gh/breno-bgod/NimboXcloud@experiment/psbox-web-port/experiments/web-engine/';
+    // Pin to a concrete commit: jsDelivr's GitHub ref parser cannot reliably resolve branch names containing '/'.
+    const base = 'https://cdn.jsdelivr.net/gh/breno-bgod/NimboXcloud@4460305588fe6239bdbc47df69c427181a549f44/experiments/web-engine/';
     const [{ XboxWebAuth }, { PsboxCloudWebSession }, { GssvWebClient }, { PsboxGameLibrary }] = await Promise.all([
       import(base + 'xbox-web-auth.mjs'), import(base + 'psbox-cloud-session.mjs'), import(base + 'gssv-web-client.mjs'), import(base + 'psbox-game-library.mjs')
     ]);
