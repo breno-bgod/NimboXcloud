@@ -1,0 +1,49 @@
+name: Import PSBox upstream source (experimental)
+on:
+  push:
+    branches:
+      - experiment/psbox-upstream-import
+    paths:
+      - .github/workflows/import-psbox-experimental.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  vendor-psbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Clone pinned PSBox source with submodules
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/RafaelNGP/psbox-cloud-gaming.git /tmp/psbox-upstream
+          git -C /tmp/psbox-upstream checkout --detach 48de20b7c3ec47f544010169c8cb8a03626623ac
+          git -C /tmp/psbox-upstream submodule update --init --recursive --depth 1
+          test -f /tmp/psbox-upstream/LICENSE
+          test -d /tmp/psbox-upstream/src
+      - name: Copy source into isolated vendor directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=experiments/upstream/psbox-cloud-gaming
+          test ! -e "$target"
+          mkdir -p "$target"
+          rsync -a --exclude='.git' --exclude='.git/' --exclude='build*' --exclude='*.AppImage' --exclude='*.pkg' /tmp/psbox-upstream/ "$target/"
+          find "$target" -type d -name .git -prune -exec rm -rf {} +
+          find "$target" -type f -name .git -delete
+          printf 'Source: https://github.com/RafaelNGP/psbox-cloud-gaming\nPinned commit: 48de20b7c3ec47f544010169c8cb8a03626623ac\nImport: isolated source snapshot with recursively initialized submodules; excludes git metadata and build/release binaries.\nLicense: GPL-3.0-or-later and bundled third-party notices; do not modify original attribution.\n' > experiments/upstream/PSBOX_IMPORT_SOURCE.txt
+          git status --short | head -50
+      - name: Commit import to experimental branch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add experiments/upstream/
+          git diff --cached --quiet && exit 0
+          git commit -m "vendor(psbox): import pinned upstream source for Web port"
+          git push origin HEAD:experiment/psbox-upstream-import
