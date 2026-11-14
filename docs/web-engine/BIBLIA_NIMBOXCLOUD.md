@@ -1,12 +1,12 @@
 # BÍBLIA DO PROJETO — NimboXcloud
 
 **Edição:** 1.0 — 14/11/2026
-**Status:** APROVADA pelo mantenedor em 14/11/2026; execução autorizada somente para a Fase 0.
+**Status:** APROVADA pelo mantenedor em 14/11/2026; Fase 0 iniciada. O mantenedor autorizou avanço automático entre fases após cumprimento verificável dos critérios, sem autorização adicional para começar a fase seguinte.
 **Repositório:** https://github.com/breno-bgod/NimboXcloud
 **Produto de referência:** userscript NX, versão documentada 4.15.4 (conferir HEAD antes de qualquer alteração).
 **Objetivo:** cliente Web independente para Xbox Cloud Gaming, com interface NX própria, sem depender da UI de `play.xbox.com` nem exigir console físico. Somente autenticação e permissões legítimas.
 
-> Regra central: executar uma etapa por vez. Nenhuma fase será considerada concluída sem evidências, testes e aceite explícito do mantenedor. Esta Bíblia não comprova streaming independente funcional.
+> Regra central: executar uma etapa por vez. Nenhuma fase será considerada concluída sem evidências e testes exigidos. O mantenedor autorizou o avanço automático para a fase seguinte quando os critérios objetivos de aceite estiverem comprovados; casos ambíguos, riscos novos e exceções continuam exigindo decisão explícita. Esta Bíblia não comprova streaming independente funcional.
 
 ## 1. Identidade, visão e limites
 
@@ -64,7 +64,7 @@ Separações obrigatórias: UI não manipula tokens/SDP diretamente; input não 
 
 - `main` é produção: não fazer commit direto.
 - Trabalhar em `experiment/web-engine-<fase>` com PR pequeno, testes e evidências.
-- Não fazer merge nem publicar versão sem autorização explícita.
+- Não fazer merge nem publicar versão sem autorização explícita. A autorização de avançar fases não autoriza merge, release ou mudanças na main.
 - Não modificar `@updateURL`, `@downloadURL`, versões ou assets oficiais em experimento.
 - Não substituir NX por interface genérica.
 - Não commitar tokens Xbox, cookies, headers Authorization, IDs de sessão reais, SDP integral ou ICE com IPs pessoais.
@@ -84,8 +84,8 @@ Separações obrigatórias: UI não manipula tokens/SDP diretamente; input não 
 - [ ] Registrar comportamentos e preferências a preservar.
 
 **Entregável:** `docs/web-engine/00-BASELINE.md` com funções → arquivos → responsabilidades → riscos.
-**Aceite:** inventário revisado e testes de base documentados.
-**Bloqueio:** não refatorar antes do aceite.
+**Aceite:** inventário revisado e testes de base documentados. Comprovados os critérios, iniciar automaticamente a Fase 1 na branch experimental, sem merge.
+**Bloqueio:** não refatorar antes de cumprir os critérios objetivos.
 
 ### FASE 1 — Pesquisa comparativa verificável
 
@@ -182,7 +182,7 @@ Separações obrigatórias: UI não manipula tokens/SDP diretamente; input não 
 - [ ] Beta separado, monitoramento de regressões.
 
 **Entregável:** release beta rastreável.
-**Aceite:** autorização do mantenedor e testes reais.
+**Aceite:** testes reais e autorização explícita do mantenedor para publicação.
 
 ## 7. Modelo obrigatório de tarefa
 
@@ -246,7 +246,7 @@ Código escrito ≠ integrado; teste unitário ≠ sessão real; WebRTC conectad
 
 ## 11. Prestação de contas
 
-Ao iniciar cada fase: objetivo, estado atual, arquivos, riscos e testes esperados. Ao terminar: alterações, testes executados e resultados, pendências e link do PR. Pedir aceite antes de avançar. Mudança de escopo exige revisão aprovada da Bíblia.
+Ao iniciar cada fase: objetivo, estado atual, arquivos, riscos e testes esperados. Ao terminar: alterações, testes executados e resultados, pendências e link do PR. Avançar automaticamente à fase seguinte quando os critérios de aceite objetivos estiverem integralmente satisfeitos e documentados, comunicando o resultado ao mantenedor. Não pedir nova autorização de rotina entre fases. Mudança de escopo, risco relevante não previsto, merge na main ou publicação exigem autorização explícita.
 
 ## 12. Próxima ação autorizada
 
@@ -259,3 +259,4 @@ Ao iniciar cada fase: objetivo, estado atual, arquivos, riscos e testes esperado
 | Versão | Data | Alteração | Situação |
 |---|---|---|---|
 | 1.0 | 2026-11-14 | Plano mestre, fases, critérios e salvaguardas | APROVADA; Fase 0 autorizada |
+| 1.1 | 2026-11-14 | Avanço automático entre fases após critérios comprovados; main/release protegidos | APROVADA pelo mantenedor |
