@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.15.4
+// @version      4.15.5
 // @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch, cinco modos de entrada e HUD de controle virtual.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/158df53180043af93e85af9e9d139c85ccaf36a9/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.15.4
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/158df53180043af93e85af9e9d139c85ccaf36a9/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.15.5
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.15.4';
+  const VER = '4.15.5';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -2129,9 +2129,9 @@ SOFTWARE.
     return xbox||anchor;
   }
   let nxKeyboardMouseButton=null;
-  function nxMountNativeActions(anchor,expanded){
+  function nxMountNativeActions(anchor,expanded,preferXbox=true){
     if(!anchor?.parentElement)return;
-    anchor=nxNativeXboxAnchor(anchor);
+    if(preferXbox)anchor=nxNativeXboxAnchor(anchor);
     const parent=nxNativeToolbarGroup(anchor);
     let slot=anchor;while(slot.parentElement&&slot.parentElement!==parent)slot=slot.parentElement;
     if(!parent)return;
@@ -2339,7 +2339,7 @@ SOFTWARE.
   function nxBindEdgeHandle(node){
     let drag=null,suppressClick=false;
     node.addEventListener('pointerdown',function(e){
-      if(e.button!==0||e.isPrimary===false)return;
+      if(e.button!==0||e.isPrimary===false||wrap?.style.right!=='auto')return;
       drag={id:e.pointerId,y:e.clientY,ratio:nxEdgeRatio(),moved:false};suppressClick=false;
       try{node.setPointerCapture(e.pointerId);}catch(_){}
       e.stopPropagation();
@@ -2365,18 +2365,31 @@ SOFTWARE.
       suppressClick=false;setOpen(!openUI,true);
     });
   }
+  function nxTopAccessFallback(){
+    // Somente enquanto a barra nativa ainda não foi encontrada; nunca uma aba lateral móvel.
+    nxAlignClosedGameAccess();
+    wrap.style.left='auto';wrap.style.right='max(8px,env(safe-area-inset-right,8px))';
+    wrap.style.top='max(8px,env(safe-area-inset-top,8px))';
+    if(pillEl)pillEl.style.borderRadius='50%';
+  }
   function syncNXPlacement() {
     nxViewportMode();
     if(!wrap||!wrap.isConnected)return;
-    // O acesso NX nunca depende da presença/expansão da barra nativa.
-    if(nxLibraryButton)nxLibraryButton.remove();
-    if(nxKeyboardMouseButton)nxKeyboardMouseButton.remove();
-    const anchor=isInGame()?findInGameToolbar():null;
-    const expanded=!!anchor&&toolbarExpanded(anchor)&&nxNativeToolbarOpen(anchor);
-    nxNativeMenuPriority(expanded,anchor);
+    const game=isInGame();
+    const anchor=game?findInGameToolbar():nxControllerAnchor();
+    const expanded=!!anchor&&toolbarExpanded(anchor)&&(!game||nxNativeToolbarOpen(anchor));
+    nxNativeMenuPriority(game&&expanded,anchor);
+    nxHideDetachedControls();
     if(nxLoadingBusy()){wrap.style.display='none';return;}
     if(openUI){nxDockPanel();return;}
-    nxAlignClosedGameAccess();
+    if(anchor){
+      nxMountNativeActions(anchor,expanded,game);
+      // Um único acesso NX; a escolha de entrada permanece dentro do painel.
+      if(nxKeyboardMouseButton)nxKeyboardMouseButton.style.display='none';
+      wrap.style.display='none';
+      return;
+    }
+    nxTopAccessFallback();
   }
 
   // ---------- 13b. Painel profissional: abas por categoria ----------
