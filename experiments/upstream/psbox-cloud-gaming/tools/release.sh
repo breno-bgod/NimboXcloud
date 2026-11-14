@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 RafaelNGP
+# Builds and checks a release, the same way every time; publishes nothing.
+#
+#   tools/release.sh <X.Y.Z> [out-dir] [--console] [--linux]
+#
+# Stops at the first problem. Before building: a clean tree, the version in
+# CMakeLists.txt and ps5/sce_sys/param.json (contentVersion 0X.YZZ.000, above
+# the last release's), no tag yet, and no token or private file in the
+# changes since the last release. Then: PS5 build -> link -> package WITHOUT
+# the account -> zip + sha256 + signature, and checks inside the zip (no private files,
+# README.txt and param.json at this version, no token in eboot.bin, the
+# version compiled in, the licenses). With --console (PS5_HOST set), a cloud
+# and an own-Xbox stream on the console. With --linux, also the desktop
+# app's Linux AppImage (tools/desktop/package-appimage.sh in
+# build-linux-release, SDL3 from CMAKE_PREFIX_PATH or the system, bundled;
+# Linux always ships as an AppImage, never a tarball):
+# PSBox-vX.Y.Z-linux-x86_64.AppImage + .sha256 + .sig, signed the same way,
+# psbox checked for tokens and the version, its symbols in
+# symbols/vX.Y.Z/psbox.debug. Its glibc baseline is this machine's: the one
+# attached to a release is built by .github/workflows/release-linux.yml on
+# ubuntu-24.04. The PS5 assets are always made and
+# always required; the Linux ones are optional (the desktop app only points
+# to the release page). Last, it prints the commands that publish the
+# release and the catalog record.
+#
+# The in-app updater installs only a zip signed by the project's key:
+# PSBOX_SIGNING_KEY (default ~/.config/psbox-release/signing-key.pem, kept
+# by the maintainer, never in the repository) signs it, and must be the key
+# whose public half src/app/updater.cpp carries.
+set -euo pipefail
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$root"
+
+version=${1:?usage: tools/release.sh <X.Y.Z> [out-dir] [--console] [--linux]}
+shift
+out=""
+console=0
+linux=0
+force=0
+for a in "$@"; do
+    case $a in
+        --force) force=1 ;;
+        --console) console=1 ;;
+        --linux) linux=1 ;;
+        *) out=$a ;;
+    esac
+done
+out=${out:-$root/build-ps5/release-v$version}
+key=${PSBOX_SIGNING_KEY:-$HOME/.config/psbox-release/signing-key.pem}
+tag=v$version
+fail() { echo "release: $*" >&2; exit 1; }
+ok() { echo "  ok  $*"; }
+# Every asset is signed the same way: what src/app/updater.cpp verifies.
+sign() {
+    openssl dgst -sha256 -sign "$key" -out "$1.sig" "$1"
+    openssl dgst -sha256 -verify <(echo "$pub") -signature "$1.sig" "$1" >/dev/null ||
+        fail "the signature of $(basename "$1") doesn't verify"
+}
+
+[[ $version =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || fail "version must be X.Y.Z"
+major=${BASH_REMATCH[1]} minor=${BASH_REMATCH[2]} patch=${BASH_REMATCH[3]}
+content=$(printf '%02d.%d%02d.000' "$major" "$minor" "$patch")
+tokens='eyJ[A-Za-z0-9_-]{20,}|refresh_token"? *[:=] *"[A-Za-z0-9]|XBL3\.0 x=[0-9]'
+private='(^|/)account\.json$|\.log$|\.ppm$|\.aus$|\.h264$|(^|/)autoplay\.txt$|(^|/)settings\.json$|(^|/)library\.json$|(^|/)prices\.json$'
+
+echo "== checks before building $tag"
+[[ -z $(git status --porcelain --ignore-submodules=dirty) ]] || fail "uncommitted changes (commit or stash them first)"
+ok "clean tree on $(git rev-parse --abbrev-ref HEAD) at $(git rev-parse --short HEAD)"
+grep -q "project(xcloud_ps5 VERSION $version " CMakeLists.txt || fail "CMakeLists.txt is not at VERSION $version"
+grep -q "\"contentVersion\": \"$content\"" ps5/sce_sys/param.json || fail "param.json contentVersion is not $content"
+ok "version $version, contentVersion $content"
+if [[ $force -eq 0 ]]; then
+    git rev-parse -q --verify "refs/tags/$tag" >/dev/null && fail "tag $tag exists already"
+    git ls-remote --exit-code --tags origin "$tag" >/dev/null 2>&1 && fail "tag $tag exists on origin already"
+    last=$(git describe --tags --abbrev=0 2>/dev/null || true)
+    if [[ -n $last ]]; then
+        prev=$(git show "$last:ps5/sce_sys/param.json" | grep -o '"contentVersion": "[^"]*"' | cut -d'"' -f4)
+        [[ $content > $prev ]] || fail "contentVersion $content is not above $last's $prev"
+        ok "above $last ($prev)"
+        if git diff "$last"..HEAD | grep -nE "^\+.*($tokens)"; then fail "a token in the changes since $last"; fi
+        ok "no token in the changes since $last"
+    fi
+else
+    ok "force mode enabled: bypassing existing tag checks for $tag"
+fi
+if git ls-files | grep -nE "$private"; then fail "private files are tracked"; fi
+ok "no private file tracked"
+[[ -r $key ]] || fail "no signing key at $key (PSBOX_SIGNING_KEY)"
+pub=$(openssl pkey -in "$key" -pubout 2>/dev/null) || fail "$key is not a private key"
+while read -r line; do
+    [[ $line == -----* ]] || grep -qF "\"$line\n\"" src/app/updater.cpp || fail "$key is not the key src/app/updater.cpp trusts"
+done <<<"$pub"
+ok "signing key matches the app's"
+
+echo "== build"
+buildlog=$(mktemp)
+cmake --build build-ps5 -j"$(nproc)" >"$buildlog" 2>&1 || { cat "$buildlog"; fail "the PS5 build failed"; }
+XC_VERSION="$tag" tools/ps5/link.sh build-ps5 >"$buildlog" 2>&1 || { cat "$buildlog"; fail "linking eboot.bin failed"; }
+rm -f "$buildlog"
+[[ -s "$root/symbols/$tag/eboot.elf" ]] || fail "symbols/$tag/eboot.elf was not saved"
+ok "PS5 build linked (symbols at symbols/$tag/eboot.elf)"
+rm -rf "$out"
+mkdir -p "$out"
+env -u XC_INCLUDE_ACCOUNT XC_VERSION="$tag" tools/ps5/package.sh build-ps5 "$out" >/dev/null
+# Every file 0777 in the zip: the console won't start an app whose files
+# aren't (CE-107750-0), and installers such as ProsperoStore keep the modes.
+chmod -R 0777 "$out/PPSA99810"
+(cd "$out" && zip -qr PPSA99810.zip PPSA99810 && sha256sum PPSA99810.zip > PPSA99810.zip.sha256)
+sha=$(cut -d' ' -f1 "$out/PPSA99810.zip.sha256")
+ok "$out/PPSA99810.zip ($(du -h "$out/PPSA99810.zip" | cut -f1)), sha256 $sha"
+sign "$out/PPSA99810.zip"
+ok "signed: $out/PPSA99810.zip.sig"
+
+# Standard named package for PlayStation 5
+ps5_named="PSBoxCloudGaming[PS5]-$tag.zip"
+cp -f "$out/PPSA99810.zip" "$out/$ps5_named"
+cp -f "$out/PPSA99810.zip.sig" "$out/$ps5_named.sig"
+(cd "$out" && sha256sum "$ps5_named" > "$ps5_named.sha256")
+ok "$out/$ps5_named ($(du -h "$out/$ps5_named" | cut -f1)), sha256 $(cut -d' ' -f1 "$out/$ps5_named.sha256")"
+
+echo "== checks in the package"
+zip=$out/PPSA99810.zip
+if unzip -Z1 "$zip" | grep -vx 'PPSA99810/assets/PSBox_Trophies.elf' | grep -nE "$private|\.elf$"; then fail "a private or symbol file in the zip"; fi
+if zipinfo "$zip" | grep -E '^[-d]' | grep -v '^.rwxrwxrwx'; then fail "files in the zip without mode 0777"; fi
+ok "every entry mode 0777"
+ok "no private file ($(unzip -Z1 "$zip" | grep -vc '/$') files)"
+unzip -p "$zip" PPSA99810/README.txt | head -1 | grep -q "version $tag" || fail "README.txt is not at $tag"
+unzip -p "$zip" PPSA99810/sce_sys/param.json | grep -q "\"contentVersion\": \"$content\"" || fail "the packaged param.json is not $content"
+ok "README.txt $tag, param.json $content"
+eboot=$out/PPSA99810/eboot.bin
+if grep -aqE "$tokens" "$eboot"; then fail "eboot.bin holds something like a token"; fi
+grep -aq "$version" "$eboot" || fail "eboot.bin doesn't carry version $version (stale build?)"
+ok "eboot.bin: no token, version $version compiled in"
+for f in assets/cacert.pem assets/PSBox_Trophies.elf licenses/THIRD_PARTY_NOTICES.md licenses/FFmpeg-LGPL-2.1.txt licenses/Anime4K-MIT.txt LICENSE; do
+    unzip -Z1 "$zip" | grep -qx "PPSA99810/$f" || fail "missing PPSA99810/$f"
+done
+ok "certificates, trophy payload and licenses in place"
+
+echo "== build PS4"
+if [ -z "${OO_PS4_TOOLCHAIN:-}" ] && [ -d "$root/ps4-toolchain" ]; then
+    export OO_PS4_TOOLCHAIN="$root/ps4-toolchain"
+fi
+[[ -d "${OO_PS4_TOOLCHAIN:-}" ]] || fail "PS4 toolchain not found at OO_PS4_TOOLCHAIN or $root/ps4-toolchain"
+ps4_buildlog=$(mktemp)
+cmake --build build-ps4 -j"$(nproc)" >"$ps4_buildlog" 2>&1 || { cat "$ps4_buildlog"; rm -f "$ps4_buildlog"; fail "the PS4 build failed"; }
+rm -f "$ps4_buildlog"
+ps4_ver=$(printf '%02d.%02d' "$major" "$((minor * 10 + patch))")
+ps4_out="$out/ps4_pkg"
+XC_PS4_VERSION="$ps4_ver" tools/ps4/package.sh build-ps4 "$ps4_out" >/dev/null
+
+ps4_pkg_name="PSBoxCloudGaming[PS4]-$tag.pkg"
+mv -f "$ps4_out/PSBox Cloud Gaming - PS4.pkg" "$out/$ps4_pkg_name"
+rm -rf "$ps4_out"
+(cd "$out" && sha256sum "$ps4_pkg_name" > "$ps4_pkg_name.sha256")
+ok "$out/$ps4_pkg_name ($(du -h "$out/$ps4_pkg_name" | cut -f1)), sha256 $(cut -d' ' -f1 "$out/$ps4_pkg_name.sha256")"
+
+echo "== checks in the PS4 package"
+ps4_eboot="$root/build-ps4/pkg_stage/eboot.bin"
+if grep -aqE "$tokens" "$ps4_eboot"; then fail "PS4 eboot.bin holds something like a token"; fi
+ok "PS4 eboot.bin: no token"
+ps4_sfo="$root/build-ps4/pkg_stage/sce_sys/param.sfo"
+grep -aq "$ps4_ver" "$ps4_sfo" || fail "PS4 param.sfo doesn't carry version $ps4_ver"
+ok "PS4 param.sfo: version $ps4_ver confirmed"
+
+linux_assets=""
+if [[ $linux == 1 ]]; then
+    echo "== Linux package"
+    name=PSBox-$tag-linux-x86_64.AppImage
+    appimage=$out/$name
+    buildlog=$(mktemp)
+    XC_VERSION="$tag" tools/desktop/package-appimage.sh "$root/build-linux-release" "$out" >"$buildlog" 2>&1 ||
+        { tail -30 "$buildlog"; fail "the Linux package failed"; }
+    rm -f "$buildlog"
+    [[ -s $appimage ]] || fail "no $appimage"
+    [[ -s "$root/symbols/$tag/psbox.debug" ]] || fail "symbols/$tag/psbox.debug was not saved"
+    ok "$name ($(du -h "$appimage" | cut -f1)) built, checked and self-tested by package-appimage.sh"
+    unpack=$(mktemp -d)
+    (cd "$unpack" && "$appimage" --appimage-extract >/dev/null 2>&1) || { rm -rf "$unpack"; fail "$name doesn't unpack"; }
+    if (cd "$unpack/squashfs-root" && find . -type f) | grep -nE "$private|\.elf$|\.debug$"; then
+        rm -rf "$unpack"; fail "a private or symbol file in the Linux package"
+    fi
+    exe=$unpack/squashfs-root/PSBox/psbox
+    if grep -aqE "$tokens" "$exe"; then rm -rf "$unpack"; fail "psbox holds something like a token"; fi
+    grep -aq "$version" "$exe" || { rm -rf "$unpack"; fail "psbox doesn't carry version $version (stale build?)"; }
+    glibc=$(objdump -T "$exe" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+    rm -rf "$unpack"
+    ok "psbox: no token, version $version compiled in, needs ${glibc:-?} (this machine's baseline)"
+    (cd "$out" && sha256sum "$name" > "$name.sha256")
+    sign "$appimage"
+    ok "signed: $appimage.sig"
+    named_linux="PSBoxCloudGaming[Linux]-$tag.AppImage"
+    cp -f "$appimage" "$out/$named_linux"
+    (cd "$out" && sha256sum "$named_linux" > "$named_linux.sha256")
+    linux_assets=" \"$appimage\" \"$appimage.sha256\" \"$appimage.sig\" \"$out/PSBoxCloudGaming[[]Linux]-$tag.AppImage\" \"$out/PSBoxCloudGaming[[]Linux]-$tag.AppImage.sha256\""
+fi
+
+if [[ $console == 1 ]]; then
+    echo "== console (${PS5_HOST:?set PS5_HOST for --console})"
+    for run in "FORTNITE 25" "XHOME 25"; do
+        result=$(tools/ps5/autotest.sh $run 2>&1 || true)  # whole output first: grep -q would cut it short
+        grep -q 'RESULT: finished' <<<"$result" || { echo "$result" | tail -5; fail "console run '$run' didn't finish"; }
+        log=build-ps5/autotest/xcloud.log
+        grep -q 'first frame presented' "$log" || fail "console run '$run': no picture"
+        grep -q 'TLS handshake' "$log" && fail "console run '$run': TLS errors"
+        ok "console: $run streamed ($(grep -o '[0-9]* frames shown' "$log" | tail -1))"
+    done
+fi
+
+echo "== all checks passed; to publish (with release notes in notes.md):"
+echo "  gh release create $tag \\"
+echo "    \"$zip\" \"$out/PPSA99810.zip.sha256\" \"$out/PPSA99810.zip.sig\" \\"
+echo "    \"$out/PSBoxCloudGaming[[]PS5]-$tag.zip#PSBoxCloudGaming[PS5]-$tag.zip\" \\"
+echo "    \"$out/PSBoxCloudGaming[[]PS5]-$tag.zip.sha256#PSBoxCloudGaming[PS5]-$tag.zip.sha256\" \\"
+echo "    \"$out/PSBoxCloudGaming[[]PS5]-$tag.zip.sig#PSBoxCloudGaming[PS5]-$tag.zip.sig\" \\"
+echo "    \"$out/PSBoxCloudGaming[[]PS4]-$tag.pkg#PSBoxCloudGaming[PS4]-$tag.pkg\" \\"
+echo "    \"$out/PSBoxCloudGaming[[]PS4]-$tag.pkg.sha256#PSBoxCloudGaming[PS4]-$tag.pkg.sha256\"$linux_assets \\"
+echo "    --target $(git rev-parse HEAD) --title \"PSBox Cloud Gaming $tag\" --notes-file notes.md"
+echo
+echo "== post-release steps (Mandatory Tri-Platform Standard):"
+echo "  1. GitHub Actions will build Linux AppImage via .github/workflows/release-linux.yml."
+echo "  2. Once uploaded by CI, sign it:"
+echo "     tools/desktop/sign-linux-release.sh $tag"
+echo "  3. Verify all 3 platforms (PS5, PS4, Linux AppImage) and signatures:"
+echo "     tools/release-verify.sh $tag --verify-sigs"
+echo
+echo "== catalog record (apps/PPSA99810.json):"
+echo "  \"version\": \"$version\","
+echo "  \"artifact_url\": \"https://github.com/RafaelNGP/psbox-cloud-gaming/releases/download/$tag/PPSA99810.zip\","
+echo "  \"sha256\": \"$sha\","
+echo "  \"icon_url\": \"https://raw.githubusercontent.com/RafaelNGP/psbox-cloud-gaming/$tag/ps5/sce_sys/icon0.png\""

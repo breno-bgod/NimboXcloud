@@ -1,0 +1,222 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 RafaelNGP
+// User settings, kept in <dataDir>/settings.json.
+#pragma once
+
+#include "input/key_map.h"
+#include "input/pad_map.h"
+
+#include <cstdint>
+#include <map>
+#include <string>
+#include <vector>
+
+namespace xc::json {
+class Value;
+}
+
+namespace xc::app {
+
+json::Value keyMapToJson(const input::KeyMap& m);
+input::KeyMap keyMapFromJson(const json::Value& v, const input::KeyMap& fallback);
+// Supported optional store-country override; empty means the session market.
+std::string normalizeStoreCountry(const std::string& country);
+
+struct GameProfile {
+    // Picture
+    int sharpness = 2;           // 0 off, 1..3 low, medium (FSR RCAS), high
+    int deband = 3;              // 0 off, 1 low, 2 high, 3 auto
+    int upscaler = 2;            // 0 FSR 1, 1 Anime4K, 2 FSR + clean, 3 Anime4K + clean
+    int resolution = 0;          // 0 1080p, 1 720p, 2 1440p
+    int videoDecoder = 0;        // 0 Hardware, 1 Software
+    int fpsLimit = 0;            // 0 Unlimited, 30, 60, 120
+    // Controller: dead zone (percent), triggers, confirm button
+    int deadzoneLeft = 15, deadzoneRight = 15;
+    int triggerStrength = 2;     // 0 off .. 4 max
+    int triggerHz = 1;           // 0..2
+    int triggerResistance = 0;   // 0 off .. 3 strong
+    bool triggerPulses = false;
+    int triggerProfile = 0;      // 0 Standard, 1 Shooter, 2 Racing
+    int audioHaptics = 0;        // 0 Off, 1 Low, 2 Med, 3 High
+    bool circleConfirms = false;
+    // Display
+    bool highRefresh = false;    // 120 Hz output (VRR) while streaming
+    // Keyboard and mouse as a controller: which keys play what
+    input::KeyMap keyMap = input::defaultKeyMap();
+    // The controller's buttons toward the game (input/pad_map.h)
+    input::PadMap padMap = input::defaultPadMap();
+    // Gyro: 0 off, 1 always aim, 2 aiming L2, 3 steering wheel, 4 steering R2; intensity 1..10
+    int gyroMode = 0;
+    int gyroLevel = 5;
+    int gyroYawScale = 100;    // horizontal sensitivity percent (20..200%, default 100%)
+    int gyroPitchScale = 80;   // vertical sensitivity percent (20..200%, default 80%)
+    // The game's stick response gyro aiming works through (input/gyro.h GyroResponse):
+    // where the camera starts to answer (percent of the stick) and the curve's exponent (tenths).
+    int gyroCurveStart = 12;
+    int gyroCurveExp = 10;
+    bool gyroInvertX = false, gyroInvertY = false;  // the aim turned the other way on that axis
+    float gyroBias[3] = {0.0f, 0.0f, 0.0f}; // static zero-drift bias
+    // Touchpad as mouse in games with native MKB support (OFF by default)
+    bool touchpadMouse = false;
+    // Configurable DualSense touchpad gestures and left/right click actions
+    input::TouchpadShortcuts touchpadShortcuts = input::defaultTouchpadShortcuts();
+    // Per-game audio/subtitle language: "" = system default, else e.g. "en-US", "pt-BR"
+    std::string locale;
+    // This game's trophies. They follow the general setting (Settings::syncTrophies)
+    // until the player chooses for this game: only then syncTrophiesChosen is set,
+    // and only a chosen "off" keeps the game out of the sync.
+    bool syncTrophies = false;
+    bool syncTrophiesChosen = false;
+    // Optional title metadata persisted for background trophy sync filtering
+    std::string xboxTitleId;
+    std::string gameName;
+    bool soloInputRedirect = false;
+};
+
+// Key to identify a game profile: productId first, else titleId.
+inline std::string gameProfileKey(const std::string& productId, const std::string& titleId) {
+    return !productId.empty() ? productId : titleId;
+}
+
+struct Settings {
+    std::string language = "en";     // ui::languageCode()
+    std::string resolution = "1080p";  // "1080p", "720p" or "1440p" (experimental)
+    std::string region;                // gssv region name; empty = automatic
+    // "Sign in as another country" (xcloud::loginCountryAddress): "" off.
+    std::string loginCountry;
+    std::string storeCountry;  // catalog/store only; never changes the streaming datacenter
+    std::string storeMarket(const std::string& sessionMarket) const;
+    // Round trip to the stream server measured in past sessions, per region (ms).
+    std::map<std::string, int> regionRtt;
+    // Games hidden with Square (product ids), and the "Your games" order
+    // ("recent", "az", "console").
+    std::vector<std::string> hidden;
+    std::vector<std::string> favorites;  // Games marked as favourite (product ids)
+    std::vector<std::string> wishlist;   // Games marked on the wishlist (product ids)
+    std::string librarySort = "recent";
+    // The statistics line over the game (in-game menu).
+    bool streamStats = false;
+    uint32_t statsMask = 0x1F;  // StatsDefaultMask (Fps, Bitrate, Latency, Loss, Graph)
+    // Sharpening of the game picture: 0 off, 1..3 low, medium (FSR RCAS), high.
+    int sharpness = 2;
+    // Smoothing of compression blocks (GPU display): 0 off, 1 low, 2 high,
+    // 3 auto (stronger as the bitrate falls).
+    int deband = 3;
+    // Upscaling to the 4K display (GPU): 0 FSR 1, 1 Anime4K, 2 FSR and 3
+    // Anime4K after Anime4K Restore (the clean-up of compression artefacts).
+    int upscaler = 2;
+    int videoDecoder = 0;  // 0 Hardware, 1 Software
+    // Controller: stick dead zone (percent), vibration in the triggers,
+    // Circle as the confirm button (Xbox A).
+    int deadzoneLeft = 15, deadzoneRight = 15;  // percent, each stick's own
+    // Trigger vibration: strength 0 (off) .. 4 (max), its frequency as an
+    // index into input::kTriggerHz (input/tuning.h).
+    int triggerStrength = 2;
+    int triggerHz = 1;
+    int triggerResistance = 0;   // 0 off .. 3 strong (the triggers' weight)
+    bool triggerPulses = false;  // pulses of the resistance instead of the motor vibrating
+    int triggerProfile = 0;      // 0 Standard, 1 Shooter, 2 Racing
+    int audioHaptics = 0;        // 0 Off, 1 Low, 2 Med, 3 High
+    bool circleConfirms = false;
+    // The DualSense light bar: 0 the colour of the game in focus, 1
+    // lightBarColour, 2 off.
+    int lightBarMode = 0;
+    uint32_t lightBarColour = 0xFFDC7000;  // as ui::Color: 0xAABBGGRR, opaque (blue)
+    int gestureHints = 0;
+    // Voice chat & Audio routing
+    bool micEnabled = true;
+    bool highRefresh = false;  // 119.88 Hz output (VRR where the console turns it on) while streaming
+    int fpsLimit = 0;          // presentation pacing FPS limit: 0 unlimited, 30, 60, 120
+    int maxBitrateMbps = 0;    // the stream's bitrate cap: 0 automatic (the tier's), else 50, 45, 40, 35, 30, 25, 20, 15, 10 or 5
+    int gameVolume = 100;      // percent: 25, 50, 75, 100 or 150
+    input::KeyMap keyMap = input::defaultKeyMap();  // the keys when the keyboard is a player's controller
+    // Which pad button plays which Xbox button in a game (input/pad_map.h;
+    // the menus always read the buttons as they are). Always complete.
+    input::PadMap padMap = input::defaultPadMap();
+    int keyboardPlayer = 0;    // the player a USB keyboard and mouse play as (0..3; keys 1-4): 0 native with player 1, else that player's controller
+    int gyroMode = 0;          // gyro (input/gyro.h): 0 off, 1 always aim, 2 aiming L2, 3 steering, 4 steering R2
+    int gyroLevel = 5;         // its intensity, 1..10
+    int gyroYawScale = 100;    // horizontal sensitivity percent (20..200%, default 100%)
+    int gyroPitchScale = 80;   // vertical sensitivity percent (20..200%, default 80%)
+    // The game's stick response gyro aiming works through (input/gyro.h GyroResponse):
+    // where the camera starts to answer (percent of the stick) and the curve's exponent (tenths).
+    int gyroCurveStart = 12;
+    int gyroCurveExp = 10;
+    bool gyroInvertX = false, gyroInvertY = false;  // the aim turned the other way on that axis
+    float gyroBias[3] = {0.0f, 0.0f, 0.0f}; // static zero-drift bias
+    bool touchpadMouse = false; // touchpad as mouse in games with native MKB support
+    input::TouchpadShortcuts touchpadShortcuts = input::defaultTouchpadShortcuts();
+    int micGain = 1;        // 0: 50%, 1: 100%, 2: 150%
+    int audioRoute = 0;     // 0: TV/HDMI (Main), 1: DualSense Speaker / Headset (Pad)
+    int voiceRouting = 0;   // 0: Auto (DualSense Speaker if available), 1: Always TV/Headset
+    int padSpeakerVolume = 100; // 0 to 100% (DualSense controller speaker)
+    bool queueReadyAlert = true; // Queue-ready chime and rumble alert
+    bool previewFeatures = true; // xCloud preview client identification & ad-supported F2P streaming
+    bool syncTrophies = false;   // Xbox achievement to PlayStation trophy conversion
+    // `hidden`, `favorites` and `titlePlaytime` belong to the Xbox account signed in, not to the
+    // console's user: another account signed in on the same user starts with its own (empty)
+    // lists and the first one finds its own again. The live ones are `listsAccount`'s (its
+    // xuid; empty: nobody signed in since this was added, they go to the first who does); the
+    // other accounts' wait in `accountLists`.
+    struct AccountLists {
+        std::vector<std::string> hidden, favorites;
+        std::map<std::string, uint64_t> titlePlaytime;
+    };
+    std::string listsAccount;
+    std::map<std::string, AccountLists> accountLists;
+    enum class ListsSwitch { Same, Adopted, Changed };
+    // Makes the live lists `xuid`'s. Adopted: the lists there were had no owner and are now this
+    // account's (to be saved); Changed: other lists are live now (to be saved and shown).
+    ListsSwitch useListsOf(const std::string& xuid);
+    bool usbControllers = true;  // in-app USB controllers driver (OneFamily)
+    bool guitarStrum = false;    // USB guitars: a fret plays only with the strum bar
+    bool guitarTilt = true;      // USB guitars: raising one is star power
+    // USB guitars: how far above the position it is played in the tilt reading (right stick Y as
+    // read) goes for one to count as raised (input/pad_usb.h). Saved as "guitarRaiseBy": the earlier
+    // "guitarTiltAt" / "guitarRaisedAt" (fixed readings) are left alone.
+    float guitarRaiseBy = 0.32f;
+    // USB guitars: the buttons of the lanes and star power ("A,B,Y,X,LB,RT", input/pad_usb.h),
+    // without and with strum; empty: the defaults.
+    std::string guitarLanes, guitarStrumLanes;
+    bool soloInputRedirect = false;
+    std::map<std::string, uint64_t> titlePlaytime; // accumulated playtime in seconds (productId or titleId -> seconds)
+
+    uint64_t playtimeForGame(const std::string& productId, const std::string& titleId) const {
+        if (!productId.empty()) {
+            auto it = titlePlaytime.find(productId);
+            if (it != titlePlaytime.end()) return it->second;
+        }
+        if (!titleId.empty()) {
+            auto it = titlePlaytime.find(titleId);
+            if (it != titlePlaytime.end()) return it->second;
+        }
+        return 0;
+    }
+
+    // The release the user said "Not now" to: not offered again on start.
+    std::string skippedUpdate;
+    // The tallest picture each kind of stream delivered when asked for its
+    // top tier, and when (unix s): 1440p is only offered once one did.
+    int maxHeightCloud = 0, maxHeightHome = 0;
+    int64_t probedCloud = 0, probedHome = 0;
+    // A desktop app: its window fullscreen (the desktop's own mode) or not.
+    // Unused on the PS5.
+    bool desktopFullscreen = true;  // streams that showed the touchpad gestures' hint (three do)
+    // The handheld profile was applied (once, app_core.cpp): not again, so
+    // the user's later choices stay.
+    bool handheldProfile = false;
+
+    // Per-game profiles overriding the general settings (productId or titleId -> profile).
+    std::map<std::string, GameProfile> perGame;
+
+    // micGain as the microphone's gain (StreamPlayer::setMicGain): 0.5, 1 or 1.5.
+    float micGainFactor() const;
+
+    GameProfile defaultProfile() const;
+    GameProfile profileForGame(const std::string& productId, const std::string& titleId, bool* hasCustom = nullptr) const;
+
+    bool load(const std::string& path);
+    bool save(const std::string& path) const;
+};
+
+}  // namespace xc::app

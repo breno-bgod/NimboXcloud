@@ -1,0 +1,575 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 RafaelNGP
+constexpr Column kFrench = {
+    "PSBox Cloud Gaming",
+    "PSBOX CLOUD GAMING",
+    "Connexion...",
+    "Obtention d'un code de connexion...",
+    "Chargement de vos jeux...",
+    "Connectez-vous pour jouer",
+    "Sur votre téléphone ou ordinateur, allez sur",
+    "et saisissez ce code",
+    "Scannez pour ouvrir la page, puis saisissez le code",
+    "En attente de votre connexion...",
+    "Reprendre",
+    "Jouer",
+    "Retour",
+    "Sélectionner",
+    "Se déconnecter",
+    "Annuler",
+    "Réessayer",
+    "Préparation de votre jeu",
+    "Vous êtes dans la file d'attente. Attente estimée : %s",
+    "Connexion...",
+    "Démarrage du streaming...",
+    "Pavé tactile : ↓ ce menu · ↑ bouton Xbox",
+    "Streaming terminé",
+    "Un problème est survenu",
+    "Connecté en tant que %s",
+    "Aucun jeu à afficher pour le moment",
+    "Par %s",
+    "Paramètres",
+    "Langue",
+    "Résolution du streaming",
+    "Région du serveur",
+    "Automatique (%s)",
+    "1080p (Full HD)",
+    "720p (consomme moins de données)",
+    "Meilleure (Auto)",
+    "La résolution et la région s'appliquent au prochain jeu lancé.",
+    "Modifier",
+    "Ajuster",
+    "Maintenez pour vous déconnecter",
+    "Continuez à maintenir pour vous déconnecter (%s)",
+    "Échec de la connexion : %s",
+    "La connexion dans le navigateur n'a pas été finalisée. Utilisez un compte Microsoft personnel, effectuez les vérifications/2FA et autorisez l'app.",
+    "Impossible de charger la liste des jeux : %s",
+    "Impossible de démarrer le streaming : %s",
+    "Aucune activité : vous serez déconnecté dans %s secondes",
+    "Mes jeux",
+    "Indisponible sur votre compte",
+    "Game Pass",
+    "Rechercher",
+    "Tapez le nom d'un jeu",
+    "Aucun jeu trouvé",
+    "%s résultats",
+    "Espace",
+    "Effacer",
+    "Tout effacer",
+    "%s jeux",
+    "Taper",
+    "Essai d'une autre région : %s",
+    "Disponibles à l'achat",
+    "ACHETER",
+    "Achetez ce jeu pour y jouer dans le cloud",
+    "Achetez-le sur xbox.com ou dans l'app Xbox ; il apparaîtra ensuite dans Mes jeux.",
+    "Scannez pour ouvrir la page du magasin",
+    "Rechercher dans %s",
+    "GRATUIT",
+    "Masquer",
+    "Afficher",
+    "Masqués",
+    "\xE2\x96\xA1 réaffiche un jeu",
+    "Masqué : voir Masqués, à la fin de cet onglet",
+    "De nouveau visible",
+    "Trier : %s",
+    "Récents d'abord",
+    "A-Z",
+    "Par console",
+    "Trier",
+    "Gratuit",
+    "Prix croissant",
+    "Toutes les consoles",
+    "1 jeu",
+    "Sections",
+    "Mise \xC3\xA0 jour de la liste des jeux...",
+    "Menu du jeu",
+    "Statistiques",
+    "Activé",
+    "Désactivé",
+    "Résolution du stream",
+    "Quitter le jeu",
+    "Latence",
+    "Débit",
+    "Images par seconde",
+    "Perte de paquets",
+    "Région",
+    "Décodage",
+    "Le serveur peut conserver la qualité actuelle",
+    "Netteté",
+    "Désactivée",
+    "Faible",
+    "Moyenne",
+    "Élevée",
+    "Zone morte du stick",
+    "Vibration des gâchettes",
+    "Bouton de validation",
+    "Activée",
+    "Désactivée",
+    "Version %s disponible",
+    "Manettes",
+    "Manette %s connectée",
+    "Manette %s déconnectée",
+    "Lissage des blocs",
+    "À l'écran après",
+    "Connexion perdue : reconnexion...",
+    "Reconnecté",
+    "Barre lumineuse",
+    "Mise à l'échelle",
+    "IA (Anime4K)",
+    "Gratuit",
+    "Obtenez-le une fois, gratuitement, sur xbox.com ou dans l'app Xbox (scannez le code avec votre téléphone), puis appuyez sur Jouer.",
+    "Scannez pour l'obtenir gratuitement",
+    "%s n'est pas encore sur votre compte. Il est gratuit : ouvrez sa page, choisissez Obtenir, puis réessayez (cela peut prendre une minute).",
+    "Votre compte ne peut pas jouer à %s : il n'est pas dans votre abonnement ou n'a pas été acheté.",
+    "Xbox ne diffuse %s que sur une console Xbox ou un téléviseur Samsung.",
+    "Xbox ne diffuse %s que sur : %s.",
+    "Mes consoles",
+    "Allumée",
+    "En veille",
+    "Éteinte",
+    "Recherche de vos consoles...",
+    "Aucune Xbox trouvée pour l'instant",
+    "Jouez sur votre propre Xbox d'ici : son écran, ses jeux et ses applications.",
+    "Réveil de votre Xbox...",
+    "%s n'a pas répondu. Vérifiez que les fonctionnalités à distance sont activées et le mode Veille choisi, ou allumez-la, puis réessayez.",
+    "Sur votre Xbox, connectez-vous avec ce même compte Microsoft.",
+    "Paramètres > Appareils et connexions > Fonctionnalités à distance : activez-les.",
+    "Paramètres > Général > Options d'alimentation : choisissez Veille, pour qu'elle se réveille seule.",
+    "Scannez pour l'aide de Microsoft",
+    "Rechercher à nouveau",
+    "Bouton Xbox",
+    "Arrêter la diffusion",
+    "La diffusion a été arrêtée sur la Xbox",
+    "Un autre appareil a repris la diffusion",
+    "La Xbox a été éteinte",
+    "%s a reçu la demande, mais son jeu à distance n'a pas démarré. Redémarrez-la : maintenez le bouton d'alimentation de la console 10 secondes, rallumez-la, puis réessayez.",
+    "Pavé tactile : glissez ↓ pour le menu, ↑ pour le bouton Xbox",
+    "FSR + nettoyage",
+    "IA + nettoyage",
+    "Auto (%s)",
+    "Mettre à jour maintenant ? L'app redémarre toute seule à la fin.",
+    "Mettre à jour",
+    "Plus tard",
+    "Mises à jour",
+    "À jour (%s)",
+    "%s disponible : mettre à jour",
+    "Vérification...",
+    "Mise à jour vers %s",
+    "Téléchargement... %s",
+    "Vérification de la signature...",
+    "Installation...",
+    "Mis à jour. Redémarrage...",
+    "PSBox mis à jour : rouvrez l'app",
+    "Échec de la mise à jour : rien n'a changé",
+    "Couleur du jeu",
+    "Couleur personnalisée",
+    "Couleur de la barre lumineuse",
+    "Joystick gauche ou croix : couleur    L2 / R2 : luminosité",
+    "Légère",
+    "Moyenne",
+    "Forte",
+    "Maximale",
+    "Intensité",
+    "Fréquence",
+    "Grave",
+    "Aiguë",
+    "Appuyez sur L2 / R2 pour le sentir : plus vous enfoncez, plus le jeu le demanderait fort",
+    "Niveau %s",
+    "Joystick gauche",
+    "Joystick droit",
+    "Position réelle",
+    "Ce que reçoit le jeu",
+    "L1 / R1 : choisir le joystick    Croix ← / → : régler    Bougez les joysticks pour le voir",
+    "Résistance",
+    "Style",
+    "Vibration",
+    "Impulsions de force",
+    "Mode",
+    "Genre",
+    "Langue",
+    "Tous les modes",
+    "Solo",
+    "Multijoueur en ligne",
+    "Coopération en ligne",
+    "Local / écran partagé",
+    "Tous les genres",
+    "Toutes les langues",
+    "français",
+    "Sous-titres en %s",
+    "Doublé en %s",
+    "Paramètres du jeu",
+    "Profil",
+    "Par défaut",
+    "Personnalisé",
+    "Réinitialiser",
+    "Éditeur",
+    "Tous les éditeurs",
+    "Indépendants et autres",
+    "Amis en train de jouer",
+    "Microphone",
+    "Coupé",
+    "Actif",
+    "Sortie audio",
+    "TV",
+    "Haut-parleur de la manette",
+    "Signaler un problème",
+    "Scannez-le avec votre téléphone : le formulaire de bug de GitHub s'ouvre, déjà rempli. Vous le relisez avant de l'envoyer.",
+    "Il contient la version de l'app, l'erreur et des lignes du journal, sans données personnelles.",
+    "PSBox s'est fermé de façon inattendue la dernière fois",
+    "Pays de connexion",
+    "Désactivé (celui de la console)",
+    "Se connecter depuis un autre pays",
+    "xCloud sera informé que la connexion vient du pays choisi. Microsoft ne l'autorise pas : utilisez-le à vos risques. Les jeux peuvent alors venir de serveurs éloignés, avec plus de latence. Modifiable plus tard dans Paramètres.",
+    "xCloud a refusé la connexion. Le jeu dans le cloud n'est peut-être pas proposé dans votre pays, ou le compte n'a pas d'abonnement Game Pass avec le jeu dans le cloud.",
+    "xCloud a refusé la connexion, même en choisissant %s. Le compte n'a probablement pas d'abonnement Game Pass avec le jeu dans le cloud.",
+    "Brésil",
+    "Japon",
+    "Corée du Sud",
+    "Pologne",
+    "États-Unis",
+    "Les connexions sécurisées ont été refusées car la date et l'heure de la PS5 semblent fausses (elle indique %s). Réglez-les dans Paramètres > Système > Date et heure, puis réessayez.",
+    "Une connexion sécurisée a été refusée : quelque chose sur le réseau (serveur DNS, proxy ou filtre) répond à la place des sites de Microsoft. Essayez sans, puis réessayez.",
+    "La date et l'heure de la PS5 semblent fausses (%s) : une partie du contenu ne se charge pas. Réglez-les dans Paramètres > Système > Date et heure.",
+    "Impossible d'enregistrer la connexion sur la console : elle sera redemandée la prochaine fois. Signalez-le (Paramètres > △).",
+    "Attente estimée : %s s", // QueueSeconds
+    "Attente estimée : %s min", // QueueMinutes
+    "Sortie 120 Hz (VRR)", // HighRefresh
+    "Activée (en jeu)", // HighRefreshOn
+    "Connexion instable", // ConnectionUnstable
+    "Session : %s", // SessionSummary
+    "Débit maximal", // BitrateCap
+    "Automatique", // BitrateAuto
+    "Volume du jeu", // GameVolume
+    "Clavier : F12 ce menu · Origine bouton Xbox", // MenuKeyHint
+    "Clavier et souris", // FilterMouseKeyboard
+    "Clavier et souris", // MouseKeyboardSupport
+    "Clavier et souris : joueur %s", // KeyboardPlayer
+    "Vous êtes dans la file d'attente.", // InQueueNoEstimate
+    "Touches du clavier", // KeyboardKeys
+    "Croix directionnelle", // DPad
+    "Appuyez sur une touche ou un bouton de la souris", // PressKey
+    "%s est réservée par l'app", // KeyReserved
+    "Modifier", // ChangeKey
+    "Effacer", // ClearKey
+    "La souris déplace le joystick droit et chaque cran de la molette appuie sur Triangle. F12 (menu), Origine (bouton Xbox) et 1-4 (joueur) sont réservées par l'app.", // KeysHelp
+    "Visée gyroscopique", // Gyro
+    "Toujours", // GyroAlways
+    "En visant (L2)", // GyroAiming
+    "Intensité du gyroscope", // GyroIntensity
+    "Les connexions sécurisées ont été refusées car la date et l'heure de cet ordinateur semblent fausses (il indique %s). Corrigez-les dans les paramètres du système, puis réessayez.", // ClockWrongPc
+    "La date et l'heure de cet ordinateur semblent fausses (%s) : une partie du contenu ne se charge pas. Corrigez-les dans les paramètres du système.", // ClockWrongNoticePc
+    "Désactivé (celui de l'ordinateur)", // LoginCountryOffPc
+    "Ouvrir dans le navigateur", // OpenInBrowser
+    "%s disponible : télécharger", // UpdateReadyPc
+    "Menu : START + BACK ou F12 · Bouton Xbox : Guide ou Origine", // GestureHintButtons
+    "START + BACK ou F12 : ce menu · Guide ou Origine : bouton Xbox", // MenuButtonHint
+    "Mode d'affichage", // DisplayMode
+    "Fenêtre", // DisplayWindow
+    "Plein écran", // DisplayFullscreen
+    "Quitter PSBox ?", // QuitTitle
+    "Quitter", // QuitConfirm
+    "Boutons de la manette", // ControllerButtons
+    "Appuyez sur le bouton pour %s", // PadPressButton
+    "Bouton manquant pour : %s. Attribuez-en un à chaque fonction, ou réinitialisez ou annulez les modifications.", // PadMissing
+    "Annuler les modifications", // DiscardChanges
+    "Seul le jeu est concerné : les menus de l'app gardent les boutons tels quels. Choisir un bouton déjà utilisé échange les deux.", // PadHelp
+    "Forfait", // FilterPlan
+    "Mon forfait", // PlanMine
+    "Tous les forfaits", // PlanAll
+    "Inclus avec Game Pass %s", // IncludedWithPlan
+    "Pavé tactile comme souris", // TouchpadMouse
+    "Favoris", // Favorites
+    "Ajouter aux favoris", // AddFavorite
+    "Retirer des favoris", // RemoveFavorite
+    "Ajouté aux favoris", // AddedToFavorites
+    "Retiré des favoris", // RemovedFromFavorites
+    "Langue du jeu", // GameLanguage
+    "Limite mensuelle de jeu dans le cloud atteinte", // MonthlyLimitExceeded
+    "Temps de jeu restant", // PlaytimeRemaining
+    "%s h restantes", // HoursRemaining
+    "Moins de 2 h restantes", // PlaytimeWarning
+    "Profil de gâchettes", // TriggerProfile
+    "Standard", // TriggerProfileStd
+    "Tir (Hair Trigger)", // TriggerProfileShooter
+    "Course (ABS)", // TriggerProfileRacing
+    "Le stockage %s n'est pas accessible en écriture : connexion et réglages non enregistrés", // StorageNotWritable
+    "Certains fichiers de l'app n'ont pas pu être lus (%s). Elle fonctionne, mais réinstallez-la par sécurité", // InstallIncomplete
+    "FTP : faites 'chmod 777 %s' ou supprimez le dossier et relancez", // StorageFixHint
+    "Personnaliser les indicateurs",                  // StatsCustomize
+    "IPS et résolution",                              // StatsIndicatorFps
+    "Débit binaire (Bitrate)",                        // StatsIndicatorBitrate
+    "Latence (RTT)",                                  // StatsIndicatorLatency
+    "Perte de paquets",                               // StatsIndicatorLoss
+    "Graphique de gigue réseau",                      // StatsIndicatorGraph
+    "Latence de décodage et d'affichage",             // StatsIndicatorDelay
+    "Qualité vidéo (QP)",                             // StatsIndicatorQp
+    "État du microphone",                             // StatsIndicatorMic
+    "Scannez le code QR avec votre téléphone pour résoudre ceci chez Microsoft, puis appuyez sur Croix pour réessayer",  // ScanQrToResolve
+    "Obtenir gratuitement",                           // ClaimFree
+    "Obtention de la licence gratuite...",            // Claiming
+    "Jeu ajouté à votre compte avec succès !",        // ClaimSuccess
+    "Échec de l'obtention du jeu gratuit : %s",       // ClaimFailed
+    "Ce jeu n'est pas gratuit sur le store",          // ProductNotFree
+    "Jeu gratuit. Appuyez sur Croix pour l'ajouter à votre compte et jouer",  // FreeAcquireHint
+    "Échec de résolution DNS pour les serveurs Microsoft. Sur PS5, veillez à exécuter NanoDNS et à définir le DNS primaire sur votre IP locale pour garder l'accès Internet tout en bloquant Sony.", // DnsBlockedNanoDns
+    "Ce compte Microsoft n'a pas encore de profil Xbox. Connectez-vous sur xbox.com sur mobile ou PC pour créer votre Gamertag, puis réessayez.", // XboxProfileMissing
+    "File d'attente prête ! Lancement du jeu...",     // QueueReadyAlert
+    "Alerte sonore de file prête",                    // QueueReadyNotification
+    "Joué : %s",                                      // PlaytimePlayed
+    "Actualiser",                                     // RefreshLibrary
+    "Actualisation de la bibliothèque...",            // RefreshingLibrary
+    "Ce compte Xbox est suspendu ou banni. Consultez enforcement.xbox.com pour plus de détails.", // XboxAccountBanned
+    "Xbox Live n'est pas proposé dans le pays ou la région de ce compte.", // XboxRegionNotSupported
+    "Vérification d'âge ou acceptation des conditions requise. Connectez-vous sur xbox.com dans un navigateur, puis réessayez.", // XboxAdultVerificationRequired
+    "Compte enfant : un adulte doit ajouter ce compte à une famille Microsoft sur account.microsoft.com/family.", // XboxChildAccountFamily
+    "Vérifier ma connexion",                          // CheckSignIn
+    "Vérifier",                                       // RunCheck
+    "Test réseau",                                    // NetworkTest
+    "Tester",                                         // RunTest
+    "Succès",                                         // Achievements
+    "Aucun succès",                                   // NoAchievements
+    "Verrouillé",                                     // AchievementLocked
+    "Succès secret",                                  // SecretAchievement
+    "Liste d'envies",                                 // Wishlist
+    "Ajouter aux envies",                             // AddWishlist
+    "Retirer des envies",                             // RemoveWishlist
+    "Ajouté aux envies",                              // AddedToWishlist
+    "Retiré des envies",                              // RemovedFromWishlist
+    "%s est en promotion !",                          // WishlistOnSale
+    "%s a rejoint le Game Pass !",                    // WishlistInGamePass
+    "Soutenir le projet",                             // SupportProject
+    "Soutenir le Développement de PSBox",             // SupportTitle
+    "PSBox est un projet open source développé avec passion pour offrir la meilleure expérience Xbox Cloud Gaming sur PlayStation 5. Si vous appréciez l'application et souhaitez soutenir les mises à jour et les nouveautés, pensez à m'offrir un café sur Ko-Fi !", // SupportMessage
+    "Ko-fi",                                          // SupportKoFi
+    "Scannez avec votre téléphone",                   // ScanToDonate
+    "Tester le son",                                  // TestSound
+    "La liste de souhaits est vide",                  // WishlistEmpty
+    // Loading tips
+    "Pavé tactile : glissez ↓ (ou Pavé tactile + Options) pour le menu, ↑ pour le bouton Xbox", // TipTouchpadMenu
+    "Clavier et souris USB branchés sur la console sont pris en charge dans les jeux du cloud compatibles", // TipKeyboardMouse
+    "Obtenez des jeux gratuits, démos et promotions du magasin directement depuis l'application", // TipFreeStore
+    "Un problème ? Ouvrez Signaler un problème pour scanner un code QR avec les journaux de la console", // TipBugReportQr
+    "Vous appréciez le projet ? Soutenez son développement via Ko-fi dans les Paramètres !", // TipSupportKofi
+    "Activez la sortie vidéo 120 Hz dans les Paramètres pour réduire la latence d'affichage et de contrôle", // Tip120HzVideo
+    "Calibrez la zone morte des sticks dans les Paramètres pour éliminer le drift et améliorer la précision", // TipAnalogDeadzone
+    "Utilisez le microphone intégré de la DualSense pour le chat vocal dans les groupes et jeux multijoueurs", // TipDualSenseMic
+    "Dans les jeux compatibles souris, utilisez la surface du pavé tactile DualSense comme souris", // TipTouchpadMouse
+    "Activez la visée gyroscopique dans les Paramètres pour viser avec les capteurs de mouvement", // TipGyroAiming
+    "La mise à l'échelle FSR et le filtre de netteté améliorent les détails de la diffusion", // TipFSRUpscaling
+    "Ajustez la limite de débit dans les Paramètres jusqu'à 45 Mbit/s pour une fidélité maximale", // TipCustomBitrate
+    "Les succès Xbox se débloquent automatiquement comme trophées PlayStation 5 natifs", // TipNativeTrophies
+    "Activez ou désactivez le suivi des trophées par jeu depuis l'écran de détails du jeu", // TipPerGameTrophies
+    "Ouvrez http://[ip-console]:8080 sur votre mobile ou PC pour accéder à la WebUI SmartGlass", // TipSmartGlassWebUI
+    "Obtenez des jeux gratuits et des démos en 1 clic directement sans quitter l'application", // TipClaimFreeStore
+    "Personnalisez et réassignez les boutons de la manette par jeu dans les Paramètres", // TipButtonRemap
+    "Votre bibliothèque se charge instantanément depuis le cache local sans écran d'attente", // TipInstantResume
+    "Glissez vers le bas sur le pavé tactile en jeu pour ajuster volume, débit et diffusion", // TipInGameMenu
+    "La synchronisation en arrière-plan maintient votre catalogue et vos listes à jour", // TipBackgroundSync
+    // Settings descriptions
+    "Modifie la langue de l'interface de l'application et les préférences audio et sous-titres dans les jeux du cloud", // SettingDescLanguage
+    "Définit la résolution vidéo maximale (1080p, 720p ou Meilleure disponible). Prend effet au prochain lancement", // SettingDescResolution
+    "Sélectionne la région des serveurs Microsoft pour le streaming (Automatique ou spécifique). Prend effet au prochain lancement", // SettingDescRegion
+    "Ajuste la zone morte intérieure des sticks analogiques DualSense pour éviter le drift et les mouvements involontaires", // SettingDescDeadzone
+    "Active ou désactive l'émulation des vibrations sur les gâchettes adaptatives L2 et R2 dans les jeux compatibles", // SettingDescTriggerRumble
+    "Bascule la disposition des boutons de confirmation et retour entre Croix (occidental) et Rond (japonais)", // SettingDescConfirmButton
+    "Configure la couleur et le comportement de la barre lumineuse de votre manette DualSense", // SettingDescLightBar
+    "Vérifie et installe automatiquement les mises à jour officielles de l'application directement sur votre console", // SettingDescUpdates
+    "Permet de vous connecter à votre compte Xbox via une autre région pour accéder à d'autres catalogues", // SettingDescLoginCountry
+    "Active la sortie vidéo 120 Hz sur votre console pour une réactivité accrue et une latence réduite", // SettingDescHighRefresh
+    "Automatique suit le plafond du profil Xbox ; Sans limite lève la limite locale jusqu'au max du serveur. Au-dessus de 15 Mbps est expérimental.", // SettingDescBitrateCap
+    "Ajuste le niveau du volume audio principal pendant les sessions de jeu en streaming", // SettingDescGameVolume
+    "Associe les touches du clavier USB ou Bluetooth aux boutons correspondants de la manette Xbox en jeu", // SettingDescKeyboardKeys
+    "Bascule entre mode fenêtré et plein écran sur les plates-formes de bureau compatibles", // SettingDescDisplayMode
+    "Ouvre l'écran de test de réponse et de calibrage de tous les boutons et axes de votre manette connectée", // SettingDescControllerButtons
+    "Active les capteurs de mouvement DualSense pour assister la visée analogique dans les jeux de tir", // SettingDescGyro
+    "Joue un signal sonore distinctif lorsque l'attente dans la file xCloud est terminée et que le jeu est prêt", // SettingDescQueueReady
+    "Exécute un diagnostic complet de la connexion Xbox Live, validant jetons d'accès, profil et abonnements", // SettingDescCheckSignIn
+    "Mesure le ping (RTT) et la gigue (jitter) vers les centres de données de jeux en nuage de plusieurs régions", // SettingDescNetworkTest
+    "Affiche un code QR pour soutenir le développeur via Ko-fi et contribuer à la maintenance active du projet", // SettingDescSupportProject
+    "Nouveautés",                                     // WhatsNew
+    "Nouveautés",                                     // WhatsNewTitle
+    "Haut-parleur de la manette",                     // PadSpeakerVolume
+    "Muet",                                           // Mute
+    "Contrôle Web",                                   // WebControlTitle
+    "Connexion mobile",                               // WebControlSubtitle
+    "Connectez-vous au même Wi-Fi pour chercher, remapper, utiliser le mobile comme manette virtuelle, signaler des soucis ou voir les logs.", // WebControlDesc
+    "Décodage vidéo",                                 // VideoDecoder
+    "Matériel (Recommandé)",                          // VideoDecoderHw
+    "Logiciel (CPU)",                                 // VideoDecoderSw
+    "Sélectionne le décodage matériel (libSceVideodec2 sur PS5, HWAccel sur Desktop) ou logiciel (CPU)", // SettingDescVideoDecoder
+    "Audio vers vibration haptique",                  // AudioHaptics
+    "Convertit les basses fréquences audio en vibrations haptiques sur DualSense", // SettingDescAudioHaptics
+    "Raccourcis du pavé tactile",                     // TouchpadShortcuts
+    "Configure les gestes de glissement et les clics gauche/droit sur le pavé tactile DualSense", // SettingDescTouchpadShortcuts
+    "Glisser vers le haut (↑)",                       // TouchpadSwipeUp
+    "Glisser vers le bas (↓)",                        // TouchpadSwipeDown
+    "Glisser vers la gauche (←)",                     // TouchpadSwipeLeft
+    "Glisser vers la droite (→)",                     // TouchpadSwipeRight
+    "Clic gauche",                                    // TouchpadClickLeft
+    "Clic droit",                                     // TouchpadClickRight
+    "Désactivé",                                      // TouchpadActNone
+    "Menu du jeu",                                    // TouchpadActGameMenu
+    "Bouton Xbox",                                    // TouchpadActXboxButton
+    "Afficher/masquer les stats",                     // TouchpadActToggleStats
+    "Couper/activer le micro",                        // TouchpadActToggleMic
+    "Changer le mode gyro",                           // TouchpadActCycleGyro
+    "Changer le profil de gâchette",                  // TouchpadActCycleTrigger
+    "Pavé tactile + Options ouvre toujours le menu du jeu", // TouchpadHelp
+    "Restaurer les paramètres par défaut",            // ResetSettings
+    "Restaure tous les paramètres aux valeurs d'usine. Maintenez ✕ pendant 5 secondes pour confirmer.", // SettingDescResetSettings
+    "Paramètres réinitialisés aux valeurs par défaut.", // SettingsResetNotice
+    "Maintenir pour réinitialiser",                   // HoldToReset
+    "La bibliothèque est déjà à jour",                // LibraryUpToDate
+    "Bibliothèque mise à jour (%s nouveaux jeux)",    // LibraryUpdatedCount
+    "Bibliothèque incomplète, nouvel essai",          // LibraryIncomplete
+    "Mode hors ligne",                                // OfflineMode
+    "Fonctionnalités Preview (xCloud)",               // PreviewFeatures
+    "Active les fonctionnalités client preview et le streaming Free-to-Play avec publicités pour les comptes sans Game Pass.", // SettingDescPreviewFeatures
+    "Nécessite un abonnement Xbox Game Pass Ultimate pour le cloud gaming", // GamePassRequired
+    "En file d'attente (temps indéterminé • attente depuis %s)", // InQueueIndeterminate
+    "En file d'attente (temps estimé : %s • attente depuis %s)", // InQueueEstimated
+    "Pour jouer aux jeux gratuits autres que Fortnite sans Game Pass, activez les 'Fonctionnalités Preview' dans les Paramètres et sur xbox.com/play.", // F2pPreviewRequiredDesc
+    "Ce compte doit activer les 'Fonctionnalités Preview' sur son profil sur xbox.com/play pour débloquer le streaming gratuit avec publicités.", // F2pPreviewAccountNeededDesc
+    "Joueur",                                    // MenuPlayer
+    "Grattage", // MenuStrum
+    "Star Power en levant", // MenuTilt
+    "Votre temps de jeu dans le cloud Xbox est écoulé : le service Xbox a fermé la session. Depuis novembre 2026, Xbox limite le jeu dans le cloud chaque mois : 15 h avec le Game Pass Ultimate, 10 h avec Premium et 5 h avec Essential. Pour avoir plus de temps, consultez les options sur xbox.com, ou attendez les heures du mois prochain.", // CloudTimeUp
+    "La session s’est terminée pour inactivité", // EndedIdle
+    "%s restantes", // CloudTimeLeft
+    "sur %s", // CloudTimeOf
+    "Temps cloud illimité", // CloudTimeUnlimited
+    "Sessions de %s min (gratuit avec pubs)", // CloudTimeFreeTier
+    "Il vous reste %s de temps de jeu dans le cloud Xbox ce mois-ci", // CloudTimeWarn
+    "Synchroniser les trophées",                      // SyncTrophies
+    "Synchronise tous les succès Xbox de votre compte et attribue les trophées correspondants à votre profil PlayStation.", // SettingDescSyncTrophies
+    "Synchroniser",                                   // RunSyncTrophies
+    "Synchronisation terminée : %s trophée(s) sur %s titre(s) ajoutés à votre profil !", // TrophiesSyncedToast
+    "Avertissement sur les trophées",                 // TrophiesDisclaimerTitle
+    "L'activation de la conversion des trophées ajoute des trophées à votre profil PlayStation. Si vous connectez ce compte au PlayStation Network pour synchroniser, il existe des risques de bannissement. N'activez cette option que sur un profil local ou si vous ne prévoyez plus de vous connecter au PSN.", // TrophiesDisclaimerBody
+    "Je comprends",                                   // TrophiesDisclaimerAware
+    "Annuler",                                        // TrophiesDisclaimerCancel
+    "Supprimer les trophées synchronisés",            // RemoveTrophies
+    "Supprime tous les trophées ajoutés par PSBox de ce profil local pour éliminer le risque de bannissement sur le PSN. Vous pourrez les synchroniser à nouveau depuis votre compte Xbox.", // SettingDescRemoveTrophies
+    "Supprimer les trophées synchronisés ?",          // RemoveTrophiesConfirmTitle
+    "Cela supprimera les packs de trophées locaux de PSBox pour ce profil. Vos succès restent enregistrés sur votre compte Microsoft/Xbox.", // RemoveTrophiesConfirmBody
+    "Supprimer",                                      // RemoveTrophiesConfirm
+    "%s titre(s) de trophées supprimé(s) de ce profil.", // TrophiesRemovedToast
+    "Synchronisation des succès...",                  // SyncingTrophies
+    "Recharger la diffusion",                         // ReloadStream
+    "Sans limite",                                    // BitrateUnlimited
+    "Limiteur de FPS",                                // FpsLimit
+    "Illimité",                                       // FpsUnlimited
+    "Limite la fréquence d'affichage du flux pour maintenir une cadence fluide", // SettingDescFpsLimit
+    "Général",                                        // MenuTabGeneral
+    "Guitare", // MenuTabGuitar
+    "Onglet",                                         // MenuTabLabel
+    "Onglets",                                        // MenuTabsLabel
+    "Paramètres enregistrés",                         // SettingsSavedToast
+    "Paramètres du jeu enregistrés",                  // GameSettingsSavedToast
+    "PSBox : connexions sécurisées indisponibles",    // SecureConnUnavailableToast
+    "Échec de synchronisation des trophées : %s",     // TrophySyncFailedToast
+    "Télémétrie activée",                             // TelemetryOnToast
+    "Télémétrie désactivée",                          // TelemetryOffToast
+    "Microphone coupé",                               // MicMutedToast
+    "Microphone actif",                               // MicUnmutedToast
+    "Calibrage du gyroscope",                         // GyroCalibrationTitle
+    "Placez la manette sur une surface plane et immobile pendant le calibrage.", // GyroCalibratingPrompt
+    "Calibrage des capteurs... (%s)",                 // GyroCalibratingProgress
+    "Mesure de la stabilité et calibrage...",         // GyroCalibratingDesc
+    "Calibrage réussi",                               // GyroCalibratedSuccess
+    "Compensation appliquée au gyroscope.",           // GyroCalibratedSuccessDesc
+    "Paramètres enregistrés dans le profil.",         // GyroCalibratedSaved
+    "Échec du calibrage - Mouvement détecté",         // GyroCalibratedFailed
+    "La manette a bougé pendant la lecture.",         // GyroCalibratedFailedDesc
+    "Gardez la manette immobile et réessayez.",       // GyroCalibratedRetry
+    "Calibrer le gyroscope",                          // GyroCalibrateAction
+    "Sensibilité horizontale : %s%",                 // GyroYawSens
+    "Sensibilité verticale : %s%",                   // GyroPitchSens
+    "Position du gyroscope",                          // GyroSensorPos
+    "Entrée reçue par le jeu",                        // GyroGameOutput
+    "Sensibilité globale",                            // GyroSensitivityIntensity
+    "Sensibilité horizontale",                        // GyroYawSensitivity
+    "Sensibilité verticale",                          // GyroPitchSensitivity
+    "Calibrage du gyroscope",                         // GyroCalibration
+    "Calibrage... %s%",                              // GyroCalibratingPct
+    "Calibré avec succès !",                          // GyroCalibratedSuccessShort
+    "Échec : Gardez immobile",                        // GyroCalibratedFailedShort
+    "Mode Démo (Automatique)",                        // GyroDemoMode
+    "Bougez la manette pour tester ; utilisez les flèches pour ajuster la sensibilité.", // GyroTestHelp
+    "Réponse du jeu",                               // GyroGameResponse
+    "Début de la réponse",                          // GyroCurveStart
+    "Courbe",                                       // GyroCurveShape
+    "Inverser l'horizontale",                       // GyroInvertX
+    "Inverser la verticale",                        // GyroInvertY
+    "Linéaire",                                     // GyroPresetLinear
+    "Douce",                                        // GyroPresetSmooth
+    "Exponentielle",                                // GyroPresetExponential
+    "Personnalisée",                                // GyroPresetCustom
+    "Vos valeurs",                                  // GyroYourNumbers
+    "Calibrer la réponse du jeu", // GyroAutoCal
+    "Démarrer", // GyroAutoCalStart
+    "Calibrage de la réponse du jeu", // GyroAutoCalTitle
+    "L'app fait tourner la caméra toute seule pendant environ 40 secondes et lit comment ce jeu répond au stick. La visée gyroscopique suit ensuite votre main à toutes les vitesses.", // GyroAutoCalIntro
+    "1. Soyez comme quand vous utilisez le gyroscope : arme en main, dans un endroit sûr.", // GyroAutoCalStep1
+    "2. Regardez un décor détaillé (bâtiments, arbres). Évitez le ciel, les murs unis et l'obscurité.", // GyroAutoCalStep2
+    "3. Fermez les menus du jeu, choisissez Démarrer et lâchez la manette.", // GyroAutoCalStep3
+    "4. N'importe quel bouton annule. Rien ne change avant que vous acceptiez le résultat.", // GyroAutoCalStep4
+    "Ouvrez la visée gyroscopique depuis le menu du jeu, en jouant, pour calibrer.", // GyroAutoCalOnlyInGame
+    "Calibrage de la réponse du jeu... %s%  -  n'importe quel bouton annule", // GyroAutoCalRunning
+    "Résultat", // GyroAutoCalResult
+    "Mesuré", // GyroAutoCalMeasured
+    "Actuel", // GyroAutoCalCurrent
+    "Vitesse verticale du jeu, par rapport à l'horizontale", // GyroAutoCalVertical
+    "Appliquer", // GyroAutoCalApply
+    "Réessayer", // GyroAutoCalRetry
+    "La caméra n'a pas bougé. Fermez les menus du jeu et réessayez.", // GyroAutoCalFailNoMotion
+    "L'image n'a pas pu être lue. Regardez un décor détaillé et bien éclairé, puis réessayez.", // GyroAutoCalFailUnreadable
+    "Les mesures ne suivent pas une seule courbe. Restez immobile, loin des autres joueurs, et réessayez.", // GyroAutoCalFailNoFit
+    "Calibrage annulé.", // GyroAutoCalCancelled
+    "Comment ce jeu transforme le stick en rotation de caméra. Choisissez-en une, calibrez ce jeu ou réglez les valeurs. \"Personnalisée\" ne vaut que pour ce jeu.", // GyroHelpPreset
+    "Lit la dérive du capteur, manette posée immobile sur une table. À utiliser si la visée bouge toute seule manette au repos.", // GyroHelpCalibrate
+    "Mesure la réponse de ce jeu en faisant tourner la caméra toute seule pendant environ 40 secondes. Le meilleur point de départ.", // GyroHelpAutoCal
+    "Tourne la visée à l'opposé de la manette, à gauche et à droite.", // GyroHelpInvertX
+    "Monte la visée quand la manette s'incline vers le bas, et inversement.", // GyroHelpInvertY
+    "De combien la visée tourne pour une même rotation de la manette, à toutes les vitesses. Trop rapide ou trop lente en général : changez ici.", // GyroHelpIntensity
+    "Gauche et droite seulement, en plus de la sensibilité générale.", // GyroHelpYaw
+    "Haut et bas seulement. Beaucoup de jeux tournent moins vite à la verticale.", // GyroHelpPitch
+    "La part du stick que le jeu ignore avant de bouger la caméra. Visée qui tremble ou dérive au repos : baissez. Petites corrections sans effet : augmentez.", // GyroHelpCurveStart
+    "À quel point les rotations lentes sont renforcées par rapport aux rapides. Visée nerveuse sur les corrections fines : baissez. Rotations lentes lourdes et rapides qui s'emballent : augmentez.", // GyroHelpCurveExp
+    "Tester en jeu", // GyroLiveTest
+    "Plein écran", // GyroLiveTestOff
+    "Maintenez L2 et visez : le jeu suit le gyroscope pendant vos réglages. (expérimental)", // GyroLiveHint
+    "Qualité vidéo",                                  // StatVideoQuality
+    "Ouvre le menu Xbox Guide ou envoie la commande Xbox au jeu.", // MenuDescXboxButton
+    "Configure et affiche les statistiques de performance, réseau et latence à l'écran.", // MenuDescStats
+    "Applique des algorithmes de mise à l'échelle comme AMD FSR et netteté des contours.", // MenuDescUpscaler
+    "Ajuste l'intensité du filtre de netteté appliqué au flux vidéo.", // MenuDescSharpness
+    "Réduit les bandes de dégradés et les artefacts de compression dans les scènes sombres.", // MenuDescDeband
+    "Redémarre la connexion WebRTC sans fermer votre session cloud.", // MenuDescReloadStream
+    "Quitte le jeu cloud actuel et retourne à l'écran d'accueil.", // MenuDescLeave
+    "Met fin à la diffusion depuis votre console Xbox et retourne à l'accueil.", // MenuDescEndStream
+    "Assigne la manette physique correspondant à ce joueur virtuel.", // MenuDescPlayer
+    "Guitare : une frette n'atteint le jeu que si tu grattes en la tenant (comme dans Guitar Hero). Désactivé : les frettes seules jouent.", // MenuDescStrum
+    "Lever la guitare (le manche vers le haut) active le Star Power (Overdrive), comme le bouton Back. S'il ne se déclenche pas en pleine chanson, rendez-le plus sensible.", // MenuDescTilt
+    "À régler dans Fortnite : Paramètres > Manette > Fortnite Festival", // GuitarBindTitle
+    "Piste", // GuitarBindLane
+    "Overdrive", // GuitarBindOverdrive
+    "Grattage activé : dans les menus les frettes sont A B Y X ; la verte (A, Overdrive) seulement par une pression brève sans gratter.", // GuitarBindStrumOn
+    "Grattage désactivé : la frette joue dès qu'elle est appuyée.", // GuitarBindStrumOff
+    "Choisissez le bouton envoyé par cette frette (A ou ◀ ▶ pour changer). Dans Fortnite, associez la piste au même bouton.", // MenuDescGuitarBind
+    "Rétablir les boutons par défaut", // GuitarBindReset
+    "Remet les pistes et l'Overdrive sur les boutons par défaut de ce mode de grattage (activé ou désactivé).", // MenuDescGuitarReset
+    "Le Wi-Fi retient des paquets", // WifiHoldPill
+    "Wi-Fi : paquets retenus %s× en 2 min. Changez le canal 5 GHz du routeur ou câblez.", // WifiHoldTip
+    "Manette USB non reconnue (%s) : appuyez une fois sur chaque bouton, lentement. Le journal l'enregistre pour l'ajouter.", // UsbXrayNotice
+    "Peu sensible", // TiltLess
+    "Normale", // TiltNormal
+    "Très sensible", // TiltMore
+    "Ajuste le volume du son diffusé par le haut-parleur de la manette.", // MenuDescPadSpeakerVolume
+    "Volant (Stick Gauche)",                           // GyroSteering
+    "Volant (Accélérer R2)",                           // GyroSteeringDrive
+    "Pays de la boutique", // StoreCountry
+    "Automatique (pays de connexion)", // StoreCountryAuto
+    "Choisit le pays des prix et des offres gratuites de la boutique. Le serveur de streaming reste inchangé.", // SettingDescStoreCountry
+};

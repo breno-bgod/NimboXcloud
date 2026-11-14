@@ -1,0 +1,4 @@
+Source: https://github.com/RafaelNGP/psbox-cloud-gaming
+Pinned commit: 48de20b7c3ec47f544010169c8cb8a03626623ac
+Import: isolated source snapshot with recursively initialized submodules; excludes git metadata and build/release binaries.
+License: GPL-3.0-or-later and bundled third-party notices; do not modify original attribution.

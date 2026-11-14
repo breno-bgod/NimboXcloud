@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 RafaelNGP
+// The picture on the GPU: RADV (PS5_Vulkan's Mesa port, linked into the
+// eboot) presenting to the 3840x2160 display through VK_KHR_display.
+//
+// Each frame, the video picture (YUV 4:2:0, any size) or the menus' canvas
+// (1920x1080 RGBA) is upscaled to the display with AMD FidelityFX FSR 1:
+// EASU, then RCAS sharpening, with the in-game menu laid over. Same calls as
+// display.h, which forwards to these once init() succeeded.
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
+namespace xc::display::gpu {
+
+// Window-system hooks for a desktop window (SDL_Vulkan_*). Empty on the PS5,
+// where RADV's vk_icdGetInstanceProcAddr and VK_KHR_display are used directly.
+struct Wsi {
+    void* getInstanceProcAddr = nullptr;  // PFN_vkGetInstanceProcAddr
+    const char* const* extensions = nullptr;
+    uint32_t extensionCount = 0;
+    bool (*createSurface)(void* user, void* instance, void* surfaceOut) = nullptr;
+    void (*getExtent)(void* user, uint32_t& width, uint32_t& height) = nullptr;
+    void* user = nullptr;
+};
+
+// Instance, device, display surface, swapchain and the FSR pipelines. False,
+// with the step that failed in the log, when the console or desktop driver
+// won't give them: the fallback display is used instead.
+bool init(const Wsi& wsi = {});
+void shutdown();
+bool ready();
+
+// Bring-up check: `frames` frames cleared to changing colours and presented,
+// with how long they took against the display's refresh.
+void probe(int frames);
+
+// One frame, then present(). False (nothing drawn) when, without `wait`, no
+// swapchain image is free yet.
+bool drawYuv420(const uint8_t* y, const uint8_t* u, const uint8_t* v, int strideY, int strideU, int strideV,
+                int width, int height, bool wait);
+bool drawNv12(const uint8_t* y, const uint8_t* uv, int strideY, int strideUV,
+              int width, int height, bool wait);
+// As display::videoSlots / waitVideoSlot.
+bool videoSlots(size_t bytes, uint8_t* out[2]);
+void waitVideoSlot(const uint8_t* p);
+void drawRgba(const uint32_t* pixels);  // 1920x1080, 0xAABBGGRR
+void present();
+
+// As display::setOverlay / setSharpness.
+void setOverlay(const uint32_t* pixels, int x, int y, int w, int h, uint8_t opacity);
+void setSharpness(int amount);
+// Smoothing of compression blocks in flat areas: 0 off, 1 low, 2 high.
+void setDeband(int level);
+// The upscaler: 0 FSR 1 (EASU), 1 Anime4K x2 (1080p pictures only; others
+// keep FSR). RCAS sharpens after either.
+void setUpscaler(int mode);
+// Anime4K Restore (S) before the upscale: cleans compression artefacts.
+void setRestore(bool on);
+// Measurements only: the picture rounded to 8 bits between the passes and no
+// dither, as before the 16-bit images.
+void setLegacyPrecision(bool on);
+// Measurements only: off gives the colour spread evenly, as before it followed the brightness.
+void setChromaGuide(bool on);
+// Measurements only: on, "no overlay" clears it and sends it to the GPU again every time, as before.
+void setOverlayRefreshAlways(bool on);
+// 119.88 Hz output on or back to 59.94 Hz while running (a game's stream
+// only); false when the driver can't (a RADV without the PSBox patch, or the
+// console refused). The swapchain stays as it is.
+bool setHighRefresh(bool on);
+// Whether setHighRefresh() can work at all (the patched RADV).
+bool canSwitchRefresh();
+// Before init(): swapchain images (3 by default; Wayland's minimum is 3).
+void setSwapImages(int count);
+// The desktop's choice (before init(), or later from any thread: the next
+// frame rebuilds the swapchain): MAILBOX when the surface offers it, so a
+// new frame replaces one still waiting and nothing blocks; FIFO otherwise,
+// and always when off (the default: the PS5's).
+void setMailbox(bool on);
+// Before init(): waiting for each frame to reach the screen before the next
+// (VK_KHR_present_wait, on by default). Off, the display time is still
+// measured, by polling.
+void setPresentWait(bool on);
+// The id of the last present() (0 before any), and the last frame known to
+// be on the screen: its id and when it got there (platform::nowUs()).
+uint64_t lastPresentId();
+bool lastShown(uint64_t& id, uint64_t& atUs);
+
+// The image last presented, 8-bit RGB rows; false when there is none.
+bool readBack(std::vector<uint8_t>& rgb, int& width, int& height);
+
+}  // namespace xc::display::gpu
