@@ -81,7 +81,15 @@ export class MsaWebAuth {
   }
   async consoleTransferToken({ signal } = {}) {
     if (!this.#tokens?.refreshToken) throw new Error('MSA_LOGIN_REQUIRED');
-    return this.refresh({ scope: TRANSFER_SCOPE, signal });
+    const previous = this.#tokens;
+    const { ok, status, data } = await this.#post(TOKEN, {
+      client_id: this.clientId, grant_type: 'refresh_token',
+      refresh_token: previous.refreshToken, scope: TRANSFER_SCOPE
+    }, signal);
+    if (!ok || !(data.access_token ?? data.lpt)) throw new Error('TRANSFER_TOKEN_FAILED_' + status);
+    // Console-transfer access token has a different purpose; do not replace the normal MSA access token.
+    this.#tokens = { ...previous, refreshToken: data.refresh_token ?? previous.refreshToken };
+    return data.access_token ?? data.lpt;
   }
   signOut() { this.#tokens = null; }
 }
