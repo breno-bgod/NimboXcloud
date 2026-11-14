@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         NimboXcloud PSBox WebRTC LAB (PR #34)
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      0.2.1
+// @version      0.2.2
 // @description  Laboratório experimental Xbox Cloud: login Microsoft, GSSV e WebRTC. Não substitui o NimboXcloud oficial.
 // @match        https://www.xbox.com/*
+// @match        https://play.xbox.com/*
 // @match        https://xbox.com/*
 // @run-at       document-idle
 // @noframes
@@ -34,8 +35,8 @@
     <button id="nx-login">Entrar com Microsoft</button>
     <p id="nx-auth" hidden>Abra <a id="nx-link" href="https://www.microsoft.com/link" target="_blank" rel="noopener noreferrer" style="color:#8fc5ff">microsoft.com/link</a> e informe: <strong id="nx-code"></strong></p>
     <p id="nx-profile"></p><p><button id="nx-library" disabled>Carregar biblioteca PSBox</button><input id="nx-search" placeholder="Pesquisar jogos" style="width:48%;padding:7px;background:#1b2536;color:white"></p><div id="nx-games" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-height:240px;overflow:auto"></div>
-    <label for="nx-title">ID do título Xbox Cloud</label><input id="nx-title" placeholder="titleId autorizado" style="width:100%;box-sizing:border-box;background:#1b2536;color:white;padding:8px;border:1px solid #526077;border-radius:6px">
-    <p><button id="nx-start" disabled>Iniciar sessão</button><button id="nx-play">Ativar som</button><button id="nx-stop">Encerrar</button><button id="nx-logout">Sair</button></p>
+    <input id="nx-title" type="hidden" value="">
+    <p><button id="nx-start" disabled>Jogar título selecionado</button><button id="nx-play">Ativar som</button><button id="nx-stop">Encerrar</button><button id="nx-logout">Sair</button></p>
     <video id="nx-video" autoplay playsinline controls style="width:100%;aspect-ratio:16/9;background:#000"></video>
     <small>Experimental: sem garantia de CORS, handshake completo ou gameplay. Não cole tokens em mensagens.</small>`;
   const mount = () => { if (!closed && document.body && !root.isConnected) document.body.appendChild(root); };
@@ -47,18 +48,18 @@
   const $ = id => root.querySelector('#' + id);
   const status = message => { $('nx-status').textContent = message; };
   let auth, session = null, busy = false, games = [], libraryClient = null;
-  const setStart = () => { $('nx-start').disabled = busy || !auth?.signedIn || !!session || closed; };
+  const setStart = () => { $('nx-start').disabled = busy || !auth?.signedIn || !$('nx-title').value || !!session || closed; };
   $('nx-close').onclick = async () => { closed = true; observer.disconnect(); window.__nimboPsboxLabMounted = false; try { await session?.stop(); } catch {} auth?.signOut(); root.remove(); };
   try {
     // jsDelivr serves .mjs as JavaScript and resolves the relative ESM imports.
     // Pin to a concrete commit: jsDelivr's GitHub ref parser cannot reliably resolve branch names containing '/'.
-    const base = 'https://cdn.jsdelivr.net/gh/breno-bgod/NimboXcloud@4460305588fe6239bdbc47df69c427181a549f44/experiments/web-engine/';
+    const base = 'https://cdn.jsdelivr.net/gh/breno-bgod/NimboXcloud@c6751cf1a98f87f610c0021221927da203dddcfc/experiments/web-engine/';
     const [{ XboxWebAuth }, { PsboxCloudWebSession }, { GssvWebClient }, { PsboxGameLibrary }] = await Promise.all([
       import(base + 'xbox-web-auth.mjs'), import(base + 'psbox-cloud-session.mjs'), import(base + 'gssv-web-client.mjs'), import(base + 'psbox-game-library.mjs')
     ]);
     if (closed) return;
     auth = new XboxWebAuth();
-    const render = () => { const container = $('nx-games'); container.replaceChildren(); const query = $('nx-search').value.trim().toLocaleLowerCase('pt-BR'); for (const game of games.filter(g => (g.name || g.titleId).toLocaleLowerCase('pt-BR').includes(query)).slice(0,150)) { const btn = document.createElement('button'); btn.style.cssText = 'min-width:0;background:#1b2536;color:white;border:1px solid #526077;border-radius:6px;padding:4px;font:12px system-ui;overflow:hidden'; if (game.imageUrl) { const img = document.createElement('img'); img.src = game.imageUrl; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.style.cssText = 'width:100%;aspect-ratio:3/4;object-fit:cover'; btn.append(img); } const label = document.createElement('span'); label.textContent = game.name || game.titleId; btn.append(label); btn.onclick = () => { $('nx-title').value = game.titleId; status('Selecionado: ' + label.textContent + '. Clique em Iniciar sessão.'); }; container.append(btn); } };
+    const render = () => { const container = $('nx-games'); container.replaceChildren(); const query = $('nx-search').value.trim().toLocaleLowerCase('pt-BR'); for (const game of games.filter(g => (g.name || g.titleId).toLocaleLowerCase('pt-BR').includes(query)).slice(0,150)) { const btn = document.createElement('button'); btn.style.cssText = 'min-width:0;background:#1b2536;color:white;border:1px solid #526077;border-radius:6px;padding:4px;font:12px system-ui;overflow:hidden'; if (game.imageUrl) { const img = document.createElement('img'); img.src = game.imageUrl; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.style.cssText = 'width:100%;aspect-ratio:3/4;object-fit:cover'; btn.append(img); } const label = document.createElement('span'); label.textContent = game.name || game.titleId; btn.append(label); btn.onclick = () => { $('nx-title').value = game.titleId; status('Selecionado: ' + label.textContent + '. Clique em Jogar título selecionado.'); setStart(); }; container.append(btn); } };
     $('nx-search').oninput = render;
     $('nx-library').onclick = async () => { if (busy || !auth.signedIn) return; busy = true; $('nx-library').disabled = true; try { const { xstsToken } = await auth.sessionCredentials(); libraryClient?.dispose(); libraryClient = new GssvWebClient(); const login = await libraryClient.login(xstsToken); const library = new PsboxGameLibrary({ gssv: libraryClient }); status('Buscando títulos no GSSV do PSBox...'); games = await library.list({ market: login.market || 'BR', language: 'pt-BR' }); render(); status('Biblioteca PSBox: ' + games.length + ' títulos. Selecione um jogo.'); } catch (error) { status('Biblioteca: ' + error.message); } finally { busy = false; $('nx-library').disabled = !auth.signedIn; setStart(); } };
     status('Pronto. Faça login Microsoft.');
@@ -97,7 +98,7 @@
     };
     $('nx-play').onclick = () => session?.player.play().catch(error => status('Som: ' + error.message));
     $('nx-stop').onclick = async () => { if (!session) return; busy = true; setStart(); const current = session; session = null; await current.stop().catch(() => {}); busy = false; setStart(); status('Sessão encerrada.'); };
-    $('nx-logout').onclick = async () => { if (session) await session.stop().catch(() => {}); session = null; auth.signOut(); libraryClient?.dispose(); libraryClient = null; games = []; $('nx-games').replaceChildren(); $('nx-library').disabled = true; $('nx-auth').hidden = true; $('nx-code').textContent = ''; $('nx-profile').textContent = ''; status('Desconectado.'); setStart(); };
+    $('nx-logout').onclick = async () => { if (session) await session.stop().catch(() => {}); session = null; auth.signOut(); libraryClient?.dispose(); libraryClient = null; games = []; $('nx-title').value = ''; $('nx-games').replaceChildren(); $('nx-library').disabled = true; $('nx-auth').hidden = true; $('nx-code').textContent = ''; $('nx-profile').textContent = ''; status('Desconectado.'); setStart(); };
   } catch (error) {
     status('Falha ao carregar módulos: ' + error.message + '. Verifique CSP, CDN e conexão.');
   }
