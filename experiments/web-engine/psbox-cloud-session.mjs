@@ -38,11 +38,11 @@ export class PsboxCloudWebSession {
         if (signal.aborted) throw new Error('SESSION_CANCELLED');
         const status = await this.#gssv.state({ signal });
         if (status?.state === 'Failed') throw new Error('CLOUD_SESSION_FAILED');
-        if (status?.state === 'ReadyToConnect' && !connected) {
+        if (['ReadyToConnect', 'Provisioned'].includes(status?.state) && !connected) {
           await this.#gssv.connect(transferToken, { signal });
           connected = true;
         }
-        if (status?.state === 'Provisioned') break;
+        if (status?.state === 'Provisioned' && connected) break;
         if (i === 119) throw new Error('CLOUD_PROVISION_TIMEOUT');
         await delay(1000);
       }
