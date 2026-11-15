@@ -1261,7 +1261,7 @@ SOFTWARE.
     if(!json||typeof json!=='object')return null;
     const valid=function(value){return typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=86400?value:null;};
     const allocation=valid(json.estimatedAllocationTimeInSeconds),total=valid(json.estimatedTotalWaitTimeInSeconds);
-    // Better xCloud gates its queue overlay on allocation > 0. A total alone
+    // The queue overlay requires allocation > 0. A total alone
     // must not override an explicit report that no allocation wait remains.
     if(allocation===0)return 0;
     if(allocation!==null)return total!==null&&total>=allocation?total:allocation;

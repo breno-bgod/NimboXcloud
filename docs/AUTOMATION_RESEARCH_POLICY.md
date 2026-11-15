@@ -13,7 +13,6 @@ Atualizada por decisão do mantenedor em 2026-11-13.
 A automação existente continua habilitada a cada 30 minutos. Seu objetivo principal passa a ser busca na web/GitHub:
 1. Repositórios criados na janela móvel dos últimos 30 dias, com atividade de código relevante.
 2. Projetos mais antigos que tiveram commits/PRs/releases relevantes nesse período, comparados ao último SHA consultado.
-3. PSBox, Orbita, Better xCloud, Greenlight, xbox-xcloud-player, XStreaming e novos candidatos para navegador, Android/mobile/TV, Linux/SteamOS, desktop e consoles.
 
 Datas de criação e commit devem ser verificadas; updated_at, estrelas ou notícias republicadas não provam avanço técnico. Fontes inacessíveis, privadas ou legadas são identificadas como tal. Linux no user-agent, inclusive no Android, não fornece APIs/driver/codecs de um cliente nativo SDL/C++ ao navegador.
 

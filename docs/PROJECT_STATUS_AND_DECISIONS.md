@@ -61,7 +61,7 @@ Direção de produto: central própria para dispositivos, perfis, mapeamento de 
 
 Por decisão do mantenedor, Sistema não apresenta nem aplica os experimentos de identidade/Client Hints, mesmo com preferências antigas, e não apresenta uma segunda ação de tela cheia/horizontal. DeX não é uma categoria própria: o perfil de dispositivo usa as capacidades normais do navegador, preservando a migração interna de preferências antigas.
 
-A preferência Fortnite Console não aplica alteração na versão atual do Nimbo, mas o recurso do Better xCloud é real e deve ser preservado como objetivo. Seu patch força o argumento de sendTouchInputEnabledMessage para false na rota /launch/fortnite/, com a finalidade declarada de disponibilizar Salve o Mundo no mobile. A substituição por simples escolha de entrada foi retirada do PR após esclarecimento do mantenedor. A integração no Nimbo continua pendente e não equivale a liberar títulos sem autorização.
+A preferência Fortnite Console não aplica alteração na versão atual do Nimbo, mas o recurso do outros clientes é real e deve ser preservado como objetivo. Seu patch força o argumento de sendTouchInputEnabledMessage para false na rota /launch/fortnite/, com a finalidade declarada de disponibilizar Salve o Mundo no mobile. A substituição por simples escolha de entrada foi retirada do PR após esclarecimento do mantenedor. A integração no Nimbo continua pendente e não equivale a liberar títulos sem autorização.
 
 Após relato do mantenedor de cursor capturado sem movimento, o PR de entradas passou a encaminhar eventos físicos explicitamente pelo transporte existente, com liberação ao perder foco e módulo de teste fixado por commit. Há testes de integração até o SDK simulado; recepção no servidor e gameplay continuam pendentes. O touchpad virtual envia movimentos diretamente ao SDK; Pointer Lock é oferecido separadamente para mouse físico, mediante gesto explícito e sessão conectada.
 
@@ -69,7 +69,7 @@ Referências e roteiro de verificação: [ajustes de entradas](./AJUSTES_ENTRADA
 
 ## Revisão incremental — 2026-11-12 / v4.12.88
 
-O mantenedor definiu acessibilidade mobile/desktop, streaming, servidores, áudio/voz e estatísticas como eixos de evolução, preservando o que já funciona e os diferenciais próprios, especialmente o mouse por toque. A [avaliação e plano incremental](./PLANO_ATUALIZACAO.md) registra o estado observado e os critérios dos próximos lotes; paridade integral com Better xCloud não é requisito.
+O mantenedor definiu acessibilidade mobile/desktop, streaming, servidores, áudio/voz e estatísticas como eixos de evolução, preservando o que já funciona e os diferenciais próprios, especialmente o mouse por toque. A [avaliação e plano incremental](./PLANO_ATUALIZACAO.md) registra o estado observado e os critérios dos próximos lotes; paridade integral com outros clientes não é requisito.
 
 Neste lote: seleção HQ/Windows passa a respeitar a preferência salva; HQ continua padrão sem preferência. Corrigidos perda negativa, unidades de bitrate e teste smoke fora do CI. Não foram reativados recursos congelados nem alterados transportes de entrada, áudio ou xHome. A retomada de áudio/remapeamento será precedida de revisão e teste, conforme o plano.
 
@@ -150,8 +150,8 @@ Estas frentes foram solicitadas pelo mantenedor e **não devem ser descritas com
 | Frente | Objetivo | Estado e próximos passos |
 | --- | --- | --- |
 | Controles virtuais na tela | HUD de botões Xbox por toque, além de teclado virtual e touchpad/mouse; permitir teste em celular e com controle físico | **Planejado / validar base existente**. Inventariar HUD e entradas, definir gerenciador único sem wrappers concorrentes, verificar compatibilidade com novo xCloud e restauração de controles nativos. |
-| Nitidez estilo Clarity Boost | Oferecer aprimoramento visual local ajustável, inspirado na abordagem AMD CAS do Better xCloud, sem depender de APIs exclusivas do Edge | **Planejado / investigar**. Auditar CAS e GPU existentes, estudar implementação de referência e licenças, evitar duplicar filtros, medir FPS, latência, bateria e fallback. Não alegar equivalência ao Clarity Boost nativo. |
-| Multiplayer local (dois controles) | Permitir dois jogadores na mesma sessão quando o jogo e o serviço suportarem | **Planejado / investigar**. Estudar a implementação do Better xCloud e o protocolo de entrada do cliente atual; testar com dois gamepads físicos. O xCloud pode não suportar jogos que exigem segundo perfil Xbox. Não confundir detectar dois controles com entregar dois jogadores. |
+| Nitidez estilo Clarity Boost | Oferecer aprimoramento visual local ajustável, inspirado na abordagem AMD CAS do outros clientes, sem depender de APIs exclusivas do Edge | **Planejado / investigar**. Auditar CAS e GPU existentes, estudar implementação de referência e licenças, evitar duplicar filtros, medir FPS, latência, bateria e fallback. Não alegar equivalência ao Clarity Boost nativo. |
+| Multiplayer local (dois controles) | Permitir dois jogadores na mesma sessão quando o jogo e o serviço suportarem | **Planejado / investigar**. Estudar a implementação do outros clientes e o protocolo de entrada do cliente atual; testar com dois gamepads físicos. O xCloud pode não suportar jogos que exigem segundo perfil Xbox. Não confundir detectar dois controles com entregar dois jogadores. |
 
 **Regra:** incorporar essas frentes no planejamento, mas não apresentá-las como recursos disponíveis ou homologados até haver implementação, testes automatizados e partida real validada.
 

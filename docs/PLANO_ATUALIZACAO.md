@@ -4,7 +4,7 @@ Revisão: 2026-11-12. Base auditada: `863cb5c8f9b4fe103acc64426021e092064245ff`,
 
 ## Direção de produto
 
-Melhorar a acessibilidade e a personalização no novo `play.xbox.com`, preservando os sistemas próprios que já funcionam. Better xCloud é referência de experiência e engenharia; paridade integral não é requisito. O mantenedor relata funcionamento de vários sistemas, com destaque para o mouse por toque e troca de servidor. A revisão de código não substitui nem invalida esses relatos.
+Melhorar a acessibilidade e a personalização no novo `play.xbox.com`, preservando os sistemas próprios que já funcionam. A implementação deve seguir as necessidades próprias do NimboXcloud. O mantenedor relata funcionamento de vários sistemas, com destaque para o mouse por toque e troca de servidor. A revisão de código não substitui nem invalida esses relatos.
 
 Não reescrever o projeto nem trocar o transporte de mouse por preferência arquitetural. JavaScript, instalação simples e nenhuma dependência nova neste lote. Mudanças amplas exigem diagnóstico, plano e critérios de regressão prévios.
 
@@ -12,14 +12,14 @@ Não reescrever o projeto nem trocar o transporte de mouse por preferência arqu
 
 - Código e testes obtidos pela integração GitHub em revisão fixada, sem `git clone`.
 - Lidos os dois userscripts, testes relevantes, workflows, arquitetura e decisões. A análise por subsistema não é uma certificação de cada linha do repositório.
-- Referência Better xCloud: commit `ea4d19f2800cee9cfa387a0c9c37b3711cf208c7`.
+- Referência externa: commit `ea4d19f2800cee9cfa387a0c9c37b3711cf208c7`.
 - 204 testes locais: 201 aprovados, zero falhas, três TODO. Há testes estruturais e testes de execução com mocks; não são 201 testes de gameplay.
 - Execução local: Node 24.22.1 com `--test-isolation=none`; CI usa Node 22 com isolamento padrão. A aprovação do CI do lote precisa ser registrada separadamente.
 - Não houve sessão autenticada Xbox, medição de latência/bateria, comprovação de resolução superior a 1080p ou homologação de áudio/entrada em dispositivo real.
 
 ## Comparação por sistema
 
-| Sistema | NimboXcloud observado | Referência Better xCloud | Decisão |
+| Sistema | NimboXcloud observado | Referência externa | Decisão |
 |---|---|---|---|
 | Novo site | Alvo explícito `play.xbox.com` | README e issue #1028 informam trabalho para o site novo | Preservar adaptação própria; não copiar patches antigos sem verificar seus alvos |
 | Mouse/teclado por toque | `NimboXboxTransport` usa `onVirtualMouseInput`, tradutor de teclado do SDK e canal da sessão; inclui WASD, botões configuráveis, editor e perfis | Upstream tem subsistemas de mouse/teclado e touch; equivalência ao mouse por dedo do Nimbo não foi demonstrada nesta revisão | Diferencial relatado pelo mantenedor; manter e ampliar cobertura de ciclo de vida |
@@ -106,14 +106,6 @@ Locais previstos: perfis existentes, ponte de entrada e editor; sem segundo gere
 
 ## Referências consultadas e padrões extraídos
 
-- [Better xCloud: login e regiões](https://github.com/redphx/better-xcloud/blob/ea4d19f2800cee9cfa387a0c9c37b3711cf208c7/src/utils/xcloud-interceptor.ts): catálogo baseado na resposta real; metadados de apresentação não provam disponibilidade.
-- [Better xCloud: rede e osName](https://github.com/redphx/better-xcloud/blob/ea4d19f2800cee9cfa387a0c9c37b3711cf208c7/src/utils/network.ts) e [SDP](https://github.com/redphx/better-xcloud/blob/ea4d19f2800cee9cfa387a0c9c37b3711cf208c7/src/utils/sdp.ts): qualidade solicitada, preferência de codec e teto não são garantia de recepção.
-- [Better xCloud: customização](https://github.com/redphx/better-xcloud/blob/ea4d19f2800cee9cfa387a0c9c37b3711cf208c7/src/modules/patcher/patches/src/controller-customization.ts): transformação no objeto de entrada do cliente, com dependência dos patches daquele cliente.
-- [Better xCloud: estatísticas](https://github.com/redphx/better-xcloud/blob/ea4d19f2800cee9cfa387a0c9c37b3711cf208c7/src/utils/stream-stats-collector.ts), Event Bus e Feature Gates: responsabilidades separadas e integração ao estado da sessão; importar flags cegamente não adapta o novo cliente.
-- [Issue #1028](https://github.com/redphx/better-xcloud/issues/1028): o autor informa trabalho em suporte a `play.xbox.com`; não determina viabilidade de cada recurso Nimbo.
-- [Greenlight: entrada](https://github.com/unknownskl/greenlight/blob/main-v2/packages/player/src/client/lib/input/gamepad.ts): mapeamentos, foco e attach/detach explícitos. [Gerenciamento de sessão](https://github.com/unknownskl/greenlight/blob/main-v2/packages/desktop/main/helpers/streammanager.ts): distinguir home/cloud e estados. Cliente próprio tem controle de transporte diferente do userscript.
-- [xbox-xcloud-player](https://github.com/unknownskl/xbox-xcloud-player): biblioteca de API/player WebRTC; não adicionada como dependência.
-- [XStreaming](https://github.com/Geocld/XStreaming): README declara controles virtuais/OTG/Bluetooth, Android TV e renderização nativa; recursos nativos não se transferem automaticamente ao navegador. Estudo conceitual, sem copiar código AGPL. Desde a revisão de licenciamento de 2026-11-12, o NimboXcloud é distribuído sob GPL-3.0-or-later; as obrigações específicas da AGPL continuam exigindo revisão.
 - XBPlayer: busca pelo nome retornou homônimos; o README de `xwipro/xbplayer` é de um player HLS/MP4, não referência Xbox confirmada. Não atribuir funcionalidades ou arquitetura a um projeto Xbox sem identificar o repositório correto.
 
 ## Checklist de teste real por lote
