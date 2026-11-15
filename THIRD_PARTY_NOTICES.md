@@ -69,7 +69,6 @@ SOFTWARE.
 
 O módulo Touch HUD também registra NimboPlay e Even Better xCloud (Endymi0n74) em sua proveniência; esses créditos permanecem no arquivo. Consulte [a matriz de proveniência](./docs/P00_PROVENANCE.md) e os cabeçalhos dos arquivos para os limites da auditoria. Esta lista não certifica a origem de cada linha nem substitui a revisão de licença de qualquer componente novo.
 
-PSBox Cloud Gaming (RafaelNGP) é uma referência sob GPL-3.0-or-later. **Nenhum código do PSBox foi incorporado neste lote de licenciamento.** Uma futura incorporação deve identificar origem/revisão/arquivos, preservar os avisos originais e atender às obrigações de distribuição de fonte da GPL.
 
 A adoção de GPL não autoriza apagar avisos MIT e não torna uma futura incorporação AGPL automaticamente coberta apenas pela GPL. Revisar as condições específicas de cada adaptação.
 

@@ -19,7 +19,6 @@
 
 A interface é a Central de Entradas do PR #29. Esta publicação acrescenta giroscópio FPS/Corrida em paisagem e touchpad de mira nos controles, preservando as entradas e o editor existentes. Use somente o [instalador oficial](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js). Guia: [giroscópio e touchpad](docs/GIROSCOPIO_E_TOUCHPAD.md).
 
-O desenvolvimento PSBox/Android do PR #24 agora faz parte deste repositório, em `experiments/console/`, com fontes, licenças, Java/JNI, transporte HTTPS e builds ARM64/AAR. **Ainda não há APK nem motor PSBox funcional no navegador/aplicativo.** Esses arquivos não são carregados pelo userscript. [Estado da integração](docs/INTEGRACAO_OFICIAL.md).
 
 ## Versão oficial 4.15.4
 

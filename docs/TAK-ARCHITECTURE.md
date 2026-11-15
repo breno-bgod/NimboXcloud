@@ -29,13 +29,13 @@ O layout v4.0 organiza controles em zonas como `left`, `right`, `upper`, `lower`
 
 ## Teste de layout no cliente web
 
-A [wiki do Better xCloud — custom touch layout](https://github.com/redphx/better-xcloud/wiki/How-to-create-custom-touch-control-layout) documenta:
+O fluxo de teste de layouts personalizados documenta:
 - habilitar a disponibilidade de controles touch para todos os jogos;
 - recarregar a página em Chromium com emulação de dispositivo touch;
 - abrir um jogo sem layout touch oficial;
 - passar um JSON v4.0 para `testTouchLayout(layout)` no console do DevTools.
 
-A wiki registra limitações desse fluxo, incluindo ausência de assets customizados e ausência de troca dinâmica automática por contexto de jogo. Esse procedimento é evidência de um hook de teste usado pelo Better xCloud, não uma garantia de que ele esteja exposto no novo `play.xbox.com`, no contexto isolado de um userscript ou em jogos com layout oficial.
+A wiki registra limitações desse fluxo, incluindo ausência de assets customizados e ausência de troca dinâmica automática por contexto de jogo. Esse procedimento é evidência de um hook de teste usado em testes de layouts, não uma garantia de que ele esteja exposto no novo `play.xbox.com`, no contexto isolado de um userscript ou em jogos com layout oficial.
 
 O NimboXcloud v4.12.71 adiciona apenas uma sondagem passiva do descritor próprio `window.testTouchLayout`. Ela não executa a função, não lê layouts, não modifica o DOM e não altera a sessão. "Não visível" significa apenas que o hook não foi encontrado no objeto `window` observado pelo userscript.
 
