@@ -134,4 +134,3 @@ The current distribution uses [GPL-3.0-or-later](./LICENSE). Redistribution and 
 
 ## Unified source base — 4.15.4
 
-The official PR #29 interface is preserved, with landscape FPS/racing gyroscope profiles and complementary controller touchpad. PSBox Android development sources from PR #24 are included under experiments/console with licenses and ARM64/AAR builds. They are not loaded by the userscript. No APK or integrated PSBox streaming engine is available yet. See [integration status](docs/INTEGRACAO_OFICIAL.md).

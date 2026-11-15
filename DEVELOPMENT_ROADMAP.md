@@ -4,12 +4,9 @@
 
 ## Prioridade vigente — unificação autorizada
 
-Uma versão oficial na main, com interface do PR #29 preservada. Giroscópio/touchpad do PR #27 e fontes experimentais PSBox do PR #24 foram reunidos; fontes nativas não executam no userscript. Validar giroscópio/touchpad no aparelho; continuar port de núcleo/mídia/entrada com contratos de sessão e lifecycle, preservando todas as funções existentes. Sem alegar APK/streaming PSBox integrado enquanto não existir. Automação a cada duas horas; próximos avanços em branches/PRs sobre a main unificada, sem force push, merge próprio automático ou release automática.
 
 ## Estado de referência
-- Base oficial desta publicação: userscript 4.15.4, interface do PR #29, giroscópio/touchpad reconciliados e fontes experimentais PSBox do PR #24. Sempre reler o SHA atual da main antes de alterar.
 - Arquivo principal: `NimboXcloud.user.js`.
-- Cliente web em `play.xbox.com` preservado; adaptação nativa PSBox/Android segue no mesmo repositório, em módulo separado destinado a futuro host APK.
 - Objetivo: estabilidade real do cliente web, manutenção das funções existentes e investigação verificável das diferenças entre cliente web e cliente Xbox.
 
 ## Procedimento obrigatório a cada execução
@@ -40,7 +37,6 @@ Uma versão oficial na main, com interface do PR #29 preservada. Giroscópio/tou
 - [ ] P0 — Validar a confiabilidade de `nxSessionHealth`, `nxCompatibilityVerdict` e métricas da sobreposição: evitar falsos positivos, dados antigos e unidades erradas.
 - [ ] P0 — Verificar conflitos entre gamepad físico, atalhos View+Menu, gyro, HUD e teclado/mouse por toque; não quebrar entradas existentes.
 - [ ] P1 — Ampliar relatório de protocolo com evidências observadas/configuradas/não verificáveis, sem coletar tokens, cookies ou dados sensíveis.
-- [ ] P1 — Comparar autenticação, ofertas, criação de sessão e WebRTC com projetos open source: xbox-xcloud-player, XStreaming, Greenlight, OpenXCloud, PSBox, green-nx, XCloud4 e novos projetos.
 - [ ] P1 — Documentar hipóteses de identidade de console, separar identificação declarada de autorização real; testar apenas com conta e sessões autorizadas. Não presumir que UA ou headers liberam catálogo.
 - [ ] P1 — Melhorar diagnóstico de falhas, logging sanitizado, timeout, tratamento de erro e relatório exportável.
 - [x] P2 — Reorganizar a taxonomia do painel por responsabilidade, sem recriar os gerenciadores de input.
@@ -1197,7 +1193,6 @@ Critérios de aceite:
 
 ### Evidências e confiança
 - **Alta:** documentação Xbox/GDK sobre Azure Game Streaming versus Remote Play; CTA web, private offerings, autorização da conta e região; anúncio oficial de GTA VI e data futura.
-- **Alta para modalidade/código declarado, não para reconhecimento do servidor:** PSBox, Green-NX, Greenlight, XStreaming e xCloudNative separam `xgpuweb` (cloud) de `xhome` (Remote Play próprio) nos caminhos inspecionados. Clientes nativos não provam identidade Xbox.
 - **Média:** Orbita XEX 1.1.0; o site informa que os jogos rodam nos servidores Microsoft, conta define catálogo e uma conta joga em um aparelho por vez. O código XEX atual não foi inspecionado via GitHub API.
 - **Alta para escopo do produto:** Better xCloud 6.7.13 atua como userscript no site antigo; EvenBetter 1.13.11 altera compatibilidade/UA, sem prova de autorização de console.
 - **Matriz web:** WebRTC/WebSocket/Gamepad estão amplamente disponíveis; WebCodecs tem suporte atual em Chromium, Firefox desktop e Safari 16.4+; WebHID/WebUSB e Pointer Lock têm lacunas móveis. APIs não explicam, por si só, ausência de título no catálogo.

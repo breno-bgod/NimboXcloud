@@ -18,17 +18,14 @@ O objetivo é que qualquer colaborador ou IA compreenda **o que existe, o que pr
 
 ## Publicação 4.15.4 — base oficial unificada
 
-Especificação do mantenedor incorporada sobre a interface oficial do PR #29: perfis FPS/Corrida em paisagem, composição nos analógicos e touchpad de mira no controle físico/virtual. Saída complementar pela ponte Gamepad, sem alterar o modo escolhido ou a autenticação; suporte real de combinações de mouse/toque e analógico precisa ser validado por jogo. Não é protocolo de touchpad PlayStation. Módulo oficial 1.4.1 e Central de Entradas preservados; userscript publicado como 4.15.4. Guia em [Giroscópio e touchpad](GIROSCOPIO_E_TOUCHPAD.md). Testes locais: 399 PASS/0 FAIL/3 TODO; hardware, orientação real e gameplay pendentes. Fontes, experimentos e builds PSBox/Android do PR #24 estão presentes no mesmo repositório, sem importação pelo userscript. Não há APK ou motor PSBox integrado funcional. Ver [Estado de integração](INTEGRACAO_OFICIAL.md).
 
 ## Publicação 4.15.3 — PR #29 e divisão de frentes
 
-O mantenedor definiu o PR #29 como a atualização oficial mais recente: Central de Entradas por dispositivo, tema grafite/verde, ajustes de sensibilidade do touchpad e organização do editor. Userscript 4.15.3, módulo 1.4.1 fixado por SHA, configurações existentes preservadas. O PR #24 continua exclusivamente no desenvolvimento experimental PSBox/Android; não foi incorporado ao produto. O giroscópio virtual proposto no PR #27 também não faz parte desta publicação e requer reconciliação com a nova Central de Entradas antes de eventual integração.
 
 Verificação local desta publicação: 388 testes, 385 aprovados, zero falhas e três TODO preexistentes; sintaxe dos dois scripts e relatório estático executados. A validação Edge headless de layout/navegação foi relatada na implementação original do PR #29; não foi reexecutada nesta preparação de metadados. Teste manual no aparelho, hardware e partida autenticada continuam pendentes.
 
 ## Publicação 4.15.2 — correções autorizadas
 
-Incorporação do PR #25 autorizada no chat: acesso NX independente, atalhos de painel/captura, seleção da fonte de áudio e opt-out dos ajustes de microfone. 385 testes locais: 382 aprovados, zero falhas, três TODO preexistentes. Sintaxe e relatório estático executados. CI deve ser conferido no head publicado. Homologação no Edge Android, som audível e fullscreen continuam pendentes; não declarar resolução de toda falha relatada apenas pelos testes. Produto mantém módulo 1.4.0 e preferências. PSBox/Android segue separado no PR #24, sem APK oficial.
 
 ## Publicação 4.15.1 e nova divisão de trabalho — 2026-11-13
 
@@ -112,7 +109,6 @@ O mantenedor relatou filtros sem diferença com WebGL2 ligado e pediu acesso rá
 
 300 testes Node: 297 PASS, zero FAIL, três TODO. Shader real executado em EGL/OpenGL ES3 sem janela para oito controles; RGB [80,100,120] virou [92,115,138] com brilho 115%. Isso não homologa upload de vídeo, composição DOM ou gameplay no navegador. Chromium continua bloqueado em setsockopt; causa específica no dispositivo do mantenedor não foi confirmada. [Implementação, referências e aceite](./VIDEO_E_IMAGEM.md).
 
-PSBox solicita 1440 por canal de controle e dimensões/capacidades compatíveis. Esse caminho ainda não está adaptado/verificado no SDK retail do Nimbo. Não criar opção fictícia nem tratar canvas maior como stream 1440p. O próximo experimento está em AUTOMATION_BACKLOG.md, respeitando PRs e correções prioritárias de conexão/mídia.
 
 ## Propósito e princípios
 
