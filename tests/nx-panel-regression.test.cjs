@@ -103,16 +103,18 @@ test('statistics owns monitor controls and interface retains general appearance'
  assert.match(src,/TAB_BUILDERS\.overview=function\(root\)\{nxOverviewOriginal\(root\);\}/);
 });
 
-test('streaming page keeps server and network settings while video owns quality',()=>{
+test('stream page owns quality presets; statistics owns received resolution',()=>{
  const start=src.indexOf('TAB_BUILDERS.stream=function(root){');
  const end=src.indexOf('TAB_BUILDERS.audio=function(root){',start);
  assert.ok(start>=0&&end>start);
  const body=src.slice(start,end);
  assert.match(body,/Data center|nxOriginalStreamBuilder/);
  assert.match(body,/system\[2\]/);
- assert.doesNotMatch(body,/nxQualityPresets\(root\)/);
+ assert.match(body,/nxQualityPresets\(root\)/);
  const video=src.slice(src.indexOf('TAB_BUILDERS.video=function(root){'),src.indexOf('TAB_BUILDERS.images=function(root,existingMedia){'));
- assert.match(video,/nxQualityPresets\(root\)/);
+ assert.doesNotMatch(video,/nxQualityPresets\(root\)/);
+ const stats=src.slice(src.indexOf('TAB_BUILDERS.statistics=function(root){'),src.indexOf('TAB_BUILDERS.dashboard=TAB_BUILDERS.statistics;'));
+ assert.match(stats,/nxReceivedQuality\(root\)/);
  assert.match(body,/Monitor de transmissão/);
  assert.match(body,/title!=='Monitor de transmissão'&&title!=='Qualidade de vídeo'/);
 });
