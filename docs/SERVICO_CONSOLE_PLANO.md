@@ -2,7 +2,6 @@
 
 ## Objetivo do mantenedor
 
-Retomar a frente iniciada com a referência PSBox: tornar utilizáveis no navegador as capacidades de streaming autorizadas pelo Xbox e preparar testes futuros de GTA VI quando o título estiver efetivamente disponível à conta. Base JavaScript/navegador, sem reescrita C++/APK.
 
 Esta proposta não declara integração concluída. A discussão de layout/áudio não deve substituir essa frente; corrigir antes apenas regressões que impeçam seus testes.
 
@@ -18,14 +17,10 @@ Base: d5605713c6d65502e344c55e0fd547e57e24da74, versão 4.15.0.
 
 ## Referências e conclusão técnica
 
-1. PSBox src/xcloud/gssv.h: GssvClient usa xgpuweb para nuvem e xhome para console próprio.
-2. PSBox src/xcloud/gssv.cpp: início cloud usa titleId; início home usa serverId de console. Os fluxos são separados; a implementação nativa não transforma uma conta sem console em um console remoto.
 3. um cliente de referência src/modules/patcher/patcher.ts, forceFortniteConsole: força e=false em sendTouchInputEnabledMessage(e) somente na rota /launch/fortnite/.
 4. um cliente de referência global-settings-storage/translation: a finalidade declarada é disponibilizar Salve o Mundo no mobile. Isso modifica a experiência de um título já oferecido e não comprova autorização de outro jogo.
 
 Links:
-- https://github.com/RafaelNGP/psbox-cloud-gaming/blob/main/src/xcloud/gssv.h
-- https://github.com/RafaelNGP/psbox-cloud-gaming/blob/main/src/xcloud/gssv.cpp
 
 ## Caminho escolhido para os testes disponíveis
 
@@ -45,7 +40,6 @@ Sem ponto verificável no cliente atual, registrar o bloqueio e propor experimen
 
 ## Lotes seguintes, condicionados à evidência anterior
 
-- Mapear a sequência PSBox → SDK retail: título/identificador, capacidade anunciada, aceitação da sessão, SDP/ICE, vídeo, áudio e comandos. Reutilizar o cliente autorizado; sem novas rotas de autenticação por suposição.
 - Entregar uma camada fina de sessão sobre o que já existe, sem duplicar NimboXboxTransport ou reescrever xHome. Estados claros de catálogo, início, conexão, mídia recebida, falha e encerramento.
 - Testar outro título já disponível à conta. Se o serviço rejeitar autorização/disponibilidade, apresentar a causa observada; identidade de navegador não é tratada como desbloqueio.
 - Retomar xHome quando houver console/conta autorizados disponíveis para homologar. Validar separadamente descoberta, autorização, vídeo, áudio, comandos e recuperação.
