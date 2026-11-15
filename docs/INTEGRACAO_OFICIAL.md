@@ -1,6 +1,5 @@
 # Base oficial unificada — 4.15.4
 
-Decisão expressa do mantenedor: uma base oficial, preservando interface e funcionalidades do PR #29, com giroscópio/touchpad reconciliados do PR #27 e desenvolvimento PSBox/Android do PR #24. O instalador para uso é o da main, não um instalador por PR.
 
 ## O que está incluído
 
@@ -10,7 +9,6 @@ Decisão expressa do mantenedor: uma base oficial, preservando interface e funci
 
 ## Limites reais
 
-**Unificação de código não é integração funcional de streaming PSBox.** Hoje existe biblioteca experimental compilada, sem APK, núcleo completo ligado, login manual no host, biblioteca de jogos, mídia ou gameplay validados. Um userscript não executa a biblioteca nativa. A interface única dos dois motores pertence ao futuro host APK; nenhum botão fictício de motor foi adicionado para representar algo ainda indisponível.
 
 Entradas mistas, orientação/sensor físico, fullscreen e conforto do touchpad precisam de teste no aparelho. Touchpad de mira não implementa o protocolo específico PlayStation. O código não altera entitlement nem comprova identidade Xbox, e não promete suporte a GTA VI.
 

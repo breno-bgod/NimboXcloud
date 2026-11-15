@@ -50,10 +50,7 @@ O PDF integral expirou por timeout nos dois hosts primários tentados; o trecho 
 
 - BxiiDN/XCloudSSD: armazenamento virtual com rclone, sem relação com Xbox Cloud Gaming.
 - aquib4040/RapidXCloud-Android: cofre/backup de arquivos, não jogos Xbox.
-- RafaelNGP/xbox-cloud-gaming-ps5: criado em 11/11, mas descrição diz ponte temporária de atualização para versões antigas do PSBox; não é um novo cliente independente.
 - liljtrav/xbox-cloud-proxy: fork criado em 09/11, com push herdado anterior à quinzena; não foi contado como implementação nova.
-- JBuildr/nubix (07/10), RayLabsStudio/RayxCloud (11/09), PSBox (07/10), XCloud4 (20/10) e green-nx (22/07): fora da janela de criação, embora possam ser referências.
-- [PSBox #351](https://github.com/RafaelNGP/psbox-cloud-gaming/issues/351), 04/11, menciona GTA 6 no formulário, mas o log mostra falha TLS anterior ao login. Não comprova execução desse jogo.
 
 ## Método, limites e próximo passo
 

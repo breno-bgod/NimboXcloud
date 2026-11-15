@@ -21,14 +21,10 @@ Fonte fixada: [NimboXcloud.user.js](https://github.com/breno-bgod/NimboXcloud/bl
 
 ## Referências examinadas pela cadeia de identidade
 
-### PSBox
 
 Commit eb63daf8f953684387a06a7bab8ef0a1e3133463, GPL-3.0.
-- [xbox_live.cpp:69–95](https://github.com/RafaelNGP/psbox-cloud-gaming/blob/eb63daf8f953684387a06a7bab8ef0a1e3133463/src/auth/xbox_live.cpp#L69): usuário RPS seguido de XSTS com UserTokens e SandboxId RETAIL.
-- [auth_manager.cpp:136](https://github.com/RafaelNGP/psbox-cloud-gaming/blob/eb63daf8f953684387a06a7bab8ef0a1e3133463/src/auth/auth_manager.cpp#L136): encadeia usuário, XSTS para GSSV e login cloud/home.
 - gssv.h/gssv.cpp, já fixados no manifesto da auditoria: xgpuweb por padrão, perfis browser/native de aplicativo e sdkType web em startSession.
 
-Não foi encontrada emissão de identidade autenticada Xbox no caminho inspecionado. Isso não constitui auditoria de todos os arquivos nem prova impossibilidade em outro cliente. PSBox funcionar em PlayStation/Linux não mostra como o servidor o classifica.
 
 ### xCloudNative
 
@@ -116,9 +112,7 @@ O manifesto de widget permite declarar rede externa; tal declaração não equiv
 Novo experimento [client-hints-boundary](../../experiments/console/client-hints-boundary/README.md): corpo de UserAgent.spoof em fonte fixada por SHA256, cinco testes aprovados. Propriedade herdada é escondida; propriedade própria com valor existente é preservada por defineProperty com descriptor vazio. UA não configurável pode deixar estado parcialmente alterado. Esses são resultados de objetos sintéticos, não diagnóstico confirmado do Edge do mantenedor. HTTP hints, tokens e classificação do servidor permanecem não observados/não verificados. A pesquisa de identidade não é pré-requisito para um port Android autorizado. Sem mudança do produto ou autenticação.
 
 
-## PSBox #466 — recusa por tipo de dispositivo, evidência nova em 13/11/2026
 
-**Fonte primária:** https://github.com/RafaelNGP/psbox-cloud-gaming/pull/466, incorporado em 13/11/2026 às 17:14:28 UTC. Commit funcional 0bb5ab3ea3ffde55b071e6b12731d7e26f86700a; main consultada c775ecaddde52024d177cce7392aae13cc6917aa. Comparação com eb63daf8f953684387a06a7bab8ef0a1e3133463: 15 arquivos, nenhuma alteração em src/auth/. Projeto criado em 07/10/2026 (não é repositório novo na janela 14/10–13/11); atividade de código nova confirmada por diff/SHA, não updated_at.
 
 ### O que a fonte afirma
 
@@ -134,7 +128,6 @@ O corpo do PR relata que Killer Instinct 2 Classic foi recusado com DeviceTypeNo
 
 ### Consequência para a hipótese de identidade
 
-Há agora evidência primária de uma recusa específica de dispositivo relatada pelo PSBox, separada de falta de entitlement. Isso reduz a sustentação da hipótese de que copiar o perfil declarado do PSBox basta para obter classificação Xbox. A afirmação do autor de que a identidade é fixada pelo cliente autenticado é uma explicação upstream: este diff não mostra onde a classificação ocorre e não prova exigência de certificado/atestado. Não converter allowedDeviceTypes em valor inventado de DeviceType na autenticação.
 
 A lista permitida não identifica o dispositivo atual; ausência da lista não comprova ausência de restrição. HTTP 200 ou mídia em outro título não refutam a recusa daquele jogo. A mensagem genérica console/Samsung TV não substitui o campo recebido. Não generalizar o caso para GTA VI.
 

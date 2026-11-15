@@ -4,9 +4,7 @@
 
 Registro inicial em 2026-11-13 a partir da [proposta existente](../SERVICO_CONSOLE_PLANO.md). Esta organização não representa uma nova inspeção integral dos projetos, descoberta de repositório recente ou simulação aprovada. Os próximos registros devem fixar SHA e data das fontes consultadas.
 
-### PSBox — pesquisa
 
-Referências: [gssv.h](https://github.com/RafaelNGP/psbox-cloud-gaming/blob/main/src/xcloud/gssv.h) e [gssv.cpp](https://github.com/RafaelNGP/psbox-cloud-gaming/blob/main/src/xcloud/gssv.cpp). Os links de branch servem para localização; experimentos deverão citar o commit efetivamente consultado.
 
 A investigação anterior distinguiu xgpuweb (cloud, titleId) de xhome (console próprio, serverId). É um cliente nativo; reutilizar uma ideia exige verificar transporte, APIs e restrições do navegador. Não demonstra autorização para executar títulos fora do catálogo ou de uma conta. Próximo passo: comparar mudanças recentes por SHA com os pontos de sessão e mídia já implementados no Nimbo, sem reiniciar diagnósticos concluídos.
 
@@ -43,23 +41,19 @@ Nenhum resultado de GTA VI é declarado. A validação depende da disponibilidad
 
 ### Pergunta e conclusão delimitada
 
-PSBox e um cliente Android TV novo usam oferta específica de console nos caminhos de sessão inspecionados? A evidência localizada aponta para xgpuweb/perfis web; não foi demonstrado acesso a oferta exclusiva do Xbox. Não se conclui que toda adaptação seja impossível nem que todos os caminhos desses aplicativos tenham sido auditados.
 
 ### Janela e candidatos
 
-Busca delimitada: 2026-10-14 a 2026-11-13, queries GitHub `xcloud created:>=2026-10-14` e `xcloud pushed:>=2026-10-14`, além de busca web PSBox/Orbita/cloud no console. O fetch REST genérico de search/repositories foi rejeitado pela ferramenta; usado o conector específico de busca. A lista não é exaustiva.
 
 - **Ricardex742/xCloudNative**: criado 2026-10-31T06:06:50Z, MIT; snapshot a6ab26f4e29d84bf09e130bd8b6ac2325f099e59 de 2026-11-12T21:36:14Z. Esse head é documental. Último commit retornado para XCloudSignalingClient.kt: 739d2b79be555b1f90d23f4ce005d59600352b2e de 2026-11-11T04:24:22Z, mudança de internacionalização. O mecanismo abaixo foi inspecionado no snapshot, sem alegar que foi introduzido por esse commit.
 - **asp11edgr/XCloud4**: criado 2026-10-20T06:50:00Z, GPL-3.0. Candidato descoberto; código/último commit ainda não inspecionados, sem conclusão funcional.
 - **ironweb10/xCloudPS4**: criado 2026-10-16T13:37:06Z. Candidato descoberto; licença/código/último commit ainda não verificados, sem conclusão funcional.
-- **PSBox**: criado 2026-10-07T03:34:58Z, fora da janela de criação; projeto existente atualizado. Snapshot eb63daf8f953684387a06a7bab8ef0a1e3133463 de 2026-11-13T02:38:53Z, mensagem de versão 1.7.1 e ajustes de login/biblioteca. Fonte LICENSE GPL-3.0 consultada.
 - **Better xCloud**: snapshot ea4d19f2800cee9cfa387a0c9c37b3711cf208c7 de 2026-11-11T14:29:48Z. Patcher forceFortniteConsole continua localizado em patcher.ts; não é evidência de autorização geral de catálogo.
 
 ### Evidência primária
 
 Fontes fixadas e hashes em [sources.json](../../experiments/console/client-profile-audit/sources.json).
 
-PSBox: gssv.h define xgpuweb como offering padrão; gssv.cpp usa XboxComBrowser, sdkType web e separa título cloud de serverId home. Existem perfis condicionais de dispositivo no arquivo: uma busca de texto não prova qual perfil foi usado em determinada sessão real.
 
 Android TV: XalAuthenticator.kt declara offeringId xgpuweb e XboxComBrowser; XCloudSignalingClient.kt declara clientAppType browser, sdkType web e início sessions/cloud/play. Mensagens internas denominadas CONSOLE_CONNECT não foram tratadas como prova de oferta console; nome de estado não substitui análise de autorização.
 
@@ -79,17 +73,13 @@ Resultado: quatro fontes com integridade correspondente e dez âncoras localizad
 
 | Caminho | Console próprio | Dependência observada | Android / iOS / desktop em navegador |
 | --- | --- | --- | --- |
-| PSBox cloud inspecionado | Não é usado serverId home nesse caminho | Cliente nativo, mídia/transporte próprios; autorização cloud | Equivalência de oferta não demonstrada nas três plataformas |
-| PSBox xHome | Sim | Console autorizado e fluxo home | Validação real pendente; não substitui oferta cloud |
 | xCloudNative cloud inspecionado | Não aparece como requisito no início cloud analisado | Android/Kotlin e reprodução nativa | Equivalência de oferta não demonstrada; APK não comprova página web |
 
 Próxima evidência necessária: comparação de um mesmo título na nuvem Xbox e na web com conta, região, assinatura e período compatíveis; registrar separadamente catálogo, início aceito, mídia e comandos. Não alterar identidade do Nimbo para inferir resultado. Sem acesso a console/sessão, investigar candidatos ainda não inspecionados ou o caminho de capacidades/catalogação, aproveitando os registros do ajudante externo.
 
 ## Catálogo paginado versus oferta — aprofundamento em 2026-11-13
 
-Os heads externos consultados continuam PSBox eb63daf8f953684387a06a7bab8ef0a1e3133463 e xCloudNative a6ab26f4e29d84bf09e130bd8b6ac2325f099e59. Sem nova versão presumida; investigação focada na lacuna de catálogo identificada antes.
 
-**Achado:** PSBox listTitles (gssv.cpp:328, cursor:389) segue continuationToken. xCloudNative fetchCatalogGames (XCloudSignalingClient.kt:102) consome uma única resposta de /v2/titles sem paginação nessa função. Uma lista menor pode decorrer de enumeração incompleta, sem diferença de direitos. Não foi capturada resposta paginada real do serviço nesta execução.
 
 **Ressalva confirmada:** o mesmo cliente Android oferece resolveGalleryProduct (:123), uma consulta autenticada de produto que exige resultado único. Esse caminho pode recuperar um item da galeria pública ausente na enumeração inicial. Portanto, não há diagnóstico de bug de gameplay confirmado no aplicativo Android.
 
@@ -113,9 +103,7 @@ Android/iOS/desktop podem processar essas estruturas em JavaScript; acesso HTTP 
 
 O mantenedor esclareceu que a pergunta principal é se o serviço reconhece a sessão do navegador como cliente console Xbox. A investigação de paginação permanece secundária, sem ser descartada ou apresentada como resposta à identidade.
 
-[Mapa detalhado](CONSOLE_IDENTITY_MAP.md): análise da main 3c122b0b728b5f2ef25ffd244a50ce7f9e7f60bd, autenticação PSBox/xCloudNative, controlador Greenlight, documentação XStreaming e fontes oficiais Microsoft sobre identidades de usuário/dispositivo/título.
 
-Achados: o perfil histórico Xbox do Nimbo retorna off; patchPlayRequest reescreve osName de qualidade preservando descritor; xHome declara browser/web e seu serverId é console de destino. PSBox e xCloudNative não demonstraram identidade Xbox no caminho de usuário/XSTS inspecionado. XStreaming documenta DeviceToken Android, o que não prova identidade Xbox. Não presumir que o cloud exige atestação/certificado sem evidência específica.
 
 Experimento [identity-boundary](../../experiments/console/identity-boundary/README.md): quatro testes aprovados usando funções reais do snapshot da main em VM. Sem acesso a credenciais ou rede; sem reconhecimento Xbox ou gameplay validado. A automação foi corrigida para priorizar identidade de sessão, preservando frequência e coordenação.
 
@@ -139,7 +127,6 @@ Hipótese: produzir referência observável de pedidos de login/início, descrit
 
 O observador preserva argumentos, this, promise e resposta. Lê exclusivamente o header X-MS-Device-Info quando presente, enumera campos permitidos e não acessa Authorization, corpos, cookies ou armazenamento. Até 24 eventos sanitizados em memória. Amostragem de vídeo com trilha viva e contador de quadros, presença de áudio e confirmações manuais separadas. Vínculo entre mídia e pedido e reconhecimento Xbox permanecem não verificados.
 
-Fontes atuais relidas: Nimbo main 3c122b0b728b5f2ef25ffd244a50ce7f9e7f60bd, PSBox eb63daf8f953684387a06a7bab8ef0a1e3133463 (gssv.cpp) e Better xCloud ea4d19f2800cee9cfa387a0c9c37b3711cf208c7 (patcher.ts). Nenhuma mudança externa presumida. Busca criada desde 14/10 retornou candidatos já registrados.
 
 Onze testes Node/VM aprovados e sintaxe verificada. Incluem transparência, ausência de leitura de Authorization/corpo, sanitização, Request não consumido, confirmação manual sem atribuir identidade, troca de época, wrappers concorrentes, vídeo, montagem/fullscreen apenas do painel próprio e falha de instalação. Resultado resumido preservado no experimento.
 
@@ -222,7 +209,6 @@ Fontes primárias:
 
 | Projeto | Versão / fonte fixada | Modalidade demonstrada e limites |
 | --- | --- | --- |
-| [PSBox](https://github.com/RafaelNGP/psbox-cloud-gaming/tree/eb63daf8f953684387a06a7bab8ef0a1e3133463) | 1.7.1, commit `eb63daf8f953684387a06a7bab8ef0a1e3133463`, GPL-3.0 | Cliente nativo PS5, PS4/GoldHEN e Linux/Steam Deck. Código separa `xgpuweb` (cloud/titleId) de `xhome` (Remote Play do Xbox próprio/serverId). 1080p60 H.264 declarado no README. Não é página web nem prova de offering console. |
 | [XCloud4](https://github.com/asp11edgr/XCloud4/tree/eb1fcba315fc768797b5398b97826506bf21ea04) | 1.3.0-beta, commit `eb1fcba315fc768797b5398b97826506bf21ea04`, GPL-3.0 | Cliente nativo PS4 com GoldHEN, autenticação Microsoft e Cloud Gaming; 1080p Max declarado. README não documenta Remote Play de console próprio. Não é browser. |
 | [Green-NX](https://github.com/rmrf404/green-nx/tree/b52dd73d2bcdd043316a2623d5871dcbd2e5000b) | 1.0.31pre1, commit `b52dd73d2bcdd043316a2623d5871dcbd2e5000b`, GPL-3.0 | Homebrew nativo de Nintendo Switch. Código inspecionado usa ofertas `xgpuweb`/`xgpuwebf2p` e separa `xhome`; não foi encontrado caminho `xgpuconsole`. Issue #92 sobre GTA VI continua sem resposta. |
 | [Orbita](https://x360.pistatrack.com/baixar?lang=pt-BR) | XEX 1.1.0, Xbox 360 720p/60 fps; página de jogos consultada em 2026-11-13 | Aplicativo nativo para Xbox 360 RGH/JTAG/Aurora, cliente de Cloud Gaming, não Remote Play e não jogo local. Ajuda declara que o jogo roda nos servidores Microsoft, que a conta define os títulos e que uma conta só joga em um aparelho por vez. A lista declara 600 títulos: 35 funcionam, 2 com problemas e 563 não testados. O repositório atual vinculado não pôde ser inspecionado via API GitHub; não inferir código XEX a partir do legado ELF. |
@@ -285,9 +271,7 @@ Fontes de compatibilidade:
 Obter uma comparação pareada, não sensível, de um título já disponível ao mantenedor na nuvem do Xbox e no navegador oficial, com a mesma conta/plano/região e janela de até 15 minutos. Só usar GTA VI após a oferta iniciar e o jogo estar efetivamente elegível à conta. Registrar a recusa/aceitação do serviço e a cadeia de mídia/comandos, sem tokens ou HAR completo.
 
 
-## Auditoria do caminho Android PSBox — 13/11/2026
 
-Experimento reproduzível [psbox-android-audit](../../experiments/console/psbox-android-audit/README.md). ZIP do mantenedor identificado por SHA256, com três arquivos confirmados idênticos ao PSBox eb63daf8f953684387a06a7bab8ef0a1e3133463. Resultado: esqueleto Android presente, mas sem MainActivity/ícones e sem integração direta do núcleo de sessão no CMake; dependências de submódulos vazias no archive. Quatro testes da auditoria aprovados; resultado real em result.json. Nenhum build/APK/sessão/identidade Xbox validado. A investigação reduz uma ambiguidade de capacidade do cliente nativo; não substitui o foco em classificação do cliente web. A existência de AMediaCodec e NDK não prova funcionamento no navegador ou identidade autenticada. Próximo passo de identidade: capturar início real com observador 0.1.3 e comparar com o núcleo PSBox; eventual trabalho Android amplo requer proposta própria.
 
 
 ## Client Hints — método real do Better xCloud em VM
@@ -295,9 +279,7 @@ Experimento reproduzível [psbox-android-audit](../../experiments/console/psbox-
 Novo experimento [client-hints-boundary](../../experiments/console/client-hints-boundary/README.md): corpo de UserAgent.spoof em fonte fixada por SHA256, cinco testes aprovados. Propriedade herdada é escondida; propriedade própria com valor existente é preservada por defineProperty com descriptor vazio. UA não configurável pode deixar estado parcialmente alterado. Esses são resultados de objetos sintéticos, não diagnóstico confirmado do Edge do mantenedor. HTTP hints, tokens e classificação do servidor permanecem não observados/não verificados. A pesquisa de identidade não é pré-requisito para um port Android autorizado. Sem mudança do produto ou autenticação.
 
 
-## PSBox #466 — recusa por tipo de dispositivo, evidência nova em 13/11/2026
 
-**Fonte primária:** https://github.com/RafaelNGP/psbox-cloud-gaming/pull/466, incorporado em 13/11/2026 às 17:14:28 UTC. Commit funcional 0bb5ab3ea3ffde55b071e6b12731d7e26f86700a; main consultada c775ecaddde52024d177cce7392aae13cc6917aa. Comparação com eb63daf8f953684387a06a7bab8ef0a1e3133463: 15 arquivos, nenhuma alteração em src/auth/. Projeto criado em 07/10/2026 (não é repositório novo na janela 14/10–13/11); atividade de código nova confirmada por diff/SHA, não updated_at.
 
 ### O que a fonte afirma
 
@@ -313,7 +295,6 @@ O corpo do PR relata que Killer Instinct 2 Classic foi recusado com DeviceTypeNo
 
 ### Consequência para a hipótese de identidade
 
-Há agora evidência primária de uma recusa específica de dispositivo relatada pelo PSBox, separada de falta de entitlement. Isso reduz a sustentação da hipótese de que copiar o perfil declarado do PSBox basta para obter classificação Xbox. A afirmação do autor de que a identidade é fixada pelo cliente autenticado é uma explicação upstream: este diff não mostra onde a classificação ocorre e não prova exigência de certificado/atestado. Não converter allowedDeviceTypes em valor inventado de DeviceType na autenticação.
 
 A lista permitida não identifica o dispositivo atual; ausência da lista não comprova ausência de restrição. HTTP 200 ou mídia em outro título não refutam a recusa daquele jogo. A mensagem genérica console/Samsung TV não substitui o campo recebido. Não generalizar o caso para GTA VI.
 
@@ -327,7 +308,6 @@ Estado: pesquisa de código e relato upstream, sem sessão real nossa. Verifica�
 ## Integração Android no Nimbo — contrato de sessão (13/11/2026)
 
 Decisão vigente: dois motores no mesmo ambiente, sem fork separado obrigatório;
-identidade Xbox secundária. [Proposta](PSBOX_ANDROID_INTEGRATION.md) e
 [contrato executável](../../experiments/console/engine-session-contract/README.md).
 Upstream reconsultado c775ecaddde52024d177cce7392aae13cc6917aa, sem novo SHA;
 árvore Android confirma Activity/recursos/wrapper ausentes, CMake sem núcleo e
@@ -340,28 +320,21 @@ neutralização antes de stop, invalidação de gerações, erros sanitizados e 
 de propriedade quando stop falha. Nove testes comportamentais locais aprovados:
 node --test --test-isolation=none experiments/console/engine-session-contract/session-owner.test.mjs.
 Estado: simulação aprovada. Adaptadores sintéticos não validam JNI, login, mídia,
-entitlement ou gameplay. Nenhuma fonte PSBox copiada; referências GPL preservadas
 na proposta. Nenhuma mudança no produto ou dependência nova. Executor sem toolchain
 Android. Próximo incremento: alvo ARM64 e Activity/fachada nativa no próprio
-experimento, com CI após completar dependências; sem segundo painel PSBox.
 
 
-## PSBox Android — armazenamento privado verificado (13/11/2026)
 
-[Experimento](../../experiments/console/psbox-android-platform/README.md).
 Upstream permanece c775ecaddde52024d177cce7392aae13cc6917aa; nenhum PR aberto ou
 comentário novo no PR #24; CI upstream aprovado, sem prova Android. Main Nimbo
 agora c28675d29a4e16f9a7546e091e596c9068975187 (4.15.2); não alterada nesta frente.
 
 Problema reproduzido: platform_android.cpp assumia init/dataDirWritable=true
-mesmo com erro de mkdir e possuía fallback no pacote com.rafaelngp.psbox.
 Foram incorporadas cinco fontes/avisos selecionados, hashes upstream/local em
 sources.json, GPL integral preservada. Só platform_android.cpp foi modificado:
 exige caminho absoluto do host, verifica diretórios, cria/escreve/remove probe
 exclusivo, informa errno/estado e reseta prontidão no shutdown. Host deverá usar
-filesDir/psbox, sem expor caminho a páginas web. Sem mudança de autenticação.
 
-Comando: bash experiments/console/psbox-android-platform/test-host.sh. Baseline
 upstream compilou, mas falhou em missing host directory must fail; adaptado
 compilou e passou com filesystem real. Verificados casos negativos, escrita e
 leitura de fixture sintética, limpeza, reinicialização e shutdown. Isso é build
@@ -376,23 +349,18 @@ sem segundo painel e sem iniciar login antes de CA/assets/lifecycle reais.
 
 ### Resultado ARM64 confirmado
 
-CI [PSBox Android platform experiment #43492918003](https://github.com/breno-bgod/NimboXcloud/actions/runs/43492918003), commit 9782833d32652aa1cbe8c4819a80017f2f401b62: todos os passos aprovados, incluindo teste host, instalação NDK, link ARM64, verificação ELF e upload. Artefato nimbo-psbox-platform-arm64-not-apk, ID 14070886207, 73217 bytes, digest sha256:efb0bd2093e7aab5bd68aa1ff222c79e9d7f2deea7f8b73681e6f0e0d7494b8b. Inclui fonte correspondente/avisos. Link ARM64 desta camada está comprovado pelo build; marco (a) do motor completo ainda não concluído. Sem instalação ou execução Android, Activity/JNI, mídia ou login. A espera anterior do CI deixou de ser bloqueio; próximo passo é lifecycle/configuração do host e ligação do núcleo.
 
 
-## Lifecycle de plataforma PSBox e fachada Java/JNI — 13/11/2026
 
 Upstream reconsultado c775ecaddde52024d177cce7392aae13cc6917aa, sem novo SHA;
 main Nimbo c28675d29a4e16f9a7546e091e596c9068975187, preservada. Nenhum comentário
-novo no PR #24. [Experimento](../../experiments/console/psbox-android-platform/README.md).
 Sobre a camada ARM64 anterior, acrescentados init/status/shutdown serializados,
-configuração filesDir/psbox sem mutação global de ambiente, fachada Java/JNI
 sem interface WebView e montagem de AAR experimental. Regra R8 e avisos do NDK
 incluídos; runtime C++ estático, sem depender de libc++_shared omitida.
 
 Teste host compila storage e lifecycle C++ reais (-Werror no lifecycle) e passa
 com filesystem real: inicialização, idempotência, EBUSY para troca ativa, parada,
 recuperação de erro, preservação do ambiente e concorrência com proprietário
-único. Comando: bash experiments/console/psbox-android-platform/test-host.sh.
 Scripts ARM64/AAR passaram bash -n; Java/JNI/empacotamento dependem do CI desta
 revisão, ainda pendente ao publicar. Hash local atualizado em sources.json;
 fontes/avisos upstream preservados. Nenhum login, token, mídia, Activity, APK,
@@ -403,12 +371,10 @@ incrementalmente, antes de UI compartilhada ou sessão autenticada.
 
 ### Build Java/JNI/AAR confirmado
 
-[CI #43497614092](https://github.com/breno-bgod/NimboXcloud/actions/runs/43497614092), commit a6098beba94e9d1cd1db88caf094c9c6c6dce46f: todos os passos aprovados, incluindo testes C++ host, link ARM64 sem símbolos indefinidos, verificação dos três símbolos JNI, ausência de dependência libc++_shared, compilação Java SDK35/release17 e montagem/verificação estrutural do AAR. Artefato nimbo-psbox-platform-arm64-not-apk, ID 14071318850, 546013 bytes, digest sha256:92be237a8962878f46fd8632a8e84c557469742b68b2bc3ea73a38619fd70a6e; contém AAR, biblioteca parcial e fonte correspondente/avisos. Não é APK nem motor completo. Não houve execução JNI em VM Android, Activity, instalação no S23, login, mídia ou gameplay. A espera de compilação deixou de ser bloqueio; próximo passo é host/lifecycle Android real e ligação gradual do núcleo antes de sessão autenticada.
 
 
 ## Ligação ao lifecycle da Activity — 13/11/2026
 
-Incremento isolado: PsboxActivityBinding por composição com
 Application.ActivityLifecycleCallbacks, seleção inicial desligada, init da
 plataforma somente com Activity vinculada iniciada e motor selecionado;
 liberação em onStop/deseleção/destruição, WeakReference e limpeza de listener.
@@ -421,7 +387,6 @@ Teste Java do coordenador real com backend simulado passou localmente para
 idempotência, proprietário único, callbacks atrasados, falhas, retry, exceções
 sanitizadas e concorrência. Executor sem ct.sym não aceita --release17/21;
 comando aprovado: JAVA_TEST_RELEASE=runtime bash
-experiments/console/psbox-android-platform/test-java-host.sh. CI mantém release17
 com JDK completo e compila todas as classes contra android.jar35 no AAR.
 Scripts passaram bash -n. Compilação Android deste incremento pendente ao publicar.
 
@@ -440,13 +405,11 @@ execução instrumentada do host antes de integrar núcleo/mídia/entrada.
 
 ### Build da binding confirmado
 
-[CI #43513384405](https://github.com/breno-bgod/NimboXcloud/actions/runs/43513384405), commit 9c2bbe5af3c0d17da618c1cb0143ef65dee90d3e: testes Java com release17 aprovados, testes C++ host aprovados, link ARM64/JNI aprovado, compilação de todas as classes Android e montagem do AAR aprovadas. Artefato nimbo-psbox-platform-arm64-not-apk, ID 14078484160, 555666 bytes, digest sha256:c5b48455ba94fea0b7e50a8928e25de056a68e36f75acfe4d1f273ed081067f6, inclui AAR e fontes/avisos. Não foi necessário relaxar release17 no CI. Ainda é biblioteca de plataforma, não APK/motor completo. Não houve eventos reais de Activity, rotação, execução JNI no Android ou sessão cloud. Próximo: execução instrumentada do host e ligação gradual do núcleo sem novo painel.
 
 
 ## Transporte HTTPS original para o módulo Android — 13/11/2026
 
 Main oficial 98eff1294ad053a284d8661d59d8923373d07e57 (PR29/4.15.3) preservada;
-PSBox sem novo SHA desde c775ecaddde52024d177cce7392aae13cc6917aa. Sem comentário
 novo no PR #24. Proposta curta publicada no PR antes da dependência. Incorporados
 8 arquivos selecionados de HTTP/utilitários/CA/config originais, Git blob SHA e
 SHA256 conferidos; sem auth/session/purchase. Mbed TLS 107ea89daaefb9867ea9121002fbbdf926780e98
@@ -466,4 +429,3 @@ com lifecycle real, mantendo um painel e preservando os dois motores.
 
 ### Transporte: resultado de build confirmado
 
-[CI #43515921080](https://github.com/breno-bgod/NimboXcloud/actions/runs/43515921080), commit a0b395cecc132d0317856cfd5043c4def8045ff2: todos os passos aprovados. Log confirma PASS de parsers HTTP/JSON e inicialização da confiança pública embutida às 22:03:41 UTC; aviso de arquivo CA inexistente é esperado da fixture negativa e precede o fallback. Não houve aviso de certificados ignorados no log consultado. ARM64/JNI, Java/binding e AAR também compilados. Artefato nimbo-psbox-platform-arm64-not-apk, ID 14080213417, 10450389 bytes, digest sha256:7e7102ddc13a191aad45f09dcbf91955b64e9e5e403446f44252a360666ba7e5, com AAR, fonte correspondente PSBox/MbedTLS/framework e licenças/avisos. Não é APK ou motor completo. Nenhuma conexão/handshake, autenticação, entitlement, mídia ou gameplay foi executada. A espera de compilação deixou de ser bloqueio; próximo passo é integrar serviços do núcleo e validar lifecycle Android real antes de login manual. Produto oficial PR29 preservado.
