@@ -10,7 +10,6 @@ Revisão de licenciamento: 2026-11-12. A distribuição atual do NimboXcloud ado
 | NimboPlay / Even Better xCloud | Proveniência declarada do HUD | Revisão por trecho pendente | Preservar créditos existentes, sem inventar titularidade ou licença adicional |
 | XFly | Electron / TypeScript | MIT (arquivos recebidos) | Estudar e preservar atribuições ao adaptar |
 | Xperience XCloud | Userscript / TypeScript | MIT (arquivos recebidos) | Estudar e preservar atribuições ao adaptar |
-| PSBox / RafaelNGP | Cliente nativo C++ | GPL-3.0-or-later | Pode ser avaliado para adaptação com preservação de avisos, origem e cumprimento da GPL; nenhum código incorporado no lote de licença |
 | XStreaming | React Native / WebView | AGPL-3.0 (README) | Somente estudo de conceitos até revisão das obrigações específicas; não presumir distribuição de código AGPL sob apenas GPL |
 
 Consulte [LICENSE](../LICENSE) e [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md). A mudança não revoga permissões MIT das versões anteriores nem altera licenças de projetos de origem. Conferir licença por arquivo, revisão e histórico de cada trecho antes de integrar. CORE-006 permanece em andamento.
