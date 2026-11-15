@@ -20,14 +20,12 @@ Base: d5605713c6d65502e344c55e0fd547e57e24da74, versão 4.15.0.
 
 1. PSBox src/xcloud/gssv.h: GssvClient usa xgpuweb para nuvem e xhome para console próprio.
 2. PSBox src/xcloud/gssv.cpp: início cloud usa titleId; início home usa serverId de console. Os fluxos são separados; a implementação nativa não transforma uma conta sem console em um console remoto.
-3. Better xCloud src/modules/patcher/patcher.ts, forceFortniteConsole: força e=false em sendTouchInputEnabledMessage(e) somente na rota /launch/fortnite/.
-4. Better xCloud global-settings-storage/translation: a finalidade declarada é disponibilizar Salve o Mundo no mobile. Isso modifica a experiência de um título já oferecido e não comprova autorização de outro jogo.
+3. um cliente de referência src/modules/patcher/patcher.ts, forceFortniteConsole: força e=false em sendTouchInputEnabledMessage(e) somente na rota /launch/fortnite/.
+4. um cliente de referência global-settings-storage/translation: a finalidade declarada é disponibilizar Salve o Mundo no mobile. Isso modifica a experiência de um título já oferecido e não comprova autorização de outro jogo.
 
 Links:
 - https://github.com/RafaelNGP/psbox-cloud-gaming/blob/main/src/xcloud/gssv.h
 - https://github.com/RafaelNGP/psbox-cloud-gaming/blob/main/src/xcloud/gssv.cpp
-- https://github.com/redphx/better-xcloud/blob/typescript/src/modules/patcher/patcher.ts
-- https://github.com/redphx/better-xcloud/blob/typescript/src/utils/settings-storages/global-settings-storage.ts
 
 ## Caminho escolhido para os testes disponíveis
 
@@ -63,27 +61,3 @@ Não alterar painel, perfis e layouts aprovados enquanto não bloquearem o exper
 
 Documento de planejamento: não contém patch do SDK, nova API ou validação de gameplay. Define o próximo lote para evitar nova dispersão para funcionalidades visuais. Arquitetura mais ampla exige revisão desta proposta antes de implementação.
 
-
-## Referência adicional: Orbita — pesquisa de 2026-11-13
-
-O site oficial apresenta o Orbita 1.1.0 como aplicativo XEX instalado no Xbox 360/Aurora. O console funciona como cliente: recebe imagem/som do xCloud e envia comandos. Essa evidência é de jogos da nuvem sendo usados no Xbox 360; não deve ser descrita como hospedagem de um Xbox 360 remoto ou desbloqueio de todo o acervo desse console.
-
-A ajuda oficial vincula catálogo/permissões à conta Microsoft e relata recuperação de rede, menu rápido, configuração de controles e login por código. A página de jogos separa resultados testados, problemas e títulos ainda não testados. A distinção entre catálogo listado e gameplay confirmado é aplicável ao Nimbo.
-
-### O que aproveitar na pesquisa
-
-- Comparar descoberta de catálogo, identificação de título, início de sessão e motivos de encerramento com PSBox/Nimbo.
-- Usar estados claros de reconexão e restabelecimento dos controles, com teste real de imagem, áudio e comandos.
-- Preservar uma matriz de validação por jogo/rota, sem tratar título listado ou conexão provisionada como partida validada.
-- Separar recursos nativos do Xbox 360 de APIs disponíveis no navegador. XEX/Aurora, controle/headset/Kinect e atualização do aplicativo não são recursos transferíveis diretamente para um userscript.
-
-### Limite verificado
-
-O link Código no GitHub do próprio site aponta para https://github.com/sergiolimasks/orbita. A abertura direta e a consulta à API GitHub retornaram 404 nesta pesquisa. A indexação de busca ainda mostra um README de uma versão ELF legada, mas isso não equivale a acesso ao código atual XEX. Não foi possível inspecionar os payloads, autenticação, oferta ou transporte da versão atual. Não inferir que ela usa uma identidade específica, libera títulos indisponíveis ou pode ser incorporada diretamente ao Nimbo.
-
-Esta referência acrescenta evidência de cliente independente no hardware antigo; não altera os requisitos de disponibilidade/autorização do serviço nem comprova suporte a GTA VI.
-
-Fontes primárias:
-- https://x360.pistatrack.com/?lang=pt-BR
-- https://x360.pistatrack.com/ajuda?lang=pt-BR
-- https://x360.pistatrack.com/jogos
