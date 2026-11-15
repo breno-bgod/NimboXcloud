@@ -89,6 +89,7 @@ test('stream owns requested quality presets while statistics owns received resol
  assert.ok(streamTitles.includes('Servidores medidos'));
  assert.doesNotMatch(stream.textContent,/Monitor de transmissão|Qualidade de vídeo|Qualidade recebida/);
  assert.equal(streamTitles.filter(title=>title==='Qualidade do streaming').length,1);
+ vm.runInContext(section('  TAB_BUILDERS.personalize=function(root){','  TAB_BUILDERS.overview=function(root){'),h.ctx);
  const stats=h.build('statistics');
  assert.ok(h.titles(stats).includes('Qualidade recebida'));
  assert.match(stats.textContent,/Resolução do vídeo/);
