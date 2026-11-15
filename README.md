@@ -9,18 +9,18 @@
 
 **Em desenvolvimento para a nova experiência do Xbox Cloud Gaming — [play.xbox.com](https://play.xbox.com/)**
 
-[**Instalar versão oficial 4.15.4**](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js) · [**Reportar problema**](./../../issues) · [**Plano de desenvolvimento**](./DEVELOPMENT_ROADMAP.md)
+[**Instalar Alpha 0.0.1**](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js) · [**Reportar problema**](./../../issues) · [**Plano de desenvolvimento**](./DEVELOPMENT_ROADMAP.md)
 
 </div>
 
 ---
 
-## Base oficial unificada
+## Início do programa Alpha
 
-A interface é a Central de Entradas do PR #29. Esta publicação acrescenta giroscópio FPS/Corrida em paisagem e touchpad de mira nos controles, preservando as entradas e o editor existentes. Use somente o [instalador oficial](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js). Guia: [giroscópio e touchpad](docs/GIROSCOPIO_E_TOUCHPAD.md).
+**Alpha 0.0.1 é o primeiro marco público de testes do NimboXcloud.** A numeração começa agora, sem implicar que o software foi desenvolvido do zero nesta data. Esta versão é experimental: recursos podem falhar, mudar ou ser desativados. Instale pelo [userscript oficial](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js), teste voluntariamente e [relate bugs ou sugestões](./../../issues). Não envie tokens, cookies ou dados pessoais em relatórios.
 
 
-## Versão oficial 4.15.4
+## Alpha 0.0.1 — versão pública de testes
 
 Entradas físicas e virtuais, retorno do editor ao NX, carregamento compacto, monitor com gráficos e ajustes da barra Xbox. Módulo de entradas/HUD 1.4.1 incluído pelo instalador. Preferências e layouts são preservados. Consulte [mudanças e validação](./CHANGELOG.md) e [limites conhecidos](./docs/CARREGAMENTO_E_MONITOR.md).
 
@@ -115,7 +115,7 @@ Para detalhes técnicos e pendências, consulte [Arquitetura](./docs/ARQUITETURA
 
 **O laboratório Xbox não transforma um navegador em um console real e não desbloqueia jogos exclusivos de console.** Não anunciamos como concluído aquilo que ainda precisa de comprovação.
 
-Acompanhe as prioridades e os testes pendentes no [plano de desenvolvimento](./DEVELOPMENT_ROADMAP.md). O [histórico de alterações](./CHANGELOG.md) registra as mudanças documentadas.
+Acompanhe as prioridades e os testes pendentes no [plano de desenvolvimento](./DEVELOPMENT_ROADMAP.md). O [registro Alpha](./CHANGELOG.md) registra as mudanças documentadas.
 
 ## Como testar o projeto
 
@@ -141,7 +141,7 @@ A distribuição atual adota [GPL-3.0-or-later](./LICENSE). Redistribuições e 
 
 - [**Código principal**](./NimboXcloud.user.js)
 - [**Plano de desenvolvimento**](./DEVELOPMENT_ROADMAP.md)
-- [**Histórico de alterações**](./CHANGELOG.md)
+- [**Atualizações Alpha**](./CHANGELOG.md)
 - [**Arquitetura e limites técnicos**](./docs/ARQUITETURA.md)
 - [**Como contribuir**](./CONTRIBUTING.md)
 - [**English — Full README**](./README_EN.md)
