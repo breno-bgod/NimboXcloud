@@ -1,0 +1,101 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 RafaelNGP
+// Settings' screen <-> settings.json (app_ui.h).
+#include "ui/app_ui.h"
+#include "ui/strings.h"
+
+#include <algorithm>
+
+namespace xc::ui {
+
+SettingsChoice choiceFromSettings(const app::Settings& s) {
+    SettingsChoice c;
+    c.language = static_cast<int>(languageFromCode(s.language));
+    c.resolution = s.resolution == "720p" ? 1 : (s.resolution == "1440p" || s.resolution == "best") ? 2 : 0;
+    c.region = s.region;
+    c.loginCountry = s.loginCountry;
+    c.storeCountry = s.storeCountry;
+    c.deadzone[0] = std::clamp(s.deadzoneLeft, 0, kMaxDeadzone);
+    c.deadzone[1] = std::clamp(s.deadzoneRight, 0, kMaxDeadzone);
+    c.triggerStrength = s.triggerStrength;
+    c.triggerHz = s.triggerHz;
+    c.triggerResistance = s.triggerResistance;
+    c.triggerPulses = s.triggerPulses;
+    c.triggerProfile = s.triggerProfile;
+    c.audioHaptics = s.audioHaptics;
+    c.circleConfirms = s.circleConfirms;
+    c.lightBarMode = s.lightBarMode;
+    c.lightBarColour = s.lightBarColour;
+    c.sharpness = s.sharpness;
+    c.deband = s.deband;
+    c.upscaler = s.upscaler;
+    c.videoDecoder = s.videoDecoder;
+    c.fpsLimit = s.fpsLimit;
+    c.highRefresh = s.highRefresh;
+    c.maxBitrateMbps = s.maxBitrateMbps;
+    c.gameVolume = s.gameVolume;
+    c.queueReadyAlert = s.queueReadyAlert;
+    c.previewFeatures = s.previewFeatures;
+    c.syncTrophies = s.syncTrophies;
+    c.keyMap = s.keyMap;
+    c.padMap = s.padMap;
+    c.gyroMode = s.gyroMode;
+    c.gyroLevel = s.gyroLevel;
+    c.gyroYawScale = s.gyroYawScale;
+    c.gyroPitchScale = s.gyroPitchScale;
+    c.gyroBias[0] = s.gyroBias[0];
+    c.gyroBias[1] = s.gyroBias[1];
+    c.gyroBias[2] = s.gyroBias[2];
+    c.fullscreen = s.desktopFullscreen;
+    c.touchpadMouse = s.touchpadMouse;
+    c.touchpadShortcuts = s.touchpadShortcuts;
+    c.voiceRouting = s.voiceRouting;
+    c.titlePlaytime = s.titlePlaytime;
+    return c;
+}
+
+void applyChoice(const SettingsChoice& c, app::Settings& s) {
+    s.language = languageCode(static_cast<Language>(c.language));
+    s.resolution = c.resolution == 1 ? "720p" : c.resolution == 2 ? "best" : "1080p";
+    s.region = c.region;
+    s.loginCountry = c.loginCountry;
+    s.storeCountry = c.storeCountry;
+    s.deadzoneLeft = c.deadzone[0];
+    s.deadzoneRight = c.deadzone[1];
+    s.triggerStrength = c.triggerStrength;
+    s.triggerHz = c.triggerHz;
+    s.triggerResistance = c.triggerResistance;
+    s.triggerPulses = c.triggerPulses;
+    s.triggerProfile = c.triggerProfile;
+    s.audioHaptics = c.audioHaptics;
+    s.circleConfirms = c.circleConfirms;
+    s.lightBarMode = c.lightBarMode;
+    s.lightBarColour = c.lightBarColour;
+    s.sharpness = c.sharpness;
+    s.deband = c.deband;
+    s.upscaler = c.upscaler;
+    s.videoDecoder = c.videoDecoder;
+    s.fpsLimit = c.fpsLimit;
+    s.highRefresh = c.highRefresh;
+    s.maxBitrateMbps = c.maxBitrateMbps;
+    s.gameVolume = c.gameVolume;
+    s.queueReadyAlert = c.queueReadyAlert;
+    s.previewFeatures = c.previewFeatures;
+    s.syncTrophies = c.syncTrophies;
+    s.keyMap = c.keyMap;
+    if (input::padMapValid(c.padMap)) s.padMap = c.padMap;  // the screen only lets a complete one out
+    s.gyroMode = c.gyroMode;
+    s.gyroLevel = c.gyroLevel;
+    s.gyroYawScale = c.gyroYawScale;
+    s.gyroPitchScale = c.gyroPitchScale;
+    s.gyroBias[0] = c.gyroBias[0];
+    s.gyroBias[1] = c.gyroBias[1];
+    s.gyroBias[2] = c.gyroBias[2];
+    s.desktopFullscreen = c.fullscreen;
+    s.touchpadMouse = c.touchpadMouse;
+    s.touchpadShortcuts = c.touchpadShortcuts;
+    s.voiceRouting = c.voiceRouting;
+    s.titlePlaytime = c.titlePlaytime;
+}
+
+}  // namespace xc::ui

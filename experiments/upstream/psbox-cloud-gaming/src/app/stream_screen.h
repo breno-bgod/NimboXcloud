@@ -1,0 +1,140 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 RafaelNGP
+// The streaming screen, on the main thread: the game's menu (OPTIONS +
+// TOUCHPAD, or a swipe), the touchpad's Xbox button, the controllers sent to
+// the game, the console keyboard for its text fields, the picture settings
+// (sharpness, upscaling, block smoothing with "auto") and what is laid over
+// the picture (the menu or the statistics line, and a desktop's toasts).
+#pragma once
+
+#include "app/gyro_calibration.h"
+#include "app/auto_deband.h"
+#include "input/controller.h"
+#include "input/kbm.h"
+#include "input/keyboard_nav.h"
+#include "input/pad_map.h"
+#include "ui/app_ui.h"
+#include "ui/stream_menu.h"
+
+#include <atomic>
+#include <cstdint>
+
+namespace xc::app {
+
+class StreamPlayer;
+
+// The slot the keyboard and mouse play in as that player's controller
+// (keys 2-4); -1 for player 1 (native mouse and keyboard) or nothing plugged in.
+int keyboardPadSlot(bool keyboardConnected);
+
+class StreamScreen {
+public:
+    explicit StreamScreen(const ui::Fonts& fonts) : fonts_(fonts), menu_(fonts) {}
+
+    // The controllers' slots, for the menu.
+    void setPads(const ui::PadSlots& slots);
+    // Each pass while streaming: `pad` the first controller, `nav` its
+    // presses, `menuCombo` OPTIONS + TOUCHPAD just pressed.
+    void update(const input::ControllerState& pad, ui::NavInput nav, bool menuCombo);
+    // This frame's USB keyboard and mouse: to the game while the app's menu
+    // is closed (update() sends them).
+    void setKbm(input::KbmInput kbm) { kbm_ = std::move(kbm); }
+    bool menuOpen() const;
+    // The gyro dialog's live test: the game keeps L2 and the gyro under the open menu.
+    bool gyroLiveTest() const { return menu_.gyroLiveTest(); }
+    // A USB controller's Xbox / Home button (input/pad_usb.h): the in-game
+    // menu for that controller, or closed again by it. While it is up, that
+    // controller alone moves in it (menuUsbOwner(): its slot, -1 when the
+    // menu is closed or player 1's) and the other players keep playing.
+    void usbMenuButton(int slot) { pendingUsbMenu_ = slot; }
+    int menuUsbOwner() const { return menu_.isOpen() ? menuUsbOwner_ : -1; }
+    // The hints changed device (keyboard / controller): the overlay again.
+    void redrawMenu();
+    // What the display and the pads can do: the game menu hides the rest.
+    void setCaps(const ui::UiCaps& caps);
+    // Live-reload settings into the active stream session (e.g. from WebUI).
+    void syncFromSettings();
+    // Each pass on any other screen: what the stream left is cleared, and a
+    // console keyboard still up is closed.
+    void idle();
+
+private:
+    void applyDeband_();
+    void executeTouchpadAction_(input::TouchpadAction act, const char* triggerName);
+    // The mouse held by the window (input::kbmSetCaptured) while it should
+    // be: a game has the keyboard and mouse, its menu closed, the window focused.
+    void setMouseCaptured_(bool captured);
+
+    const ui::Fonts& fonts_;
+    ui::StreamMenu menu_;
+    const StreamPlayer* overlayPlayer_ = nullptr;
+    int streamResolution_ = 0;  // as SettingsChoice::resolution
+    bool showStats_ = false, overlayShown_ = false;
+    bool touchEnabled_ = false;  // touch input announced on (StreamPlayer::setTouchEnabled)
+    struct {
+        bool active = false, fired = false;
+        float x = 0, y = 0;  // where the finger came down
+    } swipe_;
+    bool swipeMenu_ = false;  // a swipe asked for the game menu
+    int sharpness_ = 0;       // 0..3, as Settings::sharpness
+    int deband_ = 3;          // 0..3, as Settings::deband
+    AutoDeband autoDeband_;   // the level "auto" uses
+    uint32_t debandSeq_ = 0;
+    int upscaler_ = 0;  // as Settings::upscaler
+    bool padReleased_ = true;
+    bool padAttached_[input::kMaxPads] = {};  // controllers 1..3 announced to the stream
+    bool padUsbOnly_[input::kMaxPads] = {};   // ...by a USB pad alone (told of by app_core.cpp)
+    int menuUsbOwner_ = -1, pendingUsbMenu_ = -1;  // usbMenuButton()
+    uint64_t xboxUntil_[input::kMaxPads] = {};       // players 2..4: the menu's Xbox button pressed for them
+    uint32_t playerReconnects_ = 0;
+    uint32_t overlaySeq_ = 0;  // g_infoSeq + 1 when drawn; 0 = redraw
+    bool hasCustomProfile_ = false;
+    std::string gameKey_;
+    int triggerStrength_ = 2;
+    int triggerHz_ = 1;
+    int triggerResistance_ = 2;
+    bool triggerPulses_ = false;
+    int triggerProfile_ = 0;
+    int deadzone_ = 15;
+    int deadzoneRight_ = 15;
+    int audioHaptics_ = 0;
+    bool triggerTesting_ = false;
+    bool circleConfirms_ = false;
+    input::KeyMap keyMap_ = input::defaultKeyMap();  // this game's keys (the keyboard as a controller)
+    input::PadMap padMap_ = input::defaultPadMap();  // this game's controller buttons, toward the game only
+    input::TouchpadShortcuts touchpadShortcuts_ = input::defaultTouchpadShortcuts();
+    float touchLastX_ = 0.25f;
+    bool prevTouchpad_ = false;
+    input::TouchpadAction shortcutPulseAction_ = input::TouchpadAction::None;
+    uint64_t shortcutPulseUntilMs_ = 0;
+    int gyroMode_ = 0, gyroLevel_ = 5;  // gyro aiming (input/gyro.h), this game's
+    // The game's stick response being measured (app/gyro_calibration.h): the
+    // menu stays up (its dialog shows the progress), the game gets the sweep's
+    // stick, the pictures shown are kept small; any button ends it.
+    bool gyroCalRunning_ = false;
+    bool gyroCalSawRelease_ = false;
+    uint64_t gyroCalStartUs_ = 0;
+    int gyroCalPercent_ = -1;
+    std::atomic<float> gyroCalStickX_{0.0f}, gyroCalStickY_{0.0f};
+    gyrocal::Recording gyroCalRecording_;
+    int gyroLiveApplied_[3] = {-1, -1, -1};  // level, yaw, pitch last given to the pad in the live test
+    void startGyroCalibration_();
+    void finishGyroCalibration_(bool cancelled);
+    bool highRefresh_ = false;  // 120 Hz turned on for this stream
+    bool mouseKeyboard_ = false;  // the game takes native mouse and keyboard
+    bool touchpadMouse_ = false;  // touchpad acts as a mouse (only when enabled in game's profile)
+    input::KbmInput kbm_;
+    int kbSlotAttached_ = -1;  // the keyboard's slot as a controller, announced
+    input::MouseStick mouseStick_;
+    input::TouchpadMouse touchMouse_;
+    input::ControllerState kbPad_;  // the keyboard as a controller, this pass
+    std::vector<uint8_t> keysInGame_;  // keys the game was told are down
+    bool wasStreaming_ = false;
+    uint64_t lastMenuRedrawMs_ = 0;
+    uint64_t lastStatsRedrawMs_ = 0;
+    uint64_t toastsShown_ = 0;    // platform::toasts()'s version in the overlay
+    bool mouseCaptured_ = false;  // as last asked of input::kbmSetCaptured
+    bool prevL3R3_ = false;       // L3 + R3 HUD telemetry shortcut
+};
+
+}  // namespace xc::app
