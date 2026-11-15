@@ -45,7 +45,7 @@ function harness(){
   LS_AUDIO_OUTPUT:'output',LS_AUDIO_FX:'audiofx',LS_AUDIO_BALANCE:'balance',LS_AUDIO_COMP:'compressor',LS_AUDIO_NORMAL:'normal',LS_AUDIO_LIMIT:'limit',LS_AUDIO_DIALOG:'dialog',LS_AUDIO_MONO:'mono',LS_AUDIO_PRESET:'preset',
   LS_NX_GPU:'gpu',LS_NX_SHADOWS:'shadows',LS_NX_HIGHLIGHTS:'highlights',
   nxAudioOutputSupport:()=>({canRoute:false}),
-  nxConsoleLabFullScreen(){},activeStreamAudio:()=>null,sliderDragging:false,S:{},tabId:'video'};
+  nxConsoleLabFullScreen(){},activeStreamAudio:()=>null,activeStreamVideo:()=>null,sliderDragging:false,S:{},tabId:'video'};
  vm.createContext(ctx);
  vm.runInContext(section('  function group(title, hint) {','  function liveDesc(')+section('  function liveDesc(row, getter) {','  function chips('),ctx);
  vm.runInContext(section('  function nxPhoneControls(root){','  setInterval(function(){\n    const visible=nxPhone.touchEnabled'),ctx);
@@ -57,12 +57,12 @@ function harness(){
   group('Perfis de analógico',['Perfil esquerdo','Perfil direito']),group('Giroscópio',['Calibração','Amostras recebidas']),
   group('Coordenação de entradas — diagnóstico',['Fontes observadas']),group('Editor de HUD — prévia arrastável',['Prévia'])
  ].forEach(n=>root.appendChild(n));
- const system=root=>['Desempenho','Detalhes do link','Rede','Compatibilidade','Sistema','Ferramentas','Rodapé'].forEach(t=>root.appendChild(group(t)));
+ const system=root=>['Desempenho','Detalhes do link','Servidores medidos','Compatibilidade','Sistema','Ferramentas','Rodapé'].forEach(t=>root.appendChild(group(t)));
  const mediaBody=section('    media: function (root, category) {','    controls: function (root, category) {');
  const literal=mediaBody.slice(mediaBody.indexOf('function'),mediaBody.lastIndexOf('},')+1);
  const actualMedia=vm.runInContext('('+literal+')',ctx);
  ctx.TAB_BUILDERS={advanced:system,region:()=>{throw Error('A região antiga não deve ser montada');},
-  controls,media:actualMedia,stream:root=>root.appendChild(group('Monitor de transmissão'))};
+  controls,media:actualMedia,stream:root=>{root.appendChild(group('Monitor de transmissão'));root.appendChild(group('Data center'));root.appendChild(group('Qualidade de vídeo'));root.appendChild(group('Rede'));}};
  vm.runInContext(section('  // Categorias organizadas por responsabilidade;','  function setTab(id) {'),ctx);
  const titles=root=>root.children.map(n=>ctx.nxGroupTitle(n));
  return {ctx,Node,group,titles,build:id=>{const n=new Node();ctx.TAB_BUILDERS[id](n);return n;}};
@@ -70,14 +70,38 @@ function harness(){
 
 test('video uses the real media builder and places requested quality and framing above image controls',()=>{
  const h=harness(),root=h.build('video');const titles=h.titles(root);
- assert.deepEqual(titles.slice(0,6),['Qualidade do streaming','Qualidade recebida','Dispositivo','Ajuste à tela','Imagem','Perfis de imagem']);
- const presentation=root.children[3],image=root.children[4];
+ assert.deepEqual(titles.slice(0,4),['Dispositivo','Ajuste à tela','Imagem','Perfis de imagem']);
+ assert.doesNotMatch(root.textContent,/Qualidade do streaming|Qualidade recebida/);
+ const presentation=root.children[1],image=root.children[2];
  assert.match(presentation.textContent,/Enquadramento/);assert.doesNotMatch(root.textContent,/Economia de recursos/);
  assert.doesNotMatch(image.textContent,/Enquadramento|Tela cheia|Economia de recursos/);
  assert.match(image.textContent,/Brilho/);assert.match(root.textContent,/Salvar perfil/);
  assert.doesNotMatch(root.textContent,/Importar JSON|Exportar JSON/);
  assert.match(root.textContent,/Restaurar configurações visuais/);
  assert.doesNotMatch(root.textContent,/Restaurar GPU|Restaurar imagem/);
+});
+
+test('stream owns requested quality presets while statistics owns received resolution',()=>{
+ const h=harness(),stream=h.build('stream'),streamTitles=h.titles(stream);
+ assert.ok(streamTitles.includes('Qualidade do streaming'));
+ assert.ok(streamTitles.includes('Data center'));
+ assert.ok(streamTitles.includes('Rede'));
+ assert.ok(streamTitles.includes('Servidores medidos'));
+ assert.doesNotMatch(stream.textContent,/Monitor de transmissão|Qualidade de vídeo|Qualidade recebida/);
+ assert.equal(stream.textContent.split('Máximo').length-1,1);
+ const stats=h.build('statistics');
+ assert.ok(h.titles(stats).includes('Qualidade recebida'));
+ assert.match(stats.textContent,/Resolução do vídeo/);
+ assert.doesNotMatch(h.build('video').textContent,/Qualidade do streaming|Qualidade recebida/);
+});
+
+test('top-level visual labels retain the existing navigation identifiers',()=>{
+ const tabs=section('  const TABS = [','  const PRESETS = [');
+ const ids=Array.from(tabs.matchAll(/id: '([^']+)'/g),m=>m[1]);
+ assert.deepEqual(ids,['overview','video','stream','statistics','inputs','audio','remote','personalize','advanced']);
+ assert.match(tabs,/id: 'stream', label: 'Stream'/);
+ assert.match(tabs,/id: 'personalize', label: 'Gerais'/);
+ assert.match(tabs,/id: 'advanced', label: 'Avançado'/);
 });
 
 test('audio/voice composition puts only microphone above the playback settings',()=>{

@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NimboXcloud | Região, Streaming e Diagnóstico
 // @namespace    https://github.com/breno-bgod/NimboXcloud
-// @version      4.15.5
-// @description  NimboXcloud: streaming, painel NX, diagnóstico, NimboTouch, cinco modos de entrada e HUD de controle virtual.
+// @version      0.0.1
+// @description  NimboXcloud Alpha: streaming, painel NX, diagnóstico, NimboTouch, cinco modos de entrada e HUD de controle virtual.
 // @author       KReight
 // @license      GPL-3.0-or-later
 // @match        https://play.xbox.com/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/158df53180043af93e85af9e9d139c85ccaf36a9/modules/NimboXcloud-Touch-HUD.user.js?nx_version=4.15.5
+// @require      https://raw.githubusercontent.com/breno-bgod/NimboXcloud/158df53180043af93e85af9e9d139c85ccaf36a9/modules/NimboXcloud-Touch-HUD.user.js?nx_version=0.0.1
 // @supportURL   https://github.com/breno-bgod/NimboXcloud/issues
 // @updateURL    https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
 // @downloadURL  https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js
@@ -103,7 +103,7 @@ SOFTWARE.
 
   if (window.__XCU__) return;
 
-  const VER = '4.15.5';
+  const VER = '0.0.1';
   const LS_KEY = 'xcu.region';       // região de desbloqueio (IP)
   const LS_SRV = 'xcu.streamRegion'; // data center de streaming
   const LS_V4 = 'xcu.forceIPv4';     // forçar IPv4
@@ -1261,7 +1261,7 @@ SOFTWARE.
     if(!json||typeof json!=='object')return null;
     const valid=function(value){return typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=86400?value:null;};
     const allocation=valid(json.estimatedAllocationTimeInSeconds),total=valid(json.estimatedTotalWaitTimeInSeconds);
-    // Better xCloud gates its queue overlay on allocation > 0. A total alone
+    // The queue overlay requires allocation > 0. A total alone
     // must not override an explicit report that no allocation wait remains.
     if(allocation===0)return 0;
     if(allocation!==null)return total!==null&&total>=allocation?total:allocation;
@@ -2423,14 +2423,14 @@ SOFTWARE.
   };
   const TABS = [
     { id: 'overview', label: 'Início', desc: 'Resumo da sessão e acesso rápido' },
-    { id: 'video', label: 'Vídeo e imagem', desc: 'Qualidade, dispositivo, enquadramento e ajustes visuais' },
-    { id: 'stream', label: 'Streaming', desc: 'Servidores, conexão e rede' },
-    { id: 'statistics', label: 'Estatísticas', desc: 'Métricas e desempenho da sessão' },
+    { id: 'video', label: 'Vídeo e imagem', desc: 'Dispositivo, enquadramento e ajustes visuais' },
+    { id: 'stream', label: 'Stream', desc: 'Servidores, qualidade solicitada, resolução e rede' },
+    { id: 'statistics', label: 'Estatísticas', desc: 'Métricas de transmissão, qualidade e desempenho da sessão' },
     { id: 'inputs', label: 'Entradas', desc: 'Modo de jogo, HUD, controle físico e teclado e mouse' },
     { id: 'audio', label: 'Áudio e voz', desc: 'Microfone, volume, saída e equalização' },
     { id: 'remote', label: 'Remote Play', desc: 'Conexão experimental com Xbox local' },
-    { id: 'personalize', label: 'Interface', desc: 'Aparência geral do painel NX' },
-    { id: 'advanced', label: 'Sistema', desc: 'Compatibilidade, diagnóstico e manutenção' }
+    { id: 'personalize', label: 'Gerais', desc: 'Aparência geral do painel NX' },
+    { id: 'advanced', label: 'Avançado', desc: 'Compatibilidade, diagnóstico e ferramentas técnicas' }
   ];
   const PRESETS = [
     { name: 'Máximo', res: 'hq', br: 'auto', sub: 'Melhor imagem' },
@@ -5878,6 +5878,14 @@ SOFTWARE.
     });
     pg.card.appendChild(row);root.appendChild(pg.root);
   }
+  function nxReceivedQuality(root){
+    const quality=group('Qualidade recebida','A solicitação vale na próxima partida. Esta medição mostra o vídeo recebido, não o tamanho da janela.');
+    quality.add(infoRow('Resolução do vídeo',function(){
+      const video=activeStreamVideo();
+      return video?.videoWidth&&video?.videoHeight?video.videoWidth+' × '+video.videoHeight:(S.qos?.w&&S.qos?.h?S.qos.w+' × '+S.qos.h:'Aguardando uma partida');
+    }));
+    root.appendChild(quality.root);
+  }
   TAB_BUILDERS.advanced=function(root){
     const nodes=nxLegacySystemGroups();[3,4,5,6].forEach(function(i){if(nodes[i])root.appendChild(nodes[i]);});
     const controls=nxLegacyControlGroups('keyboard');
@@ -5892,6 +5900,7 @@ SOFTWARE.
   TAB_BUILDERS.compatibility=function(root){const nodes=nxLegacySystemGroups();if(nodes[3])root.appendChild(nodes[3]);};
   TAB_BUILDERS.region=function(root){nxLegacyRegionBuilder(root);};
   TAB_BUILDERS.stream=function(root){
+    nxQualityPresets(root);
     const temp=document.createElement('div');nxOriginalStreamBuilder(temp);
     const nodes=Array.from(temp.children);
     nodes.forEach(function(node){const title=nxGroupTitle(node);if(title!=='Monitor de transmissão'&&title!=='Qualidade de vídeo')root.appendChild(node);});
@@ -5908,10 +5917,6 @@ SOFTWARE.
     if(mic)root.appendChild(mic);
   };
   TAB_BUILDERS.video=function(root){
-    nxQualityPresets(root);
-    const quality=group('Qualidade recebida','A solicitação vale na próxima partida. Esta medição mostra o vídeo recebido, não o tamanho da janela.');
-    quality.add(infoRow('Resolução do vídeo',function(){const video=activeStreamVideo();return video?.videoWidth&&video?.videoHeight?video.videoWidth+' × '+video.videoHeight:(S.qos?.w&&S.qos?.h?S.qos.w+' × '+S.qos.h:'Aguardando uma partida');}));
-    root.appendChild(quality.root);
     const controls=nxLegacyControlGroups('video');nxMoveGroup(root,controls,'Dispositivo');
     const media=nxLegacyMediaGroups('video');
     const presentation=nxTakeGroupRows(nxFindGroup(media,'Imagem'),'Ajuste à tela',
@@ -6031,8 +6036,8 @@ SOFTWARE.
     const words=normalize(query).trim().split(/\s+/).filter(Boolean);
     if(!words.length)return [];
     const keywords={inputs:'touch toque controle joystick hud virtual teclado mouse analógico zona morta deadzone gyro giroscópio vibração sensibilidade wasd macros multiteclas botões atalhos',
-      stream:'servidor server região bitrate rede',statistics:'fps rtt latência perda mbps desempenho monitor ativar ocultar gráficos histórico fonte cores transparência posição escala layout',
-      audio:'equalizador volume saída som mic microfone voz',video:'fullscreen tela cheia enquadramento desktop celular brilho contraste saturação filtros captura perfil resolução qualidade gpu nitidez cas unsharp',
+      stream:'servidor server região bitrate rede qualidade resolução 1080p preset',statistics:'fps rtt latência perda mbps desempenho monitor ativar ocultar gráficos histórico fonte cores transparência posição escala layout resolução recebida',
+      audio:'equalizador volume saída som mic microfone voz',video:'fullscreen tela cheia enquadramento desktop celular brilho contraste saturação filtros captura perfil gpu nitidez cas unsharp',
       advanced:'diagnóstico cache manutenção compatibilidade identidade user agent plataforma console',personalize:'transparência cores aparência interface painel ícones textos fonte'};
     return TABS.filter(function(tab){const text=normalize(tab.label+' '+tab.desc+' '+(keywords[tab.id]||''));return words.every(function(word){return text.includes(word);});});
   }
@@ -6504,6 +6509,7 @@ SOFTWARE.
     const stream=document.createElement('div');
     nxOriginalStreamBuilder(stream);
     if(stream.firstElementChild)root.appendChild(stream.firstElementChild);
+    nxReceivedQuality(root);
     const groups=nxLegacySystemGroups();
     [0,1].forEach(function(i){if(groups[i])root.appendChild(groups[i]);});
 

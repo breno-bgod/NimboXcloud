@@ -9,13 +9,15 @@
 
 **Under development for the new Xbox Cloud Gaming experience — [play.xbox.com](https://play.xbox.com/)**
 
-[**Install official version 4.15.4**](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js) · [**Report an issue**](./../../issues) · [**Development roadmap**](./DEVELOPMENT_ROADMAP.md)
+[**Install Alpha 0.0.1**](https://raw.githubusercontent.com/breno-bgod/NimboXcloud/main/NimboXcloud.user.js) · [**Report an issue**](./../../issues) · [**Development roadmap**](./DEVELOPMENT_ROADMAP.md)
 
 </div>
 
 ---
 
-## Official version 4.15.4
+## Alpha 0.0.1 — public testing release
+
+**This is the first public Alpha milestone, not a claim that development began from scratch.** Features may fail, change, or be disabled. Install the official userscript, report issues and suggestions, and never share tokens, cookies, or personal data in reports.
 
 Physical and virtual inputs, HUD editor return to NX, compact loading status, monitor charts and Xbox toolbar refinements. Input/HUD module 1.4.1 is included by the installer. Preferences and layouts are preserved. See [changes and validation](./CHANGELOG.md) and [known limitations](./docs/CARREGAMENTO_E_MONITOR.md).
 
@@ -112,7 +114,7 @@ This is an **unofficial project**, not affiliated with Microsoft or Xbox. Experi
 
 - [**Main userscript**](./NimboXcloud.user.js)
 - [**Development roadmap**](./DEVELOPMENT_ROADMAP.md)
-- [**Changelog**](./CHANGELOG.md)
+- [**Alpha updates**](./CHANGELOG.md)
 - [**Architecture and technical limitations**](./docs/ARQUITETURA.md)
 - [**Contributing**](./CONTRIBUTING.md)
 - [**Português — README completo**](./README.md)
@@ -132,6 +134,5 @@ This is an **unofficial project**, not affiliated with Microsoft or Xbox. Experi
 The current distribution uses [GPL-3.0-or-later](./LICENSE). Redistribution and modifications must comply with the GPL, including providing corresponding source where required. Applicable [third-party MIT notices](./THIRD_PARTY_NOTICES.md) are retained. Earlier MIT releases keep their original grants.
 
 
-## Unified source base — 4.15.4
+## Alpha testing begins at 0.0.1
 
-The official PR #29 interface is preserved, with landscape FPS/racing gyroscope profiles and complementary controller touchpad. PSBox Android development sources from PR #24 are included under experiments/console with licenses and ARM64/AAR builds. They are not loaded by the userscript. No APK or integrated PSBox streaming engine is available yet. See [integration status](docs/INTEGRACAO_OFICIAL.md).
