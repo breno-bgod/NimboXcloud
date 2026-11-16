@@ -98,3 +98,59 @@ Critérios de aceite:
 6. Definir um único local persistente para o seletor dos cinco modos, sem cópias por categoria.
 7. Preservar todos os IDs, aliases, callbacks, storage keys, valores, defaults e comportamentos.
 8. Criar testes sobre os builders reais que comprovem ausência de opções duplicadas e de opções inacessíveis antes de implementar a nova navegação.
+
+
+## Execução visual — 2026-11-16 — rótulos da navegação compacta em telas estreitas
+
+### Base e rastreabilidade
+- HEAD inicial/final consultado de `main` antes da atualização documental: `5ba8943eedb83b0735dc7afe1cb20276fa7fcde3`. Nenhuma alteração direta em `main`.
+- Branch visual: `automation/visual-mobile-nav-2026-11-14`.
+- HEAD inicial desta execução na branch: `8e4d73559d8719f8b6a2476e63c79f868942699e`.
+- HEAD de código/testes desta execução: `a1ead2a3aa70c2b6e8e0bc19f041742720875ff4`.
+- Versão pública lida: Alpha `0.0.1`; `CHANGELOG.md` foi consultado e permaneceu inalterado.
+- PR visual único: [#35](https://github.com/breno-bgod/NimboXcloud/pull/35), base `main`, mantido em rascunho.
+- Arquivos de código/teste: `NimboXcloud.user.js` e `tests/panel-layout.test.cjs`. Este registro atualiza apenas o roadmap.
+
+### Auditoria e descoberta
+- A navegação compacta usa uma faixa horizontal rolável em viewports de até 640 px.
+- A regra adicional de até 480 px escondia os rótulos dos destinos e deixava somente ícones. Isso contradizia a intenção de manter os nomes visíveis e reduzia a descoberta das categorias.
+- O teste anterior verificava a regra de exibição em até 640 px, mas não verificava a sobrescrita em até 480 px; portanto, não detectava a regressão de rótulos ocultos.
+- O painel tem nove destinos atuais, contando Início, e o fechamento da faixa. A taxonomia final de categorias ainda não foi implementada.
+
+### Alteração visual
+- Removida a regra que ocultava os rótulos em até 480 px.
+- Mantidos ícone e nome visível em cada destino. Em telas estreitas, os botões de categoria usam largura entre 64 e 84 px e texto de 9 px, com altura da faixa de 64 px.
+- A rolagem horizontal permanece como mecanismo de acesso aos destinos que não cabem simultaneamente; nenhum destino foi removido ou abreviado.
+- O teste de layout agora verifica explicitamente a regra de até 480 px e falha se os rótulos voltarem a receber `display:none`.
+- Alteração restrita a CSS de apresentação e teste estático. Nenhum handler, evento, callback, builder, ID, alias, storage key, valor, default, estado ou comportamento de entrada foi modificado.
+
+### Referências pesquisadas
+1. [Android Developers — Layouts and navigation patterns](https://developer.android.com/design/ui/mobile/guides/layout-and-content/layout-and-nav-patterns): navegação adaptativa; rail é apropriado em janelas maiores e padrões secundários não devem substituir a navegação primária.
+2. [Microsoft Fluent 2 — Nav](https://fluent2.microsoft.design/components/web/react/core/nav/usage): navegação breve, linguagem simples e fácil de percorrer visualmente.
+3. [W3C — WCAG 2.2](https://www.w3.org/TR/wcag/): referência de acessibilidade para foco, navegação e tamanho de alvos. Os 44 px usados no painel são uma escolha de conforto; o critério Target Size (Enhanced) é nível AAA, não uma alegação de conformidade AA.
+- Foram extraídos princípios; nenhum asset, componente ou código foi copiado.
+
+### Testes e resultados
+- [GitHub Actions — NimboXcloud baseline, run 43963729711](https://github.com/breno-bgod/NimboXcloud/actions/runs/43963729711): PASS.
+- Sintaxe de `NimboXcloud.user.js`: PASS.
+- Sintaxe de `modules/NimboXcloud-Touch-HUD.user.js`: PASS.
+- Suíte: 406 testes, 403 PASS, 0 FAIL, 3 TODO.
+- Relatório estático de riscos: PASS. Foram reportados quatro padrões já existentes (Gamepad override, XHR override e fetch override); o relatório é correspondência estática e não demonstra falha em execução. Não foram alterados nesta frente.
+- Não houve teste manual em Chrome, Edge, Android, DeX, fullscreen, rotação ou sessão real. A aprovação do CI não comprova a legibilidade visual em cada largura física.
+
+### Riscos e pendências
+- Em telas muito estreitas, os rótulos continuam visíveis, mas alguns destinos exigem rolagem horizontal. Isso é uma solução intermediária, não a arquitetura final.
+- A faixa atual ainda tem mais destinos do que cabem simultaneamente em 320–480 px. Não reduzir os nomes a ícones nem adicionar um menu alternativo antes de definir a taxonomia final.
+- A matriz das categorias ainda precisa resolver Mobile, Joypad e Teclado e Mouse como destinos próprios, agrupar Vídeo e Áudio, e determinar o destino único do seletor global dos cinco modos.
+- Nenhum bug funcional foi corrigido ou investigado nesta execução.
+
+### Próxima tarefa visual única — P1: matriz definitiva das categorias e destino do seletor global
+Critérios de aceite:
+1. Inventariar cada grupo e linha dos builders atuais, com finalidade, público e dependências, e atribuir exatamente uma categoria principal.
+2. Definir Mobile, Joypad e Teclado e Mouse como destinos próprios sem mover mecanismos touchscreen para categorias físicas.
+3. Reunir qualidade solicitada, servidores e rede em Stream; manter qualidade recebida e métricas em Estatísticas.
+4. Agrupar Vídeo e Áudio sem duplicar controles e manter Remote Play identificado como experimental.
+5. Separar Estatísticas de Desenvolvedor/Avançado e manter Gerais restrito a preferências universais existentes.
+6. Definir um único local persistente para o seletor dos cinco modos, sem cópias por categoria nem perda de acesso.
+7. Preservar IDs, aliases, callbacks, storage keys, valores, defaults e comportamento.
+8. Criar testes dos builders reais para ausência de duplicação e inacessibilidade antes de alterar a navegação principal.
