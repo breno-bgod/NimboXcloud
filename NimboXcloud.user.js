@@ -6105,7 +6105,11 @@ SOFTWARE.
 #__xcu_panel__ .nx-device-mobile .nx-device-key-2{right:20px;top:65px}
 #__xcu_panel__ .nx-device-mobile .nx-device-key-3{right:42px;top:30px}
 @media(max-width:760px){#__xcu_panel__ .nx-input-workspace{grid-template-columns:1fr;gap:4px}#__xcu_panel__ .nx-device-preview{min-height:200px;gap:18px}#__xcu_panel__ .nx-input-devices{gap:4px}#__xcu_panel__ .nx-input-devices button{min-width:85px;font-size:11px!important}}
-@media(max-width:480px){#__xcu_panel__ .nx-category-rail{flex-basis:55px!important}#__xcu_panel__ .nx-category-rail button{justify-content:center!important}#__xcu_panel__ .nx-category-rail button>span:nth-child(2){display:none!important}}
+@media(max-width:480px){
+#__xcu_panel__ .nx-category-rail{flex-basis:64px!important;min-height:64px!important}
+#__xcu_panel__ .nx-category-rail button:not(:last-child){min-width:64px!important;max-width:84px!important;padding:4px 5px!important;font-size:9px!important}
+#__xcu_panel__ .nx-category-rail button:not(:last-child)>span:nth-child(2){display:block!important;font-size:9px!important;line-height:1.1!important;white-space:normal!important;overflow-wrap:normal!important}
+}
 @media(max-width:640px){
 #__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]{flex-direction:column!important;max-height:calc(100vh - 16px)!important;max-height:calc(100dvh - 16px)!important}
 #__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>nav[aria-label="Categorias das configurações"]{order:0!important;flex:0 0 auto!important;box-sizing:border-box!important;width:100%!important;max-height:64px!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:4px!important;padding:6px!important;border-right:0!important;border-bottom:1px solid var(--nx-edge)!important;overflow-x:auto!important;overflow-y:hidden!important;overscroll-behavior-x:contain!important;scrollbar-width:thin;-webkit-overflow-scrolling:touch}

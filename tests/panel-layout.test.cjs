@@ -211,7 +211,7 @@ test('monitor never steals native Xbox or gameplay clicks outside the NX editing
 
 
 
-test('compact panel navigation keeps category labels visible in a horizontal touch rail',()=>{
+test('compact panel navigation keeps category labels visible in a horizontal touch rail at narrow widths',()=>{
  const start=src.indexOf('  function nxWorkspaceStyle() {');
  const end=src.indexOf('  function buildUI() {',start);
  assert.ok(start>=0&&end>start,'workspace presentation stylesheet exists');
@@ -223,4 +223,10 @@ test('compact panel navigation keeps category labels visible in a horizontal tou
  assert.match(styles,/button:not\(:last-child\)>span:nth-child\(2\)\{display:block!important/);
  assert.match(styles,/overscroll-behavior-x:contain!important/);
  assert.match(styles,/order:1!important/);
+ assert.doesNotMatch(styles,/\.nx-category-rail button>span:nth-child\(2\)\{display:none!important\}/);
+ const narrow=styles.match(/@media\(max-width:480px\)\{([\s\S]*?)\n@media\(max-width:640px\)/);
+ assert.ok(narrow,'narrow viewport rules exist');
+ assert.match(narrow[1],/min-height:64px!important/);
+ assert.match(narrow[1],/button:not\(:last-child\)>span:nth-child\(2\)\{display:block!important/);
+ assert.match(narrow[1],/font-size:9px!important/);
 });
