@@ -161,6 +161,7 @@ Critérios de aceite:
 ### Base e reconciliação
 - Releitura direta do GitHub antes da alteração: `main` permaneceu em `5ba8943eedb83b0735dc7afe1cb20276fa7fcde3`; nenhuma gravação foi feita em `main`.
 - Branch visual: `automation/visual-mobile-nav-2026-11-14`; HEAD inicial desta execução: `4c7b531c21c2f6d4285645390abc628f3fc65c11`.
+- HEAD final do código e dos testes desta execução: `4a2b9d5d3d5e9d294bad0433e1baad78d261ee47`; o resultado de CI foi verificado antes deste registro documental.
 - PR #35 permaneceu aberto, em rascunho, base `main`, sem merge e sem divergência. A branch e o HEAD do PR foram conferidos novamente imediatamente antes de criar o commit.
 - Versão pública observada: Alpha `0.0.1`. `CHANGELOG.md` foi relido (blob `6e3ddc67cbb90258c45c65c8701ce2bf79af3185`) e não foi alterado.
 - Blobs lidos antes da mudança: userscript `225b243eeacaf3614150c606b0d1374992bdda91`, teste de layout `c23415fa3f8029537a718059c8c41f33fbb5727b`, roadmap `8a11a7e892943fd56306c0ad81fef35112d779cc`.
@@ -199,7 +200,10 @@ Critérios de aceite:
 - Foram extraídos padrões de nomenclatura, consistência e hierarquia; nenhum asset ou código foi copiado.
 
 ### Testes, riscos e limitações
-- Foi acrescentado um teste estático de consistência entre atalhos da página inicial, nomes das famílias e rotas legadas. Resultado do CI será registrado após a execução acionada pelo commit.
+- GitHub Actions [NimboXcloud baseline — run 44190595762](https://github.com/breno-bgod/NimboXcloud/actions/runs/44190595762): conclusão `success` no commit `4a2b9d5d3d5e9d294bad0433e1baad78d261ee47`.
+- Sintaxe de `NimboXcloud.user.js`: PASS; sintaxe de `modules/NimboXcloud-Touch-HUD.user.js`: PASS; relatório estático de riscos: PASS.
+- Suíte executada: 407 testes, 404 aprovados, 0 falhas e 3 TODO preexistentes.
+- O runner também emitiu aviso de depreciação do runtime Node 20 usado por `actions/checkout@v4` e `actions/setup-node@v4`, forçado para Node 24 no runner. O workflow concluiu com sucesso; a atualização das actions fica como manutenção de CI fora desta frente visual.
 - A pipeline disponível executa `node --check` nos dois userscripts, `node --test tests/*.test.cjs tests/*.test.mjs` e `tools/static-risk-report.cjs`.
 - Não foi executado teste manual em Chrome/Edge, Playwright, Android, DeX, fullscreen ou sessão real. CI não valida composição visual em dispositivo.
 - A mudança deliberadamente não divide as três famílias em destinos principais: `nxCanonicalTab` e `setTab` tratam os aliases `gamepad` e `gyrotouch` como rotas para `inputs`; alterar isso exige matriz e testes de caracterização para preservar a única seleção de modo e todas as opções acessíveis.
