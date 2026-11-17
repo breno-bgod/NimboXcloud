@@ -154,3 +154,65 @@ Critérios de aceite:
 6. Definir um único local persistente para o seletor dos cinco modos, sem cópias por categoria nem perda de acesso.
 7. Preservar IDs, aliases, callbacks, storage keys, valores, defaults e comportamento.
 8. Criar testes dos builders reais para ausência de duplicação e inacessibilidade antes de alterar a navegação principal.
+
+
+## Execução visual — 2026-11-17 — consistência dos rótulos e atalhos da página inicial
+
+### Base e reconciliação
+- Releitura direta do GitHub antes da alteração: `main` permaneceu em `5ba8943eedb83b0735dc7afe1cb20276fa7fcde3`; nenhuma gravação foi feita em `main`.
+- Branch visual: `automation/visual-mobile-nav-2026-11-14`; HEAD inicial desta execução: `4c7b531c21c2f6d4285645390abc628f3fc65c11`.
+- PR #35 permaneceu aberto, em rascunho, base `main`, sem merge e sem divergência. A branch e o HEAD do PR foram conferidos novamente imediatamente antes de criar o commit.
+- Versão pública observada: Alpha `0.0.1`. `CHANGELOG.md` foi relido (blob `6e3ddc67cbb90258c45c65c8701ce2bf79af3185`) e não foi alterado.
+- Blobs lidos antes da mudança: userscript `225b243eeacaf3614150c606b0d1374992bdda91`, teste de layout `c23415fa3f8029537a718059c8c41f33fbb5727b`, roadmap `8a11a7e892943fd56306c0ad81fef35112d779cc`.
+
+### Inventário e classificação
+- Mobile: modos touchscreen, HUDs virtuais, editores, giroscópio do smartphone e touchpad; os controles correspondentes já ficam dentro da família Mobile em Entradas.
+- Joypad: dispositivos físicos reconhecidos, perfis de analógico, vibração e atalho do gamepad.
+- Teclado e Mouse: captura/Pointer Lock físico e atalho; o teclado/mouse virtual por toque permanece em Mobile.
+- Stream: presets existentes, servidores/data center e rede; nenhum controle real de bitrate foi identificado.
+- Vídeo e Áudio: continuam em páginas distintas; vídeo inclui enquadramento e processamento local de imagem, áudio inclui saída/equalização e entrada de microfone.
+- Estatísticas: monitor, FPS, bitrate recebido, RTT, jitter, perda, decodificação e resolução recebida.
+- Remote Play: página separada e explicitamente experimental; a qualidade 720p/1080p/1080p-HQ pertence à futura sessão xHome e não foi confundida com Stream.
+- Desenvolvedor/Avançado: compatibilidade, relatórios e diagnóstico técnico.
+- Gerais: aparência do painel; não foi encontrado seletor de idioma. O perfil Auto/Desktop/Celular permanece em Vídeo e requer decisão na matriz, pois combina preferência de apresentação e perfil de sessão.
+- A navegação principal ainda tem nove destinos contando Início. Mobile, Joypad e Teclado e Mouse são subfamílias dentro de Entradas, não destinos primários independentes. O seletor único dos cinco modos e a recuperação Automático do Xbox também permanecem nessa página.
+
+### Melhoria visual aplicada
+- Os atalhos da página Início agora usam os mesmos rótulos visíveis das páginas de destino: `Stream`, `Entradas`, `Gerais` e `Avançado`.
+- A família física `gamepad` é apresentada como “Joypad”; a família `keyboard` como “Teclado e Mouse”; a família touchscreen como “Mobile”, inclusive no rótulo acessível da prévia.
+- O resumo de Entradas na página inicial explicita as três famílias, sem sugerir que HUD touchscreen seja um controle físico.
+- O texto do grupo de sistema distingue aparência geral de ferramentas técnicas.
+- Alterações somente em textos/rótulos existentes. Os identificadores internos `keyboard`, `gamepad`, `mobile`, os IDs dos atalhos, `setTab`, builders, aliases legados, callbacks, storage keys, valores, defaults e comportamentos foram preservados.
+- Nenhum novo controle, destino ou opção funcional foi criado; não houve alteração de CSS, handlers ou lógica de entrada.
+
+### Arquivos desta execução
+- `NimboXcloud.user.js`: rótulos de apresentação dos atalhos e das famílias de entrada.
+- `tests/panel-layout.test.cjs`: teste estático para consistência de rótulos e preservação das rotas legadas.
+- `DEVELOPMENT_ROADMAP.md`: este registro.
+- `CHANGELOG.md`: sem alteração, pois não houve novo lançamento nem mudança funcional.
+
+### Referências pesquisadas
+1. [Microsoft Fluent 2 — Nav](https://fluent2.microsoft.design/components/web/react/core/nav/usage): navegação deve ser curta, escaneável, com linguagem simples e taxonomia consistente; recomenda drawer sobre conteúdo em telas estreitas.
+2. [Microsoft Fluent 2 — Content Design](https://fluent2.microsoft.design/content-design/): títulos, descrições e rótulos devem ser concisos e deixar decisões e próximos passos claros.
+3. [IBM Carbon — Global header](https://www.carbondesignsystem.com/building-blocks/core/patterns/global-header): separar navegação do produto de funções de sistema e manter locais consistentes para as funções globais.
+4. [IBM Carbon — Accessibility](https://www.carbondesignsystem.com/building-blocks/foundations/accessibility/developers): hierarquia semântica e ordem lógica de foco para navegação por teclado e tecnologias assistivas.
+- Foram extraídos padrões de nomenclatura, consistência e hierarquia; nenhum asset ou código foi copiado.
+
+### Testes, riscos e limitações
+- Foi acrescentado um teste estático de consistência entre atalhos da página inicial, nomes das famílias e rotas legadas. Resultado do CI será registrado após a execução acionada pelo commit.
+- A pipeline disponível executa `node --check` nos dois userscripts, `node --test tests/*.test.cjs tests/*.test.mjs` e `tools/static-risk-report.cjs`.
+- Não foi executado teste manual em Chrome/Edge, Playwright, Android, DeX, fullscreen ou sessão real. CI não valida composição visual em dispositivo.
+- A mudança deliberadamente não divide as três famílias em destinos principais: `nxCanonicalTab` e `setTab` tratam os aliases `gamepad` e `gyrotouch` como rotas para `inputs`; alterar isso exige matriz e testes de caracterização para preservar a única seleção de modo e todas as opções acessíveis.
+- A página inicial ainda apresenta grupos agregados (Conexão, Entradas e controles, Sistema e interface); a taxonomia final permanece pendente.
+- Nenhum bug funcional foi corrigido ou avaliado nesta execução.
+
+### Próxima tarefa visual única — P1: matriz executável das nove categorias e posição única do seletor de entrada
+Critérios de aceite:
+1. Inventariar cada grupo e linha dos builders reais, registrando finalidade, público e dependências, com exatamente uma categoria primária por opção.
+2. Definir os destinos primários Mobile, Joypad e Teclado e Mouse sem duplicar builders ou controles.
+3. Definir um único local persistente para os cinco modos atuais e a recuperação Automático, mantendo `NX_INPUT_MODE_KEY`, callbacks e comportamento.
+4. Reunir qualidade solicitada, servidores e rede em Stream; manter métricas recebidas em Estatísticas.
+5. Agrupar Vídeo e Áudio sem duplicar opções; manter Remote Play separado e experimental.
+6. Separar métricas gerais de diagnóstico técnico; deixar Gerais restrito a preferências universais comprovadas.
+7. Preservar todos os IDs, aliases, storage keys, valores, defaults, eventos e rotas de recuperação.
+8. Adicionar testes dos builders reais que provem unicidade e acessibilidade das opções antes de alterar a navegação principal.

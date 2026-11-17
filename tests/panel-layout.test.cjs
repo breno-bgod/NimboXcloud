@@ -230,3 +230,30 @@ test('compact panel navigation keeps category labels visible in a horizontal tou
  assert.match(narrow[1],/button:not\(:last-child\)>span:nth-child\(2\)\{display:block!important/);
  assert.match(narrow[1],/font-size:9px!important/);
 });
+
+
+test('home shortcuts and input-family labels follow the visible navigation vocabulary',()=>{
+ const overview=src.indexOf('  TAB_BUILDERS.overview=function(root){');
+ const groupStart=src.indexOf('    const groups=[',overview);
+ const groupEnd=src.indexOf('    groups.forEach(function(g){',groupStart);
+ assert.ok(overview>=0&&groupStart>overview&&groupEnd>groupStart);
+ const menu=src.slice(groupStart,groupEnd);
+ assert.match(menu,/links:\[\['stream','Stream'\],\['statistics','Estatísticas'\],\['remote','Remote Play · Xbox em casa'\]\]/);
+ assert.match(menu,/links:\[\['inputs','Entradas'\]\]/);
+ assert.match(menu,/links:\[\['personalize','Gerais'\],\['advanced','Avançado'\]\]/);
+ assert.match(menu,/sub:'Mobile, Joypad e Teclado e Mouse'/);
+ assert.match(menu,/sub:'Aparência geral e ferramentas técnicas'/);
+ assert.doesNotMatch(menu,/Streaming|Entradas, HUD e ajustes dos dispositivos|Interface e monitor de estatísticas|Sistema e compatibilidade/);
+ const previewStart=src.indexOf('  function nxInputDevicePreview(family) {');
+ const previewEnd=src.indexOf('  function nxInputModePage(root) {',previewStart);
+ assert.ok(previewStart>=0&&previewEnd>previewStart);
+ const preview=src.slice(previewStart,previewEnd);
+ assert.match(preview,/keyboard:'Teclado e Mouse',gamepad:'Joypad',mobile:'Mobile'/);
+ const navEnd=src.indexOf('  function nxTouchpadSettings(root)',previewEnd);
+ assert.ok(navEnd>previewEnd);
+ const nav=src.slice(previewEnd,navEnd);
+ assert.match(nav,/\[\['keyboard','Teclado e Mouse'\],\['gamepad','Joypad'\],\['mobile','Mobile'\]\]/);
+ assert.match(nav,/data-nx-device/);
+ assert.match(src,/function nxCanonicalTab\(id\)/);
+ assert.match(src,/gamepad:'inputs',gyrotouch:'inputs',controls:'inputs'/);
+});

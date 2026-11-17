@@ -1048,7 +1048,7 @@ SOFTWARE.
     const figure = mk('div', '');
     figure.className = 'nx-device-preview';
     figure.setAttribute('role', 'img');
-    const labels = {keyboard:'Teclado e mouse',gamepad:'Controle',mobile:'Controles na tela'};
+    const labels = {keyboard:'Teclado e Mouse',gamepad:'Joypad',mobile:'Mobile'};
     figure.setAttribute('aria-label', labels[family]);
     const device = mk('div', '');
     device.className = 'nx-device-diagram nx-device-' + family;
@@ -1070,7 +1070,7 @@ SOFTWARE.
     const navigation = mk('nav','');
     navigation.className = 'nx-input-devices';
     navigation.setAttribute('aria-label','Dispositivos de entrada');
-    [['keyboard','Teclado e mouse'],['gamepad','Controle'],['mobile','Mobile']].forEach(function(item) {
+    [['keyboard','Teclado e Mouse'],['gamepad','Joypad'],['mobile','Mobile']].forEach(function(item) {
       const button = actBtn(item[1], function() {
         nxInputWorkspaceFamily = item[0];
         renderBody(true);
@@ -6533,10 +6533,10 @@ SOFTWARE.
     });
     const groups=[
       {title:'Imagem e apresentação',sub:'Perfil do dispositivo e processamento visual',icon:ICONS.video,links:[['video','Vídeo e imagem']]},
-      {title:'Conexão',sub:'Servidores, qualidade e indicadores da sessão',icon:ICONS.stream,links:[['stream','Streaming'],['statistics','Estatísticas'],['remote','Remote Play · Xbox em casa']]},
-      {title:'Entradas e controles',sub:'Escolha como jogar, edite o HUD e ajuste seus dispositivos',icon:ICONS.gamepad,links:[['inputs','Entradas, HUD e ajustes dos dispositivos']]},
+      {title:'Conexão',sub:'Servidores, qualidade e indicadores da sessão',icon:ICONS.stream,links:[['stream','Stream'],['statistics','Estatísticas'],['remote','Remote Play · Xbox em casa']]},
+      {title:'Entradas e controles',sub:'Mobile, Joypad e Teclado e Mouse',icon:ICONS.gamepad,links:[['inputs','Entradas']]},
       {title:'Som',sub:'Reprodução e entrada de voz',icon:ICONS.audio,links:[['audio','Áudio e voz']]},
-      {title:'Sistema e interface',sub:'Aparência, compatibilidade e manutenção',icon:ICONS.advanced,links:[['personalize','Interface e monitor de estatísticas'],['advanced','Sistema e compatibilidade']]}
+      {title:'Sistema e interface',sub:'Aparência geral e ferramentas técnicas',icon:ICONS.advanced,links:[['personalize','Gerais'],['advanced','Avançado']]}
     ];
     groups.forEach(function(g){
       const section=mk('div','margin-bottom:8px;border:1px solid '+C.line+';border-radius:11px;overflow:hidden;background:'+C.panel);
