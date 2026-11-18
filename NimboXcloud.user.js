@@ -6118,6 +6118,10 @@ SOFTWARE.
 #__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>nav[aria-label="Categorias das configurações"]>button:last-child{flex:0 0 44px!important;width:44px!important;height:44px!important;min-height:44px!important;margin-top:0!important;margin-left:auto!important}
 #__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>div:last-child{order:1!important;flex:1 1 auto!important;width:100%!important;min-width:0!important;min-height:0!important;overflow:hidden!important}
 }
+@media(min-width:761px){
+#__xcu_panel__:not([data-nx-page=inputs]){width:clamp(360px,calc(50vw - 40px),440px)!important}
+#__xcu_panel__:not([data-nx-page=inputs])>[role="dialog"]{max-width:clamp(360px,calc(50vw - 40px),440px)!important}
+}
 `;
     (document.head || document.documentElement).appendChild(style);
   }

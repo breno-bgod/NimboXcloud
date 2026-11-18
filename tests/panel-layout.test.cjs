@@ -257,3 +257,15 @@ test('home shortcuts and input-family labels follow the visible navigation vocab
  assert.match(src,/function nxCanonicalTab\(id\)/);
  assert.match(src,/gamepad:'inputs',gyrotouch:'inputs',controls:'inputs'/);
 });
+
+
+test('desktop settings drawer expands progressively within a bounded width without changing the specialized inputs layout',()=>{
+ const start=src.indexOf('  function nxWorkspaceStyle() {');
+ const end=src.indexOf('  function buildUI() {',start);
+ assert.ok(start>=0&&end>start,'workspace presentation stylesheet exists');
+ const styles=src.slice(start,end);
+ assert.ok(styles.includes('@media(min-width:761px){'),'desktop width rules exist');
+ assert.ok(styles.includes('#__xcu_panel__:not([data-nx-page=inputs]){width:clamp(360px,calc(50vw - 40px),440px)!important}'));
+ assert.ok(styles.includes('#__xcu_panel__:not([data-nx-page=inputs])>[role="dialog"]{max-width:clamp(360px,calc(50vw - 40px),440px)!important}'));
+ assert.ok(styles.includes('#__xcu_panel__[data-nx-page=inputs]{width:min(1040px,100vw)!important}'));
+});
