@@ -220,3 +220,71 @@ Critérios de aceite:
 6. Separar métricas gerais de diagnóstico técnico; deixar Gerais restrito a preferências universais comprovadas.
 7. Preservar todos os IDs, aliases, storage keys, valores, defaults, eventos e rotas de recuperação.
 8. Adicionar testes dos builders reais que provem unicidade e acessibilidade das opções antes de alterar a navegação principal.
+
+
+## Execução visual — 2026-11-18 — largura progressiva do painel em desktop
+
+### Base consultada e reconciliação
+- `main` foi relida diretamente do GitHub: HEAD `5ba8943eedb83b0735dc7afe1cb20276fa7fcde3`. Nenhuma gravação direta em `main`.
+- Branch visual `automation/visual-mobile-nav-2026-11-14`: HEAD inicial desta execução `665ea1e744cf1b1df48ea2601f29ebea3cd7bc5d`; HEAD após a alteração de código/testes `ac3e16763a40deac8536e46ceee67041fd730a5e`.
+- PR [#35](https://github.com/breno-bgod/NimboXcloud/pull/35) foi relido antes da gravação: aberto, em rascunho, base `main`, base SHA `5ba8943eedb83b0735dc7afe1cb20276fa7fcde3`, sem divergência. Permanece sem merge.
+- Versão observada nos metadados do userscript: Alpha `0.0.1`.
+- Blobs consultados nesta etapa: userscript inicial `2125c99dad3ae1032f9b431643454c97bb1b914a`; teste inicial `7590f0e271736aa73ac44a5cd72264303084e7b9`; roadmap antes desta entrada `92354102fb3fa6cdbf6b33bbba74ba029aced8f7`.
+- `CHANGELOG.md` foi relido na branch e em `main`; blob `6e3ddc67cbb90258c45c65c8701ce2bf79af3185` em ambos. Não há novo lançamento e o arquivo não foi alterado.
+- O histórico recente foi revisado: o último commit da branch anterior a esta tarefa era documental (`665ea1e...`), e a branch mantinha 13 commits à frente de `main`. A árvore do repositório e os componentes de painel/testes foram consultados antes da implementação.
+- Antes de gravar o código, `main`, HEAD da branch, HEAD do PR e conteúdos/blob SHA dos dois arquivos foram lidos novamente. A atualização do ref usou compare-and-swap com o HEAD esperado; nenhuma alteração concorrente foi sobrescrita.
+
+### Inventário e arquitetura de informação revisados
+A navegação continua com nove destinos (Início + oito páginas de configuração). Esta execução não altera a taxonomia nem move builders:
+- **Mobile:** seletor da família touchscreen, HUD virtual de gamepad, HUD virtual de teclado/mouse, editores, giroscópio do smartphone, touchpad e sensibilidade.
+- **Joypad:** controle físico conectado, perfis de analógico, vibração e atalho. Não foi encontrado remapeamento funcional A/B/X/Y nem editor de layout de gamepad físico.
+- **Teclado e Mouse:** ajustes dos dispositivos físicos, captura/Pointer Lock e atalho. O HUD virtual de teclado/mouse continua em Mobile; não foram encontrados macros funcionais.
+- **Stream:** presets de qualidade solicitada, servidores/data center e rede. Bitrate recebido continua sendo métrica, não foi encontrado controle configurável de bitrate.
+- **Vídeo e Áudio:** ainda são páginas separadas. Vídeo contém enquadramento e processamento local de imagem; Áudio reúne microfone, saída, volume/equalização e controles existentes.
+- **Estatísticas:** monitor, FPS, bitrate recebido, RTT, jitter, perda, dados de decodificação e resolução recebida.
+- **Remote Play:** página própria, experimental e sem homologação com console físico; seus perfis de qualidade futura xHome não são presets do Stream do xCloud.
+- **Desenvolvedor/Avançado:** compatibilidade, relatórios e diagnósticos técnicos. Não foram introduzidos dados sensíveis.
+- **Gerais:** aparência do painel. Não foi encontrado seletor de idioma; `navigator.language` permanece dado observacional, não preferência editável.
+- O seletor único dos cinco modos de entrada e a recuperação Automático do Xbox continuam em Entradas. `nxCanonicalTab` ainda resolve aliases legados para essa página; o destino global definitivo permanece pendente da matriz.
+
+### Alteração visual desta execução
+- O painel de configurações em viewports a partir de 761 px passa a usar largura progressiva limitada entre 360 e 440 px: `clamp(360px, calc(50vw - 40px), 440px)`.
+- A regra é aplicada tanto ao invólucro do painel quanto à superfície `role="dialog"`, evitando que o limite inline antigo de 360 px corte a expansão.
+- A página Entradas foi explicitamente excluída dessa regra: mantém sua largura especializada de até 1040 px e seu workspace em duas colunas quando o espaço permite.
+- As regras mobile até 640 px e estreitas até 480 px permanecem sem alteração; navegação horizontal, rótulos visíveis e alvos existentes foram preservados.
+- Motivação: no desktop, o rail lateral ocupa aproximadamente 126 px dentro da largura antiga de 360 px; a área útil de conteúdo ficava estreita para descrições e controles. A expansão gradual melhora leitura sem transformar o painel em uma janela de largura irrestrita.
+- Arquivos alterados nesta execução: `NimboXcloud.user.js` (somente CSS em `nxWorkspaceStyle`) e `tests/panel-layout.test.cjs` (teste estático do limite progressivo e da exclusão da página Entradas). Nenhum markup, builder, ID, alias, callback, evento, storage key, valor ou default foi modificado.
+- Não houve alterações em input/gameplay, Gamepad API, handlers de toque/teclado/mouse, sensores, persistência, rede, autenticação, sessão, WebRTC, transporte, streaming ou telemetria.
+
+### Referências pesquisadas
+1. [Microsoft Fluent 2 — Drawer](https://fluent2.microsoft.design/components/web/react/core/drawer/usage): drawer como superfície secundária; distinguir modo overlay/inline, limitar a largura e preservar rolagem no corpo.
+2. [Microsoft Fluent 2 — Layout](https://fluent2.microsoft.design/layout): classes de viewport e adaptação responsiva por espaço disponível; referência para manter uma transição explícita entre larguras compactas e desktop.
+3. [Microsoft Fluent 2 — Nav](https://fluent2.microsoft.design/components/web/react/core/nav/usage): navegação de painel com rótulos claros, comportamento overlay em larguras estreitas e hierarquia curta.
+4. [IBM Carbon — UI Shell left panel accessibility](https://www.carbondesignsystem.com/building-blocks/core/components/ui-shell-left-panel/accessibility): ordem de foco, interação por teclado e apresentação sobreposta em telas menores.
+5. [IBM Carbon — UI Shell left panel usage](https://v10.carbondesignsystem.com/components/UI-shell-left-panel/usage): painel lateral para conjuntos maiores de destinos e limitação de níveis de navegação.
+- Foram extraídos padrões de largura adaptativa, rolagem e navegação; nenhum asset, código ou componente proprietário foi copiado.
+
+### Testes e evidências
+- GitHub Actions [NimboXcloud baseline — run 44406565968](https://github.com/breno-bgod/NimboXcloud/actions/runs/44406565968), commit `ac3e16763a40deac8536e46ceee67041fd730a5e`: conclusão `success`.
+- Etapas `Syntax check`, `Touch HUD module syntax check`, `Baseline tests` e `Static risk report` concluídas com sucesso.
+- Resultado do Node test runner extraído dos logs: 408 testes contabilizados, 405 aprovados, 0 falhas e 3 TODO preexistentes (testes que dependem de navegador real/sessão xCloud).
+- Sintaxe de `NimboXcloud.user.js` e `modules/NimboXcloud-Touch-HUD.user.js`: PASS. Relatório estático de riscos: PASS.
+- O novo teste confirma que a regra progressiva desktop existe, é limitada a 360–440 px e não substitui a regra especializada da página Entradas.
+- Não foi executado teste manual em Chrome/Edge, Playwright, Android, DeX, fullscreen, tablet físico ou sessão real. CI e teste estático não comprovam o encaixe visual, a legibilidade em todos os tamanhos nem a área de jogo coberta pelo painel.
+
+### Riscos e pendências
+- O painel continua sendo uma superfície sobre o jogo; a largura máxima maior pode cobrir até 80 px adicionais do conteúdo em desktop. A expansão é limitada a 440 px e não altera o layout do jogo, mas requer inspeção visual.
+- A regra não afeta `data-nx-page=inputs`; essa página mantém composição especializada. Os breakpoints mobile não foram alterados.
+- A navegação ainda não expõe Mobile, Joypad e Teclado e Mouse como páginas primárias. Vídeo e Áudio continuam separados. Não foi feita divisão porque o seletor único e aliases legados ainda exigem matriz de destinos e testes de caracterização.
+- Nenhum bug funcional foi corrigido ou investigado nesta execução.
+
+### Próxima tarefa visual única — P1: matriz definitiva das nove categorias e destino único do seletor de entrada
+Critérios de aceite:
+1. Inventariar cada grupo e linha dos builders existentes, registrando finalidade, público e dependências, e atribuir exatamente uma categoria principal.
+2. Definir Mobile, Joypad e Teclado e Mouse como destinos claros, mantendo todo mecanismo touchscreen e seus editores em Mobile.
+3. Definir um único local persistente para os cinco modos e a recuperação Automático do Xbox, sem criar seletores duplicados nem perda de acesso.
+4. Reunir qualidade solicitada, servidores e rede em Stream; manter resolução/bitrate recebidos e métricas em Estatísticas.
+5. Agrupar Vídeo e Áudio sem duplicar opções; manter Remote Play separado e explicitamente experimental.
+6. Separar métricas gerais de Desenvolvedor/Avançado e manter Gerais restrito a preferências universais comprovadas.
+7. Preservar IDs, aliases, callbacks, storage keys, valores, defaults, eventos e comportamento.
+8. Criar testes sobre os builders reais que comprovem unicidade e acessibilidade das opções antes de alterar a navegação principal.
