@@ -45,7 +45,7 @@ function harness(){
   LS_AUDIO_OUTPUT:'output',LS_AUDIO_FX:'audiofx',LS_AUDIO_BALANCE:'balance',LS_AUDIO_COMP:'compressor',LS_AUDIO_NORMAL:'normal',LS_AUDIO_LIMIT:'limit',LS_AUDIO_DIALOG:'dialog',LS_AUDIO_MONO:'mono',LS_AUDIO_PRESET:'preset',
   LS_NX_GPU:'gpu',LS_NX_SHADOWS:'shadows',LS_NX_HIGHLIGHTS:'highlights',
   nxAudioOutputSupport:()=>({canRoute:false}),
-  nxConsoleLabFullScreen(){},activeStreamAudio:()=>null,sliderDragging:false,S:{},tabId:'video'};
+  nxConsoleLabFullScreen(){},activeStreamAudio:()=>null,activeStreamVideo:()=>null,sliderDragging:false,S:{},tabId:'video'};
  vm.createContext(ctx);
  vm.runInContext(section('  function group(title, hint) {','  function liveDesc(')+section('  function liveDesc(row, getter) {','  function chips('),ctx);
  vm.runInContext(section('  function nxPhoneControls(root){','  setInterval(function(){\n    const visible=nxPhone.touchEnabled'),ctx);
@@ -57,12 +57,12 @@ function harness(){
   group('Perfis de analógico',['Perfil esquerdo','Perfil direito']),group('Giroscópio',['Calibração','Amostras recebidas']),
   group('Coordenação de entradas — diagnóstico',['Fontes observadas']),group('Editor de HUD — prévia arrastável',['Prévia'])
  ].forEach(n=>root.appendChild(n));
- const system=root=>['Desempenho','Detalhes do link','Rede','Compatibilidade','Sistema','Ferramentas','Rodapé'].forEach(t=>root.appendChild(group(t)));
+ const system=root=>['Desempenho','Detalhes do link','Servidores medidos','Compatibilidade','Sistema','Ferramentas','Rodapé'].forEach(t=>root.appendChild(group(t)));
  const mediaBody=section('    media: function (root, category) {','    controls: function (root, category) {');
  const literal=mediaBody.slice(mediaBody.indexOf('function'),mediaBody.lastIndexOf('},')+1);
  const actualMedia=vm.runInContext('('+literal+')',ctx);
  ctx.TAB_BUILDERS={advanced:system,region:()=>{throw Error('A região antiga não deve ser montada');},
-  controls,media:actualMedia,stream:root=>root.appendChild(group('Monitor de transmissão'))};
+  controls,media:actualMedia,stream:root=>{root.appendChild(group('Monitor de transmissão'));root.appendChild(group('Data center'));root.appendChild(group('Qualidade de vídeo'));root.appendChild(group('Rede'));}};
  vm.runInContext(section('  // Categorias organizadas por responsabilidade;','  function setTab(id) {'),ctx);
  const titles=root=>root.children.map(n=>ctx.nxGroupTitle(n));
  return {ctx,Node,group,titles,build:id=>{const n=new Node();ctx.TAB_BUILDERS[id](n);return n;}};
@@ -70,14 +70,39 @@ function harness(){
 
 test('video uses the real media builder and places requested quality and framing above image controls',()=>{
  const h=harness(),root=h.build('video');const titles=h.titles(root);
- assert.deepEqual(titles.slice(0,6),['Qualidade do streaming','Qualidade recebida','Dispositivo','Ajuste à tela','Imagem','Perfis de imagem']);
- const presentation=root.children[3],image=root.children[4];
+ assert.deepEqual(titles.slice(0,4),['Dispositivo','Ajuste à tela','Imagem','Perfis de imagem']);
+ assert.doesNotMatch(root.textContent,/Qualidade do streaming|Qualidade recebida/);
+ const presentation=root.children[1],image=root.children[2];
  assert.match(presentation.textContent,/Enquadramento/);assert.doesNotMatch(root.textContent,/Economia de recursos/);
  assert.doesNotMatch(image.textContent,/Enquadramento|Tela cheia|Economia de recursos/);
  assert.match(image.textContent,/Brilho/);assert.match(root.textContent,/Salvar perfil/);
  assert.doesNotMatch(root.textContent,/Importar JSON|Exportar JSON/);
  assert.match(root.textContent,/Restaurar configurações visuais/);
  assert.doesNotMatch(root.textContent,/Restaurar GPU|Restaurar imagem/);
+});
+
+test('stream owns requested quality presets while statistics owns received resolution',()=>{
+ const h=harness(),stream=h.build('stream'),streamTitles=h.titles(stream);
+ assert.ok(streamTitles.includes('Qualidade do streaming'));
+ assert.ok(streamTitles.includes('Data center'));
+ assert.ok(streamTitles.includes('Rede'));
+ assert.ok(streamTitles.includes('Servidores medidos'));
+ assert.doesNotMatch(stream.textContent,/Monitor de transmissão|Qualidade de vídeo|Qualidade recebida/);
+ assert.equal(streamTitles.filter(title=>title==='Qualidade do streaming').length,1);
+ vm.runInContext(section('  TAB_BUILDERS.personalize=function(root){','  TAB_BUILDERS.overview=function(root){'),h.ctx);
+ const stats=h.build('statistics');
+ assert.ok(h.titles(stats).includes('Qualidade recebida'));
+ assert.match(stats.textContent,/Resolução do vídeo/);
+ assert.doesNotMatch(h.build('video').textContent,/Qualidade do streaming|Qualidade recebida/);
+});
+
+test('top-level visual labels retain the existing navigation identifiers',()=>{
+ const tabs=section('  const TABS = [','  const PRESETS = [');
+ const ids=Array.from(tabs.matchAll(/id: '([^']+)'/g),m=>m[1]);
+ assert.deepEqual(ids,['overview','video','stream','statistics','inputs','audio','remote','personalize','advanced']);
+ assert.match(tabs,/id: 'stream', label: 'Stream'/);
+ assert.match(tabs,/id: 'personalize', label: 'Gerais'/);
+ assert.match(tabs,/id: 'advanced', label: 'Avançado'/);
 });
 
 test('audio/voice composition puts only microphone above the playback settings',()=>{
@@ -109,8 +134,9 @@ test('input workspace mounts settings for the browsed device without duplicated 
   assert.equal(root.textContent.includes('Ajustes de teclado e mouse'),family==='keyboard');
   assert.equal(root.textContent.includes('Atalho gamepad'),family==='gamepad');
   assert.equal(root.textContent.includes('Atalho keyboard'),family==='keyboard');
-  assert.match(root.textContent,/Ativar FPS|Ativar Corrida/);
-  assert.match(root.textContent,/SENSIBILIDADE DO TOUCHPAD/);
+  assert.equal(root.textContent.includes('Giroscópio e touchpad complementares'),family==='mobile');
+  assert.equal(root.textContent.includes('SENSIBILIDADE DO TOUCHPAD'),family==='mobile');
+  assert.equal(/Ativar FPS|Ativar Corrida/.test(root.textContent),family==='mobile');
   assert.doesNotMatch(root.textContent,/Escolher entrada|Ativar HUD/);
   if(family!=='mobile')assert.ok(root.children.some(node=>node.tagName==='details'));
  }
@@ -183,3 +209,81 @@ test('monitor never steals native Xbox or gameplay clicks outside the NX editing
  ctx.tick();assert.equal(monitor.style.pointerEvents,'none');ctx.openUI=true;ctx.tick();assert.equal(monitor.style.pointerEvents,'auto');
 });
 
+
+
+test('compact panel navigation keeps category labels visible in a horizontal touch rail at narrow widths',()=>{
+ const start=src.indexOf('  function nxWorkspaceStyle() {');
+ const end=src.indexOf('  function buildUI() {',start);
+ assert.ok(start>=0&&end>start,'workspace presentation stylesheet exists');
+ const styles=src.slice(start,end);
+ assert.match(styles,/@media\(max-width:640px\)/);
+ assert.match(styles,/flex-direction:column!important/);
+ assert.match(styles,/overflow-x:auto!important/);
+ assert.match(styles,/min-height:44px!important/);
+ assert.match(styles,/button:not\(:last-child\)>span:nth-child\(2\)\{display:block!important/);
+ assert.match(styles,/overscroll-behavior-x:contain!important/);
+ assert.match(styles,/order:1!important/);
+ assert.doesNotMatch(styles,/\.nx-category-rail button>span:nth-child\(2\)\{display:none!important\}/);
+ const narrow=styles.match(/@media\(max-width:480px\)\{([\s\S]*?)\n@media\(max-width:640px\)/);
+ assert.ok(narrow,'narrow viewport rules exist');
+ assert.match(narrow[1],/min-height:64px!important/);
+ assert.match(narrow[1],/button:not\(:last-child\)>span:nth-child\(2\)\{display:block!important/);
+ assert.match(narrow[1],/font-size:9px!important/);
+});
+
+
+test('home shortcuts and input-family labels follow the visible navigation vocabulary',()=>{
+ const overview=src.indexOf('  TAB_BUILDERS.overview=function(root){');
+ const groupStart=src.indexOf('    const groups=[',overview);
+ const groupEnd=src.indexOf('    groups.forEach(function(g){',groupStart);
+ assert.ok(overview>=0&&groupStart>overview&&groupEnd>groupStart);
+ const menu=src.slice(groupStart,groupEnd);
+ assert.match(menu,/links:\[\['stream','Stream'\],\['statistics','Estatísticas'\],\['remote','Remote Play · Xbox em casa'\]\]/);
+ assert.match(menu,/links:\[\['inputs','Entradas'\]\]/);
+ assert.match(menu,/links:\[\['personalize','Gerais'\],\['advanced','Avançado'\]\]/);
+ assert.match(menu,/sub:'Mobile, Joypad e Teclado e Mouse'/);
+ assert.match(menu,/sub:'Aparência geral e ferramentas técnicas'/);
+ assert.doesNotMatch(menu,/Streaming|Entradas, HUD e ajustes dos dispositivos|Interface e monitor de estatísticas|Sistema e compatibilidade/);
+ const previewStart=src.indexOf('  function nxInputDevicePreview(family) {');
+ const previewEnd=src.indexOf('  function nxInputModePage(root) {',previewStart);
+ assert.ok(previewStart>=0&&previewEnd>previewStart);
+ const preview=src.slice(previewStart,previewEnd);
+ assert.match(preview,/keyboard:'Teclado e Mouse',gamepad:'Joypad',mobile:'Mobile'/);
+ const navEnd=src.indexOf('  function nxTouchpadSettings(root)',previewEnd);
+ assert.ok(navEnd>previewEnd);
+ const nav=src.slice(previewEnd,navEnd);
+ assert.match(nav,/\[\['keyboard','Teclado e Mouse'\],\['gamepad','Joypad'\],\['mobile','Mobile'\]\]/);
+ assert.match(nav,/data-nx-device/);
+ assert.match(src,/function nxCanonicalTab\(id\)/);
+ assert.match(src,/gamepad:'inputs',gyrotouch:'inputs',controls:'inputs'/);
+});
+
+
+test('desktop settings drawer expands progressively within a bounded width without changing the specialized inputs layout',()=>{
+ const start=src.indexOf('  function nxWorkspaceStyle() {');
+ const end=src.indexOf('  function buildUI() {',start);
+ assert.ok(start>=0&&end>start,'workspace presentation stylesheet exists');
+ const styles=src.slice(start,end);
+ assert.ok(styles.includes('@media(min-width:761px){'),'desktop width rules exist');
+ assert.ok(styles.includes('#__xcu_panel__:not([data-nx-page=inputs]){width:clamp(360px,calc(50vw - 40px),440px)!important}'));
+ assert.ok(styles.includes('#__xcu_panel__:not([data-nx-page=inputs])>[role="dialog"]{max-width:clamp(360px,calc(50vw - 40px),440px)!important}'));
+ assert.ok(styles.includes('#__xcu_panel__[data-nx-page=inputs]{width:min(1040px,100vw)!important}'));
+});
+
+
+test('home shortcuts use a lightweight list with comfortable targets and preserve routing',()=>{
+ const start=src.lastIndexOf('  TAB_BUILDERS.overview=function(root){');
+ const end=src.indexOf('// Painel como inventario',start);
+ assert.ok(start>=0&&end>start,'active Home builder exists');
+ const home=src.slice(start,end);
+ assert.ok(home.includes("padding:6px 0 10px;border-bottom:1px solid '+C.line+';margin-bottom:8px"),'session status uses a compact divider treatment');
+ assert.ok(home.includes("margin:0;border-bottom:1px solid '+C.line+';background:transparent"),'shortcut groups are unboxed list sections');
+ assert.ok(home.includes("min-height:52px;display:flex"),'category headers retain a comfortable row height');
+ assert.ok(home.includes("display:block;padding:0 0 8px 30px"),'nested destinations align under their category text');
+ assert.ok(home.includes("min-height:44px;text-align:left"),'destination rows keep a 44px minimum target');
+ assert.ok(home.includes("button.setAttribute('aria-expanded','true')"),'groups retain their expanded state');
+ assert.ok(home.includes("button.setAttribute('aria-expanded',String(open))"),'groups expose the current expanded state');
+ assert.ok(home.includes("details.style.display=open?'block':'none'"),'existing disclosure interaction is retained');
+ assert.ok(home.includes("setTab(link[0])"),'existing destination routing is retained');
+ assert.doesNotMatch(home,/border-radius:11px|border:1px solid \u0027\+C\.line/,'nested shortcut cards are removed');
+});

@@ -1048,7 +1048,7 @@ SOFTWARE.
     const figure = mk('div', '');
     figure.className = 'nx-device-preview';
     figure.setAttribute('role', 'img');
-    const labels = {keyboard:'Teclado e mouse',gamepad:'Controle',mobile:'Controles na tela'};
+    const labels = {keyboard:'Teclado e Mouse',gamepad:'Joypad',mobile:'Mobile'};
     figure.setAttribute('aria-label', labels[family]);
     const device = mk('div', '');
     device.className = 'nx-device-diagram nx-device-' + family;
@@ -1070,7 +1070,7 @@ SOFTWARE.
     const navigation = mk('nav','');
     navigation.className = 'nx-input-devices';
     navigation.setAttribute('aria-label','Dispositivos de entrada');
-    [['keyboard','Teclado e mouse'],['gamepad','Controle'],['mobile','Mobile']].forEach(function(item) {
+    [['keyboard','Teclado e Mouse'],['gamepad','Joypad'],['mobile','Mobile']].forEach(function(item) {
       const button = actBtn(item[1], function() {
         nxInputWorkspaceFamily = item[0];
         renderBody(true);
@@ -2423,14 +2423,14 @@ SOFTWARE.
   };
   const TABS = [
     { id: 'overview', label: 'Início', desc: 'Resumo da sessão e acesso rápido' },
-    { id: 'video', label: 'Vídeo e imagem', desc: 'Qualidade, dispositivo, enquadramento e ajustes visuais' },
-    { id: 'stream', label: 'Streaming', desc: 'Servidores, conexão e rede' },
-    { id: 'statistics', label: 'Estatísticas', desc: 'Métricas e desempenho da sessão' },
+    { id: 'video', label: 'Vídeo e imagem', desc: 'Dispositivo, enquadramento e ajustes visuais' },
+    { id: 'stream', label: 'Stream', desc: 'Servidores, qualidade solicitada, resolução e rede' },
+    { id: 'statistics', label: 'Estatísticas', desc: 'Métricas de transmissão, qualidade e desempenho da sessão' },
     { id: 'inputs', label: 'Entradas', desc: 'Modo de jogo, HUD, controle físico e teclado e mouse' },
     { id: 'audio', label: 'Áudio e voz', desc: 'Microfone, volume, saída e equalização' },
     { id: 'remote', label: 'Remote Play', desc: 'Conexão experimental com Xbox local' },
-    { id: 'personalize', label: 'Interface', desc: 'Aparência geral do painel NX' },
-    { id: 'advanced', label: 'Sistema', desc: 'Compatibilidade, diagnóstico e manutenção' }
+    { id: 'personalize', label: 'Gerais', desc: 'Aparência geral do painel NX' },
+    { id: 'advanced', label: 'Avançado', desc: 'Compatibilidade, diagnóstico e ferramentas técnicas' }
   ];
   const PRESETS = [
     { name: 'Máximo', res: 'hq', br: 'auto', sub: 'Melhor imagem' },
@@ -5878,6 +5878,14 @@ SOFTWARE.
     });
     pg.card.appendChild(row);root.appendChild(pg.root);
   }
+  function nxReceivedQuality(root){
+    const quality=group('Qualidade recebida','A solicitação vale na próxima partida. Esta medição mostra o vídeo recebido, não o tamanho da janela.');
+    quality.add(infoRow('Resolução do vídeo',function(){
+      const video=activeStreamVideo();
+      return video?.videoWidth&&video?.videoHeight?video.videoWidth+' × '+video.videoHeight:(S.qos?.w&&S.qos?.h?S.qos.w+' × '+S.qos.h:'Aguardando uma partida');
+    }));
+    root.appendChild(quality.root);
+  }
   TAB_BUILDERS.advanced=function(root){
     const nodes=nxLegacySystemGroups();[3,4,5,6].forEach(function(i){if(nodes[i])root.appendChild(nodes[i]);});
     const controls=nxLegacyControlGroups('keyboard');
@@ -5892,6 +5900,7 @@ SOFTWARE.
   TAB_BUILDERS.compatibility=function(root){const nodes=nxLegacySystemGroups();if(nodes[3])root.appendChild(nodes[3]);};
   TAB_BUILDERS.region=function(root){nxLegacyRegionBuilder(root);};
   TAB_BUILDERS.stream=function(root){
+    nxQualityPresets(root);
     const temp=document.createElement('div');nxOriginalStreamBuilder(temp);
     const nodes=Array.from(temp.children);
     nodes.forEach(function(node){const title=nxGroupTitle(node);if(title!=='Monitor de transmissão'&&title!=='Qualidade de vídeo')root.appendChild(node);});
@@ -5908,10 +5917,6 @@ SOFTWARE.
     if(mic)root.appendChild(mic);
   };
   TAB_BUILDERS.video=function(root){
-    nxQualityPresets(root);
-    const quality=group('Qualidade recebida','A solicitação vale na próxima partida. Esta medição mostra o vídeo recebido, não o tamanho da janela.');
-    quality.add(infoRow('Resolução do vídeo',function(){const video=activeStreamVideo();return video?.videoWidth&&video?.videoHeight?video.videoWidth+' × '+video.videoHeight:(S.qos?.w&&S.qos?.h?S.qos.w+' × '+S.qos.h:'Aguardando uma partida');}));
-    root.appendChild(quality.root);
     const controls=nxLegacyControlGroups('video');nxMoveGroup(root,controls,'Dispositivo');
     const media=nxLegacyMediaGroups('video');
     const presentation=nxTakeGroupRows(nxFindGroup(media,'Imagem'),'Ajuste à tela',
@@ -5934,8 +5939,10 @@ SOFTWARE.
   };
   TAB_BUILDERS.inputs=function(root){
     const family = nxInputModePage(root);
-    nxPhoneControls(root);
-    nxTouchpadSettings(root);
+    if (family === 'mobile') {
+      nxPhoneControls(root);
+      nxTouchpadSettings(root);
+    }
     if (family === 'gamepad') nxSettingsSection(root,'Ajustes do controle físico',TAB_BUILDERS.gamepad);
     if (family === 'keyboard') nxSettingsSection(root,'Ajustes de teclado e mouse',TAB_BUILDERS.gyrotouch);
   };
@@ -5945,7 +5952,7 @@ SOFTWARE.
       ['Controles conectados'],
       'Estado dos controles físicos reconhecidos pelo navegador.');
     nxMoveGroup(root,nodes,'Perfis de analógico');
-    // Phone gyroscope profiles are shared above, independent of the browsed device.
+    // Phone gyro and touchpad controls are presented only in the Mobile family.
     const vibration=nxTakeGroupRows(nxFindGroup(nodes,'Acessórios'),'Vibração do Gamepad',['Vibração'],
       'Teste local de vibração. Não altera automaticamente a vibração enviada pelo xCloud.');
     if(vibration)root.appendChild(vibration);
@@ -6029,8 +6036,8 @@ SOFTWARE.
     const words=normalize(query).trim().split(/\s+/).filter(Boolean);
     if(!words.length)return [];
     const keywords={inputs:'touch toque controle joystick hud virtual teclado mouse analógico zona morta deadzone gyro giroscópio vibração sensibilidade wasd macros multiteclas botões atalhos',
-      stream:'servidor server região bitrate rede',statistics:'fps rtt latência perda mbps desempenho monitor ativar ocultar gráficos histórico fonte cores transparência posição escala layout',
-      audio:'equalizador volume saída som mic microfone voz',video:'fullscreen tela cheia enquadramento desktop celular brilho contraste saturação filtros captura perfil resolução qualidade gpu nitidez cas unsharp',
+      stream:'servidor server região bitrate rede qualidade resolução 1080p preset',statistics:'fps rtt latência perda mbps desempenho monitor ativar ocultar gráficos histórico fonte cores transparência posição escala layout resolução recebida',
+      audio:'equalizador volume saída som mic microfone voz',video:'fullscreen tela cheia enquadramento desktop celular brilho contraste saturação filtros captura perfil gpu nitidez cas unsharp',
       advanced:'diagnóstico cache manutenção compatibilidade identidade user agent plataforma console',personalize:'transparência cores aparência interface painel ícones textos fonte'};
     return TABS.filter(function(tab){const text=normalize(tab.label+' '+tab.desc+' '+(keywords[tab.id]||''));return words.every(function(word){return text.includes(word);});});
   }
@@ -6098,7 +6105,23 @@ SOFTWARE.
 #__xcu_panel__ .nx-device-mobile .nx-device-key-2{right:20px;top:65px}
 #__xcu_panel__ .nx-device-mobile .nx-device-key-3{right:42px;top:30px}
 @media(max-width:760px){#__xcu_panel__ .nx-input-workspace{grid-template-columns:1fr;gap:4px}#__xcu_panel__ .nx-device-preview{min-height:200px;gap:18px}#__xcu_panel__ .nx-input-devices{gap:4px}#__xcu_panel__ .nx-input-devices button{min-width:85px;font-size:11px!important}}
-@media(max-width:480px){#__xcu_panel__ .nx-category-rail{flex-basis:55px!important}#__xcu_panel__ .nx-category-rail button{justify-content:center!important}#__xcu_panel__ .nx-category-rail button>span:nth-child(2){display:none!important}}
+@media(max-width:480px){
+#__xcu_panel__ .nx-category-rail{flex-basis:64px!important;min-height:64px!important}
+#__xcu_panel__ .nx-category-rail button:not(:last-child){min-width:64px!important;max-width:84px!important;padding:4px 5px!important;font-size:9px!important}
+#__xcu_panel__ .nx-category-rail button:not(:last-child)>span:nth-child(2){display:block!important;font-size:9px!important;line-height:1.1!important;white-space:normal!important;overflow-wrap:normal!important}
+}
+@media(max-width:640px){
+#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]{flex-direction:column!important;max-height:calc(100vh - 16px)!important;max-height:calc(100dvh - 16px)!important}
+#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>nav[aria-label="Categorias das configurações"]{order:0!important;flex:0 0 auto!important;box-sizing:border-box!important;width:100%!important;max-height:64px!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:4px!important;padding:6px!important;border-right:0!important;border-bottom:1px solid var(--nx-edge)!important;overflow-x:auto!important;overflow-y:hidden!important;overscroll-behavior-x:contain!important;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>nav[aria-label="Categorias das configurações"]>button:not(:last-child){flex:0 0 auto!important;width:auto!important;min-width:68px!important;max-width:92px!important;min-height:44px!important;flex-direction:column!important;justify-content:center!important;gap:2px!important;padding:5px 7px!important;text-align:center!important;white-space:normal!important}
+#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>nav[aria-label="Categorias das configurações"]>button:not(:last-child)>span:nth-child(2){display:block!important;min-width:0!important;max-width:100%;line-height:1.15;text-align:center!important;overflow-wrap:normal!important;word-break:normal!important}
+#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>nav[aria-label="Categorias das configurações"]>button:last-child{flex:0 0 44px!important;width:44px!important;height:44px!important;min-height:44px!important;margin-top:0!important;margin-left:auto!important}
+#__xcu_panel__ [role="dialog"][aria-label="Painel NimboXcloud"]>div:last-child{order:1!important;flex:1 1 auto!important;width:100%!important;min-width:0!important;min-height:0!important;overflow:hidden!important}
+}
+@media(min-width:761px){
+#__xcu_panel__:not([data-nx-page=inputs]){width:clamp(360px,calc(50vw - 40px),440px)!important}
+#__xcu_panel__:not([data-nx-page=inputs])>[role="dialog"]{max-width:clamp(360px,calc(50vw - 40px),440px)!important}
+}
 `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -6494,6 +6517,7 @@ SOFTWARE.
     const stream=document.createElement('div');
     nxOriginalStreamBuilder(stream);
     if(stream.firstElementChild)root.appendChild(stream.firstElementChild);
+    nxReceivedQuality(root);
     const groups=nxLegacySystemGroups();
     [0,1].forEach(function(i){if(groups[i])root.appendChild(groups[i]);});
 
@@ -6502,7 +6526,7 @@ SOFTWARE.
   TAB_BUILDERS.overview=function(root){
     root.appendChild(mk('div','font-size:18px;font-weight:750;letter-spacing:-.02em;margin-bottom:4px','NX · Central'));
     root.appendChild(mk('div','font-size:11px;color:'+C.dim+';line-height:1.5;margin-bottom:12px','Ajustes organizados. O painel pode ser fechado a qualquer momento.'));
-    const status=mk('div','padding:10px 12px;border-radius:10px;background:'+C.panel+';border:1px solid '+C.line+';margin-bottom:10px');
+    const status=mk('div','padding:6px 0 10px;border-bottom:1px solid '+C.line+';margin-bottom:8px');
     const state=mk('div','font-size:12px;font-weight:700');
     const metrics=mk('div','font-size:11px;color:'+C.dim+';margin-top:4px;line-height:1.5');
     status.appendChild(state);status.appendChild(metrics);root.appendChild(status);
@@ -6513,14 +6537,14 @@ SOFTWARE.
     });
     const groups=[
       {title:'Imagem e apresentação',sub:'Perfil do dispositivo e processamento visual',icon:ICONS.video,links:[['video','Vídeo e imagem']]},
-      {title:'Conexão',sub:'Servidores, qualidade e indicadores da sessão',icon:ICONS.stream,links:[['stream','Streaming'],['statistics','Estatísticas'],['remote','Remote Play · Xbox em casa']]},
-      {title:'Entradas e controles',sub:'Escolha como jogar, edite o HUD e ajuste seus dispositivos',icon:ICONS.gamepad,links:[['inputs','Entradas, HUD e ajustes dos dispositivos']]},
+      {title:'Conexão',sub:'Servidores, qualidade e indicadores da sessão',icon:ICONS.stream,links:[['stream','Stream'],['statistics','Estatísticas'],['remote','Remote Play · Xbox em casa']]},
+      {title:'Entradas e controles',sub:'Mobile, Joypad e Teclado e Mouse',icon:ICONS.gamepad,links:[['inputs','Entradas']]},
       {title:'Som',sub:'Reprodução e entrada de voz',icon:ICONS.audio,links:[['audio','Áudio e voz']]},
-      {title:'Sistema e interface',sub:'Aparência, compatibilidade e manutenção',icon:ICONS.advanced,links:[['personalize','Interface e monitor de estatísticas'],['advanced','Sistema e compatibilidade']]}
+      {title:'Sistema e interface',sub:'Aparência geral e ferramentas técnicas',icon:ICONS.advanced,links:[['personalize','Gerais'],['advanced','Avançado']]}
     ];
     groups.forEach(function(g){
-      const section=mk('div','margin-bottom:8px;border:1px solid '+C.line+';border-radius:11px;overflow:hidden;background:'+C.panel);
-      const button=mk('button','all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:11px;padding:12px;color:'+C.text+';text-align:left');
+      const section=mk('div','margin:0;border-bottom:1px solid '+C.line+';background:transparent');
+      const button=mk('button','all:unset;box-sizing:border-box;cursor:pointer;width:100%;min-height:52px;display:flex;align-items:center;gap:11px;padding:9px 2px;color:'+C.text+';text-align:left');
       button.setAttribute('aria-expanded','true');
       button.appendChild(ico(g.icon,19));
       const titles=mk('span','display:flex;flex-direction:column;gap:3px;min-width:0;flex:1');
@@ -6528,9 +6552,9 @@ SOFTWARE.
       titles.appendChild(mk('span','font-size:10.5px;color:'+C.dim,g.sub));
       button.appendChild(titles);
       button.appendChild(ico('M6 9l6 6 6-6',15));
-      const details=mk('div','display:block;padding:0 8px 8px');
+      const details=mk('div','display:block;padding:0 0 8px 30px');
       g.links.forEach(function(link){
-        const entry=mk('button','all:unset;box-sizing:border-box;display:block;cursor:pointer;width:100%;text-align:left;font-size:12px;color:'+C.text+';padding:11px 12px;border-top:1px solid '+C.line,link[1]);
+        const entry=mk('button','all:unset;box-sizing:border-box;display:flex;align-items:center;cursor:pointer;width:100%;min-height:44px;text-align:left;font-size:12px;line-height:1.35;color:'+C.text+';padding:8px 2px;border-top:1px solid '+C.line,link[1]);
         entry.addEventListener('click',function(e){e.stopPropagation();setTab(link[0]);});
         details.appendChild(entry);
       });
