@@ -288,3 +288,77 @@ Critérios de aceite:
 6. Separar métricas gerais de Desenvolvedor/Avançado e manter Gerais restrito a preferências universais comprovadas.
 7. Preservar IDs, aliases, callbacks, storage keys, valores, defaults, eventos e comportamento.
 8. Criar testes sobre os builders reais que comprovem unicidade e acessibilidade das opções antes de alterar a navegação principal.
+
+
+## Execução visual — 2026-11-19 — simplificação do Início em lista leve
+
+### Base, versão e rastreabilidade
+- `main` consultada no início e novamente antes do registro: `5ba8943eedb83b0735dc7afe1cb20276fa7fcde3`; permaneceu inalterada.
+- Branch visual: `automation/visual-mobile-nav-2026-11-14`; PR [#35](https://github.com/breno-bgod/NimboXcloud/pull/35), aberto, em rascunho, base `main`, sem merge.
+- HEAD da branch no início desta execução: `f509b81d3636321a7ddcd74b51a493441d117703`.
+- HEAD do código/testes após esta melhoria: `5106a87708634c93f3bd5daad4cd5d23b38acc7c`; comparação com `main`: 16 commits à frente, 0 atrás.
+- Userscript Alpha `0.0.1`, blob atualizado `08b3af2d75a7ea230ac530a3c4bfd43972afd435`; módulo Touch `1.4.1`.
+- `CHANGELOG.md` foi lido novamente e não foi alterado: nenhuma versão pública foi lançada nesta execução.
+
+### Auditoria real das categorias
+A navegação tem oito páginas de configuração mais Início. A taxonomia solicitada ainda não existe integralmente; a classificação abaixo foi conferida contra `TABS`, `TAB_BUILDERS`, `nxInputModePage`, os compositores legados e os dois userscripts.
+
+| Categoria-alvo | Recursos efetivamente encontrados | Lacunas/decisões |
+| --- | --- | --- |
+| Mobile | Família touchscreen; controle virtual; teclado/mouse virtuais; dois editores de HUD existentes; giroscópio do smartphone; touchpad e suas três sensibilidades | Os dois editores pertencem a Mobile mesmo que uma HUD contenha teclas/mouse |
+| Joypad | Controle físico conectado; perfis de analógico; teste de vibração; combinação de botões para abrir o próprio painel | A combinação é atalho do painel, não remapeamento de botões do jogo. Não foi encontrado remapeamento A/B/X/Y nem editor de layout físico |
+| Teclado e Mouse | Captura de mouse físico/Pointer Lock; atalhos F8, F2 ou desativado; combinação de teclado para abrir o painel | Atalhos são do painel/captura, não mapeamento de teclas do jogo. Não foram encontrados macros funcionais |
+| Stream | Presets reais Máximo e Padrão; servidores, data center, rede, preferência por conexão medida e IPv4 | Não há controle configurável de bitrate neste userscript; bitrate recebido é métrica |
+| Vídeo e Áudio | Vídeo: perfil do dispositivo, enquadramento, brilho, contraste, saturação, perfis locais e processamento GPU. Áudio: microfone, volume, saída e processamento/equalização existentes | As páginas ainda são separadas. Não foram encontrados controles de FSR/HDR |
+| Estatísticas | NX Stream Monitor e métricas de FPS, RTT, jitter, perda, bitrate recebido, resolução, codec, decodificação e quadros descartados | Manter métricas fora do diagnóstico técnico; não alterar coleta ou cálculos |
+| Remote Play | Descoberta xHome, informação de console, sessão/mídia e diagnósticos; qualidade futura 720p/1080p/1080p-HQ | Permanece experimental e sem homologação com console físico. Controles contextuais de sessão não são um segundo editor de HUD |
+| Desenvolvedor/Avançado | Compatibilidade, identidade observacional de browser/cliente, relatório de protocolo, diagnóstico técnico de entradas, sistema e logs | “Editor de HUD — prévia arrastável” é explicitamente uma prévia que não controla o jogo; não deve ser apresentada como editor funcional nem deslocada para Mobile/Joypad |
+| Gerais/universais | Aparência do painel NX: transparência, tom de fundo, cor de texto/ícones e restauração | Não foi encontrada preferência de idioma. Auto/Desktop/Celular continua em Vídeo embora influencie a experiência geral; avaliar na matriz antes de mover |
+
+O seletor único continua dentro de Entradas e apresenta cinco modos: teclado/mouse físicos, controle físico, teclado/mouse virtuais, controle virtual e toque nativo. A recuperação `Automático do Xbox` também está ali. Nenhuma cópia foi criada. A separação das três famílias em categorias de primeiro nível exige decidir primeiro onde ficará esse seletor único.
+
+### Melhoria visual implementada
+- A página Início tinha cinco grupos de atalhos em cartões independentes com bordas, raio, fundos e espaçamentos repetidos. A informação era uma lista de destinos relacionados, mas a composição tratava cada grupo como um cartão separado.
+- Os cinco cartões passaram a uma lista leve com divisores horizontais discretos; o resumo de conexão também deixou o cartão preenchido e passou a usar separador.
+- Cabeçalhos de grupo mantêm altura mínima de 52 px; destinos internos, 44 px. Os itens filhos alinham-se ao texto do grupo em vez de repetir recuo lateral de cartão.
+- A hierarquia, ícones, rótulos, grupos recolhíveis, `aria-expanded`, listeners e chamadas `setTab(link[0])` foram preservados. A alteração foi feita em strings de estilo dentro do builder visual de Início.
+- Não foram alterados IDs, aliases, builders de configurações, callbacks, armazenamento, valores, defaults, eventos, Gamepad API, pointer/touch/keyboard/mouse, sessão, rede, streaming ou telemetria.
+- Arquivos de código/teste: `NimboXcloud.user.js` e `tests/panel-layout.test.cjs`. Este registro altera somente `DEVELOPMENT_ROADMAP.md`; `CHANGELOG.md` permanece intacto.
+
+### Referências pesquisadas em 2026-11-19
+1. [Microsoft Fluent 2 — List](https://fluent2.microsoft.design/components/web/react/core/list/usage): listas verticais ajudam a escanear e acessar itens relacionados; estruturas hierárquicas devem continuar explícitas.
+2. [Microsoft Fluent 2 — Layout](https://fluent2.microsoft.design/layout): proximidade e espaço em branco podem comunicar relações sem cercar cada grupo com uma caixa; a escala global usa unidade-base de 4 px.
+3. [Microsoft Fluent 2 — Divider](https://fluent2.microsoft.design/components/web/react/core/divider/usage): divisores block/inset criam ritmo e distinção, com margens próprias; neste painel foi usada uma borda CSS discreta, não um componente copiado.
+4. [Microsoft Fluent 2 — Accessibility](https://fluent2.microsoft.design/accessibility): hierarquia de títulos, foco e navegação por teclado devem permanecer previsíveis.
+- Foram extraídos princípios de listas, espaçamento e divisores. Nenhum código, componente, asset ou ilustração dessas referências foi copiado.
+
+### Testes e resultados
+- [GitHub Actions — Baseline #44621083014](https://github.com/breno-bgod/NimboXcloud/actions/runs/44621083014): concluído com sucesso.
+- Verificação de sintaxe de `NimboXcloud.user.js`: PASS.
+- Verificação de sintaxe de `modules/NimboXcloud-Touch-HUD.user.js`: PASS.
+- Suíte: 409 testes, 406 PASS, 0 FAIL, 3 TODO preexistentes.
+- O teste novo `home shortcuts use a lightweight list with comfortable targets and preserve routing` foi incluído e aprovado; verifica a remoção do tratamento de cartões, alturas mínimas e preservação de `aria-expanded`, alternância de detalhes e roteamento.
+- Relatório estático de riscos: executado. Registrou quatro padrões existentes (duas substituições de Gamepad API, um override de XHR e um override de fetch); esta alteração não tocou esses trechos. O relatório é correspondência estática e não prova falha em execução.
+- Warnings não bloqueantes do runner: aviso de depreciação de ações que ainda usam Node 20 e aviso do módulo `punycode`. Nenhum workflow/CI foi alterado por estarem fora do escopo visual.
+- Não houve teste manual em Chrome/Edge, Playwright, Android, DeX, rotação, fullscreen ou sessão real. O CI valida sintaxe/testes automatizados, não aparência em dispositivos.
+
+### Riscos e pendências
+- A navegação principal ainda tem Entradas como uma única página com três famílias. O seletor de cinco modos e `Automático do Xbox` devem continuar únicos e acessíveis após qualquer divisão.
+- Vídeo e Áudio ainda são páginas separadas; a futura composição deve reutilizar os mesmos nós/builder sem duplicar controles.
+- O perfil Auto/Desktop/Celular está em Vídeo, embora altere apresentação geral da interface; precisa de análise semântica antes de ir para Gerais.
+- Gerais atualmente contém apenas aparência. Nenhum seletor de idioma foi localizado.
+- `docs/PAINEL_ORGANIZADO.md` está desatualizado (cabeçalho 4.13.2) e descreve páginas/organização anteriores; reconciliar após a matriz final para não documentar um desenho ainda não implementado.
+- A lista do Início mantém disclosures existentes; esta mudança não transforma os grupos em novos destinos nem altera seus callbacks.
+- Nenhuma alteração de comportamento foi feita nesta frente.
+
+### Próxima tarefa visual única — P1: matriz definitiva das nove categorias e localização única do seletor
+Critérios de aceite:
+1. Inventariar cada grupo e linha real dos builders, atribuindo cada opção a exatamente uma categoria principal.
+2. Separar Mobile, Joypad e Teclado e Mouse como destinos claros sem criar editores ou opções inexistentes; os dois editores touchscreen e giroscópio/touchpad do smartphone ficam em Mobile.
+3. Definir um único local persistente para os cinco modos e `Automático do Xbox`, mantendo todos os modos acessíveis sem seletor duplicado em cada categoria.
+4. Manter servidores, rede e qualidade solicitada em Stream; bitrate/resolução recebidos e demais métricas em Estatísticas.
+5. Agrupar Vídeo e Áudio reaproveitando os builders atuais, sem duplicar linhas nem callbacks; avaliar o perfil Auto/Desktop/Celular com evidência.
+6. Manter Remote Play separado e identificado como experimental; distinguir Estatísticas gerais de Desenvolvedor/Avançado.
+7. Classificar somente preferências universais reais em Gerais; não inventar idioma.
+8. Atualizar `docs/PAINEL_ORGANIZADO.md` para refletir apenas a arquitetura aprovada.
+9. Antes de alterar navegação, criar testes de caracterização sobre builders reais comprovando unicidade, acesso de todas as opções, aliases/rotas e preservação dos IDs, storage keys, callbacks, valores e defaults.
