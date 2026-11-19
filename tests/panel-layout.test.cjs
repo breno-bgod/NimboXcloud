@@ -269,3 +269,21 @@ test('desktop settings drawer expands progressively within a bounded width witho
  assert.ok(styles.includes('#__xcu_panel__:not([data-nx-page=inputs])>[role="dialog"]{max-width:clamp(360px,calc(50vw - 40px),440px)!important}'));
  assert.ok(styles.includes('#__xcu_panel__[data-nx-page=inputs]{width:min(1040px,100vw)!important}'));
 });
+
+
+test('home shortcuts use a lightweight list with comfortable targets and preserve routing',()=>{
+ const start=src.lastIndexOf('  TAB_BUILDERS.overview=function(root){');
+ const end=src.indexOf('// Painel como inventario',start);
+ assert.ok(start>=0&&end>start,'active Home builder exists');
+ const home=src.slice(start,end);
+ assert.ok(home.includes("padding:6px 0 10px;border-bottom:1px solid '+C.line+';margin-bottom:8px"),'session status uses a compact divider treatment');
+ assert.ok(home.includes("margin:0;border-bottom:1px solid '+C.line+';background:transparent"),'shortcut groups are unboxed list sections');
+ assert.ok(home.includes("min-height:52px;display:flex"),'category headers retain a comfortable row height');
+ assert.ok(home.includes("display:block;padding:0 0 8px 30px"),'nested destinations align under their category text');
+ assert.ok(home.includes("min-height:44px;text-align:left"),'destination rows keep a 44px minimum target');
+ assert.ok(home.includes("button.setAttribute('aria-expanded','true')"),'groups retain their expanded state');
+ assert.ok(home.includes("button.setAttribute('aria-expanded',String(open))"),'groups expose the current expanded state');
+ assert.ok(home.includes("details.style.display=open?'block':'none'"),'existing disclosure interaction is retained');
+ assert.ok(home.includes("setTab(link[0])"),'existing destination routing is retained');
+ assert.doesNotMatch(home,/border-radius:11px|border:1px solid \u0027\+C\.line/,'nested shortcut cards are removed');
+});

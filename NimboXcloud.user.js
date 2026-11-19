@@ -6526,7 +6526,7 @@ SOFTWARE.
   TAB_BUILDERS.overview=function(root){
     root.appendChild(mk('div','font-size:18px;font-weight:750;letter-spacing:-.02em;margin-bottom:4px','NX · Central'));
     root.appendChild(mk('div','font-size:11px;color:'+C.dim+';line-height:1.5;margin-bottom:12px','Ajustes organizados. O painel pode ser fechado a qualquer momento.'));
-    const status=mk('div','padding:10px 12px;border-radius:10px;background:'+C.panel+';border:1px solid '+C.line+';margin-bottom:10px');
+    const status=mk('div','padding:6px 0 10px;border-bottom:1px solid '+C.line+';margin-bottom:8px');
     const state=mk('div','font-size:12px;font-weight:700');
     const metrics=mk('div','font-size:11px;color:'+C.dim+';margin-top:4px;line-height:1.5');
     status.appendChild(state);status.appendChild(metrics);root.appendChild(status);
@@ -6543,8 +6543,8 @@ SOFTWARE.
       {title:'Sistema e interface',sub:'Aparência geral e ferramentas técnicas',icon:ICONS.advanced,links:[['personalize','Gerais'],['advanced','Avançado']]}
     ];
     groups.forEach(function(g){
-      const section=mk('div','margin-bottom:8px;border:1px solid '+C.line+';border-radius:11px;overflow:hidden;background:'+C.panel);
-      const button=mk('button','all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:11px;padding:12px;color:'+C.text+';text-align:left');
+      const section=mk('div','margin:0;border-bottom:1px solid '+C.line+';background:transparent');
+      const button=mk('button','all:unset;box-sizing:border-box;cursor:pointer;width:100%;min-height:52px;display:flex;align-items:center;gap:11px;padding:9px 2px;color:'+C.text+';text-align:left');
       button.setAttribute('aria-expanded','true');
       button.appendChild(ico(g.icon,19));
       const titles=mk('span','display:flex;flex-direction:column;gap:3px;min-width:0;flex:1');
@@ -6552,9 +6552,9 @@ SOFTWARE.
       titles.appendChild(mk('span','font-size:10.5px;color:'+C.dim,g.sub));
       button.appendChild(titles);
       button.appendChild(ico('M6 9l6 6 6-6',15));
-      const details=mk('div','display:block;padding:0 8px 8px');
+      const details=mk('div','display:block;padding:0 0 8px 30px');
       g.links.forEach(function(link){
-        const entry=mk('button','all:unset;box-sizing:border-box;display:block;cursor:pointer;width:100%;text-align:left;font-size:12px;color:'+C.text+';padding:11px 12px;border-top:1px solid '+C.line,link[1]);
+        const entry=mk('button','all:unset;box-sizing:border-box;display:flex;align-items:center;cursor:pointer;width:100%;min-height:44px;text-align:left;font-size:12px;line-height:1.35;color:'+C.text+';padding:8px 2px;border-top:1px solid '+C.line,link[1]);
         entry.addEventListener('click',function(e){e.stopPropagation();setTab(link[0]);});
         details.appendChild(entry);
       });
